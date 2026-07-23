@@ -196,3 +196,55 @@ scanner commands can still be entered manually.
 
 - Replaces Ruff B010-triggering constant `setattr()` calls.
 - Uses a typed completion-action protocol so strict MyPy remains clean.
+
+
+## Milestone 3
+
+Milestone 3 adds continuous scanner monitoring and establishes the transport
+boundary needed for future SDS200 Ethernet control:
+
+- A public `ControlTransport` protocol
+- Backward-compatible `SerialTransport`
+- `SDS200.from_transport(...)` for alternate transports
+- Continuous `PSI,<interval>` start/stop helpers
+- Automatic PSI restart after a transport reconnect
+- Rich, thread-safe state snapshots and `StateChange` events
+- State events only when values actually change
+- A live `sds200 monitor` terminal display
+- Timestamped UTC traffic traces
+- Richer site, frequency, modulation, service, talkgroup, unit, volume, squelch,
+  RSSI, mute, and recording extraction
+- XML stream resynchronization after truncated documents
+
+Start the live monitor:
+
+```bash
+sds200 monitor
+sds200 monitor --interval 250
+sds200 monitor --no-clear
+```
+
+Python API:
+
+```python
+from sds200 import SDS200
+
+with SDS200.auto() as radio:
+    radio.on_state_change(
+        lambda change: print(change.fields, change.current.channel)
+    )
+
+    with radio.scanner_info_push(interval_ms=500):
+        radio.wait()
+```
+
+See `docs/transports.md` for the transport contract and the planned UDP network
+implementation.
+
+## Milestone 3.0.1
+
+- Accepts the SDS200's immediate `PSI` acknowledgement packet.
+- Waits for the first periodic `PSI` XML document before starting the monitor.
+- Uses one timeout budget for both the acknowledgement and first XML update.
+- Rejects negative `PSI,NG` acknowledgements as protocol errors.
+- Adds regression coverage for acknowledgement-then-XML behavior.

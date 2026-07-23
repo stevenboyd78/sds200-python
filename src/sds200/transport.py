@@ -4,7 +4,7 @@ import logging
 import threading
 from collections.abc import Callable
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 import serial
 
@@ -21,8 +21,30 @@ class SerialLike(Protocol):
     def close(self) -> None: ...
 
 
-SerialFactory = Callable[..., SerialLike]
 LineHandler = Callable[[str], None]
+ConnectionHandler = Callable[[bool], None]
+SerialFactory = Callable[..., SerialLike]
+
+
+@runtime_checkable
+class ControlTransport(Protocol):
+    """Transport contract shared by serial and future network connections."""
+
+    @property
+    def endpoint(self) -> str: ...
+
+    @property
+    def connected(self) -> bool: ...
+
+    def start(
+        self,
+        handler: LineHandler,
+        connection_handler: ConnectionHandler | None = None,
+    ) -> None: ...
+
+    def stop(self) -> None: ...
+
+    def write_command(self, command: str) -> None: ...
 
 
 def default_serial_factory(
@@ -59,18 +81,28 @@ class SerialTransport:
         self._serial_factory = serial_factory
         self._serial: SerialLike | None = None
         self._handler: LineHandler | None = None
+        self._connection_handler: ConnectionHandler | None = None
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._write_lock = threading.Lock()
 
     @property
+    def endpoint(self) -> str:
+        return self.port
+
+    @property
     def connected(self) -> bool:
         return self._serial is not None and self._serial.is_open
 
-    def start(self, handler: LineHandler) -> None:
+    def start(
+        self,
+        handler: LineHandler,
+        connection_handler: ConnectionHandler | None = None,
+    ) -> None:
         if self._thread and self._thread.is_alive():
             return
         self._handler = handler
+        self._connection_handler = connection_handler
         self._stop.clear()
         self._open()
         self._thread = threading.Thread(
@@ -133,14 +165,26 @@ class SerialTransport:
                 f"Could not open scanner serial port {self.port}."
             ) from exc
         logger.info("Connected to scanner on %s", self.port)
+        self._notify_connection(True)
 
     def _close(self) -> None:
         serial_port, self._serial = self._serial, None
+        was_connected = serial_port is not None and serial_port.is_open
         if serial_port is not None:
             try:
                 serial_port.close()
             except (OSError, serial.SerialException):
                 logger.debug("Error while closing serial port", exc_info=True)
+        if was_connected:
+            self._notify_connection(False)
+
+    def _notify_connection(self, connected: bool) -> None:
+        if self._connection_handler is None:
+            return
+        try:
+            self._connection_handler(connected)
+        except Exception:
+            logger.exception("Unhandled exception in connection callback")
 
     def _reader_loop(self) -> None:
         buffer = bytearray()
@@ -172,6 +216,7 @@ class SerialTransport:
                     return
                 logger.warning("Scanner disconnected from %s", self.port)
                 self._close()
+                buffer.clear()
                 continue
 
             if self._stop.is_set():

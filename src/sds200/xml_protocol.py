@@ -14,17 +14,25 @@ class XmlResponseAssembler:
         self._command: str | None = None
         self._lines: list[str] = []
 
-    def feed(self, line: str) -> tuple[str, str] | None:
+    @staticmethod
+    def _header_command(line: str) -> str | None:
         upper = line.upper()
+        if upper.startswith("GSI,<XML>"):
+            return "GSI"
+        if upper.startswith("PSI,<XML>"):
+            return "PSI"
+        return None
+
+    def feed(self, line: str) -> tuple[str, str] | None:
+        header_command = self._header_command(line)
+        if header_command is not None:
+            # A new XML header is also a resynchronization point if an earlier
+            # document was truncated by a disconnect or dropped packet.
+            self._command = header_command
+            self._lines.clear()
+            return None
+
         if self._command is None:
-            if upper.startswith("GSI,<XML>"):
-                self._command = "GSI"
-                self._lines.clear()
-                return None
-            if upper.startswith("PSI,<XML>"):
-                self._command = "PSI"
-                self._lines.clear()
-                return None
             return None
 
         self._lines.append(line)
@@ -32,11 +40,13 @@ class XmlResponseAssembler:
             return None
 
         command = self._command
-        assert command is not None
         xml = "\n".join(self._lines)
-        self._command = None
-        self._lines = []
+        self.reset()
         return command, xml
+
+    def reset(self) -> None:
+        self._command = None
+        self._lines.clear()
 
     @property
     def collecting(self) -> bool:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
 from threading import RLock
 
@@ -22,7 +23,8 @@ class TrafficTrace:
         logger.debug("%s %s", direction, value)
         if self.path is None:
             return
-        line = f"{direction}  {value}\n"
+        timestamp = datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        line = f"{timestamp}  {direction}  {value}\n"
         with self._lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with self.path.open("a", encoding="utf-8") as handle:

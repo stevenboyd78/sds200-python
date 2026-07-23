@@ -21,3 +21,19 @@ def test_stop_waits_for_active_read_before_closing() -> None:
     assert not fake.closed_while_reading
     assert not fake.is_open
     assert not transport.connected
+
+
+
+def test_transport_reports_connection_changes() -> None:
+    fake = CloseAwareSerial()
+    changes: list[bool] = []
+    transport = SerialTransport(
+        "/dev/fake",
+        reconnect=False,
+        serial_factory=lambda **kwargs: fake,
+    )
+
+    transport.start(lambda line: None, changes.append)
+    transport.stop()
+
+    assert changes == [True, False]

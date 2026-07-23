@@ -3,6 +3,9 @@ from __future__ import annotations
 import queue
 import threading
 import time
+from collections.abc import Callable
+
+from sds200.exceptions import ScannerConnectionError
 
 
 class FakeSerial:
@@ -58,3 +61,48 @@ class CloseAwareSerial(FakeSerial):
             if self._reading:
                 self.closed_while_reading = True
             self.is_open = False
+
+
+class FakeTransport:
+    def __init__(self, endpoint: str = "fake://scanner") -> None:
+        self._endpoint = endpoint
+        self._connected = False
+        self.writes: list[str] = []
+        self._line_handler: Callable[[str], None] | None = None
+        self._connection_handler: Callable[[bool], None] | None = None
+
+    @property
+    def endpoint(self) -> str:
+        return self._endpoint
+
+    @property
+    def connected(self) -> bool:
+        return self._connected
+
+    def start(
+        self,
+        handler: Callable[[str], None],
+        connection_handler: Callable[[bool], None] | None = None,
+    ) -> None:
+        self._line_handler = handler
+        self._connection_handler = connection_handler
+        self.set_connected(True)
+
+    def stop(self) -> None:
+        self.set_connected(False)
+
+    def write_command(self, command: str) -> None:
+        if not self.connected:
+            raise ScannerConnectionError("Fake transport is disconnected.")
+        self.writes.append(command)
+
+    def feed_line(self, line: str) -> None:
+        assert self._line_handler is not None
+        self._line_handler(line)
+
+    def set_connected(self, connected: bool) -> None:
+        if self._connected == connected:
+            return
+        self._connected = connected
+        if self._connection_handler is not None:
+            self._connection_handler(connected)

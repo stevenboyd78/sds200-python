@@ -28,3 +28,17 @@ def test_scanner_info_parser() -> None:
     assert info.frequency == "154.4150MHz"
     assert info.modulation == "NFM"
     assert info.signal == 4
+
+
+
+def test_xml_assembler_resynchronizes_on_a_new_header() -> None:
+    assembler = XmlResponseAssembler()
+    assert assembler.feed("PSI,<XML>,") is None
+    assert assembler.feed("<ScannerInfo>") is None
+    assert assembler.feed("PSI,<XML>,") is None
+
+    result = None
+    for line in XML.splitlines():
+        result = assembler.feed(line)
+
+    assert result == ("PSI", XML)

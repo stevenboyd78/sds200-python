@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
 import queue
 import threading
-from collections.abc import Callable
-from contextlib import suppress
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager, suppress
 from pathlib import Path
+from time import monotonic
 from typing import Self, TypeVar
 
 from .commands import (
@@ -17,39 +19,55 @@ from .commands import (
     GetVolume,
     SetSquelch,
     SetVolume,
+    StartScannerInfoPush,
 )
 from .device import choose_scanner
 from .events import EventBus
-from .exceptions import CommandTimeoutError, ProtocolError
+from .exceptions import CommandTimeoutError, ProtocolError, SDS200Error
 from .models import Packet, ScannerInfo, StatusResponse
 from .parser import PacketParser
-from .state import RadioState
+from .state import RadioState, RadioStateSnapshot, StateChange
 from .trace import TrafficTrace
-from .transport import SerialFactory, SerialTransport
+from .transport import ControlTransport, SerialFactory, SerialTransport
 from .xml_protocol import ScannerInfoParser, XmlResponseAssembler
 
+logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
 class SDS200:
     def __init__(
         self,
-        port: str | Path,
+        port: str | Path | None = None,
         *,
+        transport: ControlTransport | None = None,
         baudrate: int = 115200,
         reconnect: bool = True,
         serial_factory: SerialFactory | None = None,
         trace_path: str | Path | None = None,
     ) -> None:
-        if serial_factory is None:
+        if port is not None and transport is not None:
+            raise ValueError("Supply either port or transport, not both.")
+        if port is None and transport is None:
+            raise ValueError("A serial port or control transport is required.")
+        if transport is not None and serial_factory is not None:
+            raise ValueError("serial_factory cannot be used with a custom transport.")
+
+        self.transport: ControlTransport
+        if transport is not None:
+            self.transport = transport
+        elif serial_factory is None:
+            assert port is not None
             self.transport = SerialTransport(port, baudrate=baudrate, reconnect=reconnect)
         else:
+            assert port is not None
             self.transport = SerialTransport(
                 port,
                 baudrate=baudrate,
                 reconnect=reconnect,
                 serial_factory=serial_factory,
             )
+
         self.parser = PacketParser()
         self.xml_parser = ScannerInfoParser()
         self.xml_assembler = XmlResponseAssembler()
@@ -58,6 +76,9 @@ class SDS200:
         self.trace = TrafficTrace(trace_path)
         self._responses: dict[str, queue.Queue[object]] = {}
         self._response_lock = threading.RLock()
+        self._closed = threading.Event()
+        self._closed.set()
+        self._psi_interval_ms: int | None = None
 
     @classmethod
     def auto(
@@ -76,19 +97,51 @@ class SDS200:
             trace_path=trace_path,
         )
 
+    @classmethod
+    def from_transport(
+        cls,
+        transport: ControlTransport,
+        *,
+        trace_path: str | Path | None = None,
+    ) -> Self:
+        return cls(transport=transport, trace_path=trace_path)
+
+    @property
+    def endpoint(self) -> str:
+        return self.transport.endpoint
+
     @property
     def port(self) -> str:
-        return self.transport.port
+        """Backward-compatible alias for the active transport endpoint."""
+        return self.endpoint
 
     @property
     def connected(self) -> bool:
         return self.transport.connected
 
+    @property
+    def psi_active(self) -> bool:
+        return self._psi_interval_ms is not None
+
+    @property
+    def psi_interval_ms(self) -> int | None:
+        return self._psi_interval_ms
+
     def connect(self) -> None:
-        self.transport.start(self._receive_line)
+        self._closed.clear()
+        try:
+            self.transport.start(self._receive_line, self._connection_changed)
+        except Exception:
+            self._closed.set()
+            raise
 
     def close(self) -> None:
+        if self.psi_active and self.connected:
+            with suppress(SDS200Error, OSError, ValueError):
+                self.stop_scanner_info_push()
+        self._psi_interval_ms = None
         self.transport.stop()
+        self._closed.set()
 
     def __enter__(self) -> Self:
         self.connect()
@@ -99,8 +152,8 @@ class SDS200:
 
     def wait(self) -> None:
         try:
-            while self.connected:
-                threading.Event().wait(3600)
+            while not self._closed.wait(3600):
+                pass
         except KeyboardInterrupt:
             return
 
@@ -110,8 +163,20 @@ class SDS200:
     def on_response(self, callback: Callable[[object], None]) -> Callable[[], None]:
         return self.events.subscribe("response", callback)
 
-    def on_state(self, callback: Callable[[object], None]) -> Callable[[], None]:
+    def on_state(
+        self,
+        callback: Callable[[RadioStateSnapshot], None],
+    ) -> Callable[[], None]:
         return self.events.subscribe("state", callback)
+
+    def on_state_change(
+        self,
+        callback: Callable[[StateChange], None],
+    ) -> Callable[[], None]:
+        return self.events.subscribe("state_change", callback)
+
+    def on_connection(self, callback: Callable[[bool], None]) -> Callable[[], None]:
+        return self.events.subscribe("connection", callback)
 
     def send(self, command: str) -> None:
         self.trace.tx(command)
@@ -156,6 +221,72 @@ class SDS200:
     def get_scanner_info(self, *, timeout: float = 3.0) -> ScannerInfo:
         return self.execute(GetScannerInfo(), timeout=timeout)
 
+    def start_scanner_info_push(
+        self,
+        interval_ms: int = 500,
+        *,
+        timeout: float = 3.0,
+    ) -> ScannerInfo:
+        if self.psi_active:
+            raise RuntimeError("PSI scanner information push is already active.")
+
+        first_updates: queue.Queue[ScannerInfo] = queue.Queue(maxsize=1)
+
+        def capture_first_update(response: object) -> None:
+            if not isinstance(response, ScannerInfo) or response.command != "PSI":
+                return
+            with suppress(queue.Full):
+                first_updates.put_nowait(response)
+
+        unsubscribe = self.events.subscribe("psi", capture_first_update)
+        command = StartScannerInfoPush(interval_ms)
+        deadline = monotonic() + timeout
+        self._psi_interval_ms = interval_ms
+        try:
+            initial = self.execute(
+                command,
+                timeout=max(0.0, deadline - monotonic()),
+            )
+            if initial is not None:
+                return initial
+
+            try:
+                return first_updates.get(
+                    timeout=max(0.0, deadline - monotonic()),
+                )
+            except queue.Empty as exc:
+                raise CommandTimeoutError(
+                    "Timed out waiting for the first PSI scanner information update."
+                ) from exc
+        except Exception:
+            self._psi_interval_ms = None
+            if self.connected:
+                with suppress(SDS200Error, OSError, ValueError):
+                    self.send("PSI,0")
+            raise
+        finally:
+            unsubscribe()
+
+    def stop_scanner_info_push(self) -> None:
+        if not self.psi_active:
+            return
+        self._psi_interval_ms = None
+        if self.connected:
+            self.send("PSI,0")
+
+    @contextmanager
+    def scanner_info_push(
+        self,
+        interval_ms: int = 500,
+        *,
+        timeout: float = 3.0,
+    ) -> Iterator[ScannerInfo]:
+        first = self.start_scanner_info_push(interval_ms, timeout=timeout)
+        try:
+            yield first
+        finally:
+            self.stop_scanner_info_push()
+
     def _wait_for_response(
         self,
         response_command: str,
@@ -190,11 +321,14 @@ class SDS200:
             except ProtocolError as exc:
                 self.events.emit("protocol_error", exc)
                 return
+
+            change = self.state.update(info)
+            if change is not None:
+                self.events.emit("state", change.current)
+                self.events.emit("state_change", change)
+                for field in change.fields:
+                    self.events.emit(f"state.{field}", getattr(change.current, field))
             self._publish(command, info)
-            snapshot, changed = self.state.update(info)
-            self.events.emit("state", snapshot)
-            for field in changed:
-                self.events.emit(f"state.{field}", getattr(snapshot, field))
             return
 
         if self.xml_assembler.collecting or raw.startswith(("GSI,<XML>", "PSI,<XML>")):
@@ -218,3 +352,12 @@ class SDS200:
         if response_queue is not None:
             with suppress(queue.Full):
                 response_queue.put_nowait(response)
+
+    def _connection_changed(self, connected: bool) -> None:
+        self.events.emit("connection", connected)
+        if not connected or self._psi_interval_ms is None:
+            return
+        try:
+            self.send(f"PSI,{self._psi_interval_ms}")
+        except SDS200Error:
+            logger.warning("Could not restart PSI after reconnect", exc_info=True)

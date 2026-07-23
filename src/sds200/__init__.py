@@ -7,6 +7,7 @@ from .commands import (
     GetVolume,
     SetSquelch,
     SetVolume,
+    StartScannerInfoPush,
 )
 from .device import DEFAULT_SDS200_PATTERN, ScannerDevice, discover_scanners
 from .models import (
@@ -19,9 +20,11 @@ from .models import (
     ValueResponse,
 )
 from .radio import SDS200
-from .state import RadioState, RadioStateSnapshot
+from .state import RadioState, RadioStateSnapshot, StateChange
+from .transport import ControlTransport, SerialTransport
 
 __all__ = [
+    "ControlTransport",
     "DEFAULT_SDS200_PATTERN",
     "FirmwareResponse",
     "GetFirmware",
@@ -38,11 +41,14 @@ __all__ = [
     "ScannerDevice",
     "ScannerInfo",
     "ScannerNode",
+    "SerialTransport",
     "SetSquelch",
     "SetVolume",
+    "StartScannerInfoPush",
+    "StateChange",
     "StatusResponse",
     "ValueResponse",
     "discover_scanners",
 ]
 
-__version__ = "0.2.4"
+__version__ = "0.3.1"

@@ -17,6 +17,13 @@ def test_completion_subcommand_parses() -> None:
     assert args.shell == "bash"
 
 
+def test_monitor_subcommand_parses() -> None:
+    args = build_parser().parse_args(["monitor", "--interval", "250", "--no-clear"])
+    assert args.action == "monitor"
+    assert args.interval == 250
+    assert args.no_clear is True
+
+
 def test_command_completer_filters_prefix() -> None:
     assert completion.command_completer("V") == {
         "VER": "Get firmware version",

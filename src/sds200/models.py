@@ -72,47 +72,127 @@ class ScannerInfo:
     def node(self, tag: str) -> ScannerNode | None:
         return self.nodes.get(tag)
 
-    @property
-    def system(self) -> str | None:
-        node = self.node("System")
-        return node.get("Name") if node else None
-
-    @property
-    def department(self) -> str | None:
-        node = self.node("Department")
-        return node.get("Name") if node else None
-
-    @property
-    def channel(self) -> str | None:
-        for tag in ("ConvFrequency", "TGID", "SrchFrequency", "CcHitsChannel"):
+    def _attribute(self, tags: tuple[str, ...], name: str) -> str | None:
+        for tag in tags:
             node = self.node(tag)
-            if node:
-                return node.get("Name")
+            if node is None:
+                continue
+            value = node.get(name)
+            if value is not None:
+                return value.strip()
         return None
 
-    @property
-    def frequency(self) -> str | None:
-        for tag in ("ConvFrequency", "SiteFrequency", "SrchFrequency"):
-            node = self.node(tag)
-            if node:
-                return node.get("Freq")
-        return None
+    def _property(self, name: str) -> str | None:
+        return self._attribute(("Property",), name)
 
-    @property
-    def modulation(self) -> str | None:
-        for tag in ("ConvFrequency", "TGID", "SrchFrequency"):
-            node = self.node(tag)
-            if node:
-                return node.get("Mod")
-        return None
-
-    @property
-    def signal(self) -> int | None:
-        node = self.node("Property")
-        if not node:
-            return None
-        value = node.get("Sig")
+    @staticmethod
+    def _integer(value: str | None) -> int | None:
         try:
             return int(value) if value is not None else None
         except ValueError:
             return None
+
+    @staticmethod
+    def _floating(value: str | None) -> float | None:
+        try:
+            return float(value) if value is not None else None
+        except ValueError:
+            return None
+
+    @property
+    def system(self) -> str | None:
+        return self._attribute(("System",), "Name")
+
+    @property
+    def department(self) -> str | None:
+        return self._attribute(("Department",), "Name")
+
+    @property
+    def site(self) -> str | None:
+        return self._attribute(("Site",), "Name")
+
+    @property
+    def channel(self) -> str | None:
+        return self._attribute(
+            (
+                "ConvFrequency",
+                "TGID",
+                "SrchFrequency",
+                "CcHitsChannel",
+                "ToneOutChannel",
+                "WxChannel",
+            ),
+            "Name",
+        )
+
+    @property
+    def frequency(self) -> str | None:
+        return self._attribute(
+            (
+                "ConvFrequency",
+                "SiteFrequency",
+                "SrchFrequency",
+                "CcHitsChannel",
+                "ToneOutChannel",
+                "WxChannel",
+            ),
+            "Freq",
+        )
+
+    @property
+    def modulation(self) -> str | None:
+        value = self._attribute(
+            (
+                "ConvFrequency",
+                "Site",
+                "SrchFrequency",
+                "CcHitsChannel",
+                "ToneOutChannel",
+                "WxChannel",
+            ),
+            "Mod",
+        )
+        if value is not None:
+            return value
+        status = self.p25_status
+        return status if status not in (None, "None", "Data") else None
+
+    @property
+    def service_type(self) -> str | None:
+        return self._attribute(("ConvFrequency", "TGID"), "SvcType")
+
+    @property
+    def talkgroup_id(self) -> str | None:
+        return self._attribute(("TGID", "ConvFrequency", "SrchFrequency"), "TGID")
+
+    @property
+    def unit_id(self) -> str | None:
+        return self._attribute(("TGID", "ConvFrequency", "SrchFrequency"), "U_Id")
+
+    @property
+    def volume(self) -> int | None:
+        return self._integer(self._property("VOL"))
+
+    @property
+    def squelch(self) -> int | None:
+        return self._integer(self._property("SQL"))
+
+    @property
+    def signal(self) -> int | None:
+        return self._integer(self._property("Sig"))
+
+    @property
+    def rssi(self) -> float | None:
+        return self._floating(self._property("Rssi"))
+
+    @property
+    def p25_status(self) -> str | None:
+        return self._property("P25Status")
+
+    @property
+    def mute(self) -> str | None:
+        return self._property("Mute")
+
+    @property
+    def recording(self) -> str | None:
+        return self._property("Rec")

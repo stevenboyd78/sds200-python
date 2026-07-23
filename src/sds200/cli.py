@@ -18,6 +18,7 @@ from .completion import (
 from .device import choose_scanner, discover_scanners
 from .exceptions import SDS200Error
 from .models import StatusResponse
+from .monitor import TerminalMonitor
 from .radio import SDS200
 
 
@@ -30,6 +31,13 @@ def _set_completer(
     completer: Callable[..., object],
 ) -> None:
     cast(_CompletableAction, action).completer = completer
+
+
+def _positive_integer(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("value must be greater than zero")
+    return parsed
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -49,6 +57,23 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("info", help="Show model, firmware, volume, and squelch")
     subparsers.add_parser("raw", help="Print packets until interrupted")
     subparsers.add_parser("scanner-info", help="Get structured GSI scanner information")
+
+    monitor = subparsers.add_parser(
+        "monitor",
+        help="Continuously display live PSI scanner state",
+    )
+    monitor.add_argument(
+        "--interval",
+        type=_positive_integer,
+        default=500,
+        metavar="MS",
+        help="PSI update interval in milliseconds (default: 500)",
+    )
+    monitor.add_argument(
+        "--no-clear",
+        action="store_true",
+        help="Print each changed state instead of refreshing the screen",
+    )
 
     command = subparsers.add_parser("command", help="Send one raw command")
     command_action = command.add_argument(
@@ -114,10 +139,19 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"Screen:     {info.screen}")
                 print(f"System:     {info.system}")
                 print(f"Department: {info.department}")
+                print(f"Site:       {info.site}")
                 print(f"Channel:    {info.channel}")
                 print(f"Frequency:  {info.frequency}")
                 print(f"Modulation: {info.modulation}")
+                print(f"Service:    {info.service_type}")
                 print(f"Signal:     {info.signal}")
+                return 0
+
+            if args.action == "monitor":
+                terminal = TerminalMonitor(clear=not args.no_clear)
+                radio.on_state(lambda state: terminal.render(state, radio.endpoint))
+                with radio.scanner_info_push(args.interval):
+                    radio.wait()
                 return 0
 
             if args.action == "raw":

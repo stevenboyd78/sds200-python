@@ -13,6 +13,7 @@ SUPPORTED_SHELLS = ("bash", "zsh")
 KNOWN_COMMANDS: Mapping[str, str] = {
     "GSI": "Get structured scanner information",
     "MDL": "Get scanner model",
+    "PSI,0": "Stop scanner information updates",
     "PSI,500": "Start scanner information updates every 500 ms",
     "SQL": "Get squelch level",
     "STS": "Get scanner display status",

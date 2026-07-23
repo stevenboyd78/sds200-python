@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol, TypeVar
 
+from .exceptions import ProtocolError
 from .models import (
     FirmwareResponse,
     ModelResponse,
@@ -181,7 +182,14 @@ class StartScannerInfoPush:
     def response_command(self) -> str:
         return "PSI"
 
-    def parse_response(self, response: object) -> ScannerInfo:
-        if not isinstance(response, ScannerInfo):
-            raise TypeError("PSI did not return ScannerInfo")
-        return response
+    def parse_response(self, response: object) -> ScannerInfo | None:
+        if isinstance(response, ScannerInfo):
+            return response
+        if isinstance(response, Packet) and response.command == "PSI":
+            status = response.fields[0].strip().upper() if response.fields else ""
+            if status in {"NG", "ERR", "ERROR"}:
+                raise ProtocolError(f"Scanner rejected PSI command: {response.raw}")
+            return None
+        raise ProtocolError(
+            f"PSI returned an unexpected response: {type(response).__name__}"
+        )
