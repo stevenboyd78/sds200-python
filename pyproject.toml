@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sds200"
+version = "0.2.2"
+description = "Python control and monitoring library for Uniden SDS-series scanners"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "Steven Boyd" }
+]
+dependencies = [
+  "pyserial>=3.5",
+]
+
+[project.optional-dependencies]
+dev = [
+  "build>=1.2",
+  "mypy>=1.10",
+  "pytest>=8.0",
+  "pytest-cov>=5.0",
+  "types-pyserial>=3.5.0.20250326",
+  "ruff>=0.6",
+]
+
+[project.scripts]
+sds200 = "sds200.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sds200"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+packages = ["sds200"]
+mypy_path = "src"
