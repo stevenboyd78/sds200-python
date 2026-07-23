@@ -1,19 +1,46 @@
+# PYTHON_ARGCOMPLETE_OK
 from __future__ import annotations
 
 import argparse
 import logging
 import sys
+from collections.abc import Callable
 from pathlib import Path
+from typing import Protocol, cast
 
+from .completion import (
+    SUPPORTED_SHELLS,
+    command_completer,
+    completion_script,
+    enable_tab_completion,
+    port_completer,
+)
 from .device import choose_scanner, discover_scanners
 from .exceptions import SDS200Error
 from .models import StatusResponse
 from .radio import SDS200
 
 
+class _CompletableAction(Protocol):
+    completer: Callable[..., object]
+
+
+def _set_completer(
+    action: argparse.Action,
+    completer: Callable[..., object],
+) -> None:
+    cast(_CompletableAction, action).completer = completer
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="sds200")
-    parser.add_argument("--port", type=Path, help="Serial port or stable by-id path")
+    port_action = parser.add_argument(
+        "--port",
+        type=Path,
+        help="Serial port or stable by-id path",
+    )
+    _set_completer(port_action, port_completer)
+
     parser.add_argument("-v", "--verbose", action="count", default=0)
     parser.add_argument("--trace", type=Path, help="Append raw traffic to a trace file")
 
@@ -24,8 +51,18 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("scanner-info", help="Get structured GSI scanner information")
 
     command = subparsers.add_parser("command", help="Send one raw command")
-    command.add_argument("value", help="Command without the terminating carriage return")
+    command_action = command.add_argument(
+        "value",
+        help="Command without the terminating carriage return",
+    )
+    _set_completer(command_action, command_completer)
     command.add_argument("--timeout", type=float, default=2.0)
+
+    completion = subparsers.add_parser(
+        "completion",
+        help="Print a shell tab-completion activation script",
+    )
+    completion.add_argument("shell", choices=SUPPORTED_SHELLS)
     return parser
 
 
@@ -43,10 +80,16 @@ def selected_port(explicit: Path | None) -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    enable_tab_completion(parser)
+    args = parser.parse_args(argv)
     configure_logging(args.verbose)
 
     try:
+        if args.action == "completion":
+            print(completion_script(args.shell))
+            return 0
+
         if args.action == "discover":
             devices = discover_scanners()
             if not devices:

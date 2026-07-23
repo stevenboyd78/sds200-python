@@ -141,3 +141,58 @@ sds200 --trace scanner.trace scanner-info
 - Replaces the untyped `**kwargs: object` PySerial wrapper with explicit,
   MyPy-checkable constructor parameters
 - Resolves all eight strict MyPy errors reported for `transport.py`
+
+
+## Milestone 2.3: shell tab completion
+
+The CLI supports command, subcommand, option, flag, scanner-port, and common raw
+protocol-command completion through `argcomplete`.
+
+### Bash
+
+Activate completion for the current terminal:
+
+```bash
+eval "$(sds200 completion bash)"
+```
+
+Enable it whenever Bash starts:
+
+```bash
+echo 'eval "$(sds200 completion bash)"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+### Zsh
+
+Activate completion for the current terminal:
+
+```zsh
+eval "$(sds200 completion zsh)"
+```
+
+Enable it whenever Zsh starts:
+
+```zsh
+echo 'eval "$(sds200 completion zsh)"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+Examples after activation:
+
+```text
+sds200 <TAB>                 # subcommands and global options
+sds200 --<TAB>               # --port, --trace, --verbose, --help
+sds200 command --<TAB>       # --timeout and --help
+sds200 command V<TAB>        # VER and VOL
+sds200 --port /dev/<TAB>     # detected SDS200 device paths
+```
+
+Completion suggestions do not restrict raw commands; undocumented or future
+scanner commands can still be entered manually.
+
+
+## Milestone 2.4
+
+- Replaces Ruff B010-triggering constant `setattr()` calls.
+- Uses a typed completion-action protocol so strict MyPy remains clean.

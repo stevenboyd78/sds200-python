@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sds200"
-version = "0.2.2"
+version = "0.2.4"
 description = "Python control and monitoring library for Uniden SDS-series scanners"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -13,6 +13,7 @@ authors = [
   { name = "Steven Boyd" }
 ]
 dependencies = [
+  "argcomplete>=3.6,<4",
   "pyserial>=3.5",
 ]
 
