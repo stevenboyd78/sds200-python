@@ -1,0 +1,80 @@
+name: Bug report
+description: Report reproducible incorrect behavior
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Remove private scanner and network
+        information from logs before submitting.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and what you expected.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: sds200-python version or commit
+      placeholder: "0.5.3 or commit SHA"
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "3.14.4"
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system
+      placeholder: "Ubuntu 26.04"
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: SDS200 firmware
+      placeholder: "1.26.01"
+    validations:
+      required: true
+  - type: dropdown
+    id: transport
+    attributes:
+      label: Connection
+      options:
+        - USB serial
+        - Ethernet UDP
+        - Both
+        - Not applicable
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      description: Include the exact command or a minimal Python example.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Error output or sanitized trace
+      description: Redact private IPs, system names, channel names, and unit identifiers.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues.
+          required: true
+        - label: I tested the latest default branch or release.
+          required: true
+        - label: I removed sensitive scanner and network information.
+          required: true

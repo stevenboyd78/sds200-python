@@ -1,0 +1,54 @@
+name: Feature request
+description: Propose a focused addition or improvement
+title: "[Feature]: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What limitation are you trying to solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the API, CLI, protocol, or documentation change.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Python API
+        - CLI
+        - USB transport
+        - Ethernet transport
+        - Protocol parsing
+        - Discovery and profiles
+        - Monitoring and events
+        - Documentation
+        - Testing and tooling
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe current workarounds or other designs.
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware or firmware considerations
+      description: Include relevant scanner or firmware behavior without private data.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and the roadmap.
+          required: true
+        - label: This request does not expose private scanner or network information.
+          required: true

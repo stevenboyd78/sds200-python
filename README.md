@@ -1,27 +1,53 @@
 # sds200-python
 
-Python 3.11+ control and monitoring library for Uniden SDS-series scanners.
+[![CI](https://github.com/stevenboyd78/sds200-python/actions/workflows/ci.yml/badge.svg)](https://github.com/stevenboyd78/sds200-python/actions/workflows/ci.yml)
+![Python 3.11–3.14](https://img.shields.io/badge/python-3.11--3.14-blue)
+![Development status: alpha](https://img.shields.io/badge/status-alpha-orange)
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
-Milestone 1 provides:
+Python control and monitoring library for the **Uniden SDS200** scanner over USB
+serial or Ethernet.
 
-- Linux scanner discovery through `/dev/serial/by-id`
-- Stable SDS200 device selection
-- Threaded serial transport
-- CR-terminated packet framing
-- Thread-safe command writes
-- Optional automatic reconnect
-- Raw packet events and typed core responses
-- `MDL`, `VER`, `VOL`, `SQL`, and `STS` helpers
-- Command-line discovery, information, raw-monitor, and command tools
-- Unit tests without scanner hardware
+The project provides a typed Python API and an `sds200` command-line tool for
+scanner discovery, status monitoring, commands, connection profiles, diagnostics,
+and live state updates.
 
-The library defaults to the stable Linux device path matching:
+> [!IMPORTANT]
+> This project is alpha software. The public API may change before version 1.0.
+> It is not affiliated with or endorsed by Uniden.
 
-```text
-/dev/serial/by-id/*UNIDEN*SDS200*
-```
+## Features
 
-## Set up development
+- USB serial control using stable Linux `/dev/serial/by-id` paths
+- Native SDS200 Ethernet control over UDP
+- Automatic USB and bounded LAN discovery
+- Saved serial and network connection profiles
+- Typed commands and responses
+- Structured `GSI` and continuous `PSI` scanner information
+- Thread-safe synchronized radio state and change events
+- Live terminal monitoring
+- Traffic tracing and transport diagnostics
+- UDP XML fragment validation, statistics, and bounded retries
+- Bash and Zsh tab completion
+- Strict MyPy typing, Ruff checks, and hardware-independent tests
+
+Network audio streaming is not implemented yet.
+
+## Requirements
+
+- Python 3.11 or newer
+- A Uniden SDS200
+- For USB: scanner connected as a serial device
+- For Ethernet: scanner and computer on a trusted local network
+
+Linux USB and Ethernet operation have been validated with an SDS200 running
+firmware version 1.26.01. Explicit network hosts work on any platform supported
+by Python's UDP sockets. Automatic route detection and `/dev/serial/by-id`
+discovery are Linux-specific.
+
+## Installation
+
+The project has not been published to PyPI yet. Install it from source:
 
 ```bash
 git clone https://github.com/stevenboyd78/sds200-python.git
@@ -31,21 +57,87 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 python -m pip install --upgrade pip
+python -m pip install .
+```
+
+For development:
+
+```bash
 python -m pip install -e ".[dev]"
 ```
 
-Copy the files from this milestone into the repository before installing if the
-repository is currently empty.
+## Quick start
 
-## Verify the scanner
+### Find connected scanners
+
+Search USB and directly connected IPv4 networks:
 
 ```bash
 sds200 discover
-sds200 info
-sds200 raw
 ```
 
-Send any documented command:
+Search a specific network:
+
+```bash
+sds200 discover --network 192.168.0.0/24 --network-only
+```
+
+Active LAN discovery sends the read-only `MDL` command to each usable host.
+Only scan networks you own or are authorized to probe.
+
+### USB serial
+
+Show scanner information:
+
+```bash
+sds200 info
+```
+
+Start the live monitor:
+
+```bash
+sds200 monitor
+```
+
+Use an explicit port when automatic discovery is not appropriate:
+
+```bash
+sds200 \
+  --port /dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00 \
+  info
+```
+
+### Ethernet
+
+```bash
+sds200 --host 192.168.0.251 info
+sds200 --host 192.168.0.251 scanner-info
+sds200 --host 192.168.0.251 monitor
+```
+
+The SDS200 virtual serial service uses UDP port `50536` by default.
+
+### Connection profiles
+
+```bash
+sds200 profile add home --host 192.168.0.251
+sds200 profile add usb \
+  --port /dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00
+
+sds200 profile list
+sds200 --profile home monitor
+```
+
+Profiles are stored in `${XDG_CONFIG_HOME:-~/.config}/sds200/profiles.toml`.
+
+### Health and diagnostics
+
+```bash
+sds200 --profile home health
+sds200 --host 192.168.0.251 --trace scanner.trace monitor
+```
+
+### Raw protocol commands
 
 ```bash
 sds200 command MDL
@@ -55,7 +147,32 @@ sds200 command SQL
 sds200 command STS
 ```
 
-## Python example
+Raw command access is intended for documented scanner commands and protocol
+development. Prefer the typed Python methods when they are available.
+
+## Shell completion
+
+Activate Bash completion for the current shell:
+
+```bash
+eval "$(sds200 completion bash)"
+```
+
+Enable it whenever Bash starts:
+
+```bash
+echo 'eval "$(sds200 completion bash)"' >> ~/.bashrc
+```
+
+For Zsh:
+
+```zsh
+eval "$(sds200 completion zsh)"
+```
+
+## Python API
+
+### USB
 
 ```python
 from sds200 import SDS200
@@ -67,169 +184,25 @@ with SDS200.auto() as radio:
     print(radio.get_squelch())
 ```
 
-## Raw monitoring
+### Ethernet
 
 ```python
 from sds200 import SDS200
 
-with SDS200.auto() as radio:
-    radio.on_packet(lambda packet: print(packet.raw))
-    radio.wait()
-```
-
-## Notes
-
-The current-status `STS` response represents scanner display lines rather than a
-simple system/department/channel tuple. Milestone 1 preserves those display
-fields safely. Higher-level semantic mapping will be added after collecting real
-packets from the target scanner and implementing `GSI`/`PSI`.
-
-
-## Milestone 1.1 fixes
-
-- Ruff cleanups for Python 3.11+
-- Added `types-pyserial` for strict MyPy checks
-- Removed ambiguous `**kwargs` constructor forwarding
-- Added a precisely typed `SDS200.auto()` constructor
-- Replaced redundant generic cast
-- Kept all eight unit tests passing
-
-
-## Milestone 2
-
-Milestone 2 adds:
-
-- Typed command objects through `radio.execute(...)`
-- Structured `GSI` XML parsing
-- A synchronized `radio.state`
-- Field-specific state change events
-- Optional raw traffic tracing
-- `sds200 scanner-info`
-- Additional parser and command tests
-
-Example:
-
-```python
-from sds200 import SDS200
-
-with SDS200.auto(trace_path="scanner.trace") as radio:
+with SDS200.network("192.168.0.251") as radio:
     info = radio.get_scanner_info()
-    print(info.system, info.department, info.channel)
-    print(radio.state.snapshot)
+    print(info.system)
+    print(info.department)
+    print(info.channel)
+    print(info.frequency)
 ```
 
-CLI:
-
-```bash
-sds200 --trace scanner.trace scanner-info
-```
-
-
-## Milestone 2.1
-
-- Fixes a Linux/PySerial shutdown race that could raise:
-  `TypeError: 'NoneType' object cannot be interpreted as an integer`
-- Stops and joins the serial reader before closing the file descriptor
-- Defensively treats a shutdown-time PySerial `TypeError` as harmless
-- Adds a regression test proving the port is not closed during an active read
-
-
-## Milestone 2.2
-
-- Aligns the serial protocol with the `types-pyserial` return type:
-  `Serial.write()` may return `int | None`
-- Replaces the untyped `**kwargs: object` PySerial wrapper with explicit,
-  MyPy-checkable constructor parameters
-- Resolves all eight strict MyPy errors reported for `transport.py`
-
-
-## Milestone 2.3: shell tab completion
-
-The CLI supports command, subcommand, option, flag, scanner-port, and common raw
-protocol-command completion through `argcomplete`.
-
-### Bash
-
-Activate completion for the current terminal:
-
-```bash
-eval "$(sds200 completion bash)"
-```
-
-Enable it whenever Bash starts:
-
-```bash
-echo 'eval "$(sds200 completion bash)"' >> ~/.bashrc
-source ~/.bashrc
-```
-
-### Zsh
-
-Activate completion for the current terminal:
-
-```zsh
-eval "$(sds200 completion zsh)"
-```
-
-Enable it whenever Zsh starts:
-
-```zsh
-echo 'eval "$(sds200 completion zsh)"' >> ~/.zshrc
-source ~/.zshrc
-```
-
-Examples after activation:
-
-```text
-sds200 <TAB>                 # subcommands and global options
-sds200 --<TAB>               # --port, --trace, --verbose, --help
-sds200 command --<TAB>       # --timeout and --help
-sds200 command V<TAB>        # VER and VOL
-sds200 --port /dev/<TAB>     # detected SDS200 device paths
-```
-
-Completion suggestions do not restrict raw commands; undocumented or future
-scanner commands can still be entered manually.
-
-
-## Milestone 2.4
-
-- Replaces Ruff B010-triggering constant `setattr()` calls.
-- Uses a typed completion-action protocol so strict MyPy remains clean.
-
-
-## Milestone 3
-
-Milestone 3 adds continuous scanner monitoring and establishes the transport
-boundary needed for future SDS200 Ethernet control:
-
-- A public `ControlTransport` protocol
-- Backward-compatible `SerialTransport`
-- `SDS200.from_transport(...)` for alternate transports
-- Continuous `PSI,<interval>` start/stop helpers
-- Automatic PSI restart after a transport reconnect
-- Rich, thread-safe state snapshots and `StateChange` events
-- State events only when values actually change
-- A live `sds200 monitor` terminal display
-- Timestamped UTC traffic traces
-- Richer site, frequency, modulation, service, talkgroup, unit, volume, squelch,
-  RSSI, mute, and recording extraction
-- XML stream resynchronization after truncated documents
-
-Start the live monitor:
-
-```bash
-sds200 monitor
-sds200 monitor --interval 250
-sds200 monitor --no-clear
-```
-
-Python API:
+### Continuous state updates
 
 ```python
 from sds200 import SDS200
 
-with SDS200.auto() as radio:
+with SDS200.network("192.168.0.251") as radio:
     radio.on_state_change(
         lambda change: print(change.fields, change.current.channel)
     )
@@ -238,166 +211,61 @@ with SDS200.auto() as radio:
         radio.wait()
 ```
 
-See `docs/transports.md` for the transport contract and network implementation.
-
-## Milestone 3.0.1
-
-- Accepts the SDS200's immediate `PSI` acknowledgement packet.
-- Waits for the first periodic `PSI` XML document before starting the monitor.
-- Uses one timeout budget for both the acknowledgement and first XML update.
-- Rejects negative `PSI,NG` acknowledgements as protocol errors.
-- Adds regression coverage for acknowledgement-then-XML behavior.
-
-## Milestone 4: SDS200 Ethernet control
-
-Milestone 4 adds native control through the SDS200's Ethernet interface while
-preserving the same command, state, event, trace, and monitor APIs used over
-USB.
-
-CLI examples:
-
-```bash
-sds200 --host 192.168.1.50 info
-sds200 --host 192.168.1.50 scanner-info
-sds200 --host 192.168.1.50 monitor
-sds200 --host scanner.local command MDL
-```
-
-The scanner listens on UDP port 50536 by default. Override it or choose a local
-bind interface when needed:
-
-```bash
-sds200 \
-  --host 192.168.1.50 \
-  --udp-port 50536 \
-  --bind-address 192.168.1.10 \
-  --bind-port 42000 \
-  monitor
-```
-
-Python API:
+### LAN discovery
 
 ```python
-from sds200 import SDS200
+from sds200 import discover_network_scanners
 
-with SDS200.network("192.168.1.50") as radio:
-    print(radio.get_model())
-    with radio.scanner_info_push(500):
-        radio.wait()
+for scanner in discover_network_scanners(["192.168.0.0/24"]):
+    print(scanner.endpoint, scanner.model, scanner.latency_ms)
 ```
 
-Network XML responses are reassembled using their numbered Footer nodes before
-they enter the existing XML parser. USB remains the default when `--host` is
-not supplied.
+## Security
 
-The control protocol is unauthenticated and unencrypted. Use it on a trusted
-LAN or through a VPN rather than exposing UDP 50536 to the public Internet.
-Network audio streaming is a separate future milestone.
+The SDS200 network-control protocol is unauthenticated and unencrypted. Keep it
+on a trusted LAN or access it through a secured VPN. Do not expose UDP port
+`50536` directly to the public Internet.
 
-See `docs/transports.md` for transport behavior and limitations.
+This library is not a safety-critical or emergency-dispatch system. Do not rely
+on it as the sole means of receiving urgent communications.
 
+See [SECURITY.md](SECURITY.md) for vulnerability reporting and
+[docs/transports.md](docs/transports.md) for transport limitations.
 
-## Milestone 4.0.1
+## Documentation
 
-Some SDS200 firmware/network paths return `GSI` and `PSI` scanner-information XML
-without the serial-style `GSI,<XML>,` or `PSI,<XML>,` prefix. The UDP decoder now
-tracks the command that requested XML, wraps bare documents for the shared parser,
-and preserves periodic bare `PSI` updates. Debug logging also records the raw UDP
-datagram representation before protocol decoding.
+- [Control transports](docs/transports.md)
+- [LAN discovery and profiles](docs/discovery-and-profiles.md)
+- [Contributing](CONTRIBUTING.md)
+- [Support](SUPPORT.md)
+- [Changelog](CHANGELOG.md)
+- [Release process](docs/releasing.md)
 
-
-## Milestone 4.0.2
-
-- Fixes strict MyPy type inference in the bare-XML UDP response path.
-- Uses a separately narrowed `xml_command` value instead of reassigning a
-  previously inferred `str` local variable with `str | None`.
-
-
-## Milestone 5: discovery, profiles, and network resilience
-
-Milestone 5 adds active LAN discovery, saved connection profiles, a command
-round-trip health check, UDP statistics, transport diagnostics, and automatic
-retries when numbered XML fragments are missing.
-
-Find USB and network scanners on directly connected IPv4 networks:
+## Development
 
 ```bash
-sds200 discover
-sds200 discover --network 192.168.0.0/24 --network-only
+python -m pip install -e ".[dev]"
+
+ruff check .
+mypy src/sds200
+pytest
+python scripts/check_docs.py
+python -m build
+python -m twine check dist/*
 ```
 
-Discovery sends the harmless `MDL` model query to each host. A safety limit
-prevents accidentally probing an unexpectedly large route; narrow the CIDR or
-set `--max-hosts` explicitly when needed.
+Tests must not require physical scanner hardware. Hardware validation is
+documented separately in pull requests and release notes.
 
-Save reusable connections:
+## Project status
 
-```bash
-sds200 profile add home --host 192.168.0.251
-sds200 profile add desk --port /dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00
-sds200 profile list
-sds200 --profile home monitor
-```
+Version `0.5.3` is the first planned GitHub prerelease. The control, discovery,
+monitoring, profile, and diagnostic paths have been validated against real
+SDS200 hardware over both USB and Ethernet. API compatibility is not guaranteed
+until version 1.0.
 
-Profiles are stored in `${XDG_CONFIG_HOME:-~/.config}/sds200/profiles.toml`.
-Use `--config PATH` to select a different profile file.
+See [CHANGELOG.md](CHANGELOG.md) for development history and planned changes.
 
-Run a health check and show UDP counters:
+## License
 
-```bash
-sds200 --profile home health
-sds200 --host 192.168.0.251 health
-```
-
-The UDP transport records command, datagram, byte, timeout, reconnect, XML,
-fragment-loss, and retry counters. Numbered XML sequence gaps trigger up to two
-automatic request retries by default; use `--max-xml-retries` to change that
-policy.
-
-
-## Milestone 5.0.1
-
-- Starts the final LAN discovery response window after all probes are sent
-- Probes hosts in batches and drains replies between batches
-- Avoids flooding Linux's ARP/neighbour queue on `/24` networks
-- Adds a regression test for slow host-probe loops
-
-For a targeted diagnostic probe, a single scanner can also be checked with:
-
-```bash
-sds200 discover --network 192.168.0.251/32 --network-only
-```
-
-
-## Milestone 5.0.2
-
-- Continues LAN discovery after ICMP port-unreachable responses from
-  ordinary hosts that do not listen on UDP port 50536
-- Handles Linux `ConnectionRefusedError`, Windows `ConnectionResetError`,
-  and transient host/network-unreachable receive errors
-- Adds a regression test proving an unrelated UDP refusal cannot hide a
-  later valid SDS200 `MDL` response
-
-
-## Milestone 5.0.3
-
-LAN discovery now uses one isolated UDP socket per target with bounded
-parallelism. This prevents ARP delays and ICMP errors from unrelated hosts
-in a `/24` from interfering with a valid SDS200 response.
-
-The default is 32 concurrent probes:
-
-```bash
-sds200 discover --network 192.168.0.0/24 --network-only
-```
-
-The concurrency limit can be adjusted:
-
-```bash
-sds200 discover \
-  --network 192.168.0.0/24 \
-  --network-only \
-  --workers 16
-```
-
-`--timeout` is now explicitly a per-host response timeout.
+MIT. See [LICENSE](LICENSE).
