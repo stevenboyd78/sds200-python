@@ -3,7 +3,7 @@ import time
 
 from sds200.radio import SDS200
 
-from .fakes import FakeSerial
+from .fakes import FakeSerial, FakeTransport
 
 
 def test_command_is_cr_terminated_and_matches_response() -> None:
@@ -33,3 +33,27 @@ def test_set_volume_range() -> None:
         assert "0 and 29" in str(exc)
     else:
         raise AssertionError("Expected ValueError")
+
+
+def test_health_check_returns_round_trip_metadata() -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport)
+
+    with radio:
+        def respond() -> None:
+            while transport.writes != ["MDL"]:
+                time.sleep(0.005)
+            transport.feed_line("MDL,SDS200")
+            while transport.writes != ["MDL", "VER"]:
+                time.sleep(0.005)
+            transport.feed_line("VER,Version 1.26.01")
+
+        thread = threading.Thread(target=respond)
+        thread.start()
+        health = radio.health_check(timeout=1.0)
+        thread.join(timeout=1.0)
+
+    assert health.endpoint == "fake://scanner"
+    assert health.model == "SDS200"
+    assert health.firmware == "Version 1.26.01"
+    assert health.latency_ms >= 0

@@ -86,3 +86,26 @@ radio = SDS200.from_transport(my_transport)
 
 This contract allows future connection types to reuse commands, parsing, state,
 events, tracing, and monitoring without duplicating radio logic.
+
+## UDP resilience and statistics
+
+Numbered XML fragments are validated using their `Footer` sequence number.
+When a fragment is missing or invalid, the transport emits a
+`TransportDiagnostic`, discards the incomplete XML, and retries the most recent
+`GSI` or `PSI` request. The default retry limit is two:
+
+```python
+radio = SDS200.network("192.168.0.251", max_xml_retries=3)
+```
+
+Transport counters are available through a radio health check:
+
+```python
+with SDS200.network("192.168.0.251") as radio:
+    health = radio.health_check()
+    print(health.latency_ms)
+    print(health.statistics)
+```
+
+A UDP socket being open does not establish remote liveness. The health check's
+successful command round trip is the meaningful reachability test.

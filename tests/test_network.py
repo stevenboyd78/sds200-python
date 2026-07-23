@@ -240,3 +240,54 @@ def test_radio_network_parses_bare_scanner_info() -> None:
     assert info.department == "Harris Dynamic Patch - Northern Utah"
     assert info.channel == "Patch 65132"
     assert info.signal == 5
+
+
+def test_udp_transport_retries_after_fragment_gap_and_tracks_statistics() -> None:
+    fake = FakeDatagramSocket()
+    transport = UdpTransport(
+        "192.0.2.25",
+        socket_factory=FakeDatagramSocketFactory(fake),
+        reconnect=False,
+        max_xml_retries=2,
+    )
+    diagnostics = []
+    transport.set_diagnostic_handler(diagnostics.append)
+    transport.start(lambda line: None)
+    try:
+        transport.write_command("GSI")
+        fake.feed(
+            b'GSI,<XML>,<ScannerInfo><System Name="One" />'
+            b'<Footer No="1" EOT="0" /></ScannerInfo>'
+        )
+        fake.feed(
+            b'GSI,<XML>,<ScannerInfo><System Name="Three" />'
+            b'<Footer No="3" EOT="1" /></ScannerInfo>'
+        )
+        wait_until(lambda: fake.sent == [b"GSI\r", b"GSI\r"])
+    finally:
+        transport.stop()
+
+    assert diagnostics[0].kind == "sequence_gap"
+    assert transport.statistics["retries_sent"] == 1
+    assert transport.statistics["xml_fragments_dropped"] == 1
+
+
+def test_udp_transport_statistics_count_completed_xml() -> None:
+    fake = FakeDatagramSocket()
+    transport = UdpTransport(
+        "192.0.2.25",
+        socket_factory=FakeDatagramSocketFactory(fake),
+        reconnect=False,
+    )
+    received: list[str] = []
+    transport.start(received.append)
+    try:
+        transport.write_command("GSI")
+        fake.feed(b'<ScannerInfo Mode="Trunk Scan"><Property Sig="4" /></ScannerInfo>')
+        wait_until(lambda: transport.statistics["xml_documents_completed"] == 1)
+    finally:
+        transport.stop()
+
+    assert transport.statistics["commands_sent"] == 1
+    assert transport.statistics["datagrams_received"] == 1
+    assert transport.statistics["bytes_received"] > 0

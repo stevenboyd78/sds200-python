@@ -16,3 +16,7 @@ class CommandTimeoutError(SDS200Error):
 
 class ProtocolError(SDS200Error):
     """A scanner response violated the expected protocol."""
+
+
+class ProfileError(SDS200Error):
+    """A saved connection profile is missing or invalid."""

@@ -196,3 +196,33 @@ class ScannerInfo:
     @property
     def recording(self) -> str | None:
         return self._property("Rec")
+
+
+@dataclass(frozen=True, slots=True)
+class RadioHealth:
+    endpoint: str
+    connected: bool
+    model: str
+    firmware: str
+    latency_ms: float
+    statistics: Mapping[str, object]
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        endpoint: str,
+        connected: bool,
+        model: str,
+        firmware: str,
+        latency_ms: float,
+        statistics: Mapping[str, object] | None = None,
+    ) -> RadioHealth:
+        return cls(
+            endpoint=endpoint,
+            connected=connected,
+            model=model,
+            firmware=firmware,
+            latency_ms=latency_ms,
+            statistics=MappingProxyType(dict(statistics or {})),
+        )

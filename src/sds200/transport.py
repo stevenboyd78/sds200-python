@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
@@ -23,6 +25,19 @@ class SerialLike(Protocol):
 
 LineHandler = Callable[[str], None]
 ConnectionHandler = Callable[[bool], None]
+
+
+@dataclass(frozen=True, slots=True)
+class TransportDiagnostic:
+    kind: str
+    message: str
+    command: str | None = None
+    expected_fragment: int | None = None
+    received_fragment: int | None = None
+    observed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
+DiagnosticHandler = Callable[[TransportDiagnostic], None]
 SerialFactory = Callable[..., SerialLike]
 
 
@@ -45,6 +60,20 @@ class ControlTransport(Protocol):
     def stop(self) -> None: ...
 
     def write_command(self, command: str) -> None: ...
+
+
+@runtime_checkable
+class DiagnosticControlTransport(Protocol):
+    def set_diagnostic_handler(
+        self,
+        handler: DiagnosticHandler | None,
+    ) -> None: ...
+
+
+@runtime_checkable
+class StatisticalControlTransport(Protocol):
+    @property
+    def statistics(self) -> Mapping[str, object]: ...
 
 
 def default_serial_factory(

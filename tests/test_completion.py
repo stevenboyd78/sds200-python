@@ -120,3 +120,58 @@ def test_udp_options_require_host() -> None:
     args = build_parser().parse_args(["--bind-port", "42000", "info"])
     with pytest.raises(ValueError, match="require --host"):
         selected_radio(args)
+
+
+def test_profile_option_loads_saved_network_connection(tmp_path: Path) -> None:
+    from sds200.profiles import ConnectionProfile, ProfileStore
+
+    config = tmp_path / "profiles.toml"
+    store = ProfileStore(config)
+    store.put(ConnectionProfile.network("home", "192.0.2.25"))
+    args = build_parser().parse_args(
+        ["--config", str(config), "--profile", "home", "info"]
+    )
+
+    radio = selected_radio(args)
+
+    assert isinstance(radio.transport, UdpTransport)
+    assert radio.endpoint == "udp://192.0.2.25:50536"
+
+
+def test_discovery_options_parse() -> None:
+    args = build_parser().parse_args(
+        ["discover", "--network", "192.0.2.0/24", "--network-only"]
+    )
+    assert args.network == ["192.0.2.0/24"]
+    assert args.network_only is True
+
+
+def test_profile_add_options_parse() -> None:
+    args = build_parser().parse_args(
+        ["profile", "add", "home", "--host", "192.0.2.25"]
+    )
+    assert args.profile_action == "add"
+    assert args.profile_host == "192.0.2.25"
+
+
+def test_profile_completer_reads_configured_store(
+    tmp_path: Path,
+) -> None:
+    from sds200.profiles import ConnectionProfile, ProfileStore
+
+    config = tmp_path / "profiles.toml"
+    ProfileStore(config).put(ConnectionProfile.network("home", "192.0.2.25"))
+    parsed_args = SimpleNamespace(config=config)
+
+    assert completion.profile_completer("ho", parsed_args=parsed_args) == {
+        "home": "network scanner connection"
+    }
+
+
+
+def test_discovery_workers_option() -> None:
+    parser = build_parser()
+    args = parser.parse_args(
+        ["discover", "--network", "192.168.0.0/24", "--workers", "8"]
+    )
+    assert args.workers == 8

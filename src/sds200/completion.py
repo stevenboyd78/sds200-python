@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Protocol, cast
 
 from .device import discover_scanners
+from .profiles import ProfileStore
 
 SUPPORTED_SHELLS = ("bash", "zsh")
 
@@ -72,3 +73,22 @@ def port_completer(prefix: str, **_: object) -> dict[str, str]:
         if resolved_path.startswith(prefix):
             suggestions[resolved_path] = f"SDS200 via {Path(stable_path).name}"
     return suggestions
+
+
+def profile_completer(
+    prefix: str,
+    *,
+    parsed_args: argparse.Namespace | None = None,
+    **_: object,
+) -> dict[str, str]:
+    """Suggest saved connection-profile names."""
+    config = getattr(parsed_args, "config", None) if parsed_args is not None else None
+    try:
+        profiles = ProfileStore(config).list()
+    except Exception:
+        return {}
+    return {
+        profile.name: f"{profile.kind} scanner connection"
+        for profile in profiles
+        if profile.name.startswith(prefix)
+    }

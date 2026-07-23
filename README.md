@@ -238,8 +238,7 @@ with SDS200.auto() as radio:
         radio.wait()
 ```
 
-See `docs/transports.md` for the transport contract and the planned UDP network
-implementation.
+See `docs/transports.md` for the transport contract and network implementation.
 
 ## Milestone 3.0.1
 
@@ -312,3 +311,93 @@ datagram representation before protocol decoding.
 - Fixes strict MyPy type inference in the bare-XML UDP response path.
 - Uses a separately narrowed `xml_command` value instead of reassigning a
   previously inferred `str` local variable with `str | None`.
+
+
+## Milestone 5: discovery, profiles, and network resilience
+
+Milestone 5 adds active LAN discovery, saved connection profiles, a command
+round-trip health check, UDP statistics, transport diagnostics, and automatic
+retries when numbered XML fragments are missing.
+
+Find USB and network scanners on directly connected IPv4 networks:
+
+```bash
+sds200 discover
+sds200 discover --network 192.168.0.0/24 --network-only
+```
+
+Discovery sends the harmless `MDL` model query to each host. A safety limit
+prevents accidentally probing an unexpectedly large route; narrow the CIDR or
+set `--max-hosts` explicitly when needed.
+
+Save reusable connections:
+
+```bash
+sds200 profile add home --host 192.168.0.251
+sds200 profile add desk --port /dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00
+sds200 profile list
+sds200 --profile home monitor
+```
+
+Profiles are stored in `${XDG_CONFIG_HOME:-~/.config}/sds200/profiles.toml`.
+Use `--config PATH` to select a different profile file.
+
+Run a health check and show UDP counters:
+
+```bash
+sds200 --profile home health
+sds200 --host 192.168.0.251 health
+```
+
+The UDP transport records command, datagram, byte, timeout, reconnect, XML,
+fragment-loss, and retry counters. Numbered XML sequence gaps trigger up to two
+automatic request retries by default; use `--max-xml-retries` to change that
+policy.
+
+
+## Milestone 5.0.1
+
+- Starts the final LAN discovery response window after all probes are sent
+- Probes hosts in batches and drains replies between batches
+- Avoids flooding Linux's ARP/neighbour queue on `/24` networks
+- Adds a regression test for slow host-probe loops
+
+For a targeted diagnostic probe, a single scanner can also be checked with:
+
+```bash
+sds200 discover --network 192.168.0.251/32 --network-only
+```
+
+
+## Milestone 5.0.2
+
+- Continues LAN discovery after ICMP port-unreachable responses from
+  ordinary hosts that do not listen on UDP port 50536
+- Handles Linux `ConnectionRefusedError`, Windows `ConnectionResetError`,
+  and transient host/network-unreachable receive errors
+- Adds a regression test proving an unrelated UDP refusal cannot hide a
+  later valid SDS200 `MDL` response
+
+
+## Milestone 5.0.3
+
+LAN discovery now uses one isolated UDP socket per target with bounded
+parallelism. This prevents ARP delays and ICMP errors from unrelated hosts
+in a `/24` from interfering with a valid SDS200 response.
+
+The default is 32 concurrent probes:
+
+```bash
+sds200 discover --network 192.168.0.0/24 --network-only
+```
+
+The concurrency limit can be adjusted:
+
+```bash
+sds200 discover \
+  --network 192.168.0.0/24 \
+  --network-only \
+  --workers 16
+```
+
+`--timeout` is now explicitly a per-host response timeout.

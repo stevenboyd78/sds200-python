@@ -24,7 +24,7 @@ from .commands import (
 from .device import choose_scanner
 from .events import EventBus
 from .exceptions import CommandTimeoutError, ProtocolError, SDS200Error
-from .models import Packet, ScannerInfo, StatusResponse
+from .models import Packet, RadioHealth, ScannerInfo, StatusResponse
 from .network import (
     DEFAULT_UDP_PORT,
     DatagramSocketFactory,
@@ -33,7 +33,14 @@ from .network import (
 from .parser import PacketParser
 from .state import RadioState, RadioStateSnapshot, StateChange
 from .trace import TrafficTrace
-from .transport import ControlTransport, SerialFactory, SerialTransport
+from .transport import (
+    ControlTransport,
+    DiagnosticControlTransport,
+    SerialFactory,
+    SerialTransport,
+    StatisticalControlTransport,
+    TransportDiagnostic,
+)
 from .xml_protocol import ScannerInfoParser, XmlResponseAssembler
 
 logger = logging.getLogger(__name__)
@@ -77,6 +84,8 @@ class SDS200:
         self.xml_parser = ScannerInfoParser()
         self.xml_assembler = XmlResponseAssembler()
         self.events = EventBus()
+        if isinstance(self.transport, DiagnosticControlTransport):
+            self.transport.set_diagnostic_handler(self._transport_diagnostic)
         self.state = RadioState()
         self.trace = TrafficTrace(trace_path)
         self._responses: dict[str, queue.Queue[object]] = {}
@@ -112,6 +121,7 @@ class SDS200:
         local_port: int = 0,
         reconnect: bool = True,
         socket_factory: DatagramSocketFactory | None = None,
+        max_xml_retries: int = 2,
         trace_path: str | Path | None = None,
     ) -> Self:
         if socket_factory is None:
@@ -121,6 +131,7 @@ class SDS200:
                 local_host=local_host,
                 local_port=local_port,
                 reconnect=reconnect,
+                max_xml_retries=max_xml_retries,
             )
         else:
             transport = UdpTransport(
@@ -129,6 +140,7 @@ class SDS200:
                 local_host=local_host,
                 local_port=local_port,
                 reconnect=reconnect,
+                max_xml_retries=max_xml_retries,
                 socket_factory=socket_factory,
             )
         return cls.from_transport(transport, trace_path=trace_path)
@@ -214,6 +226,12 @@ class SDS200:
     def on_connection(self, callback: Callable[[bool], None]) -> Callable[[], None]:
         return self.events.subscribe("connection", callback)
 
+    def on_diagnostic(
+        self,
+        callback: Callable[[TransportDiagnostic], None],
+    ) -> Callable[[], None]:
+        return self.events.subscribe("diagnostic", callback)
+
     def send(self, command: str) -> None:
         self.trace.tx(command)
         self.transport.write_command(command)
@@ -256,6 +274,25 @@ class SDS200:
 
     def get_scanner_info(self, *, timeout: float = 3.0) -> ScannerInfo:
         return self.execute(GetScannerInfo(), timeout=timeout)
+
+    def health_check(self, *, timeout: float = 2.0) -> RadioHealth:
+        started = monotonic()
+        model = self.get_model(timeout=timeout)
+        latency_ms = (monotonic() - started) * 1000.0
+        firmware = self.get_firmware(timeout=timeout)
+        statistics = (
+            self.transport.statistics
+            if isinstance(self.transport, StatisticalControlTransport)
+            else None
+        )
+        return RadioHealth.create(
+            endpoint=self.endpoint,
+            connected=self.connected,
+            model=model,
+            firmware=firmware,
+            latency_ms=latency_ms,
+            statistics=statistics,
+        )
 
     def start_scanner_info_push(
         self,
@@ -388,6 +425,9 @@ class SDS200:
         if response_queue is not None:
             with suppress(queue.Full):
                 response_queue.put_nowait(response)
+
+    def _transport_diagnostic(self, diagnostic: TransportDiagnostic) -> None:
+        self.events.emit("diagnostic", diagnostic)
 
     def _connection_changed(self, connected: bool) -> None:
         self.events.emit("connection", connected)
