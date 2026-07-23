@@ -7,7 +7,7 @@ class ScannerNotFoundError(SDS200Error):
 
 
 class ScannerConnectionError(SDS200Error):
-    """The serial connection could not be established or maintained."""
+    """The scanner control connection could not be established or maintained."""
 
 
 class CommandTimeoutError(SDS200Error):

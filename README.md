@@ -248,3 +248,67 @@ implementation.
 - Uses one timeout budget for both the acknowledgement and first XML update.
 - Rejects negative `PSI,NG` acknowledgements as protocol errors.
 - Adds regression coverage for acknowledgement-then-XML behavior.
+
+## Milestone 4: SDS200 Ethernet control
+
+Milestone 4 adds native control through the SDS200's Ethernet interface while
+preserving the same command, state, event, trace, and monitor APIs used over
+USB.
+
+CLI examples:
+
+```bash
+sds200 --host 192.168.1.50 info
+sds200 --host 192.168.1.50 scanner-info
+sds200 --host 192.168.1.50 monitor
+sds200 --host scanner.local command MDL
+```
+
+The scanner listens on UDP port 50536 by default. Override it or choose a local
+bind interface when needed:
+
+```bash
+sds200 \
+  --host 192.168.1.50 \
+  --udp-port 50536 \
+  --bind-address 192.168.1.10 \
+  --bind-port 42000 \
+  monitor
+```
+
+Python API:
+
+```python
+from sds200 import SDS200
+
+with SDS200.network("192.168.1.50") as radio:
+    print(radio.get_model())
+    with radio.scanner_info_push(500):
+        radio.wait()
+```
+
+Network XML responses are reassembled using their numbered Footer nodes before
+they enter the existing XML parser. USB remains the default when `--host` is
+not supplied.
+
+The control protocol is unauthenticated and unencrypted. Use it on a trusted
+LAN or through a VPN rather than exposing UDP 50536 to the public Internet.
+Network audio streaming is a separate future milestone.
+
+See `docs/transports.md` for transport behavior and limitations.
+
+
+## Milestone 4.0.1
+
+Some SDS200 firmware/network paths return `GSI` and `PSI` scanner-information XML
+without the serial-style `GSI,<XML>,` or `PSI,<XML>,` prefix. The UDP decoder now
+tracks the command that requested XML, wraps bare documents for the shared parser,
+and preserves periodic bare `PSI` updates. Debug logging also records the raw UDP
+datagram representation before protocol decoding.
+
+
+## Milestone 4.0.2
+
+- Fixes strict MyPy type inference in the bare-XML UDP response path.
+- Uses a separately narrowed `xml_command` value instead of reassigning a
+  previously inferred `str` local variable with `str | None`.

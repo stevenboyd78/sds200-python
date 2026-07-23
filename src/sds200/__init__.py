@@ -19,6 +19,7 @@ from .models import (
     StatusResponse,
     ValueResponse,
 )
+from .network import DEFAULT_UDP_PORT, UdpTransport
 from .radio import SDS200
 from .state import RadioState, RadioStateSnapshot, StateChange
 from .transport import ControlTransport, SerialTransport
@@ -26,6 +27,7 @@ from .transport import ControlTransport, SerialTransport
 __all__ = [
     "ControlTransport",
     "DEFAULT_SDS200_PATTERN",
+    "DEFAULT_UDP_PORT",
     "FirmwareResponse",
     "GetFirmware",
     "GetModel",
@@ -47,8 +49,9 @@ __all__ = [
     "StartScannerInfoPush",
     "StateChange",
     "StatusResponse",
+    "UdpTransport",
     "ValueResponse",
     "discover_scanners",
 ]
 
-__version__ = "0.3.1"
+__version__ = "0.4.2"

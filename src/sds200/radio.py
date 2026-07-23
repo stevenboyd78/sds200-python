@@ -25,6 +25,11 @@ from .device import choose_scanner
 from .events import EventBus
 from .exceptions import CommandTimeoutError, ProtocolError, SDS200Error
 from .models import Packet, ScannerInfo, StatusResponse
+from .network import (
+    DEFAULT_UDP_PORT,
+    DatagramSocketFactory,
+    UdpTransport,
+)
 from .parser import PacketParser
 from .state import RadioState, RadioStateSnapshot, StateChange
 from .trace import TrafficTrace
@@ -96,6 +101,37 @@ class SDS200:
             serial_factory=serial_factory,
             trace_path=trace_path,
         )
+
+    @classmethod
+    def network(
+        cls,
+        host: str,
+        *,
+        remote_port: int = DEFAULT_UDP_PORT,
+        local_host: str = "",
+        local_port: int = 0,
+        reconnect: bool = True,
+        socket_factory: DatagramSocketFactory | None = None,
+        trace_path: str | Path | None = None,
+    ) -> Self:
+        if socket_factory is None:
+            transport = UdpTransport(
+                host,
+                remote_port=remote_port,
+                local_host=local_host,
+                local_port=local_port,
+                reconnect=reconnect,
+            )
+        else:
+            transport = UdpTransport(
+                host,
+                remote_port=remote_port,
+                local_host=local_host,
+                local_port=local_port,
+                reconnect=reconnect,
+                socket_factory=socket_factory,
+            )
+        return cls.from_transport(transport, trace_path=trace_path)
 
     @classmethod
     def from_transport(

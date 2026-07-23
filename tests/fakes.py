@@ -106,3 +106,69 @@ class FakeTransport:
         self._connected = connected
         if self._connection_handler is not None:
             self._connection_handler(connected)
+
+
+class FakeDatagramSocket:
+    def __init__(self) -> None:
+        self.timeout: float | None = None
+        self.bound: tuple[str, int] | None = None
+        self.remote: tuple[str, int] | None = None
+        self.sent: list[bytes] = []
+        self.incoming: queue.Queue[bytes | OSError] = queue.Queue()
+        self.closed = False
+
+    def settimeout(self, value: float | None) -> None:
+        self.timeout = value
+
+    def bind(self, address: tuple[str, int]) -> None:
+        self.bound = address
+
+    def connect(self, address: tuple[str, int]) -> None:
+        self.remote = address
+
+    def send(self, data: bytes) -> int:
+        if self.closed:
+            raise OSError("socket is closed")
+        self.sent.append(data)
+        return len(data)
+
+    def recv(self, size: int) -> bytes:
+        del size
+        try:
+            value = self.incoming.get(timeout=self.timeout or 0.05)
+        except queue.Empty as exc:
+            raise TimeoutError from exc
+        if isinstance(value, OSError):
+            raise value
+        return value
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        self.incoming.put(OSError("socket is closed"))
+
+    def feed(self, data: bytes) -> None:
+        self.incoming.put(data)
+
+
+class FakeDatagramSocketFactory:
+    def __init__(self, socket: FakeDatagramSocket | None = None) -> None:
+        self.socket = socket or FakeDatagramSocket()
+        self.calls: list[tuple[int, int]] = []
+
+    def __call__(self, family: int, socket_type: int) -> FakeDatagramSocket:
+        self.calls.append((family, socket_type))
+        return self.socket
+
+
+class DatagramSocketSequenceFactory:
+    def __init__(self, sockets: list[FakeDatagramSocket]) -> None:
+        self.sockets = list(sockets)
+        self.calls: list[tuple[int, int]] = []
+
+    def __call__(self, family: int, socket_type: int) -> FakeDatagramSocket:
+        self.calls.append((family, socket_type))
+        if not self.sockets:
+            raise OSError("no fake sockets remain")
+        return self.sockets.pop(0)

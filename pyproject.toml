@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sds200"
-version = "0.3.1"
-description = "Python control and monitoring library for Uniden SDS-series scanners"
+version = "0.4.2"
+description = "Python USB and network control library for Uniden SDS-series scanners"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
