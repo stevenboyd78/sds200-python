@@ -12,6 +12,7 @@ from types import MappingProxyType
 from typing import Protocol
 
 from .exceptions import ScannerConnectionError
+from .reliability import ReconnectCounter, ReconnectPolicy
 from .transport import (
     ConnectionHandler,
     DiagnosticHandler,
@@ -64,6 +65,10 @@ class _MutableNetworkStatistics:
     receive_errors: int = 0
     socket_opens: int = 0
     socket_reopens: int = 0
+    reconnect_attempts: int = 0
+    reconnect_failures: int = 0
+    reconnect_exhausted: int = 0
+    last_reconnect_at: datetime | None = None
     xml_documents_completed: int = 0
     xml_fragments_dropped: int = 0
     last_receive_at: datetime | None = None
@@ -79,6 +84,14 @@ class _MutableNetworkStatistics:
             "receive_errors": self.receive_errors,
             "socket_opens": self.socket_opens,
             "socket_reopens": self.socket_reopens,
+            "reconnect_attempts": self.reconnect_attempts,
+            "reconnect_failures": self.reconnect_failures,
+            "reconnect_exhausted": self.reconnect_exhausted,
+            "last_reconnect_at": (
+                self.last_reconnect_at.isoformat()
+                if self.last_reconnect_at is not None
+                else None
+            ),
             "xml_documents_completed": self.xml_documents_completed,
             "xml_fragments_dropped": self.xml_fragments_dropped,
             "last_receive_at": (
@@ -301,6 +314,7 @@ class UdpTransport:
         read_timeout: float = 0.2,
         reconnect: bool = True,
         reconnect_interval: float = 2.0,
+        reconnect_policy: ReconnectPolicy | None = None,
         max_xml_retries: int = 2,
         socket_factory: DatagramSocketFactory = default_datagram_socket_factory,
     ) -> None:
@@ -324,6 +338,12 @@ class UdpTransport:
         self.read_timeout = read_timeout
         self.reconnect = reconnect
         self.reconnect_interval = reconnect_interval
+        self.reconnect_policy = reconnect_policy or ReconnectPolicy(
+            initial_delay=reconnect_interval,
+            multiplier=1.0,
+            max_delay=reconnect_interval,
+        )
+        self._reconnect_counter = ReconnectCounter(self.reconnect_policy)
         self.max_xml_retries = max_xml_retries
         self._socket_factory = socket_factory
         self._socket: DatagramSocketLike | None = None
@@ -467,6 +487,16 @@ class UdpTransport:
             self._mutable_statistics.socket_opens += 1
             if was_reopen:
                 self._mutable_statistics.socket_reopens += 1
+                self._mutable_statistics.last_reconnect_at = datetime.now(UTC)
+        if was_reopen:
+            self._emit_diagnostic(
+                TransportDiagnostic(
+                    kind="reconnected",
+                    endpoint=self.endpoint,
+                    message=f"Reopened scanner network transport to {self.endpoint}",
+                )
+            )
+        self._reconnect_counter.reset()
         logger.info("Opened scanner network transport to %s", self.endpoint)
         self._notify_connection(True)
 
@@ -546,15 +576,53 @@ class UdpTransport:
             if not self.connected:
                 if not self.reconnect:
                     return
+                scheduled = self._reconnect_counter.next()
+                if scheduled is None:
+                    with self._statistics_lock:
+                        self._mutable_statistics.reconnect_exhausted += 1
+                    self._emit_diagnostic(
+                        TransportDiagnostic(
+                            kind="reconnect_exhausted",
+                            endpoint=self.endpoint,
+                            message=(
+                                "UDP reconnect policy exhausted after "
+                                f"{self._reconnect_counter.attempts} attempts"
+                            ),
+                            attempt=self._reconnect_counter.attempts,
+                        )
+                    )
+                    return
+                attempt, delay = scheduled
+                with self._statistics_lock:
+                    self._mutable_statistics.reconnect_attempts += 1
+                self._emit_diagnostic(
+                    TransportDiagnostic(
+                        kind="reconnect_scheduled",
+                        endpoint=self.endpoint,
+                        message=(
+                            f"UDP reconnect attempt {attempt} scheduled in "
+                            f"{delay:.1f} seconds"
+                        ),
+                        attempt=attempt,
+                        delay_seconds=delay,
+                    )
+                )
+                if self._stop.wait(delay):
+                    return
                 try:
                     self._open()
-                except ScannerConnectionError:
-                    logger.warning(
-                        "UDP reopen failed for %s; retrying in %.1f seconds",
-                        self.endpoint,
-                        self.reconnect_interval,
+                except ScannerConnectionError as exc:
+                    with self._statistics_lock:
+                        self._mutable_statistics.reconnect_failures += 1
+                        self._mutable_statistics.last_diagnostic = str(exc)
+                    self._emit_diagnostic(
+                        TransportDiagnostic(
+                            kind="reconnect_failed",
+                            endpoint=self.endpoint,
+                            message=f"UDP reconnect attempt {attempt} failed: {exc}",
+                            attempt=attempt,
+                        )
                     )
-                    self._stop.wait(self.reconnect_interval)
                     continue
 
             with self._socket_lock:

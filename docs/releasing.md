@@ -12,10 +12,10 @@ This checklist prepares a GitHub prerelease. Set `VERSION` to the intended packa
   were committed accidentally.
 - Update the GitHub repository About description to:
 
-  > Python control and monitoring for the Uniden SDS200 over USB serial and Ethernet.
+  > Python control for Uniden SDS100, SDS150, and SDS200 scanners over USB and SDS200 Ethernet.
 
 - Suggested repository topics:
-  `uniden`, `sds200`, `radio-scanner`, `python`, `serial`, `udp`.
+  `uniden`, `sds100`, `sds150`, `sds200`, `radio-scanner`, `python`, `serial`, `udp`.
 
 ## 2. Run validation
 
@@ -47,15 +47,20 @@ Confirm it contains:
 
 ## 3. Hardware smoke tests
 
-Run over USB:
+Run over USB for each available model:
 
 ```bash
-sds200 info
+sds200 --model SDS100 info
+sds200 --model SDS150 info
+sds200 --model SDS200 info
 sds200 scanner-info
 sds200 monitor
 ```
 
-Run over Ethernet:
+For an SDS100 or SDS150, also run `sds200 --model MODEL battery` and verify the
+reported charge fields are plausible.
+
+Run over SDS200 Ethernet:
 
 ```bash
 sds200 --host SCANNER_IP info
@@ -68,11 +73,18 @@ Check profile and health paths:
 
 ```bash
 sds200 profile list
-sds200 --profile PROFILE health
+sds200 profile repair PROFILE --network SCANNER_SUBNET --dry-run
+sds200 --profile PROFILE health --history
+sds200 --profile PROFILE events --json
 ```
 
-Record the scanner firmware, Python version, operating system, and transports
-tested in the release notes. Do not publish private channel or network data.
+For a long-running reliability check, leave `events --json` and
+`health --watch 5 --history --json` running while disconnecting and restoring
+USB and Ethernet in turn. Confirm backoff, failover, PSI restart, and clean
+shutdown behavior.
+
+Record the scanner model, firmware, Python version, operating system, and
+transports tested in the release notes. Do not publish private channel or network data.
 
 ## 4. Create the tag
 

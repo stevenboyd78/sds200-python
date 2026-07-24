@@ -10,6 +10,7 @@ from time import monotonic
 from types import MappingProxyType
 
 from .exceptions import ScannerConnectionError
+from .reliability import ReconnectCounter, ReconnectPolicy
 from .transport import (
     ConnectionHandler,
     ControlTransport,
@@ -44,8 +45,14 @@ class _MutableFallbackStatistics:
     successful_activations: int = 0
     failovers: int = 0
     write_retries: int = 0
+    reconnect_attempts: int = 0
+    reconnect_failures: int = 0
+    reconnect_exhausted: int = 0
     last_failure: str | None = None
+    last_failure_reason: str | None = None
     last_switch_at: datetime | None = None
+    last_switch_from: str | None = None
+    last_switch_to: str | None = None
 
 
 class FallbackTransport:
@@ -62,6 +69,7 @@ class FallbackTransport:
         *,
         retry_interval: float = 2.0,
         failover_timeout: float = 3.0,
+        reconnect_policy: ReconnectPolicy | None = None,
     ) -> None:
         if not candidates:
             raise ValueError("At least one fallback transport candidate is required.")
@@ -77,6 +85,12 @@ class FallbackTransport:
         self.candidates = tuple(candidates)
         self.retry_interval = retry_interval
         self.failover_timeout = failover_timeout
+        self.reconnect_policy = reconnect_policy or ReconnectPolicy(
+            initial_delay=retry_interval,
+            multiplier=1.0,
+            max_delay=retry_interval,
+        )
+        self._reconnect_counter = ReconnectCounter(self.reconnect_policy)
         self._handler: LineHandler | None = None
         self._connection_handler: ConnectionHandler | None = None
         self._diagnostic_handler: DiagnosticHandler | None = None
@@ -131,7 +145,13 @@ class FallbackTransport:
                 "successful_activations": self._statistics.successful_activations,
                 "failovers": self._statistics.failovers,
                 "write_retries": self._statistics.write_retries,
+                "reconnect_attempts": self._statistics.reconnect_attempts,
+                "reconnect_failures": self._statistics.reconnect_failures,
+                "reconnect_exhausted": self._statistics.reconnect_exhausted,
                 "last_failure": self._statistics.last_failure,
+                "last_failure_reason": self._statistics.last_failure_reason,
+                "last_switch_from": self._statistics.last_switch_from,
+                "last_switch_to": self._statistics.last_switch_to,
                 "last_switch_at": (
                     self._statistics.last_switch_at.isoformat()
                     if self._statistics.last_switch_at is not None
@@ -232,6 +252,7 @@ class FallbackTransport:
             if self._active is not active:
                 return
             self._statistics.last_failure = reason
+            self._statistics.last_failure_reason = reason
         self._forward_connection(False)
         self._emit_diagnostic(
             TransportDiagnostic(
@@ -263,17 +284,39 @@ class FallbackTransport:
             )
             while not self._stop.is_set():
                 if self._activate_from(start_index, reason="automatic failover"):
+                    self._reconnect_counter.reset()
                     break
+                scheduled = self._reconnect_counter.next()
+                if scheduled is None:
+                    with self._lock:
+                        self._statistics.reconnect_exhausted += 1
+                    self._emit_diagnostic(
+                        TransportDiagnostic(
+                            kind="reconnect_exhausted",
+                            message=(
+                                "Fallback reconnect policy exhausted after "
+                                f"{self._reconnect_counter.attempts} attempts"
+                            ),
+                            attempt=self._reconnect_counter.attempts,
+                        )
+                    )
+                    return
+                attempt, delay = scheduled
+                with self._lock:
+                    self._statistics.reconnect_attempts += 1
+                    self._statistics.reconnect_failures += 1
                 self._emit_diagnostic(
                     TransportDiagnostic(
-                        kind="failover_exhausted",
+                        kind="reconnect_scheduled",
                         message=(
-                            "All scanner transport candidates failed; retrying in "
-                            f"{self.retry_interval:.1f} seconds"
+                            "All scanner transport candidates failed; "
+                            f"retry attempt {attempt} in {delay:.1f} seconds"
                         ),
+                        attempt=attempt,
+                        delay_seconds=delay,
                     )
                 )
-                if self._stop.wait(self.retry_interval):
+                if self._stop.wait(delay):
                     return
                 start_index = 0
 
@@ -333,15 +376,19 @@ class FallbackTransport:
                     continue
 
                 with self._lock:
+                    previous_endpoint = self._statistics.last_switch_to
                     if self._statistics.successful_activations > 0:
                         self._statistics.failovers += 1
                     self._statistics.successful_activations += 1
                     self._statistics.last_switch_at = datetime.now(UTC)
+                    self._statistics.last_switch_from = previous_endpoint
+                    self._statistics.last_switch_to = transport.endpoint
                 self._forward_connection(True)
                 self._emit_diagnostic(
                     TransportDiagnostic(
                         kind="transport_activated",
                         endpoint=transport.endpoint,
+                        previous_endpoint=previous_endpoint,
                         message=f"Activated {candidate.name} transport",
                     )
                 )

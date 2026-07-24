@@ -7,6 +7,8 @@ from collections.abc import Callable
 
 from sds200.network import UdpDatagramDecoder, UdpTransport
 from sds200.radio import SDS200
+from sds200.reliability import ReconnectPolicy
+from sds200.transport import TransportDiagnostic
 from sds200.xml_protocol import ScannerInfoParser, XmlResponseAssembler
 
 from .fakes import (
@@ -291,3 +293,38 @@ def test_udp_transport_statistics_count_completed_xml() -> None:
     assert transport.statistics["commands_sent"] == 1
     assert transport.statistics["datagrams_received"] == 1
     assert transport.statistics["bytes_received"] > 0
+
+
+def test_udp_transport_reconnects_with_policy() -> None:
+    first = FakeDatagramSocket()
+    second = FakeDatagramSocket()
+    factory = DatagramSocketSequenceFactory([first, second])
+    diagnostics: list[TransportDiagnostic] = []
+    transport = UdpTransport(
+        "192.0.2.25",
+        read_timeout=0.01,
+        reconnect_policy=ReconnectPolicy(
+            initial_delay=0.01,
+            multiplier=2.0,
+            max_delay=0.02,
+            max_attempts=2,
+        ),
+        socket_factory=factory,
+    )
+    transport.set_diagnostic_handler(diagnostics.append)
+
+    transport.start(lambda line: None)
+    first.incoming.put(OSError("simulated disconnect"))
+    deadline = time.monotonic() + 1.0
+    while transport.statistics["socket_reopens"] != 1 and time.monotonic() < deadline:
+        time.sleep(0.005)
+
+    try:
+        assert transport.connected
+        assert transport.statistics["reconnect_attempts"] == 1
+        assert [diagnostic.kind for diagnostic in diagnostics] == [
+            "reconnect_scheduled",
+            "reconnected",
+        ]
+    finally:
+        transport.stop()

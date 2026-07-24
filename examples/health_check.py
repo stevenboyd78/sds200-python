@@ -1,5 +1,5 @@
-from sds200 import SDS200
+from sds200 import SDSScanner
 
-with SDS200.network("192.168.0.251") as radio:
+with SDSScanner.network("192.168.0.251") as radio:
     health = radio.health_check()
     print(health)

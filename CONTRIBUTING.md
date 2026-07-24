@@ -53,6 +53,7 @@ The automated test suite must run without scanner hardware.
 - `src/sds200/network.py`: UDP transport and network XML datagram handling
 - `src/sds200/fallback.py`: ordered control-transport activation and failover
 - `src/sds200/audio.py`: control-independent audio lifecycle contracts
+- `src/sds200/scanner.py`: model names, aliases, capabilities, and limits
 - `src/sds200/commands.py`: typed command objects
 - `src/sds200/parser.py`: CR-delimited response parsing
 - `src/sds200/xml_protocol.py`: scanner-information XML parsing
@@ -80,10 +81,10 @@ Do not add tests that require a live scanner or a specific LAN.
 A pull request may include optional manual validation notes:
 
 ```text
-Scanner: SDS200
-Firmware: 1.26.01
+Scanner: SDS100 / SDS150 / SDS200
+Firmware: ...
 Python: 3.14.x
-Transport: USB / UDP
+Transport: USB / UDP (SDS200 only)
 Commands tested: ...
 Observed result: ...
 ```

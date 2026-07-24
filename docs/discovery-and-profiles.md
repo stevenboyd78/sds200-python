@@ -1,11 +1,15 @@
-# LAN discovery and connection profiles
+# USB/LAN discovery and connection profiles
 
 ## Active LAN discovery
 
-The SDS200 virtual-serial specification does not define a separate discovery
-broadcast. The library therefore performs a bounded active probe: it sends the
-read-only `MDL` command to each usable IPv4 address and accepts only
-`MDL,SDS200` responses.
+USB discovery scans stable Linux `/dev/serial/by-id` paths for the SDS100,
+SDS150, and SDS200. Model names are inferred when the stable path identifies
+them, and `--model` can narrow discovery.
+
+The SDS200 virtual-serial specification does not define a separate LAN
+discovery broadcast. The library therefore performs a bounded active probe: it
+sends the read-only `MDL` command to each usable IPv4 address and accepts only
+SDS200 model responses. SDS100 and SDS150 discovery is USB-only.
 
 On Linux, directly connected networks are read from `/proc/net/route` when no
 CIDR is supplied:
@@ -36,12 +40,14 @@ for scanner in discover_network_scanners(["192.168.0.0/24"]):
 
 ## Connection profiles
 
-Profiles can represent either a stable serial path or an SDS200 network host.
-They are stored in a human-readable TOML document.
+Profiles can represent a model-aware USB serial path for any supported model,
+an SDS200 network host, or an SDS200 serial/network fallback pair. They are
+stored in a human-readable TOML document.
 
 ```bash
 sds200 profile add home --host 192.168.0.251
-sds200 profile add usb --port /dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00
+sds200 profile add handheld --port /dev/ttyACM0 --model SDS150
+sds200 profile add usb --port /dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00 --model SDS200
 sds200 profile show home
 sds200 profile list
 sds200 profile remove usb
@@ -74,11 +80,28 @@ and the most recent diagnostic.
 Applications can subscribe to diagnostics:
 
 ```python
-from sds200 import SDS200
+from sds200 import SDSScanner
 
-with SDS200.network("192.168.0.251") as radio:
+with SDSScanner.network("192.168.0.251") as radio:
     radio.on_diagnostic(lambda diagnostic: print(diagnostic.message))
     print(radio.health_check())
 ```
 
 See [Fallback profiles](fallback-profiles.md) for discovery-driven profile creation and live transport switching.
+
+
+## Repairing stale profiles
+
+USB enumeration and DHCP can change a saved endpoint. Repair discovery updates
+only endpoints it can identify unambiguously, preserves the scanner model, bind
+settings, and fallback preference, and can learn the model for a legacy serial
+profile.
+
+```bash
+sds200 profile repair home --network 192.168.0.0/24 --dry-run
+sds200 profile repair home --network 192.168.0.0/24
+```
+
+For a fallback profile, discovering only one transport updates that endpoint and
+leaves the other saved endpoint intact. Repair refuses to guess when multiple
+unmatched scanners of the required transport are found.

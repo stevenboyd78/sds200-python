@@ -1,6 +1,6 @@
-from sds200 import SDS200
+from sds200 import SDSScanner
 
-with SDS200.auto() as radio:
+with SDSScanner.auto() as radio:
     print("Port:", radio.port)
     print("Model:", radio.get_model())
     print("Firmware:", radio.get_firmware())

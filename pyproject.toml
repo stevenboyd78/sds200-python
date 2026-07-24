@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sds200"
-version = "0.6.0"
-description = "Python USB and Ethernet control library for the Uniden SDS200 scanner"
+version = "0.8.0"
+description = "Python control library for Uniden SDS100, SDS150, and SDS200 scanners"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -16,6 +16,8 @@ authors = [
 keywords = [
   "radio",
   "scanner",
+  "sds100",
+  "sds150",
   "sds200",
   "serial",
   "udp",

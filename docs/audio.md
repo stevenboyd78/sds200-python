@@ -1,7 +1,7 @@
 # Audio subsystem architecture
 
 Network audio is not implemented in version 0.6.0. This milestone establishes a
-separate public lifecycle so future RTP, RTSP, or other validated SDS200 audio
+separate public lifecycle so future RTP, RTSP, or other validated scanner audio
 transports do not become entangled with scanner control.
 
 `AudioTransport` owns audio I/O. `AudioStream` owns subscriptions and lifecycle.

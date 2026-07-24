@@ -1,7 +1,7 @@
-from sds200 import SDS200
+from sds200 import SDSScanner
 from sds200.monitor import TerminalMonitor
 
-with SDS200.auto(trace_path="scanner.trace") as radio:
+with SDSScanner.auto(trace_path="scanner.trace") as radio:
     terminal = TerminalMonitor()
     radio.on_state(lambda state: terminal.render(state, radio.endpoint))
 

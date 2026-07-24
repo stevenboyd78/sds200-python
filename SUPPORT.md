@@ -18,8 +18,8 @@ Before opening an issue:
 - `sds200` version
 - Python version
 - Operating system and version
-- SDS200 firmware version
-- USB serial or Ethernet transport
+- Scanner model and firmware version
+- USB serial or SDS200 Ethernet transport
 - Exact command used
 - Complete error message or traceback
 - Minimal steps to reproduce
@@ -46,7 +46,7 @@ system names, channel names, unit identifiers, and network addresses.
 The project can help with:
 
 - Installing and using the Python library
-- USB and Ethernet control behavior
+- SDS-series USB and SDS200 Ethernet control behavior
 - Protocol parsing and typed API issues
 - LAN discovery, profiles, monitoring, and diagnostics
 - Reproducible compatibility reports

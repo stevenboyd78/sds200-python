@@ -19,9 +19,11 @@ class DiscoveryHarness:
         self,
         responding_hosts: set[str] | None = None,
         *,
+        responses: dict[str, bytes] | None = None,
         refuse_once_hosts: set[str] | None = None,
     ) -> None:
         self.responding_hosts = responding_hosts or set()
+        self.responses = responses or {}
         self.refuse_once_hosts = refuse_once_hosts or set()
         self.sent: list[tuple[bytes, tuple[str, int]]] = []
         self.closed_count = 0
@@ -153,3 +155,18 @@ def test_discovery_isolates_refusal_from_valid_scanner_reply() -> None:
     )
 
     assert [scanner.host for scanner in scanners] == ["192.0.2.2"]
+
+
+def test_network_discovery_ignores_handheld_model_response() -> None:
+    harness = DiscoveryHarness(
+        responses={"192.0.2.2": b"MDL,SDS150GBT\r"},
+    )
+
+    scanners = discover_network_scanners(
+        ["192.0.2.2/32"],
+        timeout=0.02,
+        workers=1,
+        socket_factory=harness.socket_factory,
+    )
+
+    assert scanners == []

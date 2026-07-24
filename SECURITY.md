@@ -13,7 +13,7 @@ and the newest published prerelease only.
 
 ## Network-control security
 
-The SDS200 virtual serial network protocol uses unauthenticated, unencrypted UDP
+The SDS200-only virtual serial network protocol uses unauthenticated, unencrypted UDP
 traffic. Anyone who can reach the scanner's control port may be able to send
 commands or observe responses.
 

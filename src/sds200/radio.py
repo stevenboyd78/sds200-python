@@ -5,6 +5,7 @@ import queue
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from time import monotonic
@@ -12,6 +13,7 @@ from typing import Self, TypeVar
 
 from .commands import (
     Command,
+    GetChargeStatus,
     GetFirmware,
     GetModel,
     GetScannerInfo,
@@ -24,12 +26,21 @@ from .commands import (
 )
 from .device import choose_scanner
 from .events import EventBus
-from .exceptions import CommandTimeoutError, ProtocolError, SDS200Error
+from .exceptions import (
+    CommandTimeoutError,
+    ProtocolError,
+    SDS200Error,
+    UnsupportedScannerFeatureError,
+    UnsupportedScannerModelError,
+)
 from .fallback import FallbackTransport, TransportCandidate
 from .models import (
+    ChargeStatus,
     FirmwareResponse,
+    HealthSummary,
     ModelResponse,
     Packet,
+    RadioEvent,
     RadioHealth,
     ScannerInfo,
     StatusResponse,
@@ -41,6 +52,13 @@ from .network import (
 )
 from .parser import PacketParser
 from .profiles import ConnectionProfile, TransportPreference
+from .reliability import HealthHistory, HealthThresholds, ReconnectPolicy
+from .scanner import (
+    ScannerCapabilities,
+    ScannerModel,
+    capabilities_for_model,
+    normalize_model_name,
+)
 from .state import RadioState, RadioStateSnapshot, StateChange
 from .trace import TrafficTrace
 from .transport import (
@@ -57,7 +75,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
-class SDS200:
+class SDSScanner:
     def __init__(
         self,
         port: str | Path | None = None,
@@ -65,8 +83,12 @@ class SDS200:
         transport: ControlTransport | None = None,
         baudrate: int = 115200,
         reconnect: bool = True,
+        reconnect_policy: ReconnectPolicy | None = None,
         serial_factory: SerialFactory | None = None,
         trace_path: str | Path | None = None,
+        health_history_limit: int = 100,
+        health_thresholds: HealthThresholds | None = None,
+        expected_model: ScannerModel | str | None = None,
     ) -> None:
         if port is not None and transport is not None:
             raise ValueError("Supply either port or transport, not both.")
@@ -75,18 +97,31 @@ class SDS200:
         if transport is not None and serial_factory is not None:
             raise ValueError("serial_factory cannot be used with a custom transport.")
 
+        normalized_expected = (
+            normalize_model_name(expected_model) if expected_model is not None else None
+        )
+        if expected_model is not None and normalized_expected is None:
+            raise ValueError(f"Unsupported SDS-series scanner model: {expected_model!r}")
+        self.expected_model = normalized_expected
+
         self.transport: ControlTransport
         if transport is not None:
             self.transport = transport
         elif serial_factory is None:
             assert port is not None
-            self.transport = SerialTransport(port, baudrate=baudrate, reconnect=reconnect)
+            self.transport = SerialTransport(
+                port,
+                baudrate=baudrate,
+                reconnect=reconnect,
+                reconnect_policy=reconnect_policy,
+            )
         else:
             assert port is not None
             self.transport = SerialTransport(
                 port,
                 baudrate=baudrate,
                 reconnect=reconnect,
+                reconnect_policy=reconnect_policy,
                 serial_factory=serial_factory,
             )
 
@@ -110,8 +145,10 @@ class SDS200:
         self._last_disconnected_at: datetime | None = None
         self._last_response_at: datetime | None = None
         self._last_state_at: datetime | None = None
-        self._model: str | None = None
+        self._model: ScannerModel | None = None
         self._firmware: str | None = None
+        self.health_history = HealthHistory(health_history_limit)
+        self.health_thresholds = health_thresholds or HealthThresholds()
 
     @classmethod
     def auto(
@@ -119,15 +156,21 @@ class SDS200:
         *,
         baudrate: int = 115200,
         reconnect: bool = True,
+        reconnect_policy: ReconnectPolicy | None = None,
         serial_factory: SerialFactory | None = None,
         trace_path: str | Path | None = None,
+        health_history_limit: int = 100,
+        model: ScannerModel | str | None = None,
     ) -> Self:
         return cls(
-            choose_scanner(),
+            choose_scanner(model=model),
             baudrate=baudrate,
             reconnect=reconnect,
+            reconnect_policy=reconnect_policy,
             serial_factory=serial_factory,
             trace_path=trace_path,
+            health_history_limit=health_history_limit,
+            expected_model=model,
         )
 
     @classmethod
@@ -139,9 +182,11 @@ class SDS200:
         local_host: str = "",
         local_port: int = 0,
         reconnect: bool = True,
+        reconnect_policy: ReconnectPolicy | None = None,
         socket_factory: DatagramSocketFactory | None = None,
         max_xml_retries: int = 2,
         trace_path: str | Path | None = None,
+        health_history_limit: int = 100,
     ) -> Self:
         if socket_factory is None:
             transport = UdpTransport(
@@ -150,6 +195,7 @@ class SDS200:
                 local_host=local_host,
                 local_port=local_port,
                 reconnect=reconnect,
+                reconnect_policy=reconnect_policy,
                 max_xml_retries=max_xml_retries,
             )
         else:
@@ -159,10 +205,16 @@ class SDS200:
                 local_host=local_host,
                 local_port=local_port,
                 reconnect=reconnect,
+                reconnect_policy=reconnect_policy,
                 max_xml_retries=max_xml_retries,
                 socket_factory=socket_factory,
             )
-        return cls.from_transport(transport, trace_path=trace_path)
+        return cls.from_transport(
+            transport,
+            trace_path=trace_path,
+            health_history_limit=health_history_limit,
+            expected_model="SDS200",
+        )
 
     @classmethod
     def from_profile(
@@ -174,7 +226,9 @@ class SDS200:
         serial_factory: SerialFactory | None = None,
         socket_factory: DatagramSocketFactory | None = None,
         max_xml_retries: int = 2,
+        reconnect_policy: ReconnectPolicy | None = None,
         trace_path: str | Path | None = None,
+        health_history_limit: int = 100,
     ) -> Self:
         if profile.kind == "serial":
             if preference is not None:
@@ -184,8 +238,11 @@ class SDS200:
             return cls(
                 serial_port,
                 baudrate=baudrate,
+                reconnect_policy=reconnect_policy,
                 serial_factory=serial_factory,
                 trace_path=trace_path,
+                health_history_limit=health_history_limit,
+                expected_model=profile.model,
             )
         if profile.kind == "network":
             if preference is not None:
@@ -199,7 +256,9 @@ class SDS200:
                 local_port=profile.bind_port,
                 socket_factory=socket_factory,
                 max_xml_retries=max_xml_retries,
+                reconnect_policy=reconnect_policy,
                 trace_path=trace_path,
+                health_history_limit=health_history_limit,
             )
 
         serial_port = profile.port
@@ -258,9 +317,15 @@ class SDS200:
             "network" if resolved_preference == "serial" else "serial"
         )
         transport = FallbackTransport(
-            (candidates[resolved_preference], candidates[alternate])
+            (candidates[resolved_preference], candidates[alternate]),
+            reconnect_policy=reconnect_policy,
         )
-        return cls.from_transport(transport, trace_path=trace_path)
+        return cls.from_transport(
+            transport,
+            trace_path=trace_path,
+            health_history_limit=health_history_limit,
+            expected_model=profile.model,
+        )
 
     @classmethod
     def from_transport(
@@ -268,8 +333,25 @@ class SDS200:
         transport: ControlTransport,
         *,
         trace_path: str | Path | None = None,
+        health_history_limit: int = 100,
+        health_thresholds: HealthThresholds | None = None,
+        expected_model: ScannerModel | str | None = None,
     ) -> Self:
-        return cls(transport=transport, trace_path=trace_path)
+        return cls(
+            transport=transport,
+            trace_path=trace_path,
+            health_history_limit=health_history_limit,
+            health_thresholds=health_thresholds,
+            expected_model=expected_model,
+        )
+
+    @property
+    def model(self) -> ScannerModel | None:
+        return self._model
+
+    @property
+    def capabilities(self) -> ScannerCapabilities | None:
+        return capabilities_for_model(self._model) if self._model is not None else None
 
     @property
     def endpoint(self) -> str:
@@ -349,6 +431,15 @@ class SDS200:
     ) -> Callable[[], None]:
         return self.events.subscribe("diagnostic", callback)
 
+    def on_event(
+        self,
+        callback: Callable[[RadioEvent], None],
+    ) -> Callable[[], None]:
+        return self.events.subscribe("event", callback)
+
+    def health_summary(self) -> HealthSummary:
+        return self.health_history.summary()
+
     def send(self, command: str) -> None:
         self.trace.tx(command)
         self.transport.write_command(command)
@@ -368,8 +459,20 @@ class SDS200:
         )
         return command.parse_response(response)
 
-    def get_model(self, *, timeout: float = 2.0) -> str:
-        return self.execute(GetModel(), timeout=timeout)
+    def get_model(self, *, timeout: float = 2.0) -> ScannerModel:
+        reported_model = self.execute(GetModel(), timeout=timeout)
+        model = normalize_model_name(reported_model)
+        if model is None:
+            raise UnsupportedScannerModelError(
+                f"Scanner reported unsupported model {reported_model!r}."
+            )
+        if self.expected_model is not None and model != self.expected_model:
+            raise UnsupportedScannerModelError(
+                f"Expected {self.expected_model}, but connected scanner reported {model}."
+            )
+        with self._health_lock:
+            self._model = model
+        return model
 
     def get_firmware(self, *, timeout: float = 2.0) -> str:
         return self.execute(GetFirmware(), timeout=timeout)
@@ -377,14 +480,36 @@ class SDS200:
     def get_volume(self, *, timeout: float = 2.0) -> int:
         return self.execute(GetVolume(), timeout=timeout)
 
+    def _model_capabilities(self, *, timeout: float) -> ScannerCapabilities:
+        model = self._model or self.get_model(timeout=timeout)
+        return capabilities_for_model(model)
+
     def set_volume(self, level: int, *, timeout: float = 2.0) -> None:
-        self.execute(SetVolume(level), timeout=timeout)
+        SetVolume(level)
+        capabilities = self._model_capabilities(timeout=timeout)
+        self.execute(
+            SetVolume(level, maximum=capabilities.maximum_volume),
+            timeout=timeout,
+        )
 
     def get_squelch(self, *, timeout: float = 2.0) -> int:
         return self.execute(GetSquelch(), timeout=timeout)
 
     def set_squelch(self, level: int, *, timeout: float = 2.0) -> None:
-        self.execute(SetSquelch(level), timeout=timeout)
+        SetSquelch(level)
+        capabilities = self._model_capabilities(timeout=timeout)
+        self.execute(
+            SetSquelch(level, maximum=capabilities.maximum_squelch),
+            timeout=timeout,
+        )
+
+    def get_charge_status(self, *, timeout: float = 2.0) -> ChargeStatus:
+        capabilities = self._model_capabilities(timeout=timeout)
+        if not capabilities.charge_status:
+            raise UnsupportedScannerFeatureError(
+                f"{capabilities.model} does not provide handheld charge status."
+            )
+        return self.execute(GetChargeStatus(), timeout=timeout)
 
     def get_status(self, *, timeout: float = 2.0) -> StatusResponse:
         return self.execute(GetStatus(), timeout=timeout)
@@ -392,23 +517,30 @@ class SDS200:
     def get_scanner_info(self, *, timeout: float = 3.0) -> ScannerInfo:
         return self.execute(GetScannerInfo(), timeout=timeout)
 
-    def health_snapshot(self, *, error: str | None = None) -> RadioHealth:
+    def _create_health(
+        self,
+        *,
+        latency_ms: float | None,
+        error: str | None = None,
+        model: str | None = None,
+        firmware: str | None = None,
+    ) -> RadioHealth:
         statistics = (
             self.transport.statistics
             if isinstance(self.transport, StatisticalControlTransport)
             else None
         )
         with self._health_lock:
-            return RadioHealth.create(
+            health = RadioHealth.create(
                 endpoint=self.endpoint,
                 connected=self.connected,
-                model=self._model,
-                firmware=self._firmware,
-                latency_ms=None,
-                status=(
-                    "healthy"
-                    if self.connected and error is None
-                    else "disconnected" if not self.connected else "degraded"
+                model=model if model is not None else self._model,
+                firmware=firmware if firmware is not None else self._firmware,
+                latency_ms=latency_ms,
+                status=self.health_thresholds.classify(
+                    connected=self.connected,
+                    latency_ms=latency_ms,
+                    error=error,
                 ),
                 connection_events=self._connection_events,
                 last_connected_at=self._last_connected_at,
@@ -420,28 +552,20 @@ class SDS200:
                 error=error,
                 statistics=statistics,
             )
+        return self.health_history.record(health)
+
+    def health_snapshot(self, *, error: str | None = None) -> RadioHealth:
+        return self._create_health(latency_ms=None, error=error)
 
     def health_check(self, *, timeout: float = 2.0) -> RadioHealth:
         started = monotonic()
         model = self.get_model(timeout=timeout)
         latency_ms = (monotonic() - started) * 1000.0
         firmware = self.get_firmware(timeout=timeout)
-        snapshot = self.health_snapshot()
-        return RadioHealth.create(
-            endpoint=snapshot.endpoint,
-            connected=snapshot.connected,
+        return self._create_health(
+            latency_ms=latency_ms,
             model=model,
             firmware=firmware,
-            latency_ms=latency_ms,
-            status="healthy",
-            connection_events=snapshot.connection_events,
-            last_connected_at=snapshot.last_connected_at,
-            last_disconnected_at=snapshot.last_disconnected_at,
-            last_response_at=snapshot.last_response_at,
-            last_state_at=snapshot.last_state_at,
-            psi_active=snapshot.psi_active,
-            psi_interval_ms=snapshot.psi_interval_ms,
-            statistics=snapshot.statistics,
         )
 
     def start_scanner_info_push(
@@ -553,6 +677,14 @@ class SDS200:
                 self.events.emit("state_change", change)
                 for field in change.fields:
                     self.events.emit(f"state.{field}", getattr(change.current, field))
+                self._emit_event(
+                    "state.changed",
+                    "Scanner state changed",
+                    data={
+                        "fields": sorted(change.fields),
+                        "state": asdict(change.current),
+                    },
+                )
             self._publish(command, info)
             return
 
@@ -573,7 +705,7 @@ class SDS200:
         with self._health_lock:
             self._last_response_at = datetime.now(UTC)
             if isinstance(response, ModelResponse):
-                self._model = response.model
+                self._model = normalize_model_name(response.model)
             elif isinstance(response, FirmwareResponse):
                 self._firmware = response.version
         self.events.emit("response", response)
@@ -586,6 +718,13 @@ class SDS200:
 
     def _transport_diagnostic(self, diagnostic: TransportDiagnostic) -> None:
         self.events.emit("diagnostic", diagnostic)
+        self._emit_event(
+            f"transport.{diagnostic.kind}",
+            diagnostic.message,
+            endpoint=diagnostic.endpoint,
+            observed_at=diagnostic.observed_at,
+            data=diagnostic.as_dict(),
+        )
 
     def _connection_changed(self, connected: bool) -> None:
         observed_at = datetime.now(UTC)
@@ -598,9 +737,40 @@ class SDS200:
             else:
                 self._last_disconnected_at = observed_at
         self.events.emit("connection", connected)
+        self._emit_event(
+            "connection.connected" if connected else "connection.disconnected",
+            "Scanner transport connected" if connected else "Scanner transport disconnected",
+            endpoint=self.endpoint,
+            observed_at=observed_at,
+            data={"connected": connected},
+        )
         if not connected or self._psi_interval_ms is None:
             return
         try:
             self.send(f"PSI,{self._psi_interval_ms}")
         except SDS200Error:
             logger.warning("Could not restart PSI after reconnect", exc_info=True)
+
+    def _emit_event(
+        self,
+        kind: str,
+        message: str,
+        *,
+        endpoint: str | None = None,
+        observed_at: datetime | None = None,
+        data: dict[str, object] | None = None,
+    ) -> None:
+        self.events.emit(
+            "event",
+            RadioEvent.create(
+                kind,
+                message,
+                endpoint=endpoint or self.endpoint,
+                observed_at=observed_at,
+                data=data,
+            ),
+        )
+
+
+# Backward-compatible public name retained for existing applications.
+SDS200 = SDSScanner

@@ -7,9 +7,10 @@ from types import SimpleNamespace
 import pytest
 
 from sds200 import completion
-from sds200.cli import build_parser, selected_radio
+from sds200.cli import build_parser, main, selected_radio
 from sds200.device import ScannerDevice
 from sds200.network import UdpTransport
+from sds200.profiles import ConnectionProfile, ProfileStore
 
 
 def test_completion_subcommand_parses() -> None:
@@ -123,8 +124,6 @@ def test_udp_options_require_host() -> None:
 
 
 def test_profile_option_loads_saved_network_connection(tmp_path: Path) -> None:
-    from sds200.profiles import ConnectionProfile, ProfileStore
-
     config = tmp_path / "profiles.toml"
     store = ProfileStore(config)
     store.put(ConnectionProfile.network("home", "192.0.2.25"))
@@ -157,8 +156,6 @@ def test_profile_add_options_parse() -> None:
 def test_profile_completer_reads_configured_store(
     tmp_path: Path,
 ) -> None:
-    from sds200.profiles import ConnectionProfile, ProfileStore
-
     config = tmp_path / "profiles.toml"
     ProfileStore(config).put(ConnectionProfile.network("home", "192.0.2.25"))
     parsed_args = SimpleNamespace(config=config)
@@ -203,3 +200,106 @@ def test_profile_preference_override_parses() -> None:
         ["--profile", "home", "--prefer", "network", "info"]
     )
     assert args.connection_preference == "network"
+
+
+def test_reconnect_policy_options_reach_transport() -> None:
+    args = build_parser().parse_args(
+        [
+            "--host",
+            "192.0.2.25",
+            "--reconnect-attempts",
+            "5",
+            "--reconnect-initial-delay",
+            "0.5",
+            "--reconnect-multiplier",
+            "3",
+            "--reconnect-max-delay",
+            "9",
+            "info",
+        ]
+    )
+
+    radio = selected_radio(args)
+
+    assert isinstance(radio.transport, UdpTransport)
+    assert radio.transport.reconnect_policy.max_attempts == 5
+    assert radio.transport.reconnect_policy.delay_for(3) == 4.5
+
+
+def test_events_options_parse() -> None:
+    args = build_parser().parse_args(["events", "--json", "--interval", "250"])
+
+    assert args.action == "events"
+    assert args.json is True
+    assert args.interval == 250
+
+
+def test_profile_repair_options_parse() -> None:
+    args = build_parser().parse_args(
+        [
+            "profile",
+            "repair",
+            "home",
+            "--network",
+            "192.0.2.0/24",
+            "--dry-run",
+        ]
+    )
+
+    assert args.profile_action == "repair"
+    assert args.profile_networks == ["192.0.2.0/24"]
+    assert args.dry_run is True
+
+
+def test_model_option_selects_expected_handheld_model() -> None:
+    args = build_parser().parse_args(
+        ["--model", "SDS150", "--port", "/dev/ttyACM0", "info"]
+    )
+
+    radio = selected_radio(args)
+
+    assert radio.expected_model == "SDS150"
+    assert radio.endpoint == "/dev/ttyACM0"
+
+
+def test_handheld_model_rejects_network_transport() -> None:
+    args = build_parser().parse_args(
+        ["--model", "SDS100", "--host", "192.0.2.25", "info"]
+    )
+
+    with pytest.raises(ValueError, match="only available on the SDS200"):
+        selected_radio(args)
+
+
+def test_battery_subcommand_parses() -> None:
+    args = build_parser().parse_args(["--model", "SDS100", "battery"])
+
+    assert args.action == "battery"
+    assert args.model == "SDS100"
+
+
+def test_profile_add_serial_model_round_trip(tmp_path: Path) -> None:
+    config = tmp_path / "profiles.toml"
+
+    result = main(
+        [
+            "--config",
+            str(config),
+            "profile",
+            "add",
+            "handheld",
+            "--port",
+            "/dev/ttyACM0",
+            "--model",
+            "SDS150",
+        ]
+    )
+
+    assert result == 0
+    assert ProfileStore(config).get("handheld").model == "SDS150"
+
+
+def test_charge_command_completion() -> None:
+    assert completion.command_completer("GC") == {
+        "GCS": "Get handheld charge status"
+    }

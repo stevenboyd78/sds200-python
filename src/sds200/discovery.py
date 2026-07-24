@@ -13,6 +13,7 @@ from time import monotonic
 from typing import Protocol, cast
 
 from .network import DEFAULT_UDP_PORT
+from .scanner import ScannerModel, capabilities_for_model, normalize_model_name
 
 DEFAULT_DISCOVERY_TIMEOUT = 0.6
 DEFAULT_DISCOVERY_WORKERS = 32
@@ -52,7 +53,7 @@ def default_discovery_socket_factory(
 class NetworkScanner:
     host: str
     port: int
-    model: str
+    model: ScannerModel
     latency_ms: float
 
     @property
@@ -125,11 +126,15 @@ def resolve_discovery_networks(
     )
 
 
-def _decode_model_response(data: bytes) -> str | None:
+def _decode_model_response(data: bytes) -> ScannerModel | None:
     response = data.decode("utf-8", errors="replace").strip("\x00\r\n ")
-    if not response.upper().startswith("MDL,SDS200"):
+    if not response.upper().startswith("MDL,"):
         return None
-    return response.split(",", 1)[1] if "," in response else "SDS200"
+    reported_model = response.split(",", 1)[1].strip()
+    model = normalize_model_name(reported_model)
+    if model is None or not capabilities_for_model(model).network_control:
+        return None
+    return model
 
 
 def _probe_network_host(
@@ -211,7 +216,7 @@ def discover_network_scanners(
 
     Each target uses an isolated UDP socket. Bounded parallelism prevents
     large CIDR scans from flooding the neighbour table while ensuring that
-    ICMP errors from ordinary hosts cannot hide a valid SDS200 response.
+    ICMP errors from ordinary hosts cannot hide a valid network-capable SDS-series response.
     """
     if not 1 <= port <= 65535:
         raise ValueError("Discovery UDP port must be between 1 and 65535.")

@@ -8,8 +8,47 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Planned
 
-- Validated SDS200 network audio transport
+- Validated SDS200 network audio transport after control reliability work
 - Optional preferred-transport recovery without connection flapping
+
+## [0.8.0] - 2026-07-24
+
+### Added
+
+- USB serial control support for the Uniden SDS100 and SDS150
+- Model-neutral `SDSScanner` API while retaining the historical `SDS200` alias
+- Scanner capability metadata and model-specific volume and squelch limits
+- SDS100/SDS150 `GCS` battery and charge-status parsing and CLI output
+- Model-aware USB discovery, selection, profiles, repair, and completions
+- SDS150 `SDS150GBT` and Uniden internal model-name normalization
+- LF, CR, and CRLF serial response framing for shared SDS-series commands
+- Multi-model protocol, profile, discovery, and command regression tests
+
+### Changed
+
+- Network discovery and UDP profiles are explicitly restricted to the SDS200
+- Profile documents advance to version 3 and can retain the scanner model
+- Documentation distinguishes protocol support from physical-hardware validation
+- Package version advanced to 0.8.0
+
+## [0.7.0] - 2026-07-23
+
+### Added
+
+- Configurable exponential reconnect backoff with finite or unlimited attempts
+- Structured `RadioEvent` notifications and `events --json` JSON Lines output
+- Bounded health history with latency, error-rate, reconnect, and failover summaries
+- Health thresholds for healthy, degraded, unhealthy, and disconnected states
+- Discovery-based profile repair for stale USB paths and changed network addresses
+- Detailed failover telemetry including previous and active endpoints
+- Reliability regression tests for backoff, history, events, and profile repair
+
+### Changed
+
+- Serial, UDP, and fallback reconnect loops now share one recovery policy
+- `health --history` can include historical metrics in human or JSON output
+- Network audio remains deferred and documented as future work
+- Package version advanced to 0.7.0
 
 ## [0.6.0] - 2026-07-23
 
@@ -122,6 +161,8 @@ First planned GitHub prerelease.
 - Added serial discovery, transport, packet framing, core responses, CLI tools,
   examples, tests, and CI.
 
-[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.5.3...v0.6.0
 [0.5.3]: https://github.com/stevenboyd78/sds200-python/releases/tag/v0.5.3

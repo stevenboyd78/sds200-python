@@ -1,6 +1,6 @@
-from sds200 import SDS200
+from sds200 import SDSScanner
 
-with SDS200.network("192.168.1.50", trace_path="network.trace") as radio:
+with SDSScanner.network("192.168.1.50", trace_path="network.trace") as radio:
     radio.on_state_change(
         lambda change: print(change.fields, change.current.channel)
     )

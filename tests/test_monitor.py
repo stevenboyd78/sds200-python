@@ -22,7 +22,7 @@ def test_format_snapshot_includes_live_fields() -> None:
         observed_at=datetime(2026, 7, 23, 12, 0, tzinfo=UTC),
     )
 
-    assert "SDS200 Live Monitor" in rendered
+    assert "SDS-series Live Monitor" in rendered
     assert "Patch 65132" in rendered
     assert "769.431250MHz" in rendered
     assert "█████ (5)" in rendered

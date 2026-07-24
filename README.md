@@ -5,8 +5,9 @@
 ![Development status: alpha](https://img.shields.io/badge/status-alpha-orange)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
-Python control and monitoring library for the **Uniden SDS200** scanner over USB
-serial or Ethernet.
+Python control and monitoring library for the **Uniden SDS100, SDS150, and
+SDS200** scanners. All three models support USB serial control; the SDS200 also
+supports native Ethernet control.
 
 The project provides a typed Python API and an `sds200` command-line tool for
 scanner discovery, status monitoring, commands, connection profiles, diagnostics,
@@ -18,8 +19,10 @@ and live state updates.
 
 ## Features
 
-- USB serial control using stable Linux `/dev/serial/by-id` paths
+- USB serial control for SDS100, SDS150, and SDS200 scanners
 - Native SDS200 Ethernet control over UDP
+- Model detection, aliases, capability reporting, and model-specific limits
+- SDS100/SDS150 battery and charge-status reporting
 - Automatic USB and bounded LAN discovery
 - Saved serial, network, and automatic fallback profiles
 - Preferred transport ordering with live USB/Ethernet failover
@@ -27,24 +30,29 @@ and live state updates.
 - Structured `GSI` and continuous `PSI` scanner information
 - Thread-safe synchronized radio state and change events
 - Live terminal monitoring
-- Traffic tracing, continuous health watching, and reconnect diagnostics
+- Exponential reconnect backoff with configurable retry limits
+- Traffic tracing, bounded health history, and failover diagnostics
+- JSON Lines events for connection, retry, failover, and state changes
+- Discovery-based repair for stale USB paths and scanner IP addresses
 - Separate public audio-stream architecture for future network audio
 - UDP XML fragment validation, statistics, and bounded retries
 - Bash and Zsh tab completion
 - Strict MyPy typing, Ruff checks, and hardware-independent tests
 
-Network audio streaming is not implemented yet; its control-independent API groundwork is available.
+Network audio streaming remains on the roadmap but is deferred while control-path reliability matures. Its control-independent API groundwork remains available.
 
 ## Requirements
 
 - Python 3.11 or newer
-- A Uniden SDS200
+- A Uniden SDS100, SDS150, or SDS200
 - For USB: scanner connected as a serial device
 - For Ethernet: scanner and computer on a trusted local network
 
 Linux USB and Ethernet operation have been validated with an SDS200 running
-firmware version 1.26.01. Explicit network hosts work on any platform supported
-by Python's UDP sockets. Automatic route detection and `/dev/serial/by-id`
+firmware version 1.26.01. SDS100 and SDS150 support follows Uniden's shared
+SDS-series remote-command specification and still needs physical-hardware
+validation. Explicit SDS200 network hosts work on any platform supported by
+Python's UDP sockets. Automatic route detection and `/dev/serial/by-id`
 discovery are Linux-specific.
 
 ## Installation
@@ -89,10 +97,17 @@ Only scan networks you own or are authorized to probe.
 
 ### USB serial
 
-Show scanner information:
+Show scanner information using automatic model detection:
 
 ```bash
 sds200 info
+```
+
+Select a specific model when multiple USB scanners are connected:
+
+```bash
+sds200 --model SDS100 info
+sds200 --model SDS150 info
 ```
 
 Start the live monitor:
@@ -109,7 +124,7 @@ sds200 \
   info
 ```
 
-### Ethernet
+### SDS200 Ethernet
 
 ```bash
 sds200 --host 192.168.0.251 info
@@ -141,25 +156,53 @@ Manual profiles remain supported:
 ```bash
 sds200 profile add network-only --host 192.168.0.251
 sds200 profile add usb-only \
-  --port /dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00
+  --port /dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00 \
+  --model SDS200
+sds200 profile add handheld --port /dev/ttyACM0 --model SDS150
 ```
 
 Profiles are stored in `${XDG_CONFIG_HOME:-~/.config}/sds200/profiles.toml`.
 
-### Health and diagnostics
+Repair stale USB paths or a changed scanner IP address without losing the saved
+transport preference:
+
+```bash
+sds200 profile repair home --network 192.168.0.0/24
+sds200 profile repair home --network 192.168.0.0/24 --dry-run
+```
+
+### Reliability, health, and events
 
 ```bash
 sds200 --profile home health
-sds200 --profile home health --watch 5
-sds200 --profile home health --json
+sds200 --profile home health --watch 5 --history
+sds200 --profile home health --watch 5 --history --json
+sds200 --profile home events --json
 sds200 --host 192.168.0.251 --trace scanner.trace monitor
 ```
+
+
+Reconnects use capped exponential backoff. Retry forever by default, or set a
+finite recovery budget:
+
+```bash
+sds200 --profile home \
+  --reconnect-attempts 8 \
+  --reconnect-initial-delay 1 \
+  --reconnect-multiplier 2 \
+  --reconnect-max-delay 30 \
+  monitor
+```
+
+`events --json` emits one JSON object per line for connection changes,
+transport diagnostics, reconnect scheduling, failovers, and live state changes.
 
 ### Raw protocol commands
 
 ```bash
 sds200 command MDL
 sds200 command VER
+sds200 command GCS  # SDS100/SDS150 charge status
 sds200 command VOL
 sds200 command SQL
 sds200 command STS
@@ -193,21 +236,21 @@ eval "$(sds200 completion zsh)"
 ### USB
 
 ```python
-from sds200 import SDS200
+from sds200 import SDSScanner
 
-with SDS200.auto() as radio:
+with SDSScanner.auto(model="SDS150") as radio:
     print(radio.get_model())
     print(radio.get_firmware())
     print(radio.get_volume())
     print(radio.get_squelch())
 ```
 
-### Ethernet
+### SDS200 Ethernet
 
 ```python
-from sds200 import SDS200
+from sds200 import SDSScanner
 
-with SDS200.network("192.168.0.251") as radio:
+with SDSScanner.network("192.168.0.251") as radio:
     info = radio.get_scanner_info()
     print(info.system)
     print(info.department)
@@ -218,15 +261,32 @@ with SDS200.network("192.168.0.251") as radio:
 ### Continuous state updates
 
 ```python
-from sds200 import SDS200
+from sds200 import SDSScanner
 
-with SDS200.network("192.168.0.251") as radio:
+with SDSScanner.network("192.168.0.251") as radio:
     radio.on_state_change(
         lambda change: print(change.fields, change.current.channel)
     )
 
     with radio.scanner_info_push(interval_ms=500):
         radio.wait()
+```
+
+### Reconnect policy and health history
+
+```python
+from sds200 import ReconnectPolicy, SDSScanner
+
+policy = ReconnectPolicy(
+    initial_delay=1.0,
+    multiplier=2.0,
+    max_delay=30.0,
+    max_attempts=8,
+)
+
+with SDSScanner.network("192.168.0.251", reconnect_policy=policy) as radio:
+    print(radio.health_check().as_dict())
+    print(radio.health_summary().as_dict())
 ```
 
 ### LAN discovery
@@ -237,6 +297,12 @@ from sds200 import discover_network_scanners
 for scanner in discover_network_scanners(["192.168.0.0/24"]):
     print(scanner.endpoint, scanner.model, scanner.latency_ms)
 ```
+
+## Compatibility naming
+
+The distribution, import package, configuration directory, and original CLI
+remain named `sds200` for backward compatibility. New Python applications should
+prefer `SDSScanner`; the historical `SDS200` name remains a compatible alias.
 
 ## Security
 
@@ -252,9 +318,11 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting and
 
 ## Documentation
 
+- [Supported scanner models](docs/supported-models.md)
 - [Control transports](docs/transports.md)
 - [LAN discovery and profiles](docs/discovery-and-profiles.md)
 - [Fallback profiles](docs/fallback-profiles.md)
+- [Reliability and observability](docs/reliability.md)
 - [Audio subsystem architecture](docs/audio.md)
 - [Contributing](CONTRIBUTING.md)
 - [Support](SUPPORT.md)
@@ -279,10 +347,10 @@ documented separately in pull requests and release notes.
 
 ## Project status
 
-Version `0.6.0` adds discovery-driven fallback profiles and expanded health diagnostics. The control, discovery,
-monitoring, profile, and diagnostic paths have been validated against real
-SDS200 hardware over both USB and Ethernet. API compatibility is not guaranteed
-until version 1.0.
+Version `0.8.0` adds model-aware SDS100 and SDS150 USB support while preserving
+the validated SDS200 USB, Ethernet, fallback, monitoring, profile, and
+reliability paths. SDS100 and SDS150 hardware validation is still in progress.
+API compatibility is not guaranteed until version 1.0.
 
 See [CHANGELOG.md](CHANGELOG.md) for development history and planned changes.
 

@@ -12,6 +12,7 @@ from typing import Protocol, runtime_checkable
 import serial
 
 from .exceptions import ScannerConnectionError
+from .reliability import ReconnectCounter, ReconnectPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,24 @@ class TransportDiagnostic:
     endpoint: str | None = None
     expected_fragment: int | None = None
     received_fragment: int | None = None
+    attempt: int | None = None
+    delay_seconds: float | None = None
+    previous_endpoint: str | None = None
     observed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "kind": self.kind,
+            "message": self.message,
+            "command": self.command,
+            "endpoint": self.endpoint,
+            "expected_fragment": self.expected_fragment,
+            "received_fragment": self.received_fragment,
+            "attempt": self.attempt,
+            "delay_seconds": self.delay_seconds,
+            "previous_endpoint": self.previous_endpoint,
+            "observed_at": self.observed_at.isoformat(),
+        }
 
 
 DiagnosticHandler = Callable[[TransportDiagnostic], None]
@@ -87,6 +105,10 @@ class _MutableSerialStatistics:
     write_errors: int = 0
     connection_opens: int = 0
     reconnects: int = 0
+    reconnect_attempts: int = 0
+    reconnect_failures: int = 0
+    reconnect_exhausted: int = 0
+    last_reconnect_at: datetime | None = None
     last_receive_at: datetime | None = None
     last_error: str | None = None
 
@@ -100,6 +122,14 @@ class _MutableSerialStatistics:
                 "write_errors": self.write_errors,
                 "connection_opens": self.connection_opens,
                 "reconnects": self.reconnects,
+                "reconnect_attempts": self.reconnect_attempts,
+                "reconnect_failures": self.reconnect_failures,
+                "reconnect_exhausted": self.reconnect_exhausted,
+                "last_reconnect_at": (
+                    self.last_reconnect_at.isoformat()
+                    if self.last_reconnect_at is not None
+                    else None
+                ),
                 "last_receive_at": (
                     self.last_receive_at.isoformat()
                     if self.last_receive_at is not None
@@ -125,6 +155,20 @@ def default_serial_factory(
     )
 
 
+def _pop_serial_line(buffer: bytearray) -> bytes | None:
+    carriage_return = buffer.find(b"\r")
+    line_feed = buffer.find(b"\n")
+    indexes = tuple(index for index in (carriage_return, line_feed) if index >= 0)
+    if not indexes:
+        return None
+    delimiter = min(indexes)
+    line = bytes(buffer[:delimiter])
+    del buffer[: delimiter + 1]
+    while buffer and buffer[0] in {10, 13}:
+        del buffer[0]
+    return line
+
+
 class SerialTransport:
     def __init__(
         self,
@@ -134,13 +178,22 @@ class SerialTransport:
         read_timeout: float = 0.2,
         reconnect: bool = True,
         reconnect_interval: float = 2.0,
+        reconnect_policy: ReconnectPolicy | None = None,
         serial_factory: SerialFactory = default_serial_factory,
     ) -> None:
         self.port = str(port)
         self.baudrate = baudrate
         self.read_timeout = read_timeout
+        if reconnect_interval <= 0:
+            raise ValueError("Reconnect interval must be greater than zero.")
         self.reconnect = reconnect
         self.reconnect_interval = reconnect_interval
+        self.reconnect_policy = reconnect_policy or ReconnectPolicy(
+            initial_delay=reconnect_interval,
+            multiplier=1.0,
+            max_delay=reconnect_interval,
+        )
+        self._reconnect_counter = ReconnectCounter(self.reconnect_policy)
         self._serial_factory = serial_factory
         self._serial: SerialLike | None = None
         self._handler: LineHandler | None = None
@@ -258,6 +311,16 @@ class SerialTransport:
             self._statistics.connection_opens += 1
             if was_reconnect:
                 self._statistics.reconnects += 1
+                self._statistics.last_reconnect_at = datetime.now(UTC)
+        if was_reconnect:
+            self._emit_diagnostic(
+                TransportDiagnostic(
+                    kind="reconnected",
+                    endpoint=self.endpoint,
+                    message=f"Reconnected scanner serial transport on {self.endpoint}",
+                )
+            )
+        self._reconnect_counter.reset()
         logger.info("Connected to scanner on %s", self.port)
         self._notify_connection(True)
 
@@ -295,15 +358,53 @@ class SerialTransport:
             if not self.connected:
                 if not self.reconnect:
                     return
+                scheduled = self._reconnect_counter.next()
+                if scheduled is None:
+                    with self._statistics_lock:
+                        self._statistics.reconnect_exhausted += 1
+                    self._emit_diagnostic(
+                        TransportDiagnostic(
+                            kind="reconnect_exhausted",
+                            endpoint=self.endpoint,
+                            message=(
+                                "Serial reconnect policy exhausted after "
+                                f"{self._reconnect_counter.attempts} attempts"
+                            ),
+                            attempt=self._reconnect_counter.attempts,
+                        )
+                    )
+                    return
+                attempt, delay = scheduled
+                with self._statistics_lock:
+                    self._statistics.reconnect_attempts += 1
+                self._emit_diagnostic(
+                    TransportDiagnostic(
+                        kind="reconnect_scheduled",
+                        endpoint=self.endpoint,
+                        message=(
+                            f"Serial reconnect attempt {attempt} scheduled in "
+                            f"{delay:.1f} seconds"
+                        ),
+                        attempt=attempt,
+                        delay_seconds=delay,
+                    )
+                )
+                if self._stop.wait(delay):
+                    return
                 try:
                     self._open()
-                except ScannerConnectionError:
-                    logger.warning(
-                        "Reconnect failed for %s; retrying in %.1f seconds",
-                        self.port,
-                        self.reconnect_interval,
+                except ScannerConnectionError as exc:
+                    with self._statistics_lock:
+                        self._statistics.reconnect_failures += 1
+                        self._statistics.last_error = str(exc)
+                    self._emit_diagnostic(
+                        TransportDiagnostic(
+                            kind="reconnect_failed",
+                            endpoint=self.endpoint,
+                            message=f"Serial reconnect attempt {attempt} failed: {exc}",
+                            attempt=attempt,
+                        )
                     )
-                    self._stop.wait(self.reconnect_interval)
                     continue
 
             serial_port = self._serial
@@ -340,9 +441,10 @@ class SerialTransport:
                 self._statistics.last_receive_at = datetime.now(UTC)
             buffer.extend(chunk)
 
-            while b"\r" in buffer:
-                raw_line, _, remainder = buffer.partition(b"\r")
-                buffer = bytearray(remainder)
+            while True:
+                raw_line = _pop_serial_line(buffer)
+                if raw_line is None:
+                    break
                 line = raw_line.decode("utf-8", errors="replace")
                 logger.debug("RX %s", line)
                 with self._statistics_lock:

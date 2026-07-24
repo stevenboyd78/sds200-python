@@ -29,7 +29,7 @@ def format_snapshot(
 
     return "\n".join(
         (
-            "SDS200 Live Monitor",
+            "SDS-series Live Monitor",
             "=" * 64,
             f"Endpoint    : {endpoint}",
             f"Updated     : {timestamp}",

@@ -5,6 +5,7 @@ from typing import Protocol, TypeVar
 
 from .exceptions import ProtocolError
 from .models import (
+    ChargeStatus,
     FirmwareResponse,
     ModelResponse,
     Packet,
@@ -59,6 +60,22 @@ class GetFirmware:
 
 
 @dataclass(frozen=True, slots=True)
+class GetChargeStatus:
+    @property
+    def wire(self) -> str:
+        return "GCS"
+
+    @property
+    def response_command(self) -> str:
+        return "GCS"
+
+    def parse_response(self, response: object) -> ChargeStatus:
+        if not isinstance(response, ChargeStatus):
+            raise TypeError("GCS did not return ChargeStatus")
+        return response
+
+
+@dataclass(frozen=True, slots=True)
 class GetVolume:
     @property
     def wire(self) -> str:
@@ -77,10 +94,15 @@ class GetVolume:
 @dataclass(frozen=True, slots=True)
 class SetVolume:
     level: int
+    maximum: int = 29
 
     def __post_init__(self) -> None:
-        if not 0 <= self.level <= 29:
-            raise ValueError("SDS200 volume must be between 0 and 29.")
+        if self.maximum <= 0:
+            raise ValueError("Maximum volume must be positive.")
+        if not 0 <= self.level <= self.maximum:
+            raise ValueError(
+                f"SDS-series volume must be between 0 and {self.maximum}."
+            )
 
     @property
     def wire(self) -> str:
@@ -115,10 +137,15 @@ class GetSquelch:
 @dataclass(frozen=True, slots=True)
 class SetSquelch:
     level: int
+    maximum: int = 19
 
     def __post_init__(self) -> None:
-        if not 0 <= self.level <= 19:
-            raise ValueError("SDS200 squelch must be between 0 and 19.")
+        if self.maximum <= 0:
+            raise ValueError("Maximum squelch must be positive.")
+        if not 0 <= self.level <= self.maximum:
+            raise ValueError(
+                f"SDS-series squelch must be between 0 and {self.maximum}."
+            )
 
     @property
     def wire(self) -> str:

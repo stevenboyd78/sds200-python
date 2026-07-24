@@ -12,8 +12,8 @@ from .events import EventBus
 class AudioChunk:
     """Opaque audio bytes received from an audio transport.
 
-    Codec and packet framing intentionally remain transport-specific until the
-    SDS200 network audio protocol is implemented and validated against hardware.
+    Codec and packet framing intentionally remain transport-specific until
+    a scanner audio protocol is implemented and validated against hardware.
     """
 
     data: bytes
@@ -41,7 +41,7 @@ class AudioTransport(Protocol):
 class AudioStream:
     """Transport-independent audio event stream.
 
-    Audio is deliberately separate from :class:`sds200.SDS200`, so control
+    Audio is deliberately separate from :class:`sds200.SDSScanner`, so control
     failover and protocol parsing cannot be destabilized by audio work.
     """
 

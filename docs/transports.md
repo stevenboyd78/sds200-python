@@ -1,24 +1,28 @@
 # Control transports
 
-The radio protocol is separated from the connection mechanism. `SDS200`
-depends on the `ControlTransport` protocol, while `SerialTransport` and
-`UdpTransport` provide USB and Ethernet implementations.
+The radio protocol is separated from the connection mechanism. `SDSScanner`
+depends on the `ControlTransport` protocol, while `SerialTransport` provides
+USB control for the SDS100, SDS150, and SDS200 and `UdpTransport` provides
+SDS200 Ethernet control.
 
 ## USB serial
 
-```python
-from sds200 import SDS200
+USB serial is supported by all three scanner models. Pass `model` to narrow
+automatic discovery and verify the `MDL` response:
 
-with SDS200.auto() as radio:
+```python
+from sds200 import SDSScanner
+
+with SDSScanner.auto(model="SDS150") as radio:
     print(radio.get_model())
 ```
 
 An explicit path can also be used:
 
 ```python
-from sds200 import SDS200
+from sds200 import SDSScanner
 
-radio = SDS200("/dev/serial/by-id/usb-UNIDEN_...")
+radio = SDSScanner("/dev/serial/by-id/usb-UNIDEN_...")
 ```
 
 ## SDS200 Ethernet control
@@ -28,9 +32,9 @@ as CR-terminated UDP datagrams. It uses scanner port `50536` by default and
 does not require negotiation or a protocol header.
 
 ```python
-from sds200 import SDS200
+from sds200 import SDSScanner
 
-with SDS200.network("192.168.1.50") as radio:
+with SDSScanner.network("192.168.1.50") as radio:
     print(radio.get_model())
     print(radio.get_firmware())
 ```
@@ -38,7 +42,7 @@ with SDS200.network("192.168.1.50") as radio:
 The same high-level API works over either transport:
 
 ```python
-with SDS200.network("192.168.1.50") as radio:
+with SDSScanner.network("192.168.1.50") as radio:
     radio.on_state_change(
         lambda change: print(change.fields, change.current.channel)
     )
@@ -50,7 +54,7 @@ Advanced socket options are available when a specific local interface or port
 is required:
 
 ```python
-radio = SDS200.network(
+radio = SDSScanner.network(
     "scanner.local",
     remote_port=50536,
     local_host="192.168.1.10",
@@ -73,15 +77,17 @@ Keep it on a trusted LAN or access it through a VPN. Do not forward UDP port
 
 Network audio is a separate protocol and is not part of `UdpTransport`.
 
+SDS100 and SDS150 do not use this native UDP control transport.
+
 ## Custom transports
 
 A custom transport must expose an endpoint, connection state, CR-delimited
 incoming lines, command writes, and lifecycle methods:
 
 ```python
-from sds200 import SDS200
+from sds200 import SDSScanner
 
-radio = SDS200.from_transport(my_transport)
+radio = SDSScanner.from_transport(my_transport)
 ```
 
 This contract allows future connection types to reuse commands, parsing, state,
@@ -95,13 +101,13 @@ When a fragment is missing or invalid, the transport emits a
 `GSI` or `PSI` request. The default retry limit is two:
 
 ```python
-radio = SDS200.network("192.168.0.251", max_xml_retries=3)
+radio = SDSScanner.network("192.168.0.251", max_xml_retries=3)
 ```
 
 Transport counters are available through a radio health check:
 
 ```python
-with SDS200.network("192.168.0.251") as radio:
+with SDSScanner.network("192.168.0.251") as radio:
     health = radio.health_check()
     print(health.latency_ms)
     print(health.statistics)

@@ -1,5 +1,6 @@
 from .audio import AudioChunk, AudioStream, AudioTransport
 from .commands import (
+    GetChargeStatus,
     GetFirmware,
     GetModel,
     GetScannerInfo,
@@ -10,18 +11,32 @@ from .commands import (
     SetVolume,
     StartScannerInfoPush,
 )
-from .device import DEFAULT_SDS200_PATTERN, ScannerDevice, discover_scanners
+from .device import (
+    DEFAULT_SDS200_PATTERN,
+    DEFAULT_SDS_PATTERN,
+    ScannerDevice,
+    discover_scanners,
+)
 from .discovery import (
     DEFAULT_DISCOVERY_WORKERS,
     NetworkScanner,
     discover_network_scanners,
     local_ipv4_networks,
 )
+from .exceptions import (
+    SDS200Error,
+    SDSScannerError,
+    UnsupportedScannerFeatureError,
+    UnsupportedScannerModelError,
+)
 from .fallback import FallbackTransport, TransportCandidate
 from .models import (
+    ChargeStatus,
     FirmwareResponse,
+    HealthSummary,
     ModelResponse,
     Packet,
+    RadioEvent,
     RadioHealth,
     ScannerInfo,
     ScannerNode,
@@ -33,11 +48,22 @@ from .profiles import (
     TRANSPORT_PREFERENCES,
     ConnectionProfile,
     ProfileKind,
+    ProfileRepairResult,
     ProfileStore,
     TransportPreference,
     profile_from_discovery,
+    repair_profile,
 )
-from .radio import SDS200
+from .radio import SDS200, SDSScanner
+from .reliability import HealthHistory, HealthThresholds, ReconnectPolicy
+from .scanner import (
+    SUPPORTED_SCANNER_MODELS,
+    ScannerCapabilities,
+    ScannerModel,
+    capabilities_for_model,
+    infer_model_from_device_name,
+    normalize_model_name,
+)
 from .state import RadioState, RadioStateSnapshot, StateChange
 from .transport import (
     ControlTransport,
@@ -49,30 +75,45 @@ __all__ = [
     "AudioChunk",
     "AudioStream",
     "AudioTransport",
+    "ChargeStatus",
     "ConnectionProfile",
     "ControlTransport",
     "DEFAULT_DISCOVERY_WORKERS",
+    "DEFAULT_SDS_PATTERN",
     "DEFAULT_SDS200_PATTERN",
     "DEFAULT_UDP_PORT",
     "FallbackTransport",
     "FirmwareResponse",
+    "GetChargeStatus",
     "GetFirmware",
     "GetModel",
     "GetScannerInfo",
     "GetSquelch",
     "GetStatus",
     "GetVolume",
+    "HealthHistory",
+    "HealthSummary",
+    "HealthThresholds",
     "ModelResponse",
     "NetworkScanner",
     "Packet",
     "ProfileKind",
+    "ProfileRepairResult",
     "ProfileStore",
+    "RadioEvent",
     "RadioHealth",
     "RadioState",
     "RadioStateSnapshot",
+    "ReconnectPolicy",
     "SDS200",
+    "SDS200Error",
+    "SDSScanner",
+    "SDSScannerError",
+    "SUPPORTED_SCANNER_MODELS",
+    "ScannerCapabilities",
     "ScannerDevice",
     "ScannerInfo",
+    "ScannerModel",
     "ScannerNode",
     "SerialTransport",
     "SetSquelch",
@@ -86,11 +127,17 @@ __all__ = [
     "TransportDiagnostic",
     "UdpDatagramDecoder",
     "UdpTransport",
+    "UnsupportedScannerFeatureError",
+    "UnsupportedScannerModelError",
     "ValueResponse",
+    "capabilities_for_model",
     "discover_network_scanners",
     "discover_scanners",
+    "infer_model_from_device_name",
     "local_ipv4_networks",
+    "normalize_model_name",
     "profile_from_discovery",
+    "repair_profile",
 ]
 
-__version__ = "0.6.0"
+__version__ = "0.8.0"

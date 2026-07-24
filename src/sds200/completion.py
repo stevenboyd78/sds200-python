@@ -12,6 +12,7 @@ from .profiles import ProfileStore
 SUPPORTED_SHELLS = ("bash", "zsh")
 
 KNOWN_COMMANDS: Mapping[str, str] = {
+    "GCS": "Get handheld charge status",
     "GSI": "Get structured scanner information",
     "MDL": "Get scanner model",
     "PSI,0": "Stop scanner information updates",
@@ -68,10 +69,11 @@ def port_completer(prefix: str, **_: object) -> dict[str, str]:
     for device in discover_scanners():
         stable_path = str(device.path)
         resolved_path = str(device.resolved_path)
+        model = device.model or "SDS-series"
         if stable_path.startswith(prefix):
-            suggestions[stable_path] = f"SDS200 → {resolved_path}"
+            suggestions[stable_path] = f"{model} → {resolved_path}"
         if resolved_path.startswith(prefix):
-            suggestions[resolved_path] = f"SDS200 via {Path(stable_path).name}"
+            suggestions[resolved_path] = f"{model} via {Path(stable_path).name}"
     return suggestions
 
 

@@ -34,3 +34,12 @@ def test_psi_command_rejects_negative_acknowledgement() -> None:
     packet = Packet(command="PSI", fields=("NG",), raw="PSI,NG")
     with pytest.raises(ProtocolError, match="rejected PSI"):
         StartScannerInfoPush().parse_response(packet)
+
+
+def test_handheld_volume_and_squelch_limits() -> None:
+    assert SetVolume(15, maximum=15).wire == "VOL,15"
+    assert SetSquelch(15, maximum=15).wire == "SQL,15"
+    with pytest.raises(ValueError, match="between 0 and 15"):
+        SetVolume(16, maximum=15)
+    with pytest.raises(ValueError, match="between 0 and 15"):
+        SetSquelch(16, maximum=15)

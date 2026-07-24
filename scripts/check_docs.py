@@ -15,6 +15,7 @@ REQUIRED_FILES = (
     Path("SECURITY.md"),
     Path("SUPPORT.md"),
     Path("docs/releasing.md"),
+    Path("docs/supported-models.md"),
     Path(".github/PULL_REQUEST_TEMPLATE.md"),
     Path(".github/ISSUE_TEMPLATE/bug_report.yml"),
     Path(".github/ISSUE_TEMPLATE/feature_request.yml"),
