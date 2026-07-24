@@ -50,32 +50,32 @@ Confirm it contains:
 Run over USB for each available model:
 
 ```bash
-sds200 --model SDS100 info
-sds200 --model SDS150 info
-sds200 --model SDS200 info
-sds200 scanner-info
-sds200 monitor
+sdsctl --model SDS100 info
+sdsctl --model SDS150 info
+sdsctl --model SDS200 info
+sdsctl scanner-info
+sdsctl monitor
 ```
 
-For an SDS100 or SDS150, also run `sds200 --model MODEL battery` and verify the
+For an SDS100 or SDS150, also run `sdsctl --model MODEL battery` and verify the
 reported charge fields are plausible.
 
 Run over SDS200 Ethernet:
 
 ```bash
-sds200 --host SCANNER_IP info
-sds200 --host SCANNER_IP scanner-info
-sds200 --host SCANNER_IP monitor
-sds200 discover --network SCANNER_SUBNET --network-only
+sdsctl --host SCANNER_IP info
+sdsctl --host SCANNER_IP scanner-info
+sdsctl --host SCANNER_IP monitor
+sdsctl discover --network SCANNER_SUBNET --network-only
 ```
 
 Check profile and health paths:
 
 ```bash
-sds200 profile list
-sds200 profile repair PROFILE --network SCANNER_SUBNET --dry-run
-sds200 --profile PROFILE health --history
-sds200 --profile PROFILE events --json
+sdsctl profile list
+sdsctl profile repair PROFILE --network SCANNER_SUBNET --dry-run
+sdsctl --profile PROFILE health --history
+sdsctl --profile PROFILE events --json
 ```
 
 For a long-running reliability check, leave `events --json` and

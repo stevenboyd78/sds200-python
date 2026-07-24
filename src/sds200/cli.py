@@ -120,7 +120,7 @@ def _add_network_options(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="sds200")
+    parser = argparse.ArgumentParser(prog="sdsctl")
     parser.add_argument(
         "--config",
         type=Path,

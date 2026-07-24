@@ -3,7 +3,7 @@
 Version 0.7.0 can create a connection profile directly from discovery:
 
 ```bash
-sds200 profile discover home \
+sdsctl profile discover home \
   --network 192.168.0.0/24 \
   --prefer network
 ```
@@ -18,13 +18,13 @@ to guess when more than one scanner of the same transport type is present.
 Use the profile normally:
 
 ```bash
-sds200 --profile home monitor
+sdsctl --profile home monitor
 ```
 
 Override its saved preference for one invocation:
 
 ```bash
-sds200 --profile home --prefer serial monitor
+sdsctl --profile home --prefer serial monitor
 ```
 
 The preferred transport is attempted first. If it cannot connect, the alternate
@@ -47,7 +47,7 @@ wait is interruptible, so `Ctrl-C` and normal shutdown do not wait for the delay
 to expire.
 
 ```bash
-sds200 --profile home \
+sdsctl --profile home \
   --reconnect-attempts 8 \
   --reconnect-initial-delay 1 \
   --reconnect-multiplier 2 \

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sds200"
-version = "0.8.0"
+version = "0.8.1"
 description = "Python control library for Uniden SDS100, SDS150, and SDS200 scanners"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -60,7 +60,7 @@ Issues = "https://github.com/stevenboyd78/sds200-python/issues"
 Changelog = "https://github.com/stevenboyd78/sds200-python/blob/main/CHANGELOG.md"
 
 [project.scripts]
-sds200 = "sds200.cli:main"
+sdsctl = "sds200.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sds200"]

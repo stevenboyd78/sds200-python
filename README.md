@@ -9,7 +9,7 @@ Python control and monitoring library for the **Uniden SDS100, SDS150, and
 SDS200** scanners. All three models support USB serial control; the SDS200 also
 supports native Ethernet control.
 
-The project provides a typed Python API and an `sds200` command-line tool for
+The project provides a typed Python API and an `sdsctl` command-line tool for
 scanner discovery, status monitoring, commands, connection profiles, diagnostics,
 and live state updates.
 
@@ -83,13 +83,13 @@ python -m pip install -e ".[dev]"
 Search USB and directly connected IPv4 networks:
 
 ```bash
-sds200 discover
+sdsctl discover
 ```
 
 Search a specific network:
 
 ```bash
-sds200 discover --network 192.168.0.0/24 --network-only
+sdsctl discover --network 192.168.0.0/24 --network-only
 ```
 
 Active LAN discovery sends the read-only `MDL` command to each usable host.
@@ -100,26 +100,26 @@ Only scan networks you own or are authorized to probe.
 Show scanner information using automatic model detection:
 
 ```bash
-sds200 info
+sdsctl info
 ```
 
 Select a specific model when multiple USB scanners are connected:
 
 ```bash
-sds200 --model SDS100 info
-sds200 --model SDS150 info
+sdsctl --model SDS100 info
+sdsctl --model SDS150 info
 ```
 
 Start the live monitor:
 
 ```bash
-sds200 monitor
+sdsctl monitor
 ```
 
 Use an explicit port when automatic discovery is not appropriate:
 
 ```bash
-sds200 \
+sdsctl \
   --port /dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00 \
   info
 ```
@@ -127,9 +127,9 @@ sds200 \
 ### SDS200 Ethernet
 
 ```bash
-sds200 --host 192.168.0.251 info
-sds200 --host 192.168.0.251 scanner-info
-sds200 --host 192.168.0.251 monitor
+sdsctl --host 192.168.0.251 info
+sdsctl --host 192.168.0.251 scanner-info
+sdsctl --host 192.168.0.251 monitor
 ```
 
 The SDS200 virtual serial service uses UDP port `50536` by default.
@@ -139,7 +139,7 @@ The SDS200 virtual serial service uses UDP port `50536` by default.
 Create a profile directly from USB and LAN discovery:
 
 ```bash
-sds200 profile discover home \
+sdsctl profile discover home \
   --network 192.168.0.0/24 \
   --prefer network
 ```
@@ -148,17 +148,17 @@ When both endpoints are found, the profile automatically falls back between
 Ethernet and USB. The saved preference can be overridden for one command:
 
 ```bash
-sds200 --profile home --prefer serial monitor
+sdsctl --profile home --prefer serial monitor
 ```
 
 Manual profiles remain supported:
 
 ```bash
-sds200 profile add network-only --host 192.168.0.251
-sds200 profile add usb-only \
+sdsctl profile add network-only --host 192.168.0.251
+sdsctl profile add usb-only \
   --port /dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00 \
   --model SDS200
-sds200 profile add handheld --port /dev/ttyACM0 --model SDS150
+sdsctl profile add handheld --port /dev/ttyACM0 --model SDS150
 ```
 
 Profiles are stored in `${XDG_CONFIG_HOME:-~/.config}/sds200/profiles.toml`.
@@ -167,18 +167,18 @@ Repair stale USB paths or a changed scanner IP address without losing the saved
 transport preference:
 
 ```bash
-sds200 profile repair home --network 192.168.0.0/24
-sds200 profile repair home --network 192.168.0.0/24 --dry-run
+sdsctl profile repair home --network 192.168.0.0/24
+sdsctl profile repair home --network 192.168.0.0/24 --dry-run
 ```
 
 ### Reliability, health, and events
 
 ```bash
-sds200 --profile home health
-sds200 --profile home health --watch 5 --history
-sds200 --profile home health --watch 5 --history --json
-sds200 --profile home events --json
-sds200 --host 192.168.0.251 --trace scanner.trace monitor
+sdsctl --profile home health
+sdsctl --profile home health --watch 5 --history
+sdsctl --profile home health --watch 5 --history --json
+sdsctl --profile home events --json
+sdsctl --host 192.168.0.251 --trace scanner.trace monitor
 ```
 
 
@@ -186,7 +186,7 @@ Reconnects use capped exponential backoff. Retry forever by default, or set a
 finite recovery budget:
 
 ```bash
-sds200 --profile home \
+sdsctl --profile home \
   --reconnect-attempts 8 \
   --reconnect-initial-delay 1 \
   --reconnect-multiplier 2 \
@@ -200,12 +200,12 @@ transport diagnostics, reconnect scheduling, failovers, and live state changes.
 ### Raw protocol commands
 
 ```bash
-sds200 command MDL
-sds200 command VER
-sds200 command GCS  # SDS100/SDS150 charge status
-sds200 command VOL
-sds200 command SQL
-sds200 command STS
+sdsctl command MDL
+sdsctl command VER
+sdsctl command GCS  # SDS100/SDS150 charge status
+sdsctl command VOL
+sdsctl command SQL
+sdsctl command STS
 ```
 
 Raw command access is intended for documented scanner commands and protocol
@@ -216,19 +216,19 @@ development. Prefer the typed Python methods when they are available.
 Activate Bash completion for the current shell:
 
 ```bash
-eval "$(sds200 completion bash)"
+eval "$(sdsctl completion bash)"
 ```
 
 Enable it whenever Bash starts:
 
 ```bash
-echo 'eval "$(sds200 completion bash)"' >> ~/.bashrc
+echo 'eval "$(sdsctl completion bash)"' >> ~/.bashrc
 ```
 
 For Zsh:
 
 ```zsh
-eval "$(sds200 completion zsh)"
+eval "$(sdsctl completion zsh)"
 ```
 
 ## Python API
@@ -298,11 +298,11 @@ for scanner in discover_network_scanners(["192.168.0.0/24"]):
     print(scanner.endpoint, scanner.model, scanner.latency_ms)
 ```
 
-## Compatibility naming
+## Project naming
 
-The distribution, import package, configuration directory, and original CLI
-remain named `sds200` for backward compatibility. New Python applications should
-prefer `SDSScanner`; the historical `SDS200` name remains a compatible alias.
+The model-neutral executable is `sdsctl`. The distribution, Python import package,
+configuration directory, and repository remain named `sds200`; Python applications
+should use `SDSScanner`, while the historical `SDS200` class name remains an alias.
 
 ## Security
 

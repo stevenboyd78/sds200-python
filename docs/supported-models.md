@@ -1,9 +1,9 @@
 # Supported scanner models
 
 The library supports the shared remote-command family used by the Uniden
-SDS100, SDS150, and SDS200. The existing Python package and `sds200` command
-name are retained for backward compatibility; new applications can use the
-model-neutral `SDSScanner` class.
+SDS100, SDS150, and SDS200. The model-neutral command is `sdsctl`; the Python
+package remains `sds200`, and applications should use the model-neutral
+`SDSScanner` class.
 
 ## Capability matrix
 
@@ -27,9 +27,9 @@ Automatic USB discovery recognizes model names in stable Linux
 connected or when a device path does not identify the model:
 
 ```bash
-sds200 --model SDS100 info
-sds200 --model SDS150 --port /dev/ttyACM0 info
-sds200 --model SDS200 --host 192.168.0.251 info
+sdsctl --model SDS100 info
+sdsctl --model SDS150 --port /dev/ttyACM0 info
+sdsctl --model SDS200 --host 192.168.0.251 info
 ```
 
 A model mismatch is rejected after `MDL` verification rather than silently
@@ -40,7 +40,7 @@ operating the wrong scanner.
 The SDS100 and SDS150 expose the shared `GCS` charge-status command:
 
 ```bash
-sds200 --model SDS150 battery
+sdsctl --model SDS150 battery
 ```
 
 The typed result includes status, voltage, estimated capacity, current, and

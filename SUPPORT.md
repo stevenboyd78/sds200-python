@@ -9,13 +9,13 @@ investigate it.
 Before opening an issue:
 
 1. Install the latest code from the default branch.
-2. Run `sds200 health` for the affected connection.
+2. Run `sdsctl health` for the affected connection.
 3. Run the project checks if you are developing locally.
 4. Search existing issues for the same behavior.
 
 ## Information to include
 
-- `sds200` version
+- Installed `sds200` package version or commit
 - Python version
 - Operating system and version
 - Scanner model and firmware version
@@ -28,14 +28,14 @@ Before opening an issue:
 For network problems, include:
 
 ```bash
-sds200 --host SCANNER_IP health
-sds200 -vv --host SCANNER_IP scanner-info
+sdsctl --host SCANNER_IP health
+sdsctl -vv --host SCANNER_IP scanner-info
 ```
 
 A traffic trace can be created with:
 
 ```bash
-sds200 --trace scanner.trace --host SCANNER_IP monitor
+sdsctl --trace scanner.trace --host SCANNER_IP monitor
 ```
 
 Review and sanitize traces before attaching them. They can contain scanner

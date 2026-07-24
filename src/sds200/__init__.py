@@ -140,4 +140,4 @@ __all__ = [
     "repair_profile",
 ]
 
-__version__ = "0.8.0"
+__version__ = "0.8.1"

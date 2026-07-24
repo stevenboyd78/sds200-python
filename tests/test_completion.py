@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import tomllib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -11,6 +12,17 @@ from sds200.cli import build_parser, main, selected_radio
 from sds200.device import ScannerDevice
 from sds200.network import UdpTransport
 from sds200.profiles import ConnectionProfile, ProfileStore
+
+
+def test_parser_uses_model_neutral_program_name() -> None:
+    assert build_parser().prog == "sdsctl"
+
+
+def test_project_exposes_only_sdsctl_entry_point() -> None:
+    project_root = Path(__file__).resolve().parents[1]
+    document = tomllib.loads((project_root / "pyproject.toml").read_text(encoding="utf-8"))
+
+    assert document["project"]["scripts"] == {"sdsctl": "sds200.cli:main"}
 
 
 def test_completion_subcommand_parses() -> None:
@@ -75,7 +87,7 @@ def test_completion_script_uses_requested_shell(monkeypatch: pytest.MonkeyPatch)
     )
 
     assert completion.completion_script("zsh") == "completion for zsh"
-    assert calls == [(["sds200"], "zsh")]
+    assert calls == [(["sdsctl"], "zsh")]
 
 
 def test_completion_script_rejects_unknown_shell() -> None:

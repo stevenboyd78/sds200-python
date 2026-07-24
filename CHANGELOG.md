@@ -11,6 +11,15 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 - Validated SDS200 network audio transport after control reliability work
 - Optional preferred-transport recovery without connection flapping
 
+## [0.8.1] - 2026-07-24
+
+### Changed
+
+- Replaced the model-specific `sds200` executable with the model-neutral `sdsctl` command
+- Updated CLI help, shell completion, documentation, support guidance, and tests for `sdsctl`
+- Kept the distribution, Python import package, configuration directory, and repository named `sds200`
+- Package version advanced to 0.8.1
+
 ## [0.8.0] - 2026-07-24
 
 ### Added
@@ -161,7 +170,8 @@ First planned GitHub prerelease.
 - Added serial discovery, transport, packet framing, core responses, CLI tools,
   examples, tests, and CI.
 
-[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/stevenboyd78/sds200-python/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.5.3...v0.6.0

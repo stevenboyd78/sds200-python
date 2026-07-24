@@ -30,8 +30,8 @@ history. The default limit is 100 samples and can be changed with
 `--health-history-limit` or the `SDSScanner` constructor.
 
 ```bash
-sds200 --profile home health --watch 5 --history
-sds200 --profile home health --watch 5 --history --json
+sdsctl --profile home health --watch 5 --history
+sdsctl --profile home health --watch 5 --history --json
 ```
 
 The summary reports sample counts by status, error rate, average and maximum
@@ -41,7 +41,7 @@ errors. History is process-local and intentionally not persisted.
 ## Structured events
 
 ```bash
-sds200 --profile home events --json
+sdsctl --profile home events --json
 ```
 
 The command emits JSON Lines suitable for log processors. Event categories
@@ -67,8 +67,8 @@ callers can provide custom `HealthThresholds` through `SDSScanner.from_transport
 ## Profile repair
 
 ```bash
-sds200 profile repair home --network 192.168.0.0/24 --dry-run
-sds200 profile repair home --network 192.168.0.0/24
+sdsctl profile repair home --network 192.168.0.0/24 --dry-run
+sdsctl profile repair home --network 192.168.0.0/24
 ```
 
 Repair preserves the profile name, bind configuration, and fallback preference.

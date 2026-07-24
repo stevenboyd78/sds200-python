@@ -46,11 +46,11 @@ def enable_tab_completion(parser: argparse.ArgumentParser) -> None:
 
 
 def completion_script(shell: str) -> str:
-    """Return shell code that registers completion for the ``sds200`` command."""
+    """Return shell code that registers completion for the ``sdsctl`` command."""
     if shell not in SUPPORTED_SHELLS:
         supported = ", ".join(SUPPORTED_SHELLS)
         raise ValueError(f"Unsupported shell {shell!r}; choose one of: {supported}")
-    return _argcomplete().shellcode(["sds200"], shell=shell)
+    return _argcomplete().shellcode(["sdsctl"], shell=shell)
 
 
 def command_completer(prefix: str, **_: object) -> dict[str, str]:
