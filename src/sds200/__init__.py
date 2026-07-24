@@ -24,6 +24,7 @@ from .discovery import (
     local_ipv4_networks,
 )
 from .exceptions import (
+    CommandRejectedError,
     SDS200Error,
     SDSScannerError,
     UnsupportedScannerFeatureError,
@@ -76,6 +77,7 @@ __all__ = [
     "AudioStream",
     "AudioTransport",
     "ChargeStatus",
+    "CommandRejectedError",
     "ConnectionProfile",
     "ControlTransport",
     "DEFAULT_DISCOVERY_WORKERS",
@@ -140,4 +142,4 @@ __all__ = [
     "repair_profile",
 ]
 
-__version__ = "0.8.1"
+__version__ = "0.8.2"

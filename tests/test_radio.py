@@ -1,7 +1,10 @@
 import threading
 import time
 
+import pytest
+
 from sds200.exceptions import (
+    CommandRejectedError,
     UnsupportedScannerFeatureError,
     UnsupportedScannerModelError,
 )
@@ -229,3 +232,79 @@ def test_sds200_rejects_charge_status_before_gcs_is_sent() -> None:
         thread.join(timeout=1.0)
 
     assert transport.writes == ["MDL"]
+
+
+def test_sds100_battery_level_uses_gsi_without_sending_gcs() -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport, expected_model="SDS100")
+    xml = """<?xml version="1.0" encoding="utf-8"?>
+<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+<Property VOL="10" SQL="2" Sig="5" Rssi="-86" />
+</ScannerInfo>"""
+
+    with radio:
+        def respond() -> None:
+            while transport.writes != ["MDL"]:
+                time.sleep(0.005)
+            transport.feed_line("MDL,SDS100")
+            while transport.writes != ["MDL", "GSI"]:
+                time.sleep(0.005)
+            transport.feed_line("GSI,<XML>,")
+            for line in xml.splitlines():
+                transport.feed_line(line)
+
+        thread = threading.Thread(target=respond)
+        thread.start()
+        assert radio.get_battery_level(timeout=1.0) is None
+        thread.join(timeout=1.0)
+
+    assert transport.writes == ["MDL", "GSI"]
+
+
+def test_sds100_rejects_charge_status_before_gcs_is_sent() -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport, expected_model="SDS100")
+
+    with radio:
+        def respond() -> None:
+            while transport.writes != ["MDL"]:
+                time.sleep(0.005)
+            transport.feed_line("MDL,SDS100")
+
+        thread = threading.Thread(target=respond)
+        thread.start()
+        try:
+            radio.get_charge_status(timeout=1.0)
+        except UnsupportedScannerFeatureError as exc:
+            assert "SDS100" in str(exc)
+        else:
+            raise AssertionError("Expected SDS100 charge-status rejection")
+        thread.join(timeout=1.0)
+
+    assert transport.writes == ["MDL"]
+
+
+@pytest.mark.parametrize("rejection", ["ERR", "NG"])
+def test_generic_rejection_fails_the_pending_command_immediately(rejection: str) -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport)
+
+    with radio:
+        def respond() -> None:
+            while transport.writes != ["GCS"]:
+                time.sleep(0.005)
+            transport.feed_line(rejection)
+
+        thread = threading.Thread(target=respond)
+        thread.start()
+        started = time.monotonic()
+        try:
+            radio.command("GCS", timeout=1.0)
+        except CommandRejectedError as exc:
+            assert str(exc) == f"Scanner rejected GCS command: {rejection}"
+        else:
+            raise AssertionError("Expected scanner command rejection")
+        elapsed = time.monotonic() - started
+        thread.join(timeout=1.0)
+
+    assert elapsed < 0.5

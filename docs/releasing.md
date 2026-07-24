@@ -57,8 +57,9 @@ sdsctl scanner-info
 sdsctl monitor
 ```
 
-For an SDS100 or SDS150, also run `sdsctl --model MODEL battery` and verify the
-reported charge fields are plausible.
+For an SDS100, run `sdsctl --model SDS100 battery` and verify it reports the
+optional GSI value or `unavailable` without sending `GCS`. For an SDS150, run
+`sdsctl --model SDS150 battery` and verify the detailed charge fields are plausible.
 
 Run over SDS200 Ethernet:
 

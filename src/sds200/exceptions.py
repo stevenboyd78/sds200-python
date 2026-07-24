@@ -26,6 +26,10 @@ class ProtocolError(SDS200Error):
     """A scanner response violated the expected protocol."""
 
 
+class CommandRejectedError(ProtocolError):
+    """The scanner explicitly rejected a pending command with ERR or NG."""
+
+
 class ProfileError(SDS200Error):
     """A saved connection profile is missing or invalid."""
 

@@ -1,0 +1,7 @@
+# Optional local access rule for Uniden SDS-series USB serial control ports.
+# USB identifiers validated with SDS100 and SDS200 hardware:
+#   idVendor=1965, idProduct=001a, ID_MODEL=SDS*_Serial_Port
+#
+# The early filename lets systemd-logind consume TAG+="uaccess" before
+# 73-seat-late.rules. MODE=0660 avoids granting global read/write access.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1965", ATTRS{idProduct}=="001a", ENV{ID_MODEL}=="SDS*_Serial_Port", TAG+="uaccess", GROUP="dialout", MODE="0660", ENV{ID_MM_PORT_IGNORE}="1"

@@ -11,6 +11,22 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 - Validated SDS200 network audio transport after control reliability work
 - Optional preferred-transport recovery without connection flapping
 
+## [0.8.2] - 2026-07-24
+
+### Added
+
+- Optional SDS100 battery telemetry through the documented `GSI`/`PSI` `Property.Battery` attribute
+- Immediate `CommandRejectedError` handling for generic scanner `ERR` and `NG` replies
+- Extended `scanner-info` output for RSSI, optional battery, recording, and mute state
+- Opt-in Uniden SDS-series udev rule for desktop ACLs and ModemManager exclusion
+
+### Changed
+
+- Corrected SDS100 capabilities after firmware 1.26.01 hardware testing showed
+  that `GCS` returns `ERR`
+- Kept SDS150 detailed `GCS` charge status as specification-based and hardware unverified
+- Package version advanced to 0.8.2
+
 ## [0.8.1] - 2026-07-24
 
 ### Changed
@@ -170,7 +186,8 @@ First planned GitHub prerelease.
 - Added serial discovery, transport, packet framing, core responses, CLI tools,
   examples, tests, and CI.
 
-[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/stevenboyd78/sds200-python/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/stevenboyd78/sds200-python/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.6.0...v0.7.0

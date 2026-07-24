@@ -254,7 +254,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("info", help="Show model, firmware, volume, and squelch")
     subparsers.add_parser(
         "battery",
-        help="Show SDS100 or SDS150 battery and charge status",
+        help="Show available handheld battery information",
     )
     health = subparsers.add_parser(
         "health", help="Run or continuously watch connection health"
@@ -866,8 +866,19 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
 
             if args.action == "battery":
+                model = radio.get_model()
+                capabilities = radio.capabilities
+                assert capabilities is not None
+                if capabilities.battery_level:
+                    level = radio.get_battery_level()
+                    value = f"{level:g}" if level is not None else "unavailable"
+                    print(f"Model:   {model}")
+                    print(f"Battery: {value}")
+                    print("Source:  GSI Property")
+                    return 0
+
                 status = radio.get_charge_status()
-                print(f"Model:       {radio.model}")
+                print(f"Model:       {model}")
                 print(f"Status:      {status.status}")
                 print(f"Capacity:    {status.capacity_percent}%")
                 print(f"Voltage:     {status.voltage_mv} mV")
@@ -891,8 +902,14 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"Channel:    {info.channel}")
                 print(f"Frequency:  {info.frequency}")
                 print(f"Modulation: {info.modulation}")
+                rssi = f"{info.rssi:g}" if info.rssi is not None else "-"
+                battery = f"{info.battery:g}" if info.battery is not None else "-"
                 print(f"Service:    {info.service_type}")
                 print(f"Signal:     {info.signal}")
+                print(f"RSSI:       {rssi}")
+                print(f"Battery:    {battery}")
+                print(f"Recording:  {info.recording or '-'}")
+                print(f"Mute:       {info.mute or '-'}")
                 return 0
 
             if args.action == "monitor":

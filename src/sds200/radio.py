@@ -5,7 +5,7 @@ import queue
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from time import monotonic
@@ -27,6 +27,7 @@ from .commands import (
 from .device import choose_scanner
 from .events import EventBus
 from .exceptions import (
+    CommandRejectedError,
     CommandTimeoutError,
     ProtocolError,
     SDS200Error,
@@ -73,6 +74,12 @@ from .xml_protocol import ScannerInfoParser, XmlResponseAssembler
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
+
+
+@dataclass(slots=True)
+class _PendingResponse:
+    command: str
+    queue: queue.Queue[object]
 
 
 class SDSScanner:
@@ -133,7 +140,7 @@ class SDSScanner:
             self.transport.set_diagnostic_handler(self._transport_diagnostic)
         self.state = RadioState()
         self.trace = TrafficTrace(trace_path)
-        self._responses: dict[str, queue.Queue[object]] = {}
+        self._responses: dict[str, _PendingResponse] = {}
         self._response_lock = threading.RLock()
         self._closed = threading.Event()
         self._closed.set()
@@ -503,6 +510,15 @@ class SDSScanner:
             timeout=timeout,
         )
 
+    def get_battery_level(self, *, timeout: float = 3.0) -> float | None:
+        """Return optional raw battery telemetry from the scanner information XML."""
+        capabilities = self._model_capabilities(timeout=timeout)
+        if not capabilities.battery_level:
+            raise UnsupportedScannerFeatureError(
+                f"{capabilities.model} does not provide GSI battery information."
+            )
+        return self.get_scanner_info(timeout=timeout).battery
+
     def get_charge_status(self, *, timeout: float = 2.0) -> ChargeStatus:
         capabilities = self._model_capabilities(timeout=timeout)
         if not capabilities.charge_status:
@@ -641,14 +657,18 @@ class SDSScanner:
         timeout: float,
     ) -> object:
         response_queue: queue.Queue[object] = queue.Queue(maxsize=1)
+        pending = _PendingResponse(command=response_command, queue=response_queue)
         with self._response_lock:
             if response_command in self._responses:
                 raise RuntimeError(f"A {response_command} command is already pending.")
-            self._responses[response_command] = response_queue
+            self._responses[response_command] = pending
         try:
             self.send(wire_command)
             try:
-                return response_queue.get(timeout=timeout)
+                response = response_queue.get(timeout=timeout)
+                if isinstance(response, CommandRejectedError):
+                    raise response
+                return response
             except queue.Empty as exc:
                 raise CommandTimeoutError(
                     f"Timed out waiting for {response_command} response."
@@ -699,7 +719,21 @@ class SDSScanner:
             return
 
         self.events.emit("packet", packet)
+        if packet.command in {"ERR", "NG"}:
+            self._reject_pending(packet)
         self._publish(packet.command, response)
+
+    def _reject_pending(self, packet: Packet) -> None:
+        """Associate a generic ERR/NG response when exactly one command is pending."""
+        with self._response_lock:
+            if len(self._responses) != 1:
+                return
+            pending = next(iter(self._responses.values()))
+        rejection = CommandRejectedError(
+            f"Scanner rejected {pending.command} command: {packet.raw}"
+        )
+        with suppress(queue.Full):
+            pending.queue.put_nowait(rejection)
 
     def _publish(self, command: str, response: object) -> None:
         with self._health_lock:
@@ -711,10 +745,10 @@ class SDSScanner:
         self.events.emit("response", response)
         self.events.emit(command.lower(), response)
         with self._response_lock:
-            response_queue = self._responses.get(command)
-        if response_queue is not None:
+            pending = self._responses.get(command)
+        if pending is not None:
             with suppress(queue.Full):
-                response_queue.put_nowait(response)
+                pending.queue.put_nowait(response)
 
     def _transport_diagnostic(self, diagnostic: TransportDiagnostic) -> None:
         self.events.emit("diagnostic", diagnostic)

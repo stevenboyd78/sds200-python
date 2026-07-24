@@ -17,6 +17,9 @@ with SDSScanner.auto(model="SDS150") as radio:
     print(radio.get_model())
 ```
 
+An optional [Linux udev rule](udev.md) is available for systems that do not
+grant the active desktop user access to the scanner serial port.
+
 An explicit path can also be used:
 
 ```python

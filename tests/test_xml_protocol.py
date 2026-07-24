@@ -6,7 +6,7 @@ XML = """<?xml version="1.0" encoding="utf-8"?>
 <System Name="Calcasieu" />
 <Department Name="Parish Fire &amp; Medical" />
 <ConvFrequency Name="DeQuincy Fire Department" Freq="154.4150MHz" Mod="NFM" />
-<Property VOL="0" SQL="9" Sig="4" />
+<Property VOL="0" SQL="9" Sig="4" Battery="2.7" Rssi="-88" Rec="Off" Mute="Mute" />
 </ScannerInfo>"""
 
 
@@ -28,7 +28,10 @@ def test_scanner_info_parser() -> None:
     assert info.frequency == "154.4150MHz"
     assert info.modulation == "NFM"
     assert info.signal == 4
-
+    assert info.battery == 2.7
+    assert info.rssi == -88.0
+    assert info.recording == "Off"
+    assert info.mute == "Mute"
 
 
 def test_xml_assembler_resynchronizes_on_a_new_header() -> None:

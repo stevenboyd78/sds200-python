@@ -206,6 +206,11 @@ class ScannerInfo:
         return self._floating(self._property("Rssi"))
 
     @property
+    def battery(self) -> float | None:
+        """Return the optional raw GSI/PSI ``Property.Battery`` value."""
+        return self._floating(self._property("Battery"))
+
+    @property
     def p25_status(self) -> str | None:
         return self._property("P25Status")
 

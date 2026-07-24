@@ -27,11 +27,15 @@ def test_model_capabilities_include_handheld_limits() -> None:
 
     assert sds100.maximum_volume == 15
     assert sds100.maximum_squelch == 15
-    assert sds100.charge_status is True
+    assert sds100.battery_level is True
+    assert sds100.charge_status is False
+    assert sds150.battery_level is False
     assert sds150.charge_status is True
     assert sds200.maximum_volume == 29
     assert sds200.maximum_squelch == 19
     assert sds200.network_control is True
+    assert sds200.battery_level is False
+    assert sds200.charge_status is False
 
 
 def test_infer_model_from_linux_by_id_name() -> None:

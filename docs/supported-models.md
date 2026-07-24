@@ -7,11 +7,11 @@ package remains `sds200`, and applications should use the model-neutral
 
 ## Capability matrix
 
-| Model | USB serial control | Native UDP control | Charge status | Volume | Squelch |
-| --- | --- | --- | --- | --- | --- |
-| SDS100 | Yes | No | Yes | 0–15 | 0–15 |
-| SDS150 | Yes | No | Yes | 0–15 | 0–15 |
-| SDS200 | Yes | Yes | No | 0–29 | 0–19 |
+| Model | USB serial control | Native UDP control | GSI battery value | GCS charge status | Volume | Squelch |
+| --- | --- | --- | --- | --- | --- | --- |
+| SDS100 | Yes | No | Optional | No | 0–15 | 0–15 |
+| SDS150 | Yes | No | No | Yes, unverified | 0–15 | 0–15 |
+| SDS200 | Yes | Yes | No | No | 0–29 | 0–19 |
 
 Native LAN discovery, network profiles, and USB/Ethernet fallback remain
 SDS200-only. The handheld models use USB serial control.
@@ -35,25 +35,39 @@ sdsctl --model SDS200 --host 192.168.0.251 info
 A model mismatch is rejected after `MDL` verification rather than silently
 operating the wrong scanner.
 
-## Handheld charge status
+## Handheld battery information
 
-The SDS100 and SDS150 expose the shared `GCS` charge-status command:
+SDS100 firmware 1.26.01 rejects `GCS` with a generic `ERR` response. The SDS100
+remote-command specification instead documents an optional `Battery` attribute
+inside the `Property` element returned by `GSI` and `PSI`. Hardware testing also
+showed that the attribute can be omitted, so absence is reported as
+`unavailable` rather than treated as a command failure:
+
+```bash
+sdsctl --model SDS100 battery
+```
+
+The SDS150 specification exposes detailed `GCS` status, voltage, estimated
+capacity, current, and temperature. That path remains implemented but has not
+been verified on physical SDS150 hardware:
 
 ```bash
 sdsctl --model SDS150 battery
 ```
 
-The typed result includes status, voltage, estimated capacity, current, and
-temperature. The SDS200 rejects the high-level battery operation because it is
-not a battery-powered handheld.
+The SDS200 rejects the high-level battery operation because it is not a
+battery-powered handheld.
 
 ## Python API
 
 ```python
 from sds200 import SDSScanner
 
-with SDSScanner.auto(model="SDS150") as radio:
+with SDSScanner.auto(model="SDS100") as radio:
     print(radio.get_model())
+    print(radio.get_battery_level())
+
+with SDSScanner.auto(model="SDS150") as radio:
     print(radio.get_charge_status())
 ```
 
@@ -63,10 +77,11 @@ existing applications continue to work.
 ## Validation status
 
 SDS200 USB and Ethernet behavior has been validated against physical hardware.
-SDS100 and SDS150 support is based on Uniden's shared SDS-series remote-command
-specification and hardware-independent regression tests. Reports from physical
-SDS100 and SDS150 hardware are welcome; include firmware, platform, USB path,
-and sanitized command results.
+SDS100 USB discovery, model detection, firmware, volume, squelch, and GSI
+scanner information have been validated on firmware 1.26.01. SDS150 support is
+based on Uniden's remote-command specification and hardware-independent
+regression tests. Reports from physical SDS150 hardware are welcome; include
+firmware, platform, USB path, and sanitized command results.
 
 Bluetooth, U/AWARE integration, scanner programming databases, and network
 audio are outside this milestone.

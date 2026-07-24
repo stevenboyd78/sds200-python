@@ -22,7 +22,7 @@ and live state updates.
 - USB serial control for SDS100, SDS150, and SDS200 scanners
 - Native SDS200 Ethernet control over UDP
 - Model detection, aliases, capability reporting, and model-specific limits
-- SDS100/SDS150 battery and charge-status reporting
+- Model-aware handheld battery reporting: optional SDS100 GSI telemetry and SDS150 GCS charge status
 - Automatic USB and bounded LAN discovery
 - Saved serial, network, and automatic fallback profiles
 - Preferred transport ordering with live USB/Ethernet failover
@@ -46,14 +46,15 @@ Network audio streaming remains on the roadmap but is deferred while control-pat
 - Python 3.11 or newer
 - A Uniden SDS100, SDS150, or SDS200
 - For USB: scanner connected as a serial device
+- For Linux desktop USB access, see the optional [udev rule](docs/udev.md)
 - For Ethernet: scanner and computer on a trusted local network
 
 Linux USB and Ethernet operation have been validated with an SDS200 running
-firmware version 1.26.01. SDS100 and SDS150 support follows Uniden's shared
-SDS-series remote-command specification and still needs physical-hardware
-validation. Explicit SDS200 network hosts work on any platform supported by
-Python's UDP sockets. Automatic route detection and `/dev/serial/by-id`
-discovery are Linux-specific.
+firmware version 1.26.01. SDS100 USB control has also been validated on firmware
+1.26.01. SDS150 support follows Uniden's shared SDS-series remote-command
+specification and still needs physical-hardware validation. Explicit SDS200
+network hosts work on any platform supported by Python's UDP sockets. Automatic
+route detection and `/dev/serial/by-id` discovery are Linux-specific.
 
 ## Installation
 
@@ -202,7 +203,7 @@ transport diagnostics, reconnect scheduling, failovers, and live state changes.
 ```bash
 sdsctl command MDL
 sdsctl command VER
-sdsctl command GCS  # SDS100/SDS150 charge status
+sdsctl command GCS  # SDS150 charge status
 sdsctl command VOL
 sdsctl command SQL
 sdsctl command STS

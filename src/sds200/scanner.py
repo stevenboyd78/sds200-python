@@ -14,6 +14,7 @@ class ScannerCapabilities:
     model: ScannerModel
     serial_control: bool
     network_control: bool
+    battery_level: bool
     charge_status: bool
     maximum_volume: int
     maximum_squelch: int
@@ -24,7 +25,8 @@ _CAPABILITIES: dict[ScannerModel, ScannerCapabilities] = {
         model="SDS100",
         serial_control=True,
         network_control=False,
-        charge_status=True,
+        battery_level=True,
+        charge_status=False,
         maximum_volume=15,
         maximum_squelch=15,
     ),
@@ -32,6 +34,7 @@ _CAPABILITIES: dict[ScannerModel, ScannerCapabilities] = {
         model="SDS150",
         serial_control=True,
         network_control=False,
+        battery_level=False,
         charge_status=True,
         maximum_volume=15,
         maximum_squelch=15,
@@ -40,6 +43,7 @@ _CAPABILITIES: dict[ScannerModel, ScannerCapabilities] = {
         model="SDS200",
         serial_control=True,
         network_control=True,
+        battery_level=False,
         charge_status=False,
         maximum_volume=29,
         maximum_squelch=19,
