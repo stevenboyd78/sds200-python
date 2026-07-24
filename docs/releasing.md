@@ -87,7 +87,11 @@ shutdown behavior.
 Record the scanner model, firmware, Python version, operating system, and
 transports tested in the release notes. Do not publish private channel or network data.
 
-## 4. Create the tag
+## 4. Publish through Trusted Publishing
+
+The `pypi` GitHub environment and PyPI Trusted Publisher must match
+`.github/workflows/release.yml`. No long-lived PyPI token is stored in the
+repository.
 
 ```bash
 git switch main
@@ -96,6 +100,11 @@ git status
 git tag -a vVERSION -m "sds200-python vVERSION"
 git push origin vVERSION
 ```
+
+The tag-triggered workflow verifies that the tag matches `pyproject.toml`,
+runs the release checks, builds the distributions, and publishes them through
+GitHub OIDC. Wait for both workflow jobs to pass before creating the GitHub
+release.
 
 ## 5. Create the GitHub release
 
@@ -107,11 +116,20 @@ git push origin vVERSION
 - Include the tested scanner firmware and transports.
 - Attach the wheel and source distribution from `dist/` if desired.
 
-## 6. Optional package-index validation
+## 6. Verify the published package
 
-Before publishing to PyPI, verify ownership of the `sds200` package name and
-upload to TestPyPI first. Do not publish automatically from a local workstation
-until trusted publishing and release provenance are configured.
+Install the exact release in a clean environment after the Trusted Publishing workflow succeeds:
 
-After release, verify installation in a clean environment and update the
-installation instructions when a package-index release becomes available.
+```bash
+python -m venv /tmp/sds200-release-check
+source /tmp/sds200-release-check/bin/activate
+python -m pip install --upgrade pip
+python -m pip install --no-cache-dir sds200==VERSION
+sdsctl --help
+python -c "import sds200; print(sds200.__version__)"
+deactivate
+rm -rf /tmp/sds200-release-check
+```
+
+Do not reuse or move a tag after PyPI has accepted that version. PyPI
+filenames and release versions are immutable.

@@ -308,3 +308,37 @@ def test_generic_rejection_fails_the_pending_command_immediately(rejection: str)
         thread.join(timeout=1.0)
 
     assert elapsed < 0.5
+
+
+def test_typed_navigation_uses_model_check_and_acknowledgement() -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport, expected_model="SDS100")
+
+    with radio:
+        def respond() -> None:
+            while transport.writes != ["MDL"]:
+                time.sleep(0.005)
+            transport.feed_line("MDL,SDS100")
+            while transport.writes != ["MDL", "HLD,SYS,42,"]:
+                time.sleep(0.005)
+            transport.feed_line("HLD,OK")
+            while transport.writes != ["MDL", "HLD,SYS,42,", "NXT,DEPT,7,42,2"]:
+                time.sleep(0.005)
+            transport.feed_line("NXT,OK")
+            while transport.writes != [
+                "MDL",
+                "HLD,SYS,42,",
+                "NXT,DEPT,7,42,2",
+                "PRV,TGID,99,,1",
+            ]:
+                time.sleep(0.005)
+            transport.feed_line("PRV,OK")
+
+        thread = threading.Thread(target=respond, daemon=True)
+        thread.start()
+        radio.hold("SYS", 42, timeout=1.0)
+        radio.next("DEPT", 7, 42, count=2, timeout=1.0)
+        radio.previous("TGID", 99, timeout=1.0)
+        thread.join(timeout=1.0)
+
+    assert not thread.is_alive()

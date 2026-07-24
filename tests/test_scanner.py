@@ -45,3 +45,13 @@ def test_infer_model_from_linux_by_id_name() -> None:
         )
         == "SDS150"
     )
+
+
+def test_capabilities_report_validation_and_navigation() -> None:
+    sds100 = capabilities_for_model("SDS100")
+    sds150 = capabilities_for_model("SDS150")
+
+    assert sds100.navigation_control is True
+    assert sds100.scanner_info_push is True
+    assert sds100.validation_status == "hardware-validated"
+    assert sds150.validation_status == "specification-only"

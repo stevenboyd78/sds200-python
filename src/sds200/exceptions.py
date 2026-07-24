@@ -40,3 +40,11 @@ class UnsupportedScannerModelError(SDS200Error):
 
 class UnsupportedScannerFeatureError(SDS200Error):
     """A supported scanner model does not implement the requested feature."""
+
+
+class CaptureFormatError(ProtocolError):
+    """A replay capture is missing, malformed, or uses an unsupported schema."""
+
+
+class ReplayMismatchError(ProtocolError):
+    """A replayed command did not match the next command in the capture."""

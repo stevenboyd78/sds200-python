@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, TypeVar
+from typing import Literal, Protocol, TypeVar
 
 from .exceptions import ProtocolError
 from .models import (
@@ -220,3 +220,152 @@ class StartScannerInfoPush:
         raise ProtocolError(
             f"PSI returned an unexpected response: {type(response).__name__}"
         )
+
+
+NavigationTarget = Literal[
+    "SYS",
+    "DEPT",
+    "SITE",
+    "CFREQ",
+    "TGID",
+    "STGID",
+    "WX",
+    "FTO",
+    "CCHIT",
+    "CS_FREQ",
+    "QS_FREQ",
+]
+NAVIGATION_TARGETS: tuple[NavigationTarget, ...] = (
+    "SYS",
+    "DEPT",
+    "SITE",
+    "CFREQ",
+    "TGID",
+    "STGID",
+    "WX",
+    "FTO",
+    "CCHIT",
+    "CS_FREQ",
+    "QS_FREQ",
+)
+
+
+def _navigation_target(value: str) -> NavigationTarget:
+    normalized = value.strip().upper()
+    if normalized not in NAVIGATION_TARGETS:
+        choices = ", ".join(NAVIGATION_TARGETS)
+        raise ValueError(f"Navigation target must be one of: {choices}.")
+    return normalized
+
+
+def _navigation_value(value: str | int | None) -> str:
+    if value is None:
+        return ""
+    normalized = str(value).strip()
+    if any(delimiter in normalized for delimiter in (",", "\r", "\n")):
+        raise ValueError("Navigation values cannot contain commas or line breaks.")
+    return normalized
+
+
+def _parse_acknowledgement(response: object, command: str) -> None:
+    if not isinstance(response, Packet) or response.command != command:
+        raise ProtocolError(f"{command} returned an unexpected response.")
+    status = response.fields[0].strip().upper() if response.fields else ""
+    if status == "OK":
+        return
+    if status in {"NG", "ERR", "ERROR"}:
+        raise ProtocolError(f"Scanner rejected {command} command: {response.raw}")
+    raise ProtocolError(f"{command} did not return OK: {response.raw}")
+
+
+@dataclass(frozen=True, slots=True)
+class HoldSelection:
+    """Hold a documented scanner selection by protocol target and indexes."""
+
+    target: str
+    first: str | int | None = None
+    second: str | int | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "target", _navigation_target(self.target))
+
+    @property
+    def wire(self) -> str:
+        return ",".join(
+            ("HLD", self.target, _navigation_value(self.first), _navigation_value(self.second))
+        )
+
+    @property
+    def response_command(self) -> str:
+        return "HLD"
+
+    def parse_response(self, response: object) -> None:
+        _parse_acknowledgement(response, "HLD")
+
+
+@dataclass(frozen=True, slots=True)
+class NextSelection:
+    """Move forward through a documented scanner selection list."""
+
+    target: str
+    first: str | int | None = None
+    second: str | int | None = None
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "target", _navigation_target(self.target))
+        if not 1 <= self.count <= 8:
+            raise ValueError("Navigation count must be between 1 and 8.")
+
+    @property
+    def wire(self) -> str:
+        return ",".join(
+            (
+                "NXT",
+                self.target,
+                _navigation_value(self.first),
+                _navigation_value(self.second),
+                str(self.count),
+            )
+        )
+
+    @property
+    def response_command(self) -> str:
+        return "NXT"
+
+    def parse_response(self, response: object) -> None:
+        _parse_acknowledgement(response, "NXT")
+
+
+@dataclass(frozen=True, slots=True)
+class PreviousSelection:
+    """Move backward through a documented scanner selection list."""
+
+    target: str
+    first: str | int | None = None
+    second: str | int | None = None
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "target", _navigation_target(self.target))
+        if not 1 <= self.count <= 8:
+            raise ValueError("Navigation count must be between 1 and 8.")
+
+    @property
+    def wire(self) -> str:
+        return ",".join(
+            (
+                "PRV",
+                self.target,
+                _navigation_value(self.first),
+                _navigation_value(self.second),
+                str(self.count),
+            )
+        )
+
+    @property
+    def response_command(self) -> str:
+        return "PRV"
+
+    def parse_response(self, response: object) -> None:
+        _parse_acknowledgement(response, "PRV")

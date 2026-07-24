@@ -1,0 +1,10 @@
+{"endpoint": "usb://SDS100", "schema": "sds200.capture", "version": 1}
+{"connected": true, "delay_ms": 0.0, "direction": "connection"}
+{"data": "MDL", "delay_ms": 0.0, "direction": "tx"}
+{"data": "MDL,SDS100", "delay_ms": 0.0, "direction": "rx"}
+{"data": "VER", "delay_ms": 0.0, "direction": "tx"}
+{"data": "VER,Version 1.26.01", "delay_ms": 0.0, "direction": "rx"}
+{"data": "VOL", "delay_ms": 0.0, "direction": "tx"}
+{"data": "VOL,10", "delay_ms": 0.0, "direction": "rx"}
+{"data": "SQL", "delay_ms": 0.0, "direction": "tx"}
+{"data": "SQL,2", "delay_ms": 0.0, "direction": "rx"}

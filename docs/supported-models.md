@@ -85,3 +85,23 @@ firmware, platform, USB path, and sanitized command results.
 
 Bluetooth, U/AWARE integration, scanner programming databases, and network
 audio are outside this milestone.
+
+## Capability reporting
+
+Use `sdsctl capabilities` to inspect the connected model. Version 0.9 reports
+USB and network control, scanner information, PSI updates, navigation control,
+battery sources, model-specific volume and squelch limits, and validation status.
+
+SDS100 and SDS200 are marked `hardware-validated` for the core model and
+transport paths tested during development. SDS150 remains `specification-only`
+until physical hardware is tested. This status is not a blanket guarantee that
+every individual command has been exercised on hardware. Replay changes only
+the active transport endpoint, not the model capability result.
+
+## Navigation commands
+
+The SDS100/SDS200 remote-command specification documents `HLD`, `NXT`, and
+`PRV`. Version 0.9 exposes a conservative shared target set for all supported
+models. These new typed operations are specification-backed and replay-tested;
+they still require release smoke testing on available SDS100 and SDS200
+hardware. SDS150 remains specification-only.

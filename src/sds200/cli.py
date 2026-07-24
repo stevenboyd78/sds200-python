@@ -10,6 +10,7 @@ from pathlib import Path
 from time import sleep
 from typing import Protocol, cast
 
+from .commands import NAVIGATION_TARGETS
 from .completion import (
     SUPPORTED_SHELLS,
     command_completer,
@@ -72,6 +73,13 @@ def _positive_float(value: str) -> float:
     parsed = float(value)
     if parsed <= 0:
         raise argparse.ArgumentTypeError("value must be greater than zero")
+    return parsed
+
+
+def _non_negative_float(value: str) -> float:
+    parsed = float(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("value must not be negative")
     return parsed
 
 
@@ -143,6 +151,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--host",
         help="SDS200 LAN hostname or IP address (SDS200 only)",
     )
+    connection.add_argument(
+        "--replay",
+        type=Path,
+        help="Replay a JSON Lines scanner capture instead of using hardware",
+    )
     profile_action = connection.add_argument(
         "--profile",
         help="Use a saved serial or network connection profile",
@@ -199,6 +212,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("-v", "--verbose", action="count", default=0)
     parser.add_argument("--trace", type=Path, help="Append raw traffic to a trace file")
+    parser.add_argument(
+        "--capture",
+        type=Path,
+        help="Record a replayable JSON Lines transport session",
+    )
+    parser.add_argument(
+        "--redact",
+        action="append",
+        default=[],
+        metavar="TEXT",
+        help="Replace literal text in --capture output; repeat as needed",
+    )
+    parser.add_argument(
+        "--replay-speed",
+        type=_non_negative_float,
+        default=0.0,
+        metavar="FACTOR",
+        help="Replay timing factor; 0 runs immediately, 1 uses captured timing",
+    )
 
     subparsers = parser.add_subparsers(dest="action", required=True)
 
@@ -285,6 +317,37 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers.add_parser("raw", help="Print packets until interrupted")
     subparsers.add_parser("scanner-info", help="Get structured GSI scanner information")
+    subparsers.add_parser(
+        "capabilities",
+        help="Show model limits, validation status, and supported control features",
+    )
+
+    for action_name, action_help in (
+        ("hold", "Hold a documented scanner selection"),
+        ("next", "Move forward through a documented scanner selection list"),
+        ("previous", "Move backward through a documented scanner selection list"),
+    ):
+        navigation = subparsers.add_parser(action_name, help=action_help)
+        navigation.add_argument("target", type=str.upper, choices=NAVIGATION_TARGETS)
+        navigation.add_argument(
+            "first",
+            nargs="?",
+            help="Primary protocol index or frequency; omit when the target allows it",
+        )
+        navigation.add_argument(
+            "second",
+            nargs="?",
+            help="Optional parent index required by some targets",
+        )
+        if action_name != "hold":
+            navigation.add_argument(
+                "--count",
+                type=_positive_integer,
+                default=1,
+                choices=range(1, 9),
+                help="Number of selections to move (1-8)",
+            )
+        navigation.add_argument("--timeout", type=_positive_float, default=2.0)
 
     monitor = subparsers.add_parser(
         "monitor",
@@ -475,6 +538,8 @@ def _radio_from_profile(
     max_xml_retries: int,
     reconnect_policy: ReconnectPolicy,
     health_history_limit: int,
+    capture_path: Path | None,
+    capture_redactions: tuple[str, ...],
 ) -> SDSScanner:
     return SDSScanner.from_profile(
         profile,
@@ -483,6 +548,8 @@ def _radio_from_profile(
         max_xml_retries=max_xml_retries,
         reconnect_policy=reconnect_policy,
         health_history_limit=health_history_limit,
+        capture_path=capture_path,
+        capture_redactions=capture_redactions,
     )
 
 
@@ -492,6 +559,25 @@ def selected_radio(
     profile_store: ProfileStore | None = None,
 ) -> SDSScanner:
     reconnect_policy = _reconnect_policy_from_args(args)
+    capture_redactions: tuple[str, ...] = tuple(args.redact)
+    if capture_redactions and args.capture is None:
+        raise ValueError("--redact requires --capture")
+    if args.replay is not None:
+        if args.connection_preference is not None:
+            raise ValueError("--prefer cannot be used with --replay")
+        if args.udp_port is not None or args.bind_address or args.bind_port:
+            raise ValueError("Network socket options cannot be used with --replay")
+        if args.capture is not None:
+            raise ValueError("--capture cannot be combined with --replay")
+        return SDSScanner.replay(
+            args.replay,
+            speed=args.replay_speed,
+            expected_model=args.model,
+            trace_path=args.trace,
+            health_history_limit=args.health_history_limit,
+        )
+    if args.replay_speed != 0:
+        raise ValueError("--replay-speed requires --replay")
     if args.profile is not None:
         if args.model is not None:
             raise ValueError("--model cannot override a saved profile")
@@ -507,6 +593,8 @@ def selected_radio(
             max_xml_retries=args.max_xml_retries,
             reconnect_policy=reconnect_policy,
             health_history_limit=args.health_history_limit,
+            capture_path=args.capture,
+            capture_redactions=capture_redactions,
         )
     if args.connection_preference is not None:
         raise ValueError("--prefer requires a fallback --profile")
@@ -522,6 +610,8 @@ def selected_radio(
             reconnect_policy=reconnect_policy,
             trace_path=args.trace,
             health_history_limit=args.health_history_limit,
+            capture_path=args.capture,
+            capture_redactions=capture_redactions,
         )
     if args.udp_port is not None or args.bind_address or args.bind_port:
         raise ValueError("--udp-port, --bind-address, and --bind-port require --host")
@@ -531,6 +621,8 @@ def selected_radio(
         trace_path=args.trace,
         health_history_limit=args.health_history_limit,
         expected_model=args.model,
+        capture_path=args.capture,
+        capture_redactions=capture_redactions,
     )
 
 
@@ -884,6 +976,51 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"Voltage:     {status.voltage_mv} mV")
                 print(f"Current:     {status.current_ma} mA")
                 print(f"Temperature: {status.temperature_c:.2f} C")
+                return 0
+
+            if args.action == "capabilities":
+                model = radio.get_model()
+                capabilities = radio.capabilities
+                assert capabilities is not None
+                print(f"Model:              {model}")
+                print(f"Validation:         {capabilities.validation_status}")
+                print(f"Endpoint:           {radio.endpoint}")
+                print(f"Serial control:     {'yes' if capabilities.serial_control else 'no'}")
+                print(f"Network control:    {'yes' if capabilities.network_control else 'no'}")
+                print(f"Scanner info:       {'yes' if capabilities.scanner_info else 'no'}")
+                print(f"PSI updates:        {'yes' if capabilities.scanner_info_push else 'no'}")
+                print(f"Navigation control: {'yes' if capabilities.navigation_control else 'no'}")
+                print(f"Battery level:      {'optional' if capabilities.battery_level else 'no'}")
+                print(f"Charge status:      {'yes' if capabilities.charge_status else 'no'}")
+                print(f"Maximum volume:     {capabilities.maximum_volume}")
+                print(f"Maximum squelch:    {capabilities.maximum_squelch}")
+                return 0
+
+            if args.action == "hold":
+                radio.hold(args.target, args.first, args.second, timeout=args.timeout)
+                print("OK")
+                return 0
+
+            if args.action == "next":
+                radio.next(
+                    args.target,
+                    args.first,
+                    args.second,
+                    count=args.count,
+                    timeout=args.timeout,
+                )
+                print("OK")
+                return 0
+
+            if args.action == "previous":
+                radio.previous(
+                    args.target,
+                    args.first,
+                    args.second,
+                    count=args.count,
+                    timeout=args.timeout,
+                )
+                print("OK")
                 return 0
 
             if args.action == "health":

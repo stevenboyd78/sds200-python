@@ -14,7 +14,10 @@ SUPPORTED_SHELLS = ("bash", "zsh")
 KNOWN_COMMANDS: Mapping[str, str] = {
     "GCS": "Get handheld charge status",
     "GSI": "Get structured scanner information",
+    "HLD": "Hold a scanner selection",
     "MDL": "Get scanner model",
+    "NXT": "Move to the next scanner selection",
+    "PRV": "Move to the previous scanner selection",
     "PSI,0": "Stop scanner information updates",
     "PSI,500": "Start scanner information updates every 500 ms",
     "SQL": "Get squelch level",

@@ -1,6 +1,13 @@
 import pytest
 
-from sds200.commands import SetSquelch, SetVolume, StartScannerInfoPush
+from sds200.commands import (
+    HoldSelection,
+    NextSelection,
+    PreviousSelection,
+    SetSquelch,
+    SetVolume,
+    StartScannerInfoPush,
+)
 from sds200.exceptions import ProtocolError
 from sds200.models import Packet
 
@@ -43,3 +50,25 @@ def test_handheld_volume_and_squelch_limits() -> None:
         SetVolume(16, maximum=15)
     with pytest.raises(ValueError, match="between 0 and 15"):
         SetSquelch(16, maximum=15)
+
+
+def test_navigation_command_wires() -> None:
+    assert HoldSelection("SYS", 42).wire == "HLD,SYS,42,"
+    assert NextSelection("DEPT", 7, 42, count=3).wire == "NXT,DEPT,7,42,3"
+    assert PreviousSelection("TGID", 99, count=2).wire == "PRV,TGID,99,,2"
+
+
+def test_navigation_commands_validate_target_and_count() -> None:
+    with pytest.raises(ValueError, match="Navigation target"):
+        NextSelection("INVALID")
+    with pytest.raises(ValueError, match="between 1 and 8"):
+        NextSelection("SYS", 1, count=9)
+    with pytest.raises(ValueError, match="commas or line breaks"):
+        _ = NextSelection("SYS", "1,2").wire
+
+
+def test_navigation_acknowledgement() -> None:
+    command = HoldSelection("SYS", 42)
+    command.parse_response(Packet(command="HLD", fields=("OK",), raw="HLD,OK"))
+    with pytest.raises(ProtocolError, match="rejected HLD"):
+        command.parse_response(Packet(command="HLD", fields=("NG",), raw="HLD,NG"))

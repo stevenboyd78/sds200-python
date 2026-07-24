@@ -20,6 +20,10 @@ from .commands import (
     GetSquelch,
     GetStatus,
     GetVolume,
+    HoldSelection,
+    NavigationTarget,
+    NextSelection,
+    PreviousSelection,
     SetSquelch,
     SetVolume,
     StartScannerInfoPush,
@@ -54,6 +58,7 @@ from .network import (
 from .parser import PacketParser
 from .profiles import ConnectionProfile, TransportPreference
 from .reliability import HealthHistory, HealthThresholds, ReconnectPolicy
+from .replay import RecordingTransport, ReplayTransport
 from .scanner import (
     ScannerCapabilities,
     ScannerModel,
@@ -96,6 +101,8 @@ class SDSScanner:
         health_history_limit: int = 100,
         health_thresholds: HealthThresholds | None = None,
         expected_model: ScannerModel | str | None = None,
+        capture_path: str | Path | None = None,
+        capture_redactions: tuple[str, ...] = (),
     ) -> None:
         if port is not None and transport is not None:
             raise ValueError("Supply either port or transport, not both.")
@@ -130,6 +137,13 @@ class SDSScanner:
                 reconnect=reconnect,
                 reconnect_policy=reconnect_policy,
                 serial_factory=serial_factory,
+            )
+
+        if capture_path is not None:
+            self.transport = RecordingTransport(
+                self.transport,
+                capture_path,
+                redactions=capture_redactions,
             )
 
         self.parser = PacketParser()
@@ -168,6 +182,8 @@ class SDSScanner:
         trace_path: str | Path | None = None,
         health_history_limit: int = 100,
         model: ScannerModel | str | None = None,
+        capture_path: str | Path | None = None,
+        capture_redactions: tuple[str, ...] = (),
     ) -> Self:
         return cls(
             choose_scanner(model=model),
@@ -178,6 +194,8 @@ class SDSScanner:
             trace_path=trace_path,
             health_history_limit=health_history_limit,
             expected_model=model,
+            capture_path=capture_path,
+            capture_redactions=capture_redactions,
         )
 
     @classmethod
@@ -194,6 +212,8 @@ class SDSScanner:
         max_xml_retries: int = 2,
         trace_path: str | Path | None = None,
         health_history_limit: int = 100,
+        capture_path: str | Path | None = None,
+        capture_redactions: tuple[str, ...] = (),
     ) -> Self:
         if socket_factory is None:
             transport = UdpTransport(
@@ -221,6 +241,8 @@ class SDSScanner:
             trace_path=trace_path,
             health_history_limit=health_history_limit,
             expected_model="SDS200",
+            capture_path=capture_path,
+            capture_redactions=capture_redactions,
         )
 
     @classmethod
@@ -236,6 +258,8 @@ class SDSScanner:
         reconnect_policy: ReconnectPolicy | None = None,
         trace_path: str | Path | None = None,
         health_history_limit: int = 100,
+        capture_path: str | Path | None = None,
+        capture_redactions: tuple[str, ...] = (),
     ) -> Self:
         if profile.kind == "serial":
             if preference is not None:
@@ -250,6 +274,8 @@ class SDSScanner:
                 trace_path=trace_path,
                 health_history_limit=health_history_limit,
                 expected_model=profile.model,
+                capture_path=capture_path,
+                capture_redactions=capture_redactions,
             )
         if profile.kind == "network":
             if preference is not None:
@@ -266,6 +292,8 @@ class SDSScanner:
                 reconnect_policy=reconnect_policy,
                 trace_path=trace_path,
                 health_history_limit=health_history_limit,
+                capture_path=capture_path,
+                capture_redactions=capture_redactions,
             )
 
         serial_port = profile.port
@@ -332,6 +360,8 @@ class SDSScanner:
             trace_path=trace_path,
             health_history_limit=health_history_limit,
             expected_model=profile.model,
+            capture_path=capture_path,
+            capture_redactions=capture_redactions,
         )
 
     @classmethod
@@ -343,6 +373,8 @@ class SDSScanner:
         health_history_limit: int = 100,
         health_thresholds: HealthThresholds | None = None,
         expected_model: ScannerModel | str | None = None,
+        capture_path: str | Path | None = None,
+        capture_redactions: tuple[str, ...] = (),
     ) -> Self:
         return cls(
             transport=transport,
@@ -350,6 +382,26 @@ class SDSScanner:
             health_history_limit=health_history_limit,
             health_thresholds=health_thresholds,
             expected_model=expected_model,
+            capture_path=capture_path,
+            capture_redactions=capture_redactions,
+        )
+
+    @classmethod
+    def replay(
+        cls,
+        path: str | Path,
+        *,
+        speed: float = 0.0,
+        strict: bool = True,
+        expected_model: ScannerModel | str | None = None,
+        trace_path: str | Path | None = None,
+        health_history_limit: int = 100,
+    ) -> Self:
+        return cls.from_transport(
+            ReplayTransport.from_file(path, speed=speed, strict=strict),
+            expected_model=expected_model,
+            trace_path=trace_path,
+            health_history_limit=health_history_limit,
         )
 
     @property
@@ -507,6 +559,59 @@ class SDSScanner:
         capabilities = self._model_capabilities(timeout=timeout)
         self.execute(
             SetSquelch(level, maximum=capabilities.maximum_squelch),
+            timeout=timeout,
+        )
+
+    def hold(
+        self,
+        target: NavigationTarget | str,
+        first: str | int | None = None,
+        second: str | int | None = None,
+        *,
+        timeout: float = 2.0,
+    ) -> None:
+        capabilities = self._model_capabilities(timeout=timeout)
+        if not capabilities.navigation_control:
+            raise UnsupportedScannerFeatureError(
+                f"{capabilities.model} does not provide navigation control."
+            )
+        self.execute(HoldSelection(str(target), first, second), timeout=timeout)
+
+    def next(
+        self,
+        target: NavigationTarget | str,
+        first: str | int | None = None,
+        second: str | int | None = None,
+        *,
+        count: int = 1,
+        timeout: float = 2.0,
+    ) -> None:
+        capabilities = self._model_capabilities(timeout=timeout)
+        if not capabilities.navigation_control:
+            raise UnsupportedScannerFeatureError(
+                f"{capabilities.model} does not provide navigation control."
+            )
+        self.execute(
+            NextSelection(str(target), first, second, count),
+            timeout=timeout,
+        )
+
+    def previous(
+        self,
+        target: NavigationTarget | str,
+        first: str | int | None = None,
+        second: str | int | None = None,
+        *,
+        count: int = 1,
+        timeout: float = 2.0,
+    ) -> None:
+        capabilities = self._model_capabilities(timeout=timeout)
+        if not capabilities.navigation_control:
+            raise UnsupportedScannerFeatureError(
+                f"{capabilities.model} does not provide navigation control."
+            )
+        self.execute(
+            PreviousSelection(str(target), first, second, count),
             timeout=timeout,
         )
 

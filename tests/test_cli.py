@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import threading
 import time
+from pathlib import Path
 
 import pytest
 
 from sds200 import cli
 from sds200.radio import SDSScanner
+from sds200.replay import CaptureEvent, write_capture
 
 from .fakes import FakeTransport
 
@@ -79,3 +81,66 @@ def test_scanner_info_cli_prints_extended_property_fields(
     assert "Battery:    -" in output
     assert "Recording:  Off" in output
     assert "Mute:       Mute" in output
+
+
+def test_replay_cli_runs_info_without_hardware(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fixture = Path(__file__).parent / "fixtures" / "replay" / "sds100-info.jsonl"
+
+    assert cli.main(["--replay", str(fixture), "--model", "SDS100", "info"]) == 0
+
+    output = capsys.readouterr().out
+    assert "Model:    SDS100" in output
+    assert "Firmware: Version 1.26.01" in output
+    assert "Volume:   10" in output
+    assert "Squelch:  2" in output
+
+
+def test_capabilities_cli_reports_validation_status(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fixture = Path(__file__).parent / "fixtures" / "replay" / "sds100-info.jsonl"
+
+    assert cli.main(["--replay", str(fixture), "capabilities"]) == 0
+
+    output = capsys.readouterr().out
+    assert "Model:              SDS100" in output
+    assert "Validation:         hardware-validated" in output
+    assert "Navigation control: yes" in output
+    assert "Battery level:      optional" in output
+
+
+def test_navigation_cli_uses_typed_command(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fixture = tmp_path / "navigation.jsonl"
+    write_capture(
+        fixture,
+        (
+            CaptureEvent(direction="tx", data="MDL"),
+            CaptureEvent(direction="rx", data="MDL,SDS100"),
+            CaptureEvent(direction="tx", data="HLD,SYS,42,"),
+            CaptureEvent(direction="rx", data="HLD,OK"),
+        ),
+    )
+
+    assert cli.main(["--replay", str(fixture), "hold", "sys", "42"]) == 0
+    assert capsys.readouterr().out == "OK\n"
+
+
+def test_redact_requires_capture(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fixture = Path(__file__).parent / "fixtures" / "replay" / "sds100-info.jsonl"
+
+    assert cli.main(["--replay", str(fixture), "--redact", "secret", "info"]) == 2
+    assert "--redact requires --capture" in capsys.readouterr().err
+
+
+def test_replay_speed_requires_replay(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert cli.main(["--replay-speed", "1", "info"]) == 2
+    assert "--replay-speed requires --replay" in capsys.readouterr().err

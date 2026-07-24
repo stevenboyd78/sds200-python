@@ -26,12 +26,13 @@ and live state updates.
 - Automatic USB and bounded LAN discovery
 - Saved serial, network, and automatic fallback profiles
 - Preferred transport ordering with live USB/Ethernet failover
-- Typed commands and responses
+- Typed commands and responses, including documented hold/next/previous navigation
 - Structured `GSI` and continuous `PSI` scanner information
 - Thread-safe synchronized radio state and change events
 - Live terminal monitoring
 - Exponential reconnect backoff with configurable retry limits
-- Traffic tracing, bounded health history, and failover diagnostics
+- Traffic tracing, replayable JSON Lines session capture, and deterministic replay
+- Bounded health history and failover diagnostics
 - JSON Lines events for connection, retry, failover, and state changes
 - Discovery-based repair for stale USB paths and scanner IP addresses
 - Separate public audio-stream architecture for future network audio
@@ -58,17 +59,20 @@ route detection and `/dev/serial/by-id` discovery are Linux-specific.
 
 ## Installation
 
-The project has not been published to PyPI yet. Install it from source:
+Install the published package from PyPI:
+
+```bash
+python -m pip install sds200
+```
+
+Install from source for development:
 
 ```bash
 git clone https://github.com/stevenboyd78/sds200-python.git
 cd sds200-python
-
 python3 -m venv .venv
 source .venv/bin/activate
-
 python -m pip install --upgrade pip
-python -m pip install .
 ```
 
 For development:
@@ -197,6 +201,40 @@ sdsctl --profile home \
 
 `events --json` emits one JSON object per line for connection changes,
 transport diagnostics, reconnect scheduling, failovers, and live state changes.
+
+### Capabilities, capture, and replay
+
+Show the connected model's limits and validation status:
+
+```bash
+sdsctl --model SDS100 capabilities
+```
+
+Record a replayable session and then run the same operation without hardware:
+
+```bash
+sdsctl --model SDS100 --capture sds100-info.jsonl info
+sdsctl --replay sds100-info.jsonl --model SDS100 info
+```
+
+Captures can contain local scanner data. Use repeated `--redact TEXT` options and
+inspect files before sharing them. See [Session capture and replay](docs/replay-and-capture.md).
+
+### Typed navigation
+
+The documented `HLD`, `NXT`, and `PRV` operations are available through
+typed APIs and CLI commands:
+
+```bash
+sdsctl --model SDS100 hold SYS 100
+sdsctl --model SDS100 next DEPT 200 100 --count 2
+sdsctl --model SDS100 previous TGID 300
+```
+
+Targets and indexes are protocol values reported by GSI or GLT. The typed
+navigation layer is specification-backed and replay-tested; smoke-test it on
+the intended scanner before relying on it operationally. Prefer a replay fixture
+when developing navigation logic without a scanner attached.
 
 ### Raw protocol commands
 

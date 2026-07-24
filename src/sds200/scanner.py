@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 ScannerModel = Literal["SDS100", "SDS150", "SDS200"]
+ValidationStatus = Literal["hardware-validated", "specification-only"]
 SUPPORTED_SCANNER_MODELS: tuple[ScannerModel, ...] = ("SDS100", "SDS150", "SDS200")
 
 
@@ -16,6 +17,10 @@ class ScannerCapabilities:
     network_control: bool
     battery_level: bool
     charge_status: bool
+    scanner_info: bool
+    scanner_info_push: bool
+    navigation_control: bool
+    validation_status: ValidationStatus
     maximum_volume: int
     maximum_squelch: int
 
@@ -27,6 +32,10 @@ _CAPABILITIES: dict[ScannerModel, ScannerCapabilities] = {
         network_control=False,
         battery_level=True,
         charge_status=False,
+        scanner_info=True,
+        scanner_info_push=True,
+        navigation_control=True,
+        validation_status="hardware-validated",
         maximum_volume=15,
         maximum_squelch=15,
     ),
@@ -36,6 +45,10 @@ _CAPABILITIES: dict[ScannerModel, ScannerCapabilities] = {
         network_control=False,
         battery_level=False,
         charge_status=True,
+        scanner_info=True,
+        scanner_info_push=True,
+        navigation_control=True,
+        validation_status="specification-only",
         maximum_volume=15,
         maximum_squelch=15,
     ),
@@ -45,6 +58,10 @@ _CAPABILITIES: dict[ScannerModel, ScannerCapabilities] = {
         network_control=True,
         battery_level=False,
         charge_status=False,
+        scanner_info=True,
+        scanner_info_push=True,
+        navigation_control=True,
+        validation_status="hardware-validated",
         maximum_volume=29,
         maximum_squelch=19,
     ),

@@ -11,6 +11,25 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 - Validated SDS200 network audio transport after control reliability work
 - Optional preferred-transport recovery without connection flapping
 
+## [0.9.0] - 2026-07-24
+
+### Added
+
+- Deterministic `ReplayTransport` for running real parser, radio, and CLI flows from JSON Lines captures
+- `RecordingTransport` and `--capture` support for USB, UDP, and fallback sessions
+- Repeatable literal redaction for captures before fixtures are shared
+- `sdsctl --replay`, replay timing control, and strict command-sequence mismatch errors
+- `sdsctl capabilities` with model limits, feature flags, and hardware-validation status
+- Typed `HLD`, `NXT`, and `PRV` navigation commands with CLI and Python APIs
+- Hardware-derived, sanitized SDS100 replay fixture and replay regression tests
+
+### Changed
+
+- Model capabilities now identify scanner-info, PSI, navigation, and validation status
+- README installation instructions now use the published PyPI package
+- Trusted Publishing workflow uses current Node 24-based checkout and Python setup actions
+- Package version advanced to 0.9.0
+
 ## [0.8.2] - 2026-07-24
 
 ### Added

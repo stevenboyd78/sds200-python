@@ -1,0 +1,11 @@
+{"endpoint": "usb://SDS100", "schema": "sds200.capture", "version": 1}
+{"data": "GSI", "delay_ms": 0.0, "direction": "tx"}
+{"data": "GSI,<XML>,", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<?xml version=\"1.0\" encoding=\"utf-8\"?>", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<ScannerInfo Mode=\"Trunk Scan\" V_Screen=\"trunk_scan\">", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<System Name=\"Example P25 System\" Index=\"100\" Hold=\"On\" />", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<Department Name=\"Example Department\" Index=\"200\" Hold=\"Off\" />", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<Site Name=\"Example Simulcast\" Index=\"300\" Mod=\"NFM\" Hold=\"On\" />", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<SiteFrequency Freq=\" 769.431250MHz\" />", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<Property VOL=\"10\" SQL=\"2\" Sig=\"5\" Rssi=\"-86\" Rec=\"Off\" Mute=\"Mute\" />", "delay_ms": 0.0, "direction": "rx"}
+{"data": "</ScannerInfo>", "delay_ms": 0.0, "direction": "rx"}

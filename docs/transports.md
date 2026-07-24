@@ -82,6 +82,24 @@ Network audio is a separate protocol and is not part of `UdpTransport`.
 
 SDS100 and SDS150 do not use this native UDP control transport.
 
+## Capture and replay transports
+
+`RecordingTransport` wraps USB, UDP, fallback, or custom control transports
+and records connection changes, transmitted commands, and received CR-delimited
+lines as JSON Lines. `ReplayTransport` consumes those files through the same
+`ControlTransport` contract.
+
+```python
+from sds200 import SDSScanner
+
+with SDSScanner.replay("captures/sds100-info.jsonl") as radio:
+    print(radio.get_model())
+```
+
+Replay is strict and immediate by default. See
+[Session capture and replay](replay-and-capture.md) for CLI usage, timing,
+fixture construction, and redaction guidance.
+
 ## Custom transports
 
 A custom transport must expose an endpoint, connection state, CR-delimited
