@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from types import MappingProxyType
 from typing import Protocol, runtime_checkable
 
 import serial
@@ -32,6 +33,7 @@ class TransportDiagnostic:
     kind: str
     message: str
     command: str | None = None
+    endpoint: str | None = None
     expected_fragment: int | None = None
     received_fragment: int | None = None
     observed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
@@ -76,6 +78,38 @@ class StatisticalControlTransport(Protocol):
     def statistics(self) -> Mapping[str, object]: ...
 
 
+@dataclass(slots=True)
+class _MutableSerialStatistics:
+    commands_sent: int = 0
+    bytes_received: int = 0
+    lines_received: int = 0
+    read_errors: int = 0
+    write_errors: int = 0
+    connection_opens: int = 0
+    reconnects: int = 0
+    last_receive_at: datetime | None = None
+    last_error: str | None = None
+
+    def mapping(self) -> Mapping[str, object]:
+        return MappingProxyType(
+            {
+                "commands_sent": self.commands_sent,
+                "bytes_received": self.bytes_received,
+                "lines_received": self.lines_received,
+                "read_errors": self.read_errors,
+                "write_errors": self.write_errors,
+                "connection_opens": self.connection_opens,
+                "reconnects": self.reconnects,
+                "last_receive_at": (
+                    self.last_receive_at.isoformat()
+                    if self.last_receive_at is not None
+                    else None
+                ),
+                "last_error": self.last_error,
+            }
+        )
+
+
 def default_serial_factory(
     *,
     port: str,
@@ -114,6 +148,9 @@ class SerialTransport:
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._write_lock = threading.Lock()
+        self._statistics_lock = threading.RLock()
+        self._statistics = _MutableSerialStatistics()
+        self._diagnostic_handler: DiagnosticHandler | None = None
 
     @property
     def endpoint(self) -> str:
@@ -122,6 +159,17 @@ class SerialTransport:
     @property
     def connected(self) -> bool:
         return self._serial is not None and self._serial.is_open
+
+    @property
+    def statistics(self) -> Mapping[str, object]:
+        with self._statistics_lock:
+            return self._statistics.mapping()
+
+    def set_diagnostic_handler(
+        self,
+        handler: DiagnosticHandler | None,
+    ) -> None:
+        self._diagnostic_handler = handler
 
     def start(
         self,
@@ -174,10 +222,22 @@ class SerialTransport:
             try:
                 self._serial.write(data)
             except (OSError, serial.SerialException) as exc:
+                with self._statistics_lock:
+                    self._statistics.write_errors += 1
+                    self._statistics.last_error = str(exc)
+                self._emit_diagnostic(
+                    TransportDiagnostic(
+                        kind="serial_write_error",
+                        endpoint=self.endpoint,
+                        message=f"Serial write failed on {self.endpoint}: {exc}",
+                    )
+                )
                 self._close()
                 raise ScannerConnectionError(
                     f"Failed to write to scanner on {self.port}."
                 ) from exc
+        with self._statistics_lock:
+            self._statistics.commands_sent += 1
         logger.debug("TX %s", normalized)
 
     def _open(self) -> None:
@@ -193,6 +253,11 @@ class SerialTransport:
             raise ScannerConnectionError(
                 f"Could not open scanner serial port {self.port}."
             ) from exc
+        with self._statistics_lock:
+            was_reconnect = self._statistics.connection_opens > 0
+            self._statistics.connection_opens += 1
+            if was_reconnect:
+                self._statistics.reconnects += 1
         logger.info("Connected to scanner on %s", self.port)
         self._notify_connection(True)
 
@@ -206,6 +271,14 @@ class SerialTransport:
                 logger.debug("Error while closing serial port", exc_info=True)
         if was_connected:
             self._notify_connection(False)
+
+    def _emit_diagnostic(self, diagnostic: TransportDiagnostic) -> None:
+        if self._diagnostic_handler is None:
+            return
+        try:
+            self._diagnostic_handler(diagnostic)
+        except Exception:
+            logger.exception("Unhandled exception in serial diagnostic callback")
 
     def _notify_connection(self, connected: bool) -> None:
         if self._connection_handler is None:
@@ -237,12 +310,22 @@ class SerialTransport:
             assert serial_port is not None
             try:
                 chunk = serial_port.read(512)
-            except (OSError, TypeError, serial.SerialException):
+            except (OSError, TypeError, serial.SerialException) as exc:
                 # TypeError is possible in pyserial when another thread closes
                 # the underlying POSIX file descriptor during read(). It is
                 # harmless during an intentional shutdown.
                 if self._stop.is_set():
                     return
+                with self._statistics_lock:
+                    self._statistics.read_errors += 1
+                    self._statistics.last_error = str(exc)
+                self._emit_diagnostic(
+                    TransportDiagnostic(
+                        kind="serial_read_error",
+                        endpoint=self.endpoint,
+                        message=f"Serial read failed on {self.endpoint}: {exc}",
+                    )
+                )
                 logger.warning("Scanner disconnected from %s", self.port)
                 self._close()
                 buffer.clear()
@@ -252,6 +335,9 @@ class SerialTransport:
                 return
             if not chunk:
                 continue
+            with self._statistics_lock:
+                self._statistics.bytes_received += len(chunk)
+                self._statistics.last_receive_at = datetime.now(UTC)
             buffer.extend(chunk)
 
             while b"\r" in buffer:
@@ -259,5 +345,7 @@ class SerialTransport:
                 buffer = bytearray(remainder)
                 line = raw_line.decode("utf-8", errors="replace")
                 logger.debug("RX %s", line)
+                with self._statistics_lock:
+                    self._statistics.lines_received += 1
                 if self._handler and line:
                     self._handler(line)

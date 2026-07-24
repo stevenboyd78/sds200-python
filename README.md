@@ -21,17 +21,19 @@ and live state updates.
 - USB serial control using stable Linux `/dev/serial/by-id` paths
 - Native SDS200 Ethernet control over UDP
 - Automatic USB and bounded LAN discovery
-- Saved serial and network connection profiles
+- Saved serial, network, and automatic fallback profiles
+- Preferred transport ordering with live USB/Ethernet failover
 - Typed commands and responses
 - Structured `GSI` and continuous `PSI` scanner information
 - Thread-safe synchronized radio state and change events
 - Live terminal monitoring
-- Traffic tracing and transport diagnostics
+- Traffic tracing, continuous health watching, and reconnect diagnostics
+- Separate public audio-stream architecture for future network audio
 - UDP XML fragment validation, statistics, and bounded retries
 - Bash and Zsh tab completion
 - Strict MyPy typing, Ruff checks, and hardware-independent tests
 
-Network audio streaming is not implemented yet.
+Network audio streaming is not implemented yet; its control-independent API groundwork is available.
 
 ## Requirements
 
@@ -117,15 +119,29 @@ sds200 --host 192.168.0.251 monitor
 
 The SDS200 virtual serial service uses UDP port `50536` by default.
 
-### Connection profiles
+### Connection profiles and fallback
+
+Create a profile directly from USB and LAN discovery:
 
 ```bash
-sds200 profile add home --host 192.168.0.251
-sds200 profile add usb \
-  --port /dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00
+sds200 profile discover home \
+  --network 192.168.0.0/24 \
+  --prefer network
+```
 
-sds200 profile list
-sds200 --profile home monitor
+When both endpoints are found, the profile automatically falls back between
+Ethernet and USB. The saved preference can be overridden for one command:
+
+```bash
+sds200 --profile home --prefer serial monitor
+```
+
+Manual profiles remain supported:
+
+```bash
+sds200 profile add network-only --host 192.168.0.251
+sds200 profile add usb-only \
+  --port /dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00
 ```
 
 Profiles are stored in `${XDG_CONFIG_HOME:-~/.config}/sds200/profiles.toml`.
@@ -134,6 +150,8 @@ Profiles are stored in `${XDG_CONFIG_HOME:-~/.config}/sds200/profiles.toml`.
 
 ```bash
 sds200 --profile home health
+sds200 --profile home health --watch 5
+sds200 --profile home health --json
 sds200 --host 192.168.0.251 --trace scanner.trace monitor
 ```
 
@@ -236,6 +254,8 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting and
 
 - [Control transports](docs/transports.md)
 - [LAN discovery and profiles](docs/discovery-and-profiles.md)
+- [Fallback profiles](docs/fallback-profiles.md)
+- [Audio subsystem architecture](docs/audio.md)
 - [Contributing](CONTRIBUTING.md)
 - [Support](SUPPORT.md)
 - [Changelog](CHANGELOG.md)
@@ -259,7 +279,7 @@ documented separately in pull requests and release notes.
 
 ## Project status
 
-Version `0.5.3` is the first planned GitHub prerelease. The control, discovery,
+Version `0.6.0` adds discovery-driven fallback profiles and expanded health diagnostics. The control, discovery,
 monitoring, profile, and diagnostic paths have been validated against real
 SDS200 hardware over both USB and Ethernet. API compatibility is not guaranteed
 until version 1.0.

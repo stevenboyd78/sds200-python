@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sds200"
-version = "0.5.3"
+version = "0.6.0"
 description = "Python USB and Ethernet control library for the Uniden SDS200 scanner"
 readme = "README.md"
 requires-python = ">=3.11"

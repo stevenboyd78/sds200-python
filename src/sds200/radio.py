@@ -5,6 +5,7 @@ import queue
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
+from datetime import UTC, datetime
 from pathlib import Path
 from time import monotonic
 from typing import Self, TypeVar
@@ -24,13 +25,22 @@ from .commands import (
 from .device import choose_scanner
 from .events import EventBus
 from .exceptions import CommandTimeoutError, ProtocolError, SDS200Error
-from .models import Packet, RadioHealth, ScannerInfo, StatusResponse
+from .fallback import FallbackTransport, TransportCandidate
+from .models import (
+    FirmwareResponse,
+    ModelResponse,
+    Packet,
+    RadioHealth,
+    ScannerInfo,
+    StatusResponse,
+)
 from .network import (
     DEFAULT_UDP_PORT,
     DatagramSocketFactory,
     UdpTransport,
 )
 from .parser import PacketParser
+from .profiles import ConnectionProfile, TransportPreference
 from .state import RadioState, RadioStateSnapshot, StateChange
 from .trace import TrafficTrace
 from .transport import (
@@ -93,6 +103,15 @@ class SDS200:
         self._closed = threading.Event()
         self._closed.set()
         self._psi_interval_ms: int | None = None
+        self._health_lock = threading.RLock()
+        self._connection_events = 0
+        self._last_connection_state: bool | None = None
+        self._last_connected_at: datetime | None = None
+        self._last_disconnected_at: datetime | None = None
+        self._last_response_at: datetime | None = None
+        self._last_state_at: datetime | None = None
+        self._model: str | None = None
+        self._firmware: str | None = None
 
     @classmethod
     def auto(
@@ -143,6 +162,104 @@ class SDS200:
                 max_xml_retries=max_xml_retries,
                 socket_factory=socket_factory,
             )
+        return cls.from_transport(transport, trace_path=trace_path)
+
+    @classmethod
+    def from_profile(
+        cls,
+        profile: ConnectionProfile,
+        *,
+        preference: TransportPreference | None = None,
+        baudrate: int = 115200,
+        serial_factory: SerialFactory | None = None,
+        socket_factory: DatagramSocketFactory | None = None,
+        max_xml_retries: int = 2,
+        trace_path: str | Path | None = None,
+    ) -> Self:
+        if profile.kind == "serial":
+            if preference is not None:
+                raise ValueError("--prefer only applies to fallback profiles.")
+            serial_port = profile.port
+            assert serial_port is not None
+            return cls(
+                serial_port,
+                baudrate=baudrate,
+                serial_factory=serial_factory,
+                trace_path=trace_path,
+            )
+        if profile.kind == "network":
+            if preference is not None:
+                raise ValueError("--prefer only applies to fallback profiles.")
+            network_host = profile.host
+            assert network_host is not None
+            return cls.network(
+                network_host,
+                remote_port=profile.udp_port,
+                local_host=profile.bind_address,
+                local_port=profile.bind_port,
+                socket_factory=socket_factory,
+                max_xml_retries=max_xml_retries,
+                trace_path=trace_path,
+            )
+
+        serial_port = profile.port
+        network_host = profile.host
+        assert serial_port is not None
+        assert network_host is not None
+        resolved_preference = preference or profile.preference
+
+        def serial_transport() -> ControlTransport:
+            if serial_factory is None:
+                return SerialTransport(
+                    serial_port,
+                    baudrate=baudrate,
+                    reconnect=False,
+                )
+            return SerialTransport(
+                serial_port,
+                baudrate=baudrate,
+                reconnect=False,
+                serial_factory=serial_factory,
+            )
+
+        def network_transport() -> ControlTransport:
+            if socket_factory is None:
+                return UdpTransport(
+                    network_host,
+                    remote_port=profile.udp_port,
+                    local_host=profile.bind_address,
+                    local_port=profile.bind_port,
+                    reconnect=False,
+                    max_xml_retries=max_xml_retries,
+                )
+            return UdpTransport(
+                network_host,
+                remote_port=profile.udp_port,
+                local_host=profile.bind_address,
+                local_port=profile.bind_port,
+                reconnect=False,
+                max_xml_retries=max_xml_retries,
+                socket_factory=socket_factory,
+            )
+
+        candidates = {
+            "serial": TransportCandidate(
+                name="serial",
+                endpoint=serial_port,
+                factory=serial_transport,
+            ),
+            "network": TransportCandidate(
+                name="network",
+                endpoint=f"udp://{network_host}:{profile.udp_port}",
+                factory=network_transport,
+            ),
+        }
+        alternate: TransportPreference = (
+            "network" if resolved_preference == "serial" else "serial"
+        )
+        transport = FallbackTransport(
+            (candidates[resolved_preference], candidates[alternate])
+        )
         return cls.from_transport(transport, trace_path=trace_path)
 
     @classmethod
@@ -275,23 +392,56 @@ class SDS200:
     def get_scanner_info(self, *, timeout: float = 3.0) -> ScannerInfo:
         return self.execute(GetScannerInfo(), timeout=timeout)
 
-    def health_check(self, *, timeout: float = 2.0) -> RadioHealth:
-        started = monotonic()
-        model = self.get_model(timeout=timeout)
-        latency_ms = (monotonic() - started) * 1000.0
-        firmware = self.get_firmware(timeout=timeout)
+    def health_snapshot(self, *, error: str | None = None) -> RadioHealth:
         statistics = (
             self.transport.statistics
             if isinstance(self.transport, StatisticalControlTransport)
             else None
         )
+        with self._health_lock:
+            return RadioHealth.create(
+                endpoint=self.endpoint,
+                connected=self.connected,
+                model=self._model,
+                firmware=self._firmware,
+                latency_ms=None,
+                status=(
+                    "healthy"
+                    if self.connected and error is None
+                    else "disconnected" if not self.connected else "degraded"
+                ),
+                connection_events=self._connection_events,
+                last_connected_at=self._last_connected_at,
+                last_disconnected_at=self._last_disconnected_at,
+                last_response_at=self._last_response_at,
+                last_state_at=self._last_state_at,
+                psi_active=self.psi_active,
+                psi_interval_ms=self.psi_interval_ms,
+                error=error,
+                statistics=statistics,
+            )
+
+    def health_check(self, *, timeout: float = 2.0) -> RadioHealth:
+        started = monotonic()
+        model = self.get_model(timeout=timeout)
+        latency_ms = (monotonic() - started) * 1000.0
+        firmware = self.get_firmware(timeout=timeout)
+        snapshot = self.health_snapshot()
         return RadioHealth.create(
-            endpoint=self.endpoint,
-            connected=self.connected,
+            endpoint=snapshot.endpoint,
+            connected=snapshot.connected,
             model=model,
             firmware=firmware,
             latency_ms=latency_ms,
-            statistics=statistics,
+            status="healthy",
+            connection_events=snapshot.connection_events,
+            last_connected_at=snapshot.last_connected_at,
+            last_disconnected_at=snapshot.last_disconnected_at,
+            last_response_at=snapshot.last_response_at,
+            last_state_at=snapshot.last_state_at,
+            psi_active=snapshot.psi_active,
+            psi_interval_ms=snapshot.psi_interval_ms,
+            statistics=snapshot.statistics,
         )
 
     def start_scanner_info_push(
@@ -395,6 +545,8 @@ class SDS200:
                 self.events.emit("protocol_error", exc)
                 return
 
+            with self._health_lock:
+                self._last_state_at = info.received_at
             change = self.state.update(info)
             if change is not None:
                 self.events.emit("state", change.current)
@@ -418,6 +570,12 @@ class SDS200:
         self._publish(packet.command, response)
 
     def _publish(self, command: str, response: object) -> None:
+        with self._health_lock:
+            self._last_response_at = datetime.now(UTC)
+            if isinstance(response, ModelResponse):
+                self._model = response.model
+            elif isinstance(response, FirmwareResponse):
+                self._firmware = response.version
         self.events.emit("response", response)
         self.events.emit(command.lower(), response)
         with self._response_lock:
@@ -430,6 +588,15 @@ class SDS200:
         self.events.emit("diagnostic", diagnostic)
 
     def _connection_changed(self, connected: bool) -> None:
+        observed_at = datetime.now(UTC)
+        with self._health_lock:
+            if self._last_connection_state != connected:
+                self._connection_events += 1
+                self._last_connection_state = connected
+            if connected:
+                self._last_connected_at = observed_at
+            else:
+                self._last_disconnected_at = observed_at
         self.events.emit("connection", connected)
         if not connected or self._psi_interval_ms is None:
             return

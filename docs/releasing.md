@@ -1,11 +1,11 @@
 # Release process
 
-This checklist prepares the first GitHub prerelease, `v0.5.3`.
+This checklist prepares a GitHub prerelease. Set `VERSION` to the intended package version before starting.
 
 ## 1. Prepare the repository
 
 - Confirm the default branch is clean and current.
-- Confirm `pyproject.toml` and `sds200.__version__` both contain `0.5.3`.
+- Confirm `pyproject.toml` and `sds200.__version__` both contain the intended release version.
 - Update `CHANGELOG.md`.
 - Verify README examples against the current CLI.
 - Confirm no traces, scanner identifiers, private IP details, or credentials
@@ -35,7 +35,7 @@ python -m twine check dist/*
 Inspect the built wheel:
 
 ```bash
-python -m zipfile -l dist/sds200-0.5.3-py3-none-any.whl
+python -m zipfile -l dist/sds200-VERSION-py3-none-any.whl
 ```
 
 Confirm it contains:
@@ -80,16 +80,16 @@ tested in the release notes. Do not publish private channel or network data.
 git switch main
 git pull --ff-only
 git status
-git tag -a v0.5.3 -m "sds200-python v0.5.3"
-git push origin v0.5.3
+git tag -a vVERSION -m "sds200-python vVERSION"
+git push origin vVERSION
 ```
 
 ## 5. Create the GitHub release
 
-- Create a release from tag `v0.5.3`.
-- Title it `sds200-python v0.5.3`.
+- Create a release from tag `vVERSION`.
+- Title it `sds200-python vVERSION`.
 - Mark it as a **pre-release**.
-- Use the `0.5.3` section of `CHANGELOG.md` as the starting release notes.
+- Use the matching version section of `CHANGELOG.md` as the starting release notes.
 - State that the API is alpha and may change before 1.0.
 - Include the tested scanner firmware and transports.
 - Attach the wheel and source distribution from `dist/` if desired.

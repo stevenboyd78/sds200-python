@@ -1,3 +1,4 @@
+from .audio import AudioChunk, AudioStream, AudioTransport
 from .commands import (
     GetFirmware,
     GetModel,
@@ -16,6 +17,7 @@ from .discovery import (
     discover_network_scanners,
     local_ipv4_networks,
 )
+from .fallback import FallbackTransport, TransportCandidate
 from .models import (
     FirmwareResponse,
     ModelResponse,
@@ -27,7 +29,14 @@ from .models import (
     ValueResponse,
 )
 from .network import DEFAULT_UDP_PORT, UdpDatagramDecoder, UdpTransport
-from .profiles import ConnectionProfile, ProfileStore
+from .profiles import (
+    TRANSPORT_PREFERENCES,
+    ConnectionProfile,
+    ProfileKind,
+    ProfileStore,
+    TransportPreference,
+    profile_from_discovery,
+)
 from .radio import SDS200
 from .state import RadioState, RadioStateSnapshot, StateChange
 from .transport import (
@@ -37,11 +46,15 @@ from .transport import (
 )
 
 __all__ = [
+    "AudioChunk",
+    "AudioStream",
+    "AudioTransport",
     "ConnectionProfile",
     "ControlTransport",
     "DEFAULT_DISCOVERY_WORKERS",
     "DEFAULT_SDS200_PATTERN",
     "DEFAULT_UDP_PORT",
+    "FallbackTransport",
     "FirmwareResponse",
     "GetFirmware",
     "GetModel",
@@ -52,6 +65,7 @@ __all__ = [
     "ModelResponse",
     "NetworkScanner",
     "Packet",
+    "ProfileKind",
     "ProfileStore",
     "RadioHealth",
     "RadioState",
@@ -66,6 +80,9 @@ __all__ = [
     "StartScannerInfoPush",
     "StateChange",
     "StatusResponse",
+    "TRANSPORT_PREFERENCES",
+    "TransportCandidate",
+    "TransportPreference",
     "TransportDiagnostic",
     "UdpDatagramDecoder",
     "UdpTransport",
@@ -73,6 +90,7 @@ __all__ = [
     "discover_network_scanners",
     "discover_scanners",
     "local_ipv4_networks",
+    "profile_from_discovery",
 ]
 
-__version__ = "0.5.3"
+__version__ = "0.6.0"

@@ -168,10 +168,38 @@ def test_profile_completer_reads_configured_store(
     }
 
 
-
 def test_discovery_workers_option() -> None:
     parser = build_parser()
     args = parser.parse_args(
         ["discover", "--network", "192.168.0.0/24", "--workers", "8"]
     )
     assert args.workers == 8
+
+
+def test_health_watch_options_parse() -> None:
+    args = build_parser().parse_args(["health", "--watch", "5", "--json"])
+    assert args.watch == 5.0
+    assert args.json is True
+
+
+def test_profile_discover_options_parse() -> None:
+    args = build_parser().parse_args(
+        [
+            "profile",
+            "discover",
+            "home",
+            "--network",
+            "192.0.2.0/24",
+            "--prefer",
+            "network",
+        ]
+    )
+    assert args.profile_action == "discover"
+    assert args.profile_preference == "network"
+
+
+def test_profile_preference_override_parses() -> None:
+    args = build_parser().parse_args(
+        ["--profile", "home", "--prefer", "network", "info"]
+    )
+    assert args.connection_preference == "network"

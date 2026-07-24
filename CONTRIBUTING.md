@@ -51,6 +51,8 @@ The automated test suite must run without scanner hardware.
 
 - `src/sds200/transport.py`: transport contract and USB serial transport
 - `src/sds200/network.py`: UDP transport and network XML datagram handling
+- `src/sds200/fallback.py`: ordered control-transport activation and failover
+- `src/sds200/audio.py`: control-independent audio lifecycle contracts
 - `src/sds200/commands.py`: typed command objects
 - `src/sds200/parser.py`: CR-delimited response parsing
 - `src/sds200/xml_protocol.py`: scanner-information XML parsing

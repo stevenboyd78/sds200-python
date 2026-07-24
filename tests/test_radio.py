@@ -1,6 +1,8 @@
 import threading
 import time
 
+from sds200.fallback import FallbackTransport
+from sds200.profiles import ConnectionProfile
 from sds200.radio import SDS200
 
 from .fakes import FakeSerial, FakeTransport
@@ -57,3 +59,30 @@ def test_health_check_returns_round_trip_metadata() -> None:
     assert health.model == "SDS200"
     assert health.firmware == "Version 1.26.01"
     assert health.latency_ms >= 0
+
+
+def test_health_snapshot_tracks_connection_and_response_times() -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport)
+
+    with radio:
+        transport.feed_line("MDL,SDS200")
+        snapshot = radio.health_snapshot()
+
+    assert snapshot.connection_events >= 1
+    assert snapshot.last_connected_at is not None
+    assert snapshot.last_response_at is not None
+    assert snapshot.model == "SDS200"
+
+
+def test_fallback_profile_builds_preferred_transport_order() -> None:
+    profile = ConnectionProfile.fallback(
+        "home",
+        port="/dev/fake",
+        host="192.0.2.25",
+        preference="network",
+    )
+    radio = SDS200.from_profile(profile, preference="serial")
+
+    assert isinstance(radio.transport, FallbackTransport)
+    assert radio.transport.candidates[0].name == "serial"

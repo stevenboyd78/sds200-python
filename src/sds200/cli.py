@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 from collections.abc import Callable
 from pathlib import Path
+from time import sleep
 from typing import Protocol, cast
 
 from .completion import (
@@ -27,7 +29,13 @@ from .exceptions import SDS200Error
 from .models import RadioHealth, StatusResponse
 from .monitor import TerminalMonitor
 from .network import DEFAULT_UDP_PORT
-from .profiles import ConnectionProfile, ProfileStore
+from .profiles import (
+    TRANSPORT_PREFERENCES,
+    ConnectionProfile,
+    ProfileStore,
+    TransportPreference,
+    profile_from_discovery,
+)
 from .radio import SDS200
 
 
@@ -122,6 +130,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Use a saved serial or network connection profile",
     )
     _set_completer(profile_action, profile_completer)
+    parser.add_argument(
+        "--prefer",
+        dest="connection_preference",
+        choices=TRANSPORT_PREFERENCES,
+        help="Override a fallback profile transport preference",
+    )
     _add_network_options(parser)
     parser.add_argument(
         "--max-xml-retries",
@@ -185,7 +199,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     subparsers.add_parser("info", help="Show model, firmware, volume, and squelch")
-    subparsers.add_parser("health", help="Run a command round-trip health check")
+    health = subparsers.add_parser(
+        "health", help="Run or continuously watch connection health"
+    )
+    health.add_argument(
+        "--watch",
+        type=_positive_float,
+        metavar="SECONDS",
+        help="Repeat health checks until interrupted",
+    )
+    health.add_argument("--json", action="store_true", help="Print JSON output")
     subparsers.add_parser("raw", help="Print packets until interrupted")
     subparsers.add_parser("scanner-info", help="Get structured GSI scanner information")
 
@@ -252,6 +275,45 @@ def build_parser() -> argparse.ArgumentParser:
         type=_local_port,
         default=0,
     )
+    profile_discover = profile_commands.add_parser(
+        "discover",
+        help="Discover a scanner and save a serial, network, or fallback profile",
+    )
+    profile_discover.add_argument("name")
+    profile_discover.add_argument(
+        "--network",
+        dest="profile_networks",
+        action="append",
+        metavar="CIDR",
+        help="IPv4 network to probe; repeat for multiple networks",
+    )
+    profile_discover.add_argument(
+        "--timeout",
+        dest="profile_timeout",
+        type=_positive_float,
+        default=DEFAULT_DISCOVERY_TIMEOUT,
+    )
+    profile_discover.add_argument(
+        "--workers",
+        dest="profile_workers",
+        type=_positive_integer,
+        default=DEFAULT_DISCOVERY_WORKERS,
+    )
+    profile_discover.add_argument(
+        "--max-hosts",
+        dest="profile_max_hosts",
+        type=_positive_integer,
+        default=DEFAULT_MAX_DISCOVERY_HOSTS,
+    )
+    profile_discover.add_argument(
+        "--prefer",
+        dest="profile_preference",
+        choices=TRANSPORT_PREFERENCES,
+        default="serial",
+    )
+    profile_discovery_mode = profile_discover.add_mutually_exclusive_group()
+    profile_discovery_mode.add_argument("--usb-only", action="store_true")
+    profile_discovery_mode.add_argument("--network-only", action="store_true")
     return parser
 
 
@@ -271,20 +333,15 @@ def selected_port(explicit: Path | None) -> Path:
 def _radio_from_profile(
     profile: ConnectionProfile,
     *,
+    preference: TransportPreference | None,
     trace_path: Path | None,
     max_xml_retries: int,
 ) -> SDS200:
-    if profile.kind == "serial":
-        assert profile.port is not None
-        return SDS200(profile.port, trace_path=trace_path)
-    assert profile.host is not None
-    return SDS200.network(
-        profile.host,
-        remote_port=profile.udp_port,
-        local_host=profile.bind_address,
-        local_port=profile.bind_port,
-        max_xml_retries=max_xml_retries,
+    return SDS200.from_profile(
+        profile,
+        preference=preference,
         trace_path=trace_path,
+        max_xml_retries=max_xml_retries,
     )
 
 
@@ -301,9 +358,12 @@ def selected_radio(
         store = profile_store or ProfileStore(args.config)
         return _radio_from_profile(
             store.get(args.profile),
+            preference=args.connection_preference,
             trace_path=args.trace,
             max_xml_retries=args.max_xml_retries,
         )
+    if args.connection_preference is not None:
+        raise ValueError("--prefer requires a fallback --profile")
     if args.host is not None:
         return SDS200.network(
             args.host,
@@ -318,16 +378,50 @@ def selected_radio(
     return SDS200(selected_port(args.port), trace_path=args.trace)
 
 
-def _print_health(health: RadioHealth) -> None:
+def _print_health(health: RadioHealth, *, as_json: bool = False) -> None:
+    if as_json:
+        print(json.dumps(health.as_dict(), indent=2, sort_keys=True))
+        return
+    print(f"Checked:   {health.checked_at.isoformat()}")
+    print(f"Status:    {health.status}")
     print(f"Endpoint:  {health.endpoint}")
     print(f"Connected: {'yes' if health.connected else 'no'}")
-    print(f"Model:     {health.model}")
-    print(f"Firmware:  {health.firmware}")
-    print(f"Latency:   {health.latency_ms:.1f} ms")
+    print(f"Model:     {health.model or '-'}")
+    print(f"Firmware:  {health.firmware or '-'}")
+    print(
+        "Latency:   "
+        + (f"{health.latency_ms:.1f} ms" if health.latency_ms is not None else "-")
+    )
+    print(f"Connection events: {health.connection_events}")
+    print(f"Last connected:    {health.last_connected_at or '-'}")
+    print(f"Last disconnected: {health.last_disconnected_at or '-'}")
+    print(f"Last response:     {health.last_response_at or '-'}")
+    print(f"Last state:        {health.last_state_at or '-'}")
+    print(f"PSI active:        {'yes' if health.psi_active else 'no'}")
+    if health.error is not None:
+        print(f"Error:      {health.error}")
     if health.statistics:
-        print("Network statistics:")
+        print("Transport statistics:")
         for name, value in health.statistics.items():
-            print(f"  {name.replace('_', ' ').title():24s} {value}")
+            print(f"  {name.replace('_', ' ').title():28s} {value}")
+
+
+def _run_health(radio: SDS200, args: argparse.Namespace) -> int:
+    if args.watch is None:
+        _print_health(radio.health_check(), as_json=args.json)
+        return 0
+    try:
+        while True:
+            try:
+                health = radio.health_check()
+            except SDS200Error as exc:
+                health = radio.health_snapshot(error=str(exc))
+            _print_health(health, as_json=args.json)
+            if not args.json:
+                print()
+            sleep(args.watch)
+    except KeyboardInterrupt:
+        return 0
 
 
 def _manage_profile(args: argparse.Namespace, store: ProfileStore) -> int:
@@ -337,21 +431,30 @@ def _manage_profile(args: argparse.Namespace, store: ProfileStore) -> int:
             print(f"No profiles in {store.path}")
             return 0
         for profile in profiles:
-            endpoint = profile.port if profile.kind == "serial" else profile.host
-            print(f"{profile.name:20s} {profile.kind:7s} {endpoint}")
+            if profile.kind == "serial":
+                endpoint = profile.port
+            elif profile.kind == "network":
+                endpoint = profile.host
+            else:
+                endpoint = (
+                    f"{profile.preference}: {profile.host} | {profile.port}"
+                )
+            print(f"{profile.name:20s} {profile.kind:8s} {endpoint}")
         return 0
 
     if args.profile_action == "show":
         profile = store.get(args.name)
         print(f"Name:         {profile.name}")
         print(f"Kind:         {profile.kind}")
-        if profile.kind == "serial":
+        if profile.kind in {"serial", "fallback"}:
             print(f"Port:         {profile.port}")
-        else:
+        if profile.kind in {"network", "fallback"}:
             print(f"Host:         {profile.host}")
             print(f"UDP port:     {profile.udp_port}")
             print(f"Bind address: {profile.bind_address or '*'}")
             print(f"Bind port:    {profile.bind_port}")
+        if profile.kind == "fallback":
+            print(f"Preference:   {profile.preference}")
         return 0
 
     if args.profile_action == "remove":
@@ -374,12 +477,43 @@ def _manage_profile(args: argparse.Namespace, store: ProfileStore) -> int:
         store.put(profile)
         print(f"Saved profile {profile.name!r} in {store.path}")
         return 0
-
+    if args.profile_action == "discover":
+        serial_devices = () if args.network_only else tuple(discover_scanners())
+        network_scanners = (
+            ()
+            if args.usb_only
+            else tuple(
+                discover_network_scanners(
+                    args.profile_networks,
+                    timeout=args.profile_timeout,
+                    workers=args.profile_workers,
+                    max_hosts=args.profile_max_hosts,
+                )
+            )
+        )
+        profile = profile_from_discovery(
+            args.name,
+            serial_devices,
+            network_scanners,
+            preference=args.profile_preference,
+        )
+        store.put(profile)
+        print(f"Saved discovered {profile.kind} profile {profile.name!r} in {store.path}")
+        if profile.kind == "fallback":
+            print(f"Preferred: {profile.preference}")
+            print(f"USB:       {profile.port}")
+            print(f"Network:   udp://{profile.host}:{profile.udp_port}")
+        return 0
     raise ValueError(f"Unsupported profile action: {args.profile_action}")
 
 
 def _run_discovery(args: argparse.Namespace) -> int:
-    if args.port is not None or args.host is not None or args.profile is not None:
+    if (
+        args.port is not None
+        or args.host is not None
+        or args.profile is not None
+        or args.connection_preference is not None
+    ):
         raise ValueError("Connection selectors are not used with discover.")
     if args.udp_port is not None or args.bind_address or args.bind_port:
         raise ValueError("Use discover --network CIDR instead of connection options.")
@@ -437,8 +571,7 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
 
             if args.action == "health":
-                _print_health(radio.health_check())
-                return 0
+                return _run_health(radio, args)
 
             if args.action == "scanner-info":
                 info = radio.get_scanner_info()

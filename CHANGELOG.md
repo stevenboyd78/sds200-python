@@ -8,10 +8,24 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Planned
 
-- Preferred USB/network connection fallback
-- Profile creation directly from discovery results
-- Expanded long-running transport health diagnostics
-- Network audio as a separate subsystem
+- Validated SDS200 network audio transport
+- Optional preferred-transport recovery without connection flapping
+
+## [0.6.0] - 2026-07-23
+
+### Added
+
+- Discovery-driven serial, network, or fallback profile creation
+- Configurable serial/network preference with runtime transport failover
+- One-time command retry after a successful failover
+- Continuous `health --watch` output and JSON health reports
+- Connection, response, state, serial, network, and failover diagnostics
+- Independent `AudioTransport`, `AudioStream`, and `AudioChunk` API groundwork
+
+### Changed
+
+- Profile files now use version 2 and can store both control endpoints
+- Package version advanced to 0.6.0
 
 ## [0.5.3] - 2026-07-23
 
@@ -108,5 +122,6 @@ First planned GitHub prerelease.
 - Added serial discovery, transport, packet framing, core responses, CLI tools,
   examples, tests, and CI.
 
-[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.5.3...HEAD
+[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.5.3...v0.6.0
 [0.5.3]: https://github.com/stevenboyd78/sds200-python/releases/tag/v0.5.3

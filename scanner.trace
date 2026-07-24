@@ -1,0 +1,291 @@
+2026-07-24T03:27:58.770Z  TX  PSI,500
+2026-07-24T03:27:58.783Z  RX  PSI,OK
+2026-07-24T03:27:58.822Z  RX  PSI,<XML>,
+2026-07-24T03:27:58.822Z  RX  <?xml version="1.0" encoding="utf-8"?>
+2026-07-24T03:27:58.822Z  RX  <ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+2026-07-24T03:27:58.822Z  RX    <MonitorList Name="Full Database" Index="4294967295" ListType="FullDb" Q_Key="None" N_Tag="None" DB_Counter="0" />
+2026-07-24T03:27:58.822Z  RX    <System Name="Utah Communications Authority (P25)" Index="33959" Avoid="Off" SystemType="P25 Trunk" Q_Key="None" N_Tag="None" Hold="On" />
+2026-07-24T03:27:58.822Z  RX    <Department Name="Utah County" Index="38739" Avoid="Off" Q_Key="None" Hold="Off" />
+2026-07-24T03:27:58.822Z  RX    <TGID Name="Provo Fire/EMS 1" Index="38843" Avoid="Off" TGID="TGID:6216" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Fire Dispatch" P_Ch="Off" LVL="0" />
+2026-07-24T03:27:58.822Z  RX    <UnitID Name="UID:9130002" U_Id="UID:9130002" />
+2026-07-24T03:27:58.822Z  RX    <Site Name="Utah County Simulcast" Index="35297" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />
+2026-07-24T03:27:58.822Z  RX    <SiteFrequency Freq=" 774.731250MHz" IFX="Off" SAS="NAC BC8h" SAD="NAC BC8h" />
+2026-07-24T03:27:58.822Z  RX    <DualWatch PRI="Off" CC="Off" WX="Off" />
+2026-07-24T03:27:58.822Z  RX    <Property F="Off" VOL="0" SQL="2" Sig="5" Att="Off" Rec="Off" KeyLock="Off" P25Status="P25" Mute="Unmute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-79" />
+2026-07-24T03:27:58.822Z  RX    <ViewDescription>
+2026-07-24T03:27:58.823Z  RX    </ViewDescription>
+2026-07-24T03:27:58.823Z  RX  </ScannerInfo>
+2026-07-24T03:27:59.355Z  RX  PSI,<XML>,
+2026-07-24T03:27:59.356Z  RX  <?xml version="1.0" encoding="utf-8"?>
+2026-07-24T03:27:59.356Z  RX  <ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+2026-07-24T03:27:59.357Z  RX    <MonitorList Name="Full Database" Index="4294967295" ListType="FullDb" Q_Key="None" N_Tag="None" DB_Counter="0" />
+2026-07-24T03:27:59.357Z  RX    <System Name="Utah Communications Authority (P25)" Index="33959" Avoid="Off" SystemType="P25 Trunk" Q_Key="None" N_Tag="None" Hold="On" />
+2026-07-24T03:27:59.357Z  RX    <Department Name="Utah County" Index="38739" Avoid="Off" Q_Key="None" Hold="Off" />
+2026-07-24T03:27:59.357Z  RX    <TGID Name="Provo Fire/EMS 1" Index="38843" Avoid="Off" TGID="TGID:6216" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Fire Dispatch" P_Ch="Off" LVL="0" />
+2026-07-24T03:27:59.358Z  RX    <UnitID Name="UID:9130002" U_Id="UID:9130002" />
+2026-07-24T03:27:59.358Z  RX    <Site Name="Utah County Simulcast" Index="35297" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />
+2026-07-24T03:27:59.358Z  RX    <SiteFrequency Freq=" 774.731250MHz" IFX="Off" SAS="NAC BC8h" SAD="NAC BC8h" />
+2026-07-24T03:27:59.359Z  RX    <DualWatch PRI="Off" CC="Off" WX="Off" />
+2026-07-24T03:27:59.359Z  RX    <Property F="Off" VOL="0" SQL="2" Sig="5" Att="Off" Rec="Off" KeyLock="Off" P25Status="None" Mute="Unmute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-76" />
+2026-07-24T03:27:59.359Z  RX    <ViewDescription>
+2026-07-24T03:27:59.360Z  RX    </ViewDescription>
+2026-07-24T03:27:59.360Z  RX  </ScannerInfo>
+2026-07-24T03:27:59.876Z  RX  PSI,<XML>,
+2026-07-24T03:27:59.877Z  RX  <?xml version="1.0" encoding="utf-8"?>
+2026-07-24T03:27:59.877Z  RX  <ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+2026-07-24T03:27:59.877Z  RX    <MonitorList Name="Full Database" Index="4294967295" ListType="FullDb" Q_Key="None" N_Tag="None" DB_Counter="0" />
+2026-07-24T03:27:59.877Z  RX    <System Name="Utah Communications Authority (P25)" Index="33959" Avoid="Off" SystemType="P25 Trunk" Q_Key="None" N_Tag="None" Hold="On" />
+2026-07-24T03:27:59.878Z  RX    <Department Name="Utah County" Index="38739" Avoid="Off" Q_Key="None" Hold="Off" />
+2026-07-24T03:27:59.878Z  RX    <TGID Name="Provo Fire/EMS 1" Index="38843" Avoid="Off" TGID="TGID:6216" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Fire Dispatch" P_Ch="Off" LVL="0" />
+2026-07-24T03:27:59.878Z  RX    <UnitID Name="UID:9130002" U_Id="UID:9130002" />
+2026-07-24T03:27:59.878Z  RX    <Site Name="Utah County Simulcast" Index="35297" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />
+2026-07-24T03:27:59.878Z  RX    <SiteFrequency Freq=" 774.731250MHz" IFX="Off" SAS="NAC BC8h" SAD="NAC BC8h" />
+2026-07-24T03:27:59.879Z  RX    <DualWatch PRI="Off" CC="Off" WX="Off" />
+2026-07-24T03:27:59.879Z  RX    <Property F="Off" VOL="0" SQL="2" Sig="5" Att="Off" Rec="Off" KeyLock="Off" P25Status="Link" Mute="Unmute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-99" />
+2026-07-24T03:27:59.879Z  RX    <ViewDescription>
+2026-07-24T03:27:59.879Z  RX    </ViewDescription>
+2026-07-24T03:27:59.879Z  RX  </ScannerInfo>
+2026-07-24T03:28:00.408Z  RX  PSI,<XML>,
+2026-07-24T03:28:00.408Z  RX  <?xml version="1.0" encoding="utf-8"?>
+2026-07-24T03:28:00.408Z  RX  <ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+2026-07-24T03:28:00.408Z  RX    <MonitorList Name="Full Database" Index="4294967295" ListType="FullDb" Q_Key="None" N_Tag="None" DB_Counter="0" />
+2026-07-24T03:28:00.408Z  RX    <System Name="Utah Communications Authority (P25)" Index="33959" Avoid="Off" SystemType="P25 Trunk" Q_Key="None" N_Tag="None" Hold="On" />
+2026-07-24T03:28:00.408Z  RX    <Department Name="Utah County" Index="38739" Avoid="Off" Q_Key="None" Hold="Off" />
+2026-07-24T03:28:00.408Z  RX    <TGID Name="Provo Fire/EMS 1" Index="38843" Avoid="Off" TGID="TGID:6216" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Fire Dispatch" P_Ch="Off" LVL="0" />
+2026-07-24T03:28:00.408Z  RX    <UnitID />
+2026-07-24T03:28:00.409Z  RX    <Site Name="Utah County Simulcast" Index="35297" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />
+2026-07-24T03:28:00.409Z  RX    <SiteFrequency Freq=" 769.431250MHz" IFX="Off" SAS="NAC BC8h" SAD="None" />
+2026-07-24T03:28:00.409Z  RX    <DualWatch PRI="Off" CC="Off" WX="Off" />
+2026-07-24T03:28:00.409Z  RX    <Property F="Off" VOL="0" SQL="2" Sig="5" Att="Off" Rec="Off" KeyLock="Off" P25Status="Data" Mute="Mute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-82" />
+2026-07-24T03:28:00.409Z  RX    <ViewDescription>
+2026-07-24T03:28:00.409Z  RX    </ViewDescription>
+2026-07-24T03:28:00.409Z  RX  </ScannerInfo>
+2026-07-24T03:28:00.938Z  RX  PSI,<XML>,
+2026-07-24T03:28:00.939Z  RX  <?xml version="1.0" encoding="utf-8"?>
+2026-07-24T03:28:00.939Z  RX  <ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+2026-07-24T03:28:00.939Z  RX    <MonitorList Name="Full Database" Index="4294967295" ListType="FullDb" Q_Key="None" N_Tag="None" DB_Counter="0" />
+2026-07-24T03:28:00.939Z  RX    <System Name="Utah Communications Authority (P25)" Index="33959" Avoid="Off" SystemType="P25 Trunk" Q_Key="None" N_Tag="None" Hold="On" />
+2026-07-24T03:28:00.939Z  RX    <Department Name="Utah County" Index="38739" Avoid="Off" Q_Key="None" Hold="Off" />
+2026-07-24T03:28:00.939Z  RX    <TGID Name="Provo Fire/EMS 1" Index="38843" Avoid="Off" TGID="TGID:6216" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Fire Dispatch" P_Ch="Off" LVL="0" />
+2026-07-24T03:28:00.939Z  RX    <UnitID />
+2026-07-24T03:28:00.939Z  RX    <Site Name="Utah County Simulcast" Index="35297" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />
+2026-07-24T03:28:00.939Z  RX    <SiteFrequency Freq=" 769.431250MHz" IFX="Off" SAS="NAC BC8h" SAD="NAC BC8h" />
+2026-07-24T03:28:00.939Z  RX    <DualWatch PRI="Off" CC="Off" WX="Off" />
+2026-07-24T03:28:00.939Z  RX    <Property F="Off" VOL="0" SQL="2" Sig="5" Att="Off" Rec="Off" KeyLock="Off" P25Status="Data" Mute="Mute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-52" />
+2026-07-24T03:28:00.939Z  RX    <ViewDescription>
+2026-07-24T03:28:00.939Z  RX    </ViewDescription>
+2026-07-24T03:28:00.939Z  RX  </ScannerInfo>
+2026-07-24T03:28:01.466Z  RX  PSI,<XML>,
+2026-07-24T03:28:01.466Z  RX  <?xml version="1.0" encoding="utf-8"?>
+2026-07-24T03:28:01.466Z  RX  <ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+2026-07-24T03:28:01.466Z  RX    <MonitorList Name="Full Database" Index="4294967295" ListType="FullDb" Q_Key="None" N_Tag="None" DB_Counter="0" />
+2026-07-24T03:28:01.466Z  RX    <System Name="Utah Communications Authority (P25)" Index="33959" Avoid="Off" SystemType="P25 Trunk" Q_Key="None" N_Tag="None" Hold="On" />
+2026-07-24T03:28:01.466Z  RX    <Department Name="Utah County" Index="38739" Avoid="Off" Q_Key="None" Hold="Off" />
+2026-07-24T03:28:01.466Z  RX    <TGID Name="Provo Fire/EMS 1" Index="38843" Avoid="Off" TGID="TGID:6216" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Fire Dispatch" P_Ch="Off" LVL="0" />
+2026-07-24T03:28:01.466Z  RX    <UnitID />
+2026-07-24T03:28:01.466Z  RX    <Site Name="Utah County Simulcast" Index="35297" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />
+2026-07-24T03:28:01.466Z  RX    <SiteFrequency Freq=" 769.431250MHz" IFX="Off" SAS="NAC BC8h" SAD="NAC BC8h" />
+2026-07-24T03:28:01.467Z  RX    <DualWatch PRI="Off" CC="Off" WX="Off" />
+2026-07-24T03:28:01.467Z  RX    <Property F="Off" VOL="0" SQL="2" Sig="5" Att="Off" Rec="Off" KeyLock="Off" P25Status="Data" Mute="Mute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-42" />
+2026-07-24T03:28:01.467Z  RX    <ViewDescription>
+2026-07-24T03:28:01.467Z  RX    </ViewDescription>
+2026-07-24T03:28:01.467Z  RX  </ScannerInfo>
+2026-07-24T03:28:02.004Z  RX  PSI,<XML>,
+2026-07-24T03:28:02.004Z  RX  <?xml version="1.0" encoding="utf-8"?>
+2026-07-24T03:28:02.004Z  RX  <ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+2026-07-24T03:28:02.004Z  RX    <MonitorList Name="Full Database" Index="4294967295" ListType="FullDb" Q_Key="None" N_Tag="None" DB_Counter="0" />
+2026-07-24T03:28:02.004Z  RX    <System Name="Utah Communications Authority (P25)" Index="33959" Avoid="Off" SystemType="P25 Trunk" Q_Key="None" N_Tag="None" Hold="On" />
+2026-07-24T03:28:02.004Z  RX    <Department Index="4294967295" Avoid="Off" Q_Key="None" Hold="Off" />
+2026-07-24T03:28:02.004Z  RX    <TGID Index="4294967295" Avoid="Off" TGID="TGID: ---" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" P_Ch="Off" LVL="0" />
+2026-07-24T03:28:02.004Z  RX    <UnitID />
+2026-07-24T03:28:02.004Z  RX    <Site Name="Utah County Simulcast" Index="35297" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />
+2026-07-24T03:28:02.004Z  RX    <SiteFrequency Freq=" 769.431250MHz" IFX="Off" SAS="NAC BC8h" SAD="NAC BC8h" />
+2026-07-24T03:28:02.005Z  RX    <DualWatch PRI="Off" CC="Off" WX="Off" />
+2026-07-24T03:28:02.005Z  RX    <Property F="Off" VOL="0" SQL="2" Sig="5" Att="Off" Rec="Off" KeyLock="Off" P25Status="Data" Mute="Mute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-37" />
+2026-07-24T03:28:02.005Z  RX    <ViewDescription>
+2026-07-24T03:28:02.005Z  RX      <OverWrite Text="ID Scanning..." />
+2026-07-24T03:28:02.005Z  RX    </ViewDescription>
+2026-07-24T03:28:02.005Z  RX  </ScannerInfo>
+2026-07-24T03:28:02.527Z  RX  PSI,<XML>,
+2026-07-24T03:28:02.527Z  RX  <?xml version="1.0" encoding="utf-8"?>
+2026-07-24T03:28:02.527Z  RX  <ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+2026-07-24T03:28:02.527Z  RX    <MonitorList Name="Full Database" Index="4294967295" ListType="FullDb" Q_Key="None" N_Tag="None" DB_Counter="0" />
+2026-07-24T03:28:02.527Z  RX    <System Name="Utah Communications Authority (P25)" Index="33959" Avoid="Off" SystemType="P25 Trunk" Q_Key="None" N_Tag="None" Hold="On" />
+2026-07-24T03:28:02.528Z  RX    <Department Index="4294967295" Avoid="Off" Q_Key="None" Hold="Off" />
+2026-07-24T03:28:02.528Z  RX    <TGID Index="4294967295" Avoid="Off" TGID="TGID: ---" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" P_Ch="Off" LVL="0" />
+2026-07-24T03:28:02.528Z  RX    <UnitID />
+2026-07-24T03:28:02.528Z  RX    <Site Name="Wasatch County Simulcast" Index="35344" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />
+2026-07-24T03:28:02.528Z  RX    <SiteFrequency Freq=" 772.093750MHz" IFX="Off" SAS="NAC 7E2h" SAD="None" />
+2026-07-24T03:28:02.528Z  RX    <DualWatch PRI="Off" CC="Off" WX="Off" />
+2026-07-24T03:28:02.528Z  RX    <Property F="Off" VOL="0" SQL="2" Sig="0" Att="Off" Rec="Off" KeyLock="Off" P25Status="None" Mute="Mute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-999" />
+2026-07-24T03:28:02.528Z  RX    <ViewDescription>
+2026-07-24T03:28:02.528Z  RX      <OverWrite Text="ID Scanning..." />
+2026-07-24T03:28:02.528Z  RX    </ViewDescription>
+2026-07-24T03:28:02.528Z  RX  </ScannerInfo>
+2026-07-24T03:28:03.059Z  RX  PSI,<XML>,
+2026-07-24T03:28:03.059Z  RX  <?xml version="1.0" encoding="utf-8"?>
+2026-07-24T03:28:03.059Z  RX  <ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+2026-07-24T03:28:03.059Z  RX    <MonitorList Name="Full Database" Index="4294967295" ListType="FullDb" Q_Key="None" N_Tag="None" DB_Counter="0" />
+2026-07-24T03:28:03.059Z  RX    <System Name="Utah Communications Authority (P25)" Index="33959" Avoid="Off" SystemType="P25 Trunk" Q_Key="None" N_Tag="None" Hold="On" />
+2026-07-24T03:28:03.059Z  RX    <Department Index="4294967295" Avoid="Off" Q_Key="None" Hold="Off" />
+2026-07-24T03:28:03.059Z  RX    <TGID Index="4294967295" Avoid="Off" TGID="TGID: ---" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" P_Ch="Off" LVL="0" />
+2026-07-24T03:28:03.059Z  RX    <UnitID />
+2026-07-24T03:28:03.059Z  RX    <Site Name="West Mountain" Index="35392" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />
+2026-07-24T03:28:03.059Z  RX    <SiteFrequency Freq=" 769.693750MHz" IFX="Off" SAS="NAC BE5h" SAD="None" />
+2026-07-24T03:28:03.059Z  RX    <DualWatch PRI="Off" CC="Off" WX="Off" />
+2026-07-24T03:28:03.059Z  RX    <Property F="Off" VOL="0" SQL="2" Sig="0" Att="Off" Rec="Off" KeyLock="Off" P25Status="None" Mute="Mute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-999" />
+2026-07-24T03:28:03.059Z  RX    <ViewDescription>
+2026-07-24T03:28:03.059Z  RX      <OverWrite Text="ID Scanning..." />
+2026-07-24T03:28:03.059Z  RX    </ViewDescription>
+2026-07-24T03:28:03.060Z  RX  </ScannerInfo>
+2026-07-24T03:28:03.641Z  RX  PSI,<XML>,
+2026-07-24T03:28:03.641Z  RX  <?xml version="1.0" encoding="utf-8"?>
+2026-07-24T03:28:03.641Z  RX  <ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+2026-07-24T03:28:03.641Z  RX    <MonitorList Name="Full Database" Index="4294967295" ListType="FullDb" Q_Key="None" N_Tag="None" DB_Counter="0" />
+2026-07-24T03:28:03.642Z  RX    <System Name="Utah Communications Authority (P25)" Index="33959" Avoid="Off" SystemType="P25 Trunk" Q_Key="None" N_Tag="None" Hold="On" />
+2026-07-24T03:28:03.642Z  RX    <Department Name="Utah County" Index="38739" Avoid="Off" Q_Key="None" Hold="Off" />
+2026-07-24T03:28:03.642Z  RX    <TGID Name="Provo Fire/EMS 1" Index="38843" Avoid="Off" TGID="TGID:6216" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Fire Dispatch" P_Ch="Off" LVL="0" />
+2026-07-24T03:28:03.643Z  RX    <UnitID />
+2026-07-24T03:28:03.643Z  RX    <Site Name="West Mountain" Index="35392" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />
+2026-07-24T03:28:03.643Z  RX    <SiteFrequency Freq=" 773.806250MHz" IFX="Off" SAS="NAC BE5h" SAD="None" />
+2026-07-24T03:28:03.643Z  RX    <DualWatch PRI="Off" CC="Off" WX="Off" />
+2026-07-24T03:28:03.643Z  RX    <Property F="Off" VOL="0" SQL="2" Sig="0" Att="Off" Rec="Off" KeyLock="Off" P25Status="None" Mute="Mute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-999" />
+2026-07-24T03:28:03.643Z  RX    <ViewDescription>
+2026-07-24T03:28:03.644Z  RX    </ViewDescription>
+2026-07-24T03:28:03.644Z  RX  </ScannerInfo>
+2026-07-24T03:28:04.184Z  RX  PSI,<XML>,
+2026-07-24T03:28:04.184Z  RX  <?xml version="1.0" encoding="utf-8"?>
+2026-07-24T03:28:04.185Z  RX  <ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+2026-07-24T03:28:04.185Z  RX    <MonitorList Name="Full Database" Index="4294967295" ListType="FullDb" Q_Key="None" N_Tag="None" DB_Counter="0" />
+2026-07-24T03:28:04.185Z  RX    <System Name="Utah Communications Authority (P25)" Index="33959" Avoid="Off" SystemType="P25 Trunk" Q_Key="None" N_Tag="None" Hold="On" />
+2026-07-24T03:28:04.185Z  RX    <Department Name="Utah County" Index="38739" Avoid="Off" Q_Key="None" Hold="Off" />
+2026-07-24T03:28:04.186Z  RX    <TGID Name="Provo Fire/EMS 1" Index="38843" Avoid="Off" TGID="TGID:6216" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Fire Dispatch" P_Ch="Off" LVL="0" />
+2026-07-24T03:28:04.186Z  RX    <UnitID />
+2026-07-24T03:28:04.186Z  RX    <Site Name="West Mountain" Index="35392" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />
+2026-07-24T03:28:04.186Z  RX    <SiteFrequency Freq=" 773.806250MHz" IFX="Off" SAS="NAC BE5h" SAD="NAC BE5h" />
+2026-07-24T03:28:04.186Z  RX    <DualWatch PRI="Off" CC="Off" WX="Off" />
+2026-07-24T03:28:04.186Z  RX    <Property F="Off" VOL="0" SQL="2" Sig="4" Att="Off" Rec="Off" KeyLock="Off" P25Status="P25" Mute="Unmute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-52" />
+2026-07-24T03:28:04.187Z  RX    <ViewDescription>
+2026-07-24T03:28:04.187Z  RX    </ViewDescription>
+2026-07-24T03:28:04.187Z  RX  </ScannerInfo>
+2026-07-24T03:28:04.720Z  RX  PSI,<XML>,
+2026-07-24T03:28:04.720Z  RX  <?xml version="1.0" encoding="utf-8"?>
+2026-07-24T03:28:04.720Z  RX  <ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+2026-07-24T03:28:04.721Z  RX    <MonitorList Name="Full Database" Index="4294967295" ListType="FullDb" Q_Key="None" N_Tag="None" DB_Counter="0" />
+2026-07-24T03:28:04.721Z  RX    <System Name="Utah Communications Authority (P25)" Index="33959" Avoid="Off" SystemType="P25 Trunk" Q_Key="None" N_Tag="None" Hold="On" />
+2026-07-24T03:28:04.721Z  RX    <Department Name="Utah County" Index="38739" Avoid="Off" Q_Key="None" Hold="Off" />
+2026-07-24T03:28:04.721Z  RX    <TGID Name="Provo Fire/EMS 1" Index="38843" Avoid="Off" TGID="TGID:6216" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Fire Dispatch" P_Ch="Off" LVL="0" />
+2026-07-24T03:28:04.721Z  RX    <UnitID Name="UID:9130002" U_Id="UID:9130002" />
+2026-07-24T03:28:04.721Z  RX    <Site Name="West Mountain" Index="35392" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />
+2026-07-24T03:28:04.722Z  RX    <SiteFrequency Freq=" 773.806250MHz" IFX="Off" SAS="NAC BE5h" SAD="NAC BE5h" />
+2026-07-24T03:28:04.722Z  RX    <DualWatch PRI="Off" CC="Off" WX="Off" />
+2026-07-24T03:28:04.722Z  RX    <Property F="Off" VOL="0" SQL="2" Sig="5" Att="Off" Rec="Off" KeyLock="Off" P25Status="P25" Mute="Unmute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-80" />
+2026-07-24T03:28:04.722Z  RX    <ViewDescription>
+2026-07-24T03:28:04.722Z  RX    </ViewDescription>
+2026-07-24T03:28:04.722Z  RX  </ScannerInfo>
+2026-07-24T03:28:05.264Z  RX  PSI,<XML>,
+2026-07-24T03:28:05.265Z  RX  <?xml version="1.0" encoding="utf-8"?>
+2026-07-24T03:28:05.265Z  RX  <ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+2026-07-24T03:28:05.265Z  RX    <MonitorList Name="Full Database" Index="4294967295" ListType="FullDb" Q_Key="None" N_Tag="None" DB_Counter="0" />
+2026-07-24T03:28:05.266Z  RX    <System Name="Utah Communications Authority (P25)" Index="33959" Avoid="Off" SystemType="P25 Trunk" Q_Key="None" N_Tag="None" Hold="On" />
+2026-07-24T03:28:05.266Z  RX    <Department Name="Utah County" Index="38739" Avoid="Off" Q_Key="None" Hold="Off" />
+2026-07-24T03:28:05.266Z  RX    <TGID Name="Provo Fire/EMS 1" Index="38843" Avoid="Off" TGID="TGID:6216" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Fire Dispatch" P_Ch="Off" LVL="0" />
+2026-07-24T03:28:05.266Z  RX    <UnitID Name="UID:9130002" U_Id="UID:9130002" />
+2026-07-24T03:28:05.266Z  RX    <Site Name="West Mountain" Index="35392" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />
+2026-07-24T03:28:05.267Z  RX    <SiteFrequency Freq=" 773.806250MHz" IFX="Off" SAS="NAC BE5h" SAD="NAC BE5h" />
+2026-07-24T03:28:05.267Z  RX    <DualWatch PRI="Off" CC="Off" WX="Off" />
+2026-07-24T03:28:05.267Z  RX    <Property F="Off" VOL="0" SQL="2" Sig="5" Att="Off" Rec="Off" KeyLock="Off" P25Status="P25" Mute="Unmute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-81" />
+2026-07-24T03:28:05.267Z  RX    <ViewDescription>
+2026-07-24T03:28:05.267Z  RX    </ViewDescription>
+2026-07-24T03:28:05.267Z  RX  </ScannerInfo>
+2026-07-24T03:28:05.800Z  RX  PSI,<XML>,
+2026-07-24T03:28:05.800Z  RX  <?xml version="1.0" encoding="utf-8"?>
+2026-07-24T03:28:05.800Z  RX  <ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+2026-07-24T03:28:05.800Z  RX    <MonitorList Name="Full Database" Index="4294967295" ListType="FullDb" Q_Key="None" N_Tag="None" DB_Counter="0" />
+2026-07-24T03:28:05.800Z  RX    <System Name="Utah Communications Authority (P25)" Index="33959" Avoid="Off" SystemType="P25 Trunk" Q_Key="None" N_Tag="None" Hold="On" />
+2026-07-24T03:28:05.800Z  RX    <Department Name="Utah County" Index="38739" Avoid="Off" Q_Key="None" Hold="Off" />
+2026-07-24T03:28:05.800Z  RX    <TGID Name="Provo Fire/EMS 1" Index="38843" Avoid="Off" TGID="TGID:6216" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Fire Dispatch" P_Ch="Off" LVL="0" />
+2026-07-24T03:28:05.800Z  RX    <UnitID Name="UID:9130002" U_Id="UID:9130002" />
+2026-07-24T03:28:05.801Z  RX    <Site Name="West Mountain" Index="35392" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />
+2026-07-24T03:28:05.801Z  RX    <SiteFrequency Freq=" 773.806250MHz" IFX="Off" SAS="NAC BE5h" SAD="NAC BE5h" />
+2026-07-24T03:28:05.801Z  RX    <DualWatch PRI="Off" CC="Off" WX="Off" />
+2026-07-24T03:28:05.801Z  RX    <Property F="Off" VOL="0" SQL="2" Sig="5" Att="Off" Rec="Off" KeyLock="Off" P25Status="P25" Mute="Unmute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-80" />
+2026-07-24T03:28:05.801Z  RX    <ViewDescription>
+2026-07-24T03:28:05.801Z  RX    </ViewDescription>
+2026-07-24T03:28:05.801Z  RX  </ScannerInfo>
+2026-07-24T03:28:06.338Z  RX  PSI,<XML>,
+2026-07-24T03:28:06.339Z  RX  <?xml version="1.0" encoding="utf-8"?>
+2026-07-24T03:28:06.339Z  RX  <ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+2026-07-24T03:28:06.339Z  RX    <MonitorList Name="Full Database" Index="4294967295" ListType="FullDb" Q_Key="None" N_Tag="None" DB_Counter="0" />
+2026-07-24T03:28:06.339Z  RX    <System Name="Utah Communications Authority (P25)" Index="33959" Avoid="Off" SystemType="P25 Trunk" Q_Key="None" N_Tag="None" Hold="On" />
+2026-07-24T03:28:06.339Z  RX    <Department Name="Utah County" Index="38739" Avoid="Off" Q_Key="None" Hold="Off" />
+2026-07-24T03:28:06.340Z  RX    <TGID Name="Provo Fire/EMS 1" Index="38843" Avoid="Off" TGID="TGID:6216" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Fire Dispatch" P_Ch="Off" LVL="0" />
+2026-07-24T03:28:06.340Z  RX    <UnitID Name="UID:9130002" U_Id="UID:9130002" />
+2026-07-24T03:28:06.340Z  RX    <Site Name="West Mountain" Index="35392" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />
+2026-07-24T03:28:06.340Z  RX    <SiteFrequency Freq=" 773.806250MHz" IFX="Off" SAS="NAC BE5h" SAD="NAC BE5h" />
+2026-07-24T03:28:06.340Z  RX    <DualWatch PRI="Off" CC="Off" WX="Off" />
+2026-07-24T03:28:06.341Z  RX    <Property F="Off" VOL="0" SQL="2" Sig="5" Att="Off" Rec="Off" KeyLock="Off" P25Status="P25" Mute="Unmute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-81" />
+2026-07-24T03:28:06.341Z  RX    <ViewDescription>
+2026-07-24T03:28:06.341Z  RX    </ViewDescription>
+2026-07-24T03:28:06.341Z  RX  </ScannerInfo>
+2026-07-24T03:28:06.880Z  RX  PSI,<XML>,
+2026-07-24T03:28:06.881Z  RX  <?xml version="1.0" encoding="utf-8"?>
+2026-07-24T03:28:06.881Z  RX  <ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+2026-07-24T03:28:06.881Z  RX    <MonitorList Name="Full Database" Index="4294967295" ListType="FullDb" Q_Key="None" N_Tag="None" DB_Counter="0" />
+2026-07-24T03:28:06.881Z  RX    <System Name="Utah Communications Authority (P25)" Index="33959" Avoid="Off" SystemType="P25 Trunk" Q_Key="None" N_Tag="None" Hold="On" />
+2026-07-24T03:28:06.881Z  RX    <Department Name="Utah County" Index="38739" Avoid="Off" Q_Key="None" Hold="Off" />
+2026-07-24T03:28:06.882Z  RX    <TGID Name="Provo Fire/EMS 1" Index="38843" Avoid="Off" TGID="TGID:6216" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Fire Dispatch" P_Ch="Off" LVL="0" />
+2026-07-24T03:28:06.882Z  RX    <UnitID Name="UID:9130002" U_Id="UID:9130002" />
+2026-07-24T03:28:06.882Z  RX    <Site Name="West Mountain" Index="35392" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />
+2026-07-24T03:28:06.882Z  RX    <SiteFrequency Freq=" 773.806250MHz" IFX="Off" SAS="NAC BE5h" SAD="NAC BE5h" />
+2026-07-24T03:28:06.883Z  RX    <DualWatch PRI="Off" CC="Off" WX="Off" />
+2026-07-24T03:28:06.883Z  RX    <Property F="Off" VOL="0" SQL="2" Sig="5" Att="Off" Rec="Off" KeyLock="Off" P25Status="P25" Mute="Unmute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-81" />
+2026-07-24T03:28:06.883Z  RX    <ViewDescription>
+2026-07-24T03:28:06.883Z  RX    </ViewDescription>
+2026-07-24T03:28:06.883Z  RX  </ScannerInfo>
+2026-07-24T03:28:07.408Z  RX  PSI,<XML>,
+2026-07-24T03:28:07.408Z  RX  <?xml version="1.0" encoding="utf-8"?>
+2026-07-24T03:28:07.409Z  RX  <ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+2026-07-24T03:28:07.409Z  RX    <MonitorList Name="Full Database" Index="4294967295" ListType="FullDb" Q_Key="None" N_Tag="None" DB_Counter="0" />
+2026-07-24T03:28:07.410Z  RX    <System Name="Utah Communications Authority (P25)" Index="33959" Avoid="Off" SystemType="P25 Trunk" Q_Key="None" N_Tag="None" Hold="On" />
+2026-07-24T03:28:07.410Z  RX    <Department Name="Utah County" Index="38739" Avoid="Off" Q_Key="None" Hold="Off" />
+2026-07-24T03:28:07.410Z  RX    <TGID Name="Provo Fire/EMS 1" Index="38843" Avoid="Off" TGID="TGID:6216" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Fire Dispatch" P_Ch="Off" LVL="0" />
+2026-07-24T03:28:07.411Z  RX    <UnitID Name="UID:9130002" U_Id="UID:9130002" />
+2026-07-24T03:28:07.411Z  RX    <Site Name="West Mountain" Index="35392" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />
+2026-07-24T03:28:07.411Z  RX    <SiteFrequency Freq=" 773.806250MHz" IFX="Off" SAS="NAC BE5h" SAD="NAC BE5h" />
+2026-07-24T03:28:07.411Z  RX    <DualWatch PRI="Off" CC="Off" WX="Off" />
+2026-07-24T03:28:07.412Z  RX    <Property F="Off" VOL="0" SQL="2" Sig="5" Att="Off" Rec="Off" KeyLock="Off" P25Status="Link" Mute="Unmute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-83" />
+2026-07-24T03:28:07.412Z  RX    <ViewDescription>
+2026-07-24T03:28:07.412Z  RX    </ViewDescription>
+2026-07-24T03:28:07.412Z  RX  </ScannerInfo>
+2026-07-24T03:28:07.940Z  RX  PSI,<XML>,
+2026-07-24T03:28:07.940Z  RX  <?xml version="1.0" encoding="utf-8"?>
+2026-07-24T03:28:07.941Z  RX  <ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+2026-07-24T03:28:07.941Z  RX    <MonitorList Name="Full Database" Index="4294967295" ListType="FullDb" Q_Key="None" N_Tag="None" DB_Counter="0" />
+2026-07-24T03:28:07.941Z  RX    <System Name="Utah Communications Authority (P25)" Index="33959" Avoid="Off" SystemType="P25 Trunk" Q_Key="None" N_Tag="None" Hold="On" />
+2026-07-24T03:28:07.941Z  RX    <Department Name="Utah County" Index="38739" Avoid="Off" Q_Key="None" Hold="Off" />
+2026-07-24T03:28:07.941Z  RX    <TGID Name="Provo Fire/EMS 1" Index="38843" Avoid="Off" TGID="TGID:6216" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Fire Dispatch" P_Ch="Off" LVL="0" />
+2026-07-24T03:28:07.941Z  RX    <UnitID Name="UID:9130002" U_Id="UID:9130002" />
+2026-07-24T03:28:07.942Z  RX    <Site Name="West Mountain" Index="35392" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />
+2026-07-24T03:28:07.942Z  RX    <SiteFrequency Freq=" 773.806250MHz" IFX="Off" SAS="NAC BE5h" SAD="NAC BE5h" />
+2026-07-24T03:28:07.942Z  RX    <DualWatch PRI="Off" CC="Off" WX="Off" />
+2026-07-24T03:28:07.942Z  RX    <Property F="Off" VOL="0" SQL="2" Sig="4" Att="Off" Rec="Off" KeyLock="Off" P25Status="Link" Mute="Unmute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-101" />
+2026-07-24T03:28:07.942Z  RX    <ViewDescription>
+2026-07-24T03:28:07.943Z  RX    </ViewDescription>
+2026-07-24T03:28:07.943Z  RX  </ScannerInfo>
+2026-07-24T03:28:08.474Z  RX  PSI,<XML>,
+2026-07-24T03:28:08.474Z  RX  <?xml version="1.0" encoding="utf-8"?>
+2026-07-24T03:28:08.474Z  RX  <ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+2026-07-24T03:28:08.475Z  RX    <MonitorList Name="Full Database" Index="4294967295" ListType="FullDb" Q_Key="None" N_Tag="None" DB_Counter="0" />
+2026-07-24T03:28:08.475Z  RX    <System Name="Utah Communications Authority (P25)" Index="33959" Avoid="Off" SystemType="P25 Trunk" Q_Key="None" N_Tag="None" Hold="On" />
+2026-07-24T03:28:08.475Z  RX    <Department Name="Utah County" Index="38739" Avoid="Off" Q_Key="None" Hold="Off" />
+2026-07-24T03:28:08.475Z  RX    <TGID Name="Provo Fire/EMS 1" Index="38843" Avoid="Off" TGID="TGID:6216" SetSlot="Slot Any" RecSlot="Slot None" N_Tag="None" Hold="Off" SvcType="Fire Dispatch" P_Ch="Off" LVL="0" />
+2026-07-24T03:28:08.475Z  RX    <UnitID />
+2026-07-24T03:28:08.476Z  RX    <Site Name="West Mountain" Index="35392" Avoid="Off" Q_Key="None" Hold="Off" Mod="NFM" />
+2026-07-24T03:28:08.476Z  RX    <SiteFrequency Freq=" 769.693750MHz" IFX="Off" SAS="NAC BE5h" SAD="None" />
+2026-07-24T03:28:08.476Z  RX    <DualWatch PRI="Off" CC="Off" WX="Off" />
+2026-07-24T03:28:08.476Z  RX    <Property F="Off" VOL="0" SQL="2" Sig="0" Att="Off" Rec="Off" KeyLock="Off" P25Status="None" Mute="Mute" Backlight="100" A_Led="Off" Dir="Up" Rssi="-1001" />
+2026-07-24T03:28:08.476Z  RX    <ViewDescription>
+2026-07-24T03:28:08.476Z  RX    </ViewDescription>
+2026-07-24T03:28:08.477Z  RX  </ScannerInfo>
+2026-07-24T03:28:08.579Z  TX  PSI,0

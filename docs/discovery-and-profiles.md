@@ -80,3 +80,5 @@ with SDS200.network("192.168.0.251") as radio:
     radio.on_diagnostic(lambda diagnostic: print(diagnostic.message))
     print(radio.health_check())
 ```
+
+See [Fallback profiles](fallback-profiles.md) for discovery-driven profile creation and live transport switching.

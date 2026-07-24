@@ -109,3 +109,13 @@ with SDS200.network("192.168.0.251") as radio:
 
 A UDP socket being open does not establish remote liveness. The health check's
 successful command round trip is the meaningful reachability test.
+
+
+## Fallback transport
+
+`FallbackTransport` composes ordered serial and UDP candidates while preserving
+the `ControlTransport` contract. Candidate reconnect loops are disabled because
+the coordinator owns activation, retry, and switching. Transport diagnostics and
+active-transport statistics are forwarded through the existing radio events.
+
+Audio does not use `ControlTransport`; see [Audio subsystem architecture](audio.md).

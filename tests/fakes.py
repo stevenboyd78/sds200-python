@@ -5,6 +5,7 @@ import threading
 import time
 from collections.abc import Callable
 
+from sds200.audio import AudioChunk, AudioChunkHandler
 from sds200.exceptions import ScannerConnectionError
 
 
@@ -172,3 +173,45 @@ class DatagramSocketSequenceFactory:
         if not self.sockets:
             raise OSError("no fake sockets remain")
         return self.sockets.pop(0)
+
+
+class FailingWriteTransport(FakeTransport):
+    def write_command(self, command: str) -> None:
+        del command
+        raise ScannerConnectionError(f"Could not write to {self.endpoint}")
+
+
+class FailingStartTransport(FakeTransport):
+    def start(
+        self,
+        handler: Callable[[str], None],
+        connection_handler: Callable[[bool], None] | None = None,
+    ) -> None:
+        del handler, connection_handler
+        raise ScannerConnectionError(f"Could not start {self.endpoint}")
+
+
+class FakeAudioTransport:
+    def __init__(self, endpoint: str = "audio://scanner") -> None:
+        self._endpoint = endpoint
+        self._running = False
+        self._handler: AudioChunkHandler | None = None
+
+    @property
+    def endpoint(self) -> str:
+        return self._endpoint
+
+    @property
+    def running(self) -> bool:
+        return self._running
+
+    def start(self, handler: AudioChunkHandler) -> None:
+        self._handler = handler
+        self._running = True
+
+    def stop(self) -> None:
+        self._running = False
+
+    def feed(self, chunk: AudioChunk) -> None:
+        assert self._handler is not None
+        self._handler(chunk)

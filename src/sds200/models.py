@@ -200,11 +200,21 @@ class ScannerInfo:
 
 @dataclass(frozen=True, slots=True)
 class RadioHealth:
+    status: str
     endpoint: str
     connected: bool
-    model: str
-    firmware: str
-    latency_ms: float
+    model: str | None
+    firmware: str | None
+    latency_ms: float | None
+    checked_at: datetime
+    connection_events: int
+    last_connected_at: datetime | None
+    last_disconnected_at: datetime | None
+    last_response_at: datetime | None
+    last_state_at: datetime | None
+    psi_active: bool
+    psi_interval_ms: int | None
+    error: str | None
     statistics: Mapping[str, object]
 
     @classmethod
@@ -213,16 +223,59 @@ class RadioHealth:
         *,
         endpoint: str,
         connected: bool,
-        model: str,
-        firmware: str,
-        latency_ms: float,
+        model: str | None,
+        firmware: str | None,
+        latency_ms: float | None,
+        status: str | None = None,
+        connection_events: int = 0,
+        last_connected_at: datetime | None = None,
+        last_disconnected_at: datetime | None = None,
+        last_response_at: datetime | None = None,
+        last_state_at: datetime | None = None,
+        psi_active: bool = False,
+        psi_interval_ms: int | None = None,
+        error: str | None = None,
         statistics: Mapping[str, object] | None = None,
     ) -> RadioHealth:
+        resolved_status = status or ("healthy" if connected and error is None else "degraded")
         return cls(
+            status=resolved_status,
             endpoint=endpoint,
             connected=connected,
             model=model,
             firmware=firmware,
             latency_ms=latency_ms,
+            checked_at=datetime.now(UTC),
+            connection_events=connection_events,
+            last_connected_at=last_connected_at,
+            last_disconnected_at=last_disconnected_at,
+            last_response_at=last_response_at,
+            last_state_at=last_state_at,
+            psi_active=psi_active,
+            psi_interval_ms=psi_interval_ms,
+            error=error,
             statistics=MappingProxyType(dict(statistics or {})),
         )
+
+    def as_dict(self) -> dict[str, object]:
+        def timestamp(value: datetime | None) -> str | None:
+            return value.isoformat() if value is not None else None
+
+        return {
+            "status": self.status,
+            "endpoint": self.endpoint,
+            "connected": self.connected,
+            "model": self.model,
+            "firmware": self.firmware,
+            "latency_ms": self.latency_ms,
+            "checked_at": self.checked_at.isoformat(),
+            "connection_events": self.connection_events,
+            "last_connected_at": timestamp(self.last_connected_at),
+            "last_disconnected_at": timestamp(self.last_disconnected_at),
+            "last_response_at": timestamp(self.last_response_at),
+            "last_state_at": timestamp(self.last_state_at),
+            "psi_active": self.psi_active,
+            "psi_interval_ms": self.psi_interval_ms,
+            "error": self.error,
+            "statistics": dict(self.statistics),
+        }
