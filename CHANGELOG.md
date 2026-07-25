@@ -10,7 +10,7 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 - Validated SDS200 network audio transport after control reliability work
 
-## [0.10.0] - 2026-07-25
+## [0.10.0] - 2026-07-24
 
 ### Added
 
