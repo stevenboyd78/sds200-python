@@ -274,6 +274,7 @@ class HealthSummary:
     connection_events_delta: int
     reconnects: int
     failovers: int
+    preferred_recoveries: int
     recent_errors: tuple[str, ...]
 
     @classmethod
@@ -292,6 +293,7 @@ class HealthSummary:
             connection_events_delta=0,
             reconnects=0,
             failovers=0,
+            preferred_recoveries=0,
             recent_errors=(),
         )
 
@@ -312,6 +314,7 @@ class HealthSummary:
         connection_events_delta: int,
         reconnects: int,
         failovers: int,
+        preferred_recoveries: int,
         recent_errors: tuple[str, ...],
     ) -> HealthSummary:
         return cls(
@@ -328,6 +331,7 @@ class HealthSummary:
             connection_events_delta=connection_events_delta,
             reconnects=reconnects,
             failovers=failovers,
+            preferred_recoveries=preferred_recoveries,
             recent_errors=recent_errors,
         )
 
@@ -354,6 +358,7 @@ class HealthSummary:
             "connection_events_delta": self.connection_events_delta,
             "reconnects": self.reconnects,
             "failovers": self.failovers,
+            "preferred_recoveries": self.preferred_recoveries,
             "recent_errors": list(self.recent_errors),
         }
 

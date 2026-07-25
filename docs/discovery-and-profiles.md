@@ -48,6 +48,11 @@ stored in a human-readable TOML document.
 sdsctl profile add home --host 192.168.0.251
 sdsctl profile add handheld --port /dev/ttyACM0 --model SDS150
 sdsctl profile add usb --port /dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00 --model SDS200
+sdsctl profile add fallback \
+  --port /dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00 \
+  --host 192.168.0.251 \
+  --prefer network \
+  --recover-preferred
 sdsctl profile show home
 sdsctl profile list
 sdsctl profile remove usb
@@ -94,7 +99,7 @@ See [Fallback profiles](fallback-profiles.md) for discovery-driven profile creat
 
 USB enumeration and DHCP can change a saved endpoint. Repair discovery updates
 only endpoints it can identify unambiguously, preserves the scanner model, bind
-settings, and fallback preference, and can learn the model for a legacy serial
+settings, fallback preference, and preferred-recovery policy, and can learn the model for a legacy serial
 profile.
 
 ```bash

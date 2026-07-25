@@ -215,3 +215,27 @@ class FakeAudioTransport:
     def feed(self, chunk: AudioChunk) -> None:
         assert self._handler is not None
         self._handler(chunk)
+
+
+class ModelProbeTransport(FakeTransport):
+    def __init__(
+        self,
+        endpoint: str = "fake://scanner",
+        *,
+        model: str | None = "SDS200",
+        disconnect_after_probe: bool = False,
+    ) -> None:
+        super().__init__(endpoint)
+        self.model = model
+        self.disconnect_after_probe = disconnect_after_probe
+        self.probes = 0
+
+    def write_command(self, command: str) -> None:
+        super().write_command(command)
+        if command != "MDL":
+            return
+        self.probes += 1
+        if self.model is not None:
+            self.feed_line(f"MDL,{self.model}")
+        if self.disconnect_after_probe:
+            self.set_connected(False)

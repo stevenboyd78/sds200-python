@@ -1,0 +1,4 @@
+{"endpoint": "usb://SDS200", "schema": "sds200.capture", "version": 1}
+{"connected": true, "delay_ms": 0.0, "direction": "connection"}
+{"data": "MDL", "delay_ms": 0.0, "direction": "tx"}
+{"data": "MDL,SDS200", "delay_ms": 0.0, "direction": "rx"}

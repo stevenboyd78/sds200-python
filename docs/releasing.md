@@ -77,11 +77,18 @@ sdsctl profile list
 sdsctl profile repair PROFILE --network SCANNER_SUBNET --dry-run
 sdsctl --profile PROFILE health --history
 sdsctl --profile PROFILE events --json
+sdsctl --profile PROFILE --recover-preferred health
 ```
+
+For a fallback profile, test preferred recovery in both directions when the
+SDS200 USB and Ethernet endpoints are available. Start with one preferred
+endpoint unavailable, confirm fallback activation, restore it, and verify two
+validated `MDL` probes precede a seamless recovery. Repeat with the opposite
+preference. Confirm an active PSI stream resumes after promotion.
 
 For a long-running reliability check, leave `events --json` and
 `health --watch 5 --history --json` running while disconnecting and restoring
-USB and Ethernet in turn. Confirm backoff, failover, PSI restart, and clean
+USB and Ethernet in turn. Confirm backoff, failover, preferred recovery, anti-flapping behavior, PSI restart, and clean
 shutdown behavior.
 
 Record the scanner model, firmware, Python version, operating system, and

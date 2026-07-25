@@ -12,6 +12,7 @@ from sds200.fallback import FallbackTransport
 from sds200.models import RadioEvent
 from sds200.profiles import ConnectionProfile
 from sds200.radio import SDS200
+from sds200.transport import TransportDiagnostic
 
 from .fakes import FakeSerial, FakeTransport
 
@@ -342,3 +343,21 @@ def test_typed_navigation_uses_model_check_and_acknowledgement() -> None:
         thread.join(timeout=1.0)
 
     assert not thread.is_alive()
+
+
+def test_preferred_recovery_restarts_active_psi_stream() -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport, expected_model="SDS200")
+
+    with radio:
+        radio._psi_interval_ms = 500
+        radio._transport_diagnostic(
+            TransportDiagnostic(
+                kind="preferred_recovery_succeeded",
+                endpoint=transport.endpoint,
+                message="Recovered preferred transport",
+            )
+        )
+        radio._psi_interval_ms = None
+
+    assert transport.writes == ["PSI,500"]

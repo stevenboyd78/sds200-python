@@ -217,3 +217,81 @@ def test_repair_serial_profile_learns_discovered_model() -> None:
 
     assert result.repaired.model == "SDS100"
     assert result.changes["model"] == "unknown -> SDS100"
+
+
+def test_fallback_preferred_recovery_round_trip(tmp_path: Path) -> None:
+    path = tmp_path / "profiles.toml"
+    store = ProfileStore(path)
+    store.put(
+        ConnectionProfile.fallback(
+            "home",
+            port="/dev/serial/by-id/scanner",
+            host="192.0.2.25",
+            preference="network",
+            recover_preferred=True,
+            recovery_probe_interval=12.5,
+            recovery_probe_timeout=1.5,
+            recovery_stability_window=4.0,
+            recovery_cooldown=20.0,
+        )
+    )
+
+    loaded = store.get("home")
+    document = path.read_text(encoding="utf-8")
+
+    assert loaded.recover_preferred is True
+    assert loaded.preferred_recovery_policy is not None
+    assert loaded.preferred_recovery_policy.probe_interval == 12.5
+    assert loaded.recovery_probe_timeout == 1.5
+    assert loaded.recovery_stability_window == 4.0
+    assert loaded.recovery_cooldown == 20.0
+    assert document.startswith("version = 4")
+    assert "recover_preferred = true" in document
+
+
+def test_legacy_fallback_profile_defaults_recovery_to_disabled(tmp_path: Path) -> None:
+    path = tmp_path / "profiles.toml"
+    path.write_text(
+        'version = 3\n\n[profiles."home"]\nkind = "fallback"\n'
+        'model = "SDS200"\nport = "/dev/ttyACM0"\n'
+        'host = "192.0.2.25"\npreference = "serial"\n',
+        encoding="utf-8",
+    )
+
+    profile = ProfileStore(path).get("home")
+
+    assert profile.recover_preferred is False
+    assert profile.preferred_recovery_policy is None
+
+
+def test_repair_preserves_preferred_recovery_policy() -> None:
+    profile = ConnectionProfile.fallback(
+        "home",
+        port="/dev/serial/by-id/old",
+        host="192.0.2.10",
+        recover_preferred=True,
+        recovery_probe_interval=15.0,
+        recovery_cooldown=45.0,
+    )
+    serial = ScannerDevice(
+        path=Path("/dev/serial/by-id/new"),
+        resolved_path=Path("/dev/ttyACM0"),
+        name="new",
+        model="SDS200",
+    )
+
+    repaired = repair_profile(profile, [serial], []).repaired
+
+    assert repaired.recover_preferred is True
+    assert repaired.recovery_probe_interval == 15.0
+    assert repaired.recovery_cooldown == 45.0
+
+
+def test_nonfallback_profile_rejects_preferred_recovery() -> None:
+    with pytest.raises(ProfileError, match="only valid for fallback"):
+        ConnectionProfile(
+            name="bad",
+            kind="serial",
+            port="/dev/ttyACM0",
+            recover_preferred=True,
+        )

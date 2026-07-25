@@ -9,7 +9,22 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 ### Planned
 
 - Validated SDS200 network audio transport after control reliability work
-- Optional preferred-transport recovery without connection flapping
+
+## [0.10.0] - 2026-07-25
+
+### Added
+
+- Opt-in preferred-transport recovery for SDS200 fallback profiles
+- Validated `MDL` probes, stability windows, cooldowns, and command-idle promotion guards
+- Preferred-recovery diagnostics, counters, timestamps, health history totals, and CLI overrides
+- Manual fallback profile creation with simultaneous `--port` and `--host` options
+- Persistent preferred-recovery settings in version 4 profile documents
+
+### Changed
+
+- Fallback profiles can now return from a healthy alternate transport to the configured preferred endpoint without reporting a connection interruption
+- Continuous PSI updates restart automatically after a preferred transport recovery
+- Package version advanced to 0.10.0
 
 ## [0.9.0] - 2026-07-24
 
@@ -205,7 +220,8 @@ First planned GitHub prerelease.
 - Added serial discovery, transport, packet framing, core responses, CLI tools,
   examples, tests, and CI.
 
-[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/stevenboyd78/sds200-python/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/stevenboyd78/sds200-python/compare/v0.8.0...v0.8.1

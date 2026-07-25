@@ -121,6 +121,9 @@ class HealthHistory:
         last = snapshots[-1]
         reconnects = _latest_statistic(snapshots, ("reconnects", "active_reconnects"))
         failovers = _latest_statistic(snapshots, ("failovers",))
+        preferred_recoveries = _latest_statistic(
+            snapshots, ("preferred_recoveries",)
+        )
 
         recent_errors = tuple(
             snapshot.error
@@ -143,6 +146,7 @@ class HealthHistory:
             ),
             reconnects=reconnects,
             failovers=failovers,
+            preferred_recoveries=preferred_recoveries,
             recent_errors=recent_errors,
         )
 

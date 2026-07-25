@@ -12,6 +12,7 @@ from typing import Literal
 from .device import ScannerDevice
 from .discovery import NetworkScanner
 from .exceptions import ProfileError
+from .fallback import PreferredRecoveryPolicy
 from .network import DEFAULT_UDP_PORT
 from .scanner import ScannerModel, normalize_model_name
 
@@ -37,6 +38,11 @@ class ConnectionProfile:
     bind_port: int = 0
     preference: TransportPreference = "serial"
     model: ScannerModel | None = None
+    recover_preferred: bool = False
+    recovery_probe_interval: float = 30.0
+    recovery_probe_timeout: float = 2.0
+    recovery_stability_window: float = 5.0
+    recovery_cooldown: float = 30.0
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -67,6 +73,17 @@ class ConnectionProfile:
             raise ProfileError(f"Unsupported profile kind: {self.kind!r}")
         if self.kind in {"network", "fallback"} and self.model not in {None, "SDS200"}:
             raise ProfileError("Only the SDS200 supports native UDP network control.")
+        if self.recover_preferred and self.kind != "fallback":
+            raise ProfileError("Preferred recovery is only valid for fallback profiles.")
+        try:
+            PreferredRecoveryPolicy(
+                probe_interval=self.recovery_probe_interval,
+                probe_timeout=self.recovery_probe_timeout,
+                stability_window=self.recovery_stability_window,
+                cooldown=self.recovery_cooldown,
+            )
+        except ValueError as exc:
+            raise ProfileError(str(exc)) from exc
         if not 1 <= self.udp_port <= 65535:
             raise ProfileError("Profile UDP port must be between 1 and 65535.")
         if not 0 <= self.bind_port <= 65535:
@@ -114,6 +131,11 @@ class ConnectionProfile:
         udp_port: int = DEFAULT_UDP_PORT,
         bind_address: str = "",
         bind_port: int = 0,
+        recover_preferred: bool = False,
+        recovery_probe_interval: float = 30.0,
+        recovery_probe_timeout: float = 2.0,
+        recovery_stability_window: float = 5.0,
+        recovery_cooldown: float = 30.0,
     ) -> ConnectionProfile:
         return cls(
             name=name,
@@ -125,6 +147,22 @@ class ConnectionProfile:
             bind_port=bind_port,
             preference=preference,
             model="SDS200",
+            recover_preferred=recover_preferred,
+            recovery_probe_interval=recovery_probe_interval,
+            recovery_probe_timeout=recovery_probe_timeout,
+            recovery_stability_window=recovery_stability_window,
+            recovery_cooldown=recovery_cooldown,
+        )
+
+    @property
+    def preferred_recovery_policy(self) -> PreferredRecoveryPolicy | None:
+        if not self.recover_preferred:
+            return None
+        return PreferredRecoveryPolicy(
+            probe_interval=self.recovery_probe_interval,
+            probe_timeout=self.recovery_probe_timeout,
+            stability_window=self.recovery_stability_window,
+            cooldown=self.recovery_cooldown,
         )
 
 
@@ -134,6 +172,11 @@ def profile_from_discovery(
     network_scanners: Sequence[NetworkScanner],
     *,
     preference: TransportPreference = "serial",
+    recover_preferred: bool = False,
+    recovery_probe_interval: float = 30.0,
+    recovery_probe_timeout: float = 2.0,
+    recovery_stability_window: float = 5.0,
+    recovery_cooldown: float = 30.0,
 ) -> ConnectionProfile:
     if preference not in TRANSPORT_PREFERENCES:
         raise ProfileError(f"Unsupported transport preference: {preference!r}")
@@ -163,6 +206,11 @@ def profile_from_discovery(
             host=network_scanner.host,
             udp_port=network_scanner.port,
             preference=preference,
+            recover_preferred=recover_preferred,
+            recovery_probe_interval=recovery_probe_interval,
+            recovery_probe_timeout=recovery_probe_timeout,
+            recovery_stability_window=recovery_stability_window,
+            recovery_cooldown=recovery_cooldown,
         )
     if serial_device is not None:
         return ConnectionProfile.serial(
@@ -268,6 +316,11 @@ def repair_profile(
         bind_address=profile.bind_address,
         bind_port=profile.bind_port,
         preference=profile.preference,
+        recover_preferred=profile.recover_preferred,
+        recovery_probe_interval=profile.recovery_probe_interval,
+        recovery_probe_timeout=profile.recovery_probe_timeout,
+        recovery_stability_window=profile.recovery_stability_window,
+        recovery_cooldown=profile.recovery_cooldown,
     )
     if repaired.port != profile.port:
         changes["port"] = f"{profile.port} -> {repaired.port}"
@@ -401,6 +454,23 @@ class ProfileStore:
                     f"Fallback profile {name!r} has invalid preference "
                     f"{raw_preference!r}."
                 )
+            recover_preferred = raw.get("recover_preferred", False)
+            if not isinstance(recover_preferred, bool):
+                raise ProfileError(
+                    f"Fallback profile {name!r} has invalid recover_preferred value."
+                )
+            recovery_probe_interval = ProfileStore._float_field(
+                name, raw, "recovery_probe_interval", 30.0
+            )
+            recovery_probe_timeout = ProfileStore._float_field(
+                name, raw, "recovery_probe_timeout", 2.0
+            )
+            recovery_stability_window = ProfileStore._float_field(
+                name, raw, "recovery_stability_window", 5.0
+            )
+            recovery_cooldown = ProfileStore._float_field(
+                name, raw, "recovery_cooldown", 30.0
+            )
             return ConnectionProfile.fallback(
                 name,
                 port=port,
@@ -409,6 +479,11 @@ class ProfileStore:
                 bind_address=bind_address,
                 bind_port=bind_port,
                 preference=preference,
+                recover_preferred=recover_preferred,
+                recovery_probe_interval=recovery_probe_interval,
+                recovery_probe_timeout=recovery_probe_timeout,
+                recovery_stability_window=recovery_stability_window,
+                recovery_cooldown=recovery_cooldown,
             )
 
         raise ProfileError(f"Profile {name!r} has unsupported kind {kind!r}.")
@@ -425,6 +500,18 @@ class ProfileStore:
                 f"Profile {name!r} has unsupported scanner model {value!r}."
             )
         return model
+
+    @staticmethod
+    def _float_field(
+        name: str,
+        raw: Mapping[object, object],
+        field: str,
+        default: float,
+    ) -> float:
+        value = raw.get(field, default)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ProfileError(f"Profile {name!r} has invalid {field} value.")
+        return float(value)
 
     @staticmethod
     def _network_fields(
@@ -448,7 +535,7 @@ class ProfileStore:
         return host, udp_port, bind_address, bind_port
 
     def _save(self, profiles: Mapping[str, ConnectionProfile]) -> None:
-        lines = ["version = 3", ""]
+        lines = ["version = 4", ""]
         for name in sorted(profiles):
             profile = profiles[name]
             lines.append(f"[profiles.{json.dumps(name)}]")
@@ -464,6 +551,25 @@ class ProfileStore:
                     assert profile.port is not None
                     lines.append(f"port = {json.dumps(profile.port)}")
                     lines.append(f"preference = {json.dumps(profile.preference)}")
+                    lines.append(
+                        f"recover_preferred = "
+                        f"{str(profile.recover_preferred).lower()}"
+                    )
+                    lines.append(
+                        f"recovery_probe_interval = "
+                        f"{profile.recovery_probe_interval}"
+                    )
+                    lines.append(
+                        f"recovery_probe_timeout = "
+                        f"{profile.recovery_probe_timeout}"
+                    )
+                    lines.append(
+                        f"recovery_stability_window = "
+                        f"{profile.recovery_stability_window}"
+                    )
+                    lines.append(
+                        f"recovery_cooldown = {profile.recovery_cooldown}"
+                    )
                 lines.append(f"host = {json.dumps(profile.host)}")
                 lines.append(f"udp_port = {profile.udp_port}")
                 lines.append(f"bind_address = {json.dumps(profile.bind_address)}")

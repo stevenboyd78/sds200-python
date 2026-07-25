@@ -10,6 +10,7 @@ import pytest
 from sds200 import completion
 from sds200.cli import build_parser, main, selected_radio
 from sds200.device import ScannerDevice
+from sds200.fallback import FallbackTransport
 from sds200.network import UdpTransport
 from sds200.profiles import ConnectionProfile, ProfileStore
 
@@ -315,3 +316,125 @@ def test_charge_command_completion() -> None:
     assert completion.command_completer("GC") == {
         "GCS": "Get handheld charge status"
     }
+
+
+def test_preferred_recovery_options_parse() -> None:
+    args = build_parser().parse_args(
+        [
+            "--profile",
+            "home",
+            "--recover-preferred",
+            "--recovery-probe-interval",
+            "10",
+            "--recovery-probe-timeout",
+            "1",
+            "--recovery-stability-window",
+            "3",
+            "--recovery-cooldown",
+            "20",
+            "info",
+        ]
+    )
+
+    assert args.recover_preferred is True
+    assert args.recovery_probe_interval == 10.0
+    assert args.recovery_probe_timeout == 1.0
+    assert args.recovery_stability_window == 3.0
+    assert args.recovery_cooldown == 20.0
+
+
+def test_selected_radio_enables_profile_preferred_recovery(tmp_path: Path) -> None:
+    config = tmp_path / "profiles.toml"
+    ProfileStore(config).put(
+        ConnectionProfile.fallback(
+            "home",
+            port="/dev/ttyACM0",
+            host="192.0.2.25",
+            recover_preferred=True,
+            recovery_probe_interval=12.0,
+        )
+    )
+    args = build_parser().parse_args(
+        ["--config", str(config), "--profile", "home", "info"]
+    )
+
+    radio = selected_radio(args)
+
+    assert isinstance(radio.transport, FallbackTransport)
+    assert radio.transport.preferred_recovery_policy is not None
+    assert radio.transport.preferred_recovery_policy.probe_interval == 12.0
+
+
+def test_cli_can_disable_saved_preferred_recovery(tmp_path: Path) -> None:
+    config = tmp_path / "profiles.toml"
+    ProfileStore(config).put(
+        ConnectionProfile.fallback(
+            "home",
+            port="/dev/ttyACM0",
+            host="192.0.2.25",
+            recover_preferred=True,
+        )
+    )
+    args = build_parser().parse_args(
+        [
+            "--config",
+            str(config),
+            "--profile",
+            "home",
+            "--no-recover-preferred",
+            "info",
+        ]
+    )
+
+    radio = selected_radio(args)
+
+    assert isinstance(radio.transport, FallbackTransport)
+    assert radio.transport.preferred_recovery_policy is None
+
+
+def test_preferred_recovery_options_require_fallback_profile(tmp_path: Path) -> None:
+    config = tmp_path / "profiles.toml"
+    ProfileStore(config).put(ConnectionProfile.network("home", "192.0.2.25"))
+    args = build_parser().parse_args(
+        [
+            "--config",
+            str(config),
+            "--profile",
+            "home",
+            "--recover-preferred",
+            "info",
+        ]
+    )
+
+    with pytest.raises(ValueError, match="fallback --profile"):
+        selected_radio(args)
+
+
+def test_profile_add_creates_recovering_fallback_profile(tmp_path: Path) -> None:
+    config = tmp_path / "profiles.toml"
+
+    result = main(
+        [
+            "--config",
+            str(config),
+            "profile",
+            "add",
+            "home",
+            "--port",
+            "/dev/ttyACM0",
+            "--host",
+            "192.0.2.25",
+            "--prefer",
+            "network",
+            "--recover-preferred",
+            "--recovery-probe-interval",
+            "10",
+        ]
+    )
+
+    profile = ProfileStore(config).get("home")
+    assert result == 0
+    assert profile.kind == "fallback"
+    assert profile.preference == "network"
+    assert profile.recover_preferred is True
+    assert profile.recovery_probe_interval == 10.0

@@ -6,6 +6,7 @@ import json
 import logging
 import sys
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from time import sleep
 from typing import Protocol, cast
@@ -127,6 +128,44 @@ def _add_network_options(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_profile_recovery_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--recover-preferred",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        dest="profile_recover_preferred",
+        help="Return to the preferred endpoint after validated recovery",
+    )
+    parser.add_argument(
+        "--recovery-probe-interval",
+        type=_positive_float,
+        default=30.0,
+        dest="profile_recovery_probe_interval",
+        metavar="SECONDS",
+    )
+    parser.add_argument(
+        "--recovery-probe-timeout",
+        type=_positive_float,
+        default=2.0,
+        dest="profile_recovery_probe_timeout",
+        metavar="SECONDS",
+    )
+    parser.add_argument(
+        "--recovery-stability-window",
+        type=_non_negative_float,
+        default=5.0,
+        dest="profile_recovery_stability_window",
+        metavar="SECONDS",
+    )
+    parser.add_argument(
+        "--recovery-cooldown",
+        type=_non_negative_float,
+        default=30.0,
+        dest="profile_recovery_cooldown",
+        metavar="SECONDS",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="sdsctl")
     parser.add_argument(
@@ -166,6 +205,40 @@ def build_parser() -> argparse.ArgumentParser:
         dest="connection_preference",
         choices=TRANSPORT_PREFERENCES,
         help="Override a fallback profile transport preference",
+    )
+    parser.add_argument(
+        "--recover-preferred",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override preferred recovery for a fallback profile",
+    )
+    parser.add_argument(
+        "--recovery-probe-interval",
+        type=_positive_float,
+        default=None,
+        metavar="SECONDS",
+        help="Preferred endpoint probe interval for a fallback profile",
+    )
+    parser.add_argument(
+        "--recovery-probe-timeout",
+        type=_positive_float,
+        default=None,
+        metavar="SECONDS",
+        help="Timeout for each preferred endpoint MDL probe",
+    )
+    parser.add_argument(
+        "--recovery-stability-window",
+        type=_non_negative_float,
+        default=None,
+        metavar="SECONDS",
+        help="Required preferred endpoint stability before promotion",
+    )
+    parser.add_argument(
+        "--recovery-cooldown",
+        type=_non_negative_float,
+        default=None,
+        metavar="SECONDS",
+        help="Minimum fallback time before probing the preferred endpoint",
     )
     _add_network_options(parser)
     parser.add_argument(
@@ -392,9 +465,8 @@ def build_parser() -> argparse.ArgumentParser:
     profile_remove.add_argument("name")
     profile_add = profile_commands.add_parser("add", help="Create or replace a profile")
     profile_add.add_argument("name")
-    profile_connection = profile_add.add_mutually_exclusive_group(required=True)
-    profile_connection.add_argument("--port", dest="profile_port", type=Path)
-    profile_connection.add_argument("--host", dest="profile_host")
+    profile_add.add_argument("--port", dest="profile_port", type=Path)
+    profile_add.add_argument("--host", dest="profile_host")
     profile_add.add_argument(
         "--model",
         dest="profile_model",
@@ -419,6 +491,14 @@ def build_parser() -> argparse.ArgumentParser:
         type=_local_port,
         default=0,
     )
+    profile_add.add_argument(
+        "--prefer",
+        dest="profile_preference",
+        choices=TRANSPORT_PREFERENCES,
+        default="serial",
+        help="Preferred endpoint when both --port and --host are supplied",
+    )
+    _add_profile_recovery_options(profile_add)
     profile_discover = profile_commands.add_parser(
         "discover",
         help="Discover a scanner and save a serial, network, or fallback profile",
@@ -462,6 +542,8 @@ def build_parser() -> argparse.ArgumentParser:
         choices=TRANSPORT_PREFERENCES,
         default="serial",
     )
+    _add_profile_recovery_options(profile_discover)
+
     profile_discovery_mode = profile_discover.add_mutually_exclusive_group()
     profile_discovery_mode.add_argument("--usb-only", action="store_true")
     profile_discovery_mode.add_argument("--network-only", action="store_true")
@@ -530,6 +612,56 @@ def _reconnect_policy_from_args(args: argparse.Namespace) -> ReconnectPolicy:
     )
 
 
+def _profile_with_recovery_overrides(
+    profile: ConnectionProfile,
+    args: argparse.Namespace,
+) -> ConnectionProfile:
+    overrides = (
+        args.recover_preferred,
+        args.recovery_probe_interval,
+        args.recovery_probe_timeout,
+        args.recovery_stability_window,
+        args.recovery_cooldown,
+    )
+    if all(value is None for value in overrides):
+        return profile
+    if profile.kind != "fallback":
+        raise ValueError(
+            "Preferred recovery options require a fallback --profile"
+        )
+
+    numeric_override = any(value is not None for value in overrides[1:])
+    recover_preferred = (
+        args.recover_preferred
+        if args.recover_preferred is not None
+        else profile.recover_preferred or numeric_override
+    )
+    return replace(
+        profile,
+        recover_preferred=recover_preferred,
+        recovery_probe_interval=(
+            args.recovery_probe_interval
+            if args.recovery_probe_interval is not None
+            else profile.recovery_probe_interval
+        ),
+        recovery_probe_timeout=(
+            args.recovery_probe_timeout
+            if args.recovery_probe_timeout is not None
+            else profile.recovery_probe_timeout
+        ),
+        recovery_stability_window=(
+            args.recovery_stability_window
+            if args.recovery_stability_window is not None
+            else profile.recovery_stability_window
+        ),
+        recovery_cooldown=(
+            args.recovery_cooldown
+            if args.recovery_cooldown is not None
+            else profile.recovery_cooldown
+        ),
+    )
+
+
 def _radio_from_profile(
     profile: ConnectionProfile,
     *,
@@ -565,6 +697,15 @@ def selected_radio(
     if args.replay is not None:
         if args.connection_preference is not None:
             raise ValueError("--prefer cannot be used with --replay")
+        recovery_options = (
+            args.recover_preferred,
+            args.recovery_probe_interval,
+            args.recovery_probe_timeout,
+            args.recovery_stability_window,
+            args.recovery_cooldown,
+        )
+        if any(value is not None for value in recovery_options):
+            raise ValueError("Preferred recovery options cannot be used with --replay")
         if args.udp_port is not None or args.bind_address or args.bind_port:
             raise ValueError("Network socket options cannot be used with --replay")
         if args.capture is not None:
@@ -586,8 +727,9 @@ def selected_radio(
                 "--udp-port, --bind-address, and --bind-port cannot override a profile"
             )
         store = profile_store or ProfileStore(args.config)
+        profile = _profile_with_recovery_overrides(store.get(args.profile), args)
         return _radio_from_profile(
-            store.get(args.profile),
+            profile,
             preference=args.connection_preference,
             trace_path=args.trace,
             max_xml_retries=args.max_xml_retries,
@@ -596,6 +738,15 @@ def selected_radio(
             capture_path=args.capture,
             capture_redactions=capture_redactions,
         )
+    recovery_options = (
+        args.recover_preferred,
+        args.recovery_probe_interval,
+        args.recovery_probe_timeout,
+        args.recovery_stability_window,
+        args.recovery_cooldown,
+    )
+    if any(value is not None for value in recovery_options):
+        raise ValueError("Preferred recovery options require a fallback --profile")
     if args.connection_preference is not None:
         raise ValueError("--prefer requires a fallback --profile")
     if args.host is not None:
@@ -684,6 +835,7 @@ def _print_health_summary(
     print(f"  Connection changes:  {summary.connection_events_delta}")
     print(f"  Reconnects:          {summary.reconnects}")
     print(f"  Failovers:           {summary.failovers}")
+    print(f"  Preferred recoveries: {summary.preferred_recoveries}")
     if summary.recent_errors:
         print("  Recent errors:")
         for error in summary.recent_errors:
@@ -787,6 +939,17 @@ def _manage_profile(args: argparse.Namespace, store: ProfileStore) -> int:
             print(f"Bind port:    {profile.bind_port}")
         if profile.kind == "fallback":
             print(f"Preference:   {profile.preference}")
+            print(
+                "Recovery:     "
+                + ("enabled" if profile.recover_preferred else "disabled")
+            )
+            if profile.recover_preferred:
+                print(f"Probe interval: {profile.recovery_probe_interval:g} s")
+                print(f"Probe timeout:  {profile.recovery_probe_timeout:g} s")
+                print(
+                    f"Stability:      {profile.recovery_stability_window:g} s"
+                )
+                print(f"Cooldown:       {profile.recovery_cooldown:g} s")
         return 0
 
     if args.profile_action == "remove":
@@ -795,7 +958,28 @@ def _manage_profile(args: argparse.Namespace, store: ProfileStore) -> int:
         return 0
 
     if args.profile_action == "add":
-        if args.profile_port is not None:
+        if args.profile_port is None and args.profile_host is None:
+            raise ValueError("profile add requires --port, --host, or both")
+        if args.profile_port is not None and args.profile_host is not None:
+            if args.profile_model not in {None, "SDS200"}:
+                raise ValueError("Fallback profiles are only supported for the SDS200")
+            profile = ConnectionProfile.fallback(
+                args.name,
+                port=args.profile_port,
+                host=args.profile_host,
+                udp_port=args.profile_udp_port,
+                bind_address=args.profile_bind_address,
+                bind_port=args.profile_bind_port,
+                preference=args.profile_preference,
+                recover_preferred=args.profile_recover_preferred,
+                recovery_probe_interval=args.profile_recovery_probe_interval,
+                recovery_probe_timeout=args.profile_recovery_probe_timeout,
+                recovery_stability_window=args.profile_recovery_stability_window,
+                recovery_cooldown=args.profile_recovery_cooldown,
+            )
+        elif args.profile_port is not None:
+            if args.profile_recover_preferred:
+                raise ValueError("Preferred recovery requires a fallback profile")
             profile = ConnectionProfile.serial(
                 args.name,
                 args.profile_port,
@@ -804,6 +988,8 @@ def _manage_profile(args: argparse.Namespace, store: ProfileStore) -> int:
         else:
             if args.profile_model not in {None, "SDS200"}:
                 raise ValueError("Network profiles are only supported for the SDS200")
+            if args.profile_recover_preferred:
+                raise ValueError("Preferred recovery requires a fallback profile")
             assert args.profile_host is not None
             profile = ConnectionProfile.network(
                 args.name,
@@ -840,6 +1026,11 @@ def _manage_profile(args: argparse.Namespace, store: ProfileStore) -> int:
             serial_devices,
             network_scanners,
             preference=args.profile_preference,
+            recover_preferred=args.profile_recover_preferred,
+            recovery_probe_interval=args.profile_recovery_probe_interval,
+            recovery_probe_timeout=args.profile_recovery_probe_timeout,
+            recovery_stability_window=args.profile_recovery_stability_window,
+            recovery_cooldown=args.profile_recovery_cooldown,
         )
         store.put(profile)
         print(

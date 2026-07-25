@@ -25,14 +25,14 @@ and live state updates.
 - Model-aware handheld battery reporting: optional SDS100 GSI telemetry and SDS150 GCS charge status
 - Automatic USB and bounded LAN discovery
 - Saved serial, network, and automatic fallback profiles
-- Preferred transport ordering with live USB/Ethernet failover
+- Preferred transport ordering with live USB/Ethernet failover and opt-in recovery
 - Typed commands and responses, including documented hold/next/previous navigation
 - Structured `GSI` and continuous `PSI` scanner information
 - Thread-safe synchronized radio state and change events
 - Live terminal monitoring
 - Exponential reconnect backoff with configurable retry limits
 - Traffic tracing, replayable JSON Lines session capture, and deterministic replay
-- Bounded health history and failover diagnostics
+- Bounded health history plus failover and preferred-recovery diagnostics
 - JSON Lines events for connection, retry, failover, and state changes
 - Discovery-based repair for stale USB paths and scanner IP addresses
 - Separate public audio-stream architecture for future network audio
@@ -156,7 +156,34 @@ Ethernet and USB. The saved preference can be overridden for one command:
 sdsctl --profile home --prefer serial monitor
 ```
 
-Manual profiles remain supported:
+Preferred recovery is disabled by default. Enable validated return to the saved
+preferred endpoint when creating a fallback profile:
+
+```bash
+sdsctl profile discover home \
+  --network 192.168.0.0/24 \
+  --prefer network \
+  --recover-preferred \
+  --recovery-probe-interval 30 \
+  --recovery-stability-window 5 \
+  --recovery-cooldown 30
+```
+
+Override the saved recovery policy for one process:
+
+```bash
+sdsctl --profile home \
+  --recover-preferred \
+  --recovery-probe-interval 15 \
+  monitor
+```
+
+Recovery opens the inactive preferred endpoint, sends `MDL`, verifies that an
+SDS200 responds, waits through the stability window, probes again, and promotes
+only while no request/response command is pending. Continuous PSI updates are
+restarted after promotion.
+
+Manual profiles remain supported, including explicit fallback profiles:
 
 ```bash
 sdsctl profile add network-only --host 192.168.0.251
@@ -164,6 +191,11 @@ sdsctl profile add usb-only \
   --port /dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00 \
   --model SDS200
 sdsctl profile add handheld --port /dev/ttyACM0 --model SDS150
+sdsctl profile add home \
+  --port /dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00 \
+  --host 192.168.0.251 \
+  --prefer network \
+  --recover-preferred
 ```
 
 Profiles are stored in `${XDG_CONFIG_HOME:-~/.config}/sds200/profiles.toml`.
@@ -200,7 +232,7 @@ sdsctl --profile home \
 ```
 
 `events --json` emits one JSON object per line for connection changes,
-transport diagnostics, reconnect scheduling, failovers, and live state changes.
+transport diagnostics, reconnect scheduling, failovers, preferred recoveries, and live state changes.
 
 ### Capabilities, capture, and replay
 

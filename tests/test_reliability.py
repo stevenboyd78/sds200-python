@@ -74,7 +74,11 @@ def test_health_history_is_bounded_and_summarizes_failures() -> None:
                 status=status,
                 connection_events=index,
                 error="timeout" if status == "degraded" else None,
-                statistics={"reconnects": index, "failovers": index // 2},
+                statistics={
+                    "reconnects": index,
+                    "failovers": index // 2,
+                    "preferred_recoveries": index // 3,
+                },
                 checked_at=first_at + timedelta(seconds=index),
             )
         )
@@ -90,6 +94,7 @@ def test_health_history_is_bounded_and_summarizes_failures() -> None:
     assert summary.error_rate == pytest.approx(2 / 3)
     assert summary.reconnects == 3
     assert summary.failovers == 1
+    assert summary.preferred_recoveries == 1
     assert summary.recent_errors == ("timeout",)
 
 

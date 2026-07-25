@@ -37,7 +37,11 @@ from .exceptions import (
     UnsupportedScannerFeatureError,
     UnsupportedScannerModelError,
 )
-from .fallback import FallbackTransport, TransportCandidate
+from .fallback import (
+    FallbackTransport,
+    PreferredRecoveryPolicy,
+    TransportCandidate,
+)
 from .models import (
     ChargeStatus,
     FirmwareResponse,
@@ -126,6 +130,7 @@ __all__ = [
     "ProfileKind",
     "ProfileRepairResult",
     "PreviousSelection",
+    "PreferredRecoveryPolicy",
     "ProfileStore",
     "RadioEvent",
     "RadioHealth",
@@ -174,4 +179,4 @@ __all__ = [
     "write_capture",
 ]
 
-__version__ = "0.9.0"
+__version__ = "0.10.0"

@@ -1,7 +1,8 @@
 # Reliability and observability
 
-Version 0.7.0 adds a shared recovery policy, bounded health history, structured
-events, and endpoint repair while keeping network audio deferred.
+The reliability layer provides reconnect backoff, fallback failover, opt-in
+preferred transport recovery, bounded health history, structured events, and
+endpoint repair while keeping network audio deferred.
 
 ## Reconnect policy
 
@@ -35,8 +36,8 @@ sdsctl --profile home health --watch 5 --history --json
 ```
 
 The summary reports sample counts by status, error rate, average and maximum
-latency, connection changes, reconnects, failovers, and up to five recent
-errors. History is process-local and intentionally not persisted.
+latency, connection changes, reconnects, failovers, preferred recoveries, and
+up to five recent errors. History is process-local and intentionally not persisted.
 
 ## Structured events
 
@@ -51,6 +52,10 @@ include:
 - `transport.reconnect_scheduled`, `transport.reconnect_failed`, and
   `transport.reconnect_exhausted`
 - `transport.failover_requested` and `transport.transport_activated`
+- `transport.preferred_recovery_probe`,
+  `transport.preferred_recovery_probe_failed`,
+  `transport.preferred_recovery_deferred`, and
+  `transport.preferred_recovery_succeeded`
 - `state.changed`
 
 Each event includes an ISO-8601 timestamp, endpoint, message, and structured
@@ -71,6 +76,6 @@ sdsctl profile repair home --network 192.168.0.0/24 --dry-run
 sdsctl profile repair home --network 192.168.0.0/24
 ```
 
-Repair preserves the profile name, bind configuration, and fallback preference.
+Repair preserves the profile name, bind configuration, fallback preference, and preferred-recovery policy.
 It updates only unambiguous discovery matches and refuses to overwrite a profile
 when discovery cannot safely identify the required scanner.

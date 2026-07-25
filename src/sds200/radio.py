@@ -139,6 +139,9 @@ class SDSScanner:
                 serial_factory=serial_factory,
             )
 
+        fallback_transport = (
+            self.transport if isinstance(self.transport, FallbackTransport) else None
+        )
         if capture_path is not None:
             self.transport = RecordingTransport(
                 self.transport,
@@ -156,6 +159,9 @@ class SDSScanner:
         self.trace = TrafficTrace(trace_path)
         self._responses: dict[str, _PendingResponse] = {}
         self._response_lock = threading.RLock()
+        self._fallback_transport = fallback_transport
+        if self._fallback_transport is not None:
+            self._fallback_transport.set_recovery_guard(self._recovery_idle)
         self._closed = threading.Event()
         self._closed.set()
         self._psi_interval_ms: int | None = None
@@ -351,9 +357,21 @@ class SDSScanner:
         alternate: TransportPreference = (
             "network" if resolved_preference == "serial" else "serial"
         )
+        expected_model = profile.model or "SDS200"
+
+        def validate_model_probe(line: str) -> bool:
+            command, separator, value = line.strip().partition(",")
+            return (
+                command.upper() == "MDL"
+                and bool(separator)
+                and normalize_model_name(value) == expected_model
+            )
+
         transport = FallbackTransport(
             (candidates[resolved_preference], candidates[alternate]),
             reconnect_policy=reconnect_policy,
+            preferred_recovery_policy=profile.preferred_recovery_policy,
+            recovery_probe_validator=validate_model_probe,
         )
         return cls.from_transport(
             transport,
@@ -755,6 +773,10 @@ class SDSScanner:
         finally:
             self.stop_scanner_info_push()
 
+    def _recovery_idle(self) -> bool:
+        with self._response_lock:
+            return not self._responses
+
     def _wait_for_response(
         self,
         response_command: str,
@@ -856,6 +878,17 @@ class SDSScanner:
                 pending.queue.put_nowait(response)
 
     def _transport_diagnostic(self, diagnostic: TransportDiagnostic) -> None:
+        if (
+            diagnostic.kind == "preferred_recovery_succeeded"
+            and self._psi_interval_ms is not None
+        ):
+            try:
+                self.send(f"PSI,{self._psi_interval_ms}")
+            except SDS200Error:
+                logger.warning(
+                    "Could not restart PSI after preferred transport recovery",
+                    exc_info=True,
+                )
         self.events.emit("diagnostic", diagnostic)
         self._emit_event(
             f"transport.{diagnostic.kind}",
