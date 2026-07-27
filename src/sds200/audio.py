@@ -10,10 +10,10 @@ from .events import EventBus
 
 @dataclass(frozen=True, slots=True)
 class AudioChunk:
-    """Opaque audio bytes received from an audio transport.
+    """Audio bytes received from an audio transport.
 
-    Codec and packet framing intentionally remain transport-specific until
-    a scanner audio protocol is implemented and validated against hardware.
+    Transport-specific framing is removed before delivery. The SDS200 network
+    audio transport emits raw G.711 mu-law payload bytes.
     """
 
     data: bytes
@@ -25,7 +25,7 @@ AudioChunkHandler = Callable[[AudioChunk], None]
 
 @runtime_checkable
 class AudioTransport(Protocol):
-    """Lifecycle contract for future USB, RTP, or RTSP audio transports."""
+    """Lifecycle contract for scanner audio transports."""
 
     @property
     def endpoint(self) -> str: ...

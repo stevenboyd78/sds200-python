@@ -52,12 +52,13 @@ open or affect the USB serial or UDP control transport.
 - For Linux desktop USB access, see the optional [udev rule](docs/udev.md)
 - For Ethernet: scanner and computer on a trusted local network
 
-Linux USB and Ethernet operation have been validated with an SDS200 running
-firmware version 1.26.01. SDS100 USB control has also been validated on firmware
-1.26.01. SDS150 support follows Uniden's shared SDS-series remote-command
-specification and still needs physical-hardware validation. Explicit SDS200
-network hosts work on any platform supported by Python's UDP sockets. Automatic
-route detection and `/dev/serial/by-id` discovery are Linux-specific.
+Linux USB, Ethernet control, and RTSP/RTP audio recording have been validated
+with an SDS200 running firmware version 1.26.01. SDS100 USB control has also been
+validated on firmware 1.26.01. SDS150 support follows Uniden's shared SDS-series
+remote-command specification and still needs physical-hardware validation.
+Explicit SDS200 network hosts work on any platform supported by Python's TCP and
+UDP sockets. Automatic route detection and `/dev/serial/by-id` discovery are
+Linux-specific.
 
 ## Installation
 
@@ -164,6 +165,11 @@ sdsctl --host 192.168.0.251 audio \
 The scanner requires a nonstandard single RTP client port during RTSP `SETUP`.
 The built-in transport handles that negotiation, receives payload type 0 PCMU,
 decodes it natively, and finalizes the WAV header during orderly shutdown.
+
+Each recording summary reports estimated packet loss, duplicates, late and
+malformed packets, and RTP timestamp discontinuities. A five-minute SDS200
+hardware soak received 7,500 packets and 2,400,000 audio samples with every
+reliability counter remaining at zero.
 
 ### Connection profiles and fallback
 
@@ -444,10 +450,11 @@ documented separately in pull requests and release notes.
 
 ## Project status
 
-Version `0.8.0` adds model-aware SDS100 and SDS150 USB support while preserving
-the validated SDS200 USB, Ethernet, fallback, monitoring, profile, and
-reliability paths. SDS100 and SDS150 hardware validation is still in progress.
-API compatibility is not guaranteed until version 1.0.
+Version `0.11.0` adds hardware-validated SDS200 RTSP/RTP network audio, native
+PCM WAV recording, and RTP reliability telemetry while preserving the existing
+USB, Ethernet-control, fallback, monitoring, profile, capture, and replay paths.
+SDS100 USB support is hardware-validated; SDS150 hardware validation is still in
+progress. API compatibility is not guaranteed until version 1.0.
 
 See [CHANGELOG.md](CHANGELOG.md) for development history and planned changes.
 

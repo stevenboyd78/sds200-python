@@ -6,13 +6,28 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-07-27
+
 ### Added
 
 - Hardware-validated SDS200 network audio transport using the scanner's strict
   single-port RTSP/RTP negotiation
+- Typed RTSP response and SDP handling plus RTP version 2 packet parsing for
+  payload type 0 PCMU audio
 - Native G.711 mu-law decoding to 8 kHz mono signed 16-bit PCM
 - Streaming WAV recording through `sdsctl --host HOST audio`, including duration,
   overwrite, RTP bind, RTSP port, and keepalive options
+- Per-session RTP reliability statistics for packet loss, sequence gaps,
+  duplicates, late and malformed packets, timestamp discontinuities, receive and
+  callback errors, keepalives, and orderly teardown
+- Sanitized synthetic PCMU/RTP fixtures and deterministic transport reliability
+  regression tests
+
+### Changed
+
+- Network audio remains independent from USB serial and UDP scanner-control
+  transports while using the existing `AudioStream` lifecycle and subscriptions
+- Package version advanced to 0.11.0
 
 ## [0.10.0] - 2026-07-24
 
@@ -224,7 +239,8 @@ First planned GitHub prerelease.
 - Added serial discovery, transport, packet framing, core responses, CLI tools,
   examples, tests, and CI.
 
-[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/stevenboyd78/sds200-python/compare/v0.8.1...v0.8.2

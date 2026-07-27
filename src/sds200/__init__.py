@@ -230,4 +230,4 @@ __all__ = [
     "write_capture",
 ]
 
-__version__ = "0.10.0"
+__version__ = "0.11.0"
