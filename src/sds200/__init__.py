@@ -56,6 +56,7 @@ from .models import (
     ValueResponse,
 )
 from .network import DEFAULT_UDP_PORT, UdpDatagramDecoder, UdpTransport
+from .network_audio import NetworkAudioTransport
 from .profiles import (
     TRANSPORT_PREFERENCES,
     ConnectionProfile,
@@ -76,6 +77,23 @@ from .replay import (
     SessionCaptureWriter,
     load_capture,
     write_capture,
+)
+from .rtp import (
+    PCMU_PAYLOAD_TYPE,
+    RtpPacket,
+    RtpProtocolError,
+    RtpSequenceObservation,
+    RtpSequenceTracker,
+)
+from .rtsp import (
+    DEFAULT_AUDIO_PATH,
+    DEFAULT_RTSP_PORT,
+    RtspClient,
+    RtspProtocolError,
+    RtspResponse,
+    RtspStatusError,
+    SdpAudioDescription,
+    parse_sdp_audio,
 )
 from .scanner import (
     SUPPORTED_SCANNER_MODELS,
@@ -104,7 +122,9 @@ __all__ = [
     "CommandRejectedError",
     "ConnectionProfile",
     "ControlTransport",
+    "DEFAULT_AUDIO_PATH",
     "DEFAULT_DISCOVERY_WORKERS",
+    "DEFAULT_RTSP_PORT",
     "DEFAULT_SDS_PATTERN",
     "DEFAULT_SDS200_PATTERN",
     "DEFAULT_UDP_PORT",
@@ -124,8 +144,10 @@ __all__ = [
     "ModelResponse",
     "NAVIGATION_TARGETS",
     "NavigationTarget",
+    "NetworkAudioTransport",
     "NetworkScanner",
     "NextSelection",
+    "PCMU_PAYLOAD_TYPE",
     "Packet",
     "ProfileKind",
     "ProfileRepairResult",
@@ -140,6 +162,14 @@ __all__ = [
     "ReconnectPolicy",
     "ReplayMismatchError",
     "ReplayTransport",
+    "RtpPacket",
+    "RtpProtocolError",
+    "RtpSequenceObservation",
+    "RtpSequenceTracker",
+    "RtspClient",
+    "RtspProtocolError",
+    "RtspResponse",
+    "RtspStatusError",
     "SDS200",
     "SDS200Error",
     "SDSScanner",
@@ -150,6 +180,7 @@ __all__ = [
     "ScannerInfo",
     "ScannerModel",
     "ScannerNode",
+    "SdpAudioDescription",
     "SessionCaptureWriter",
     "SerialTransport",
     "SetSquelch",
@@ -174,6 +205,7 @@ __all__ = [
     "load_capture",
     "local_ipv4_networks",
     "normalize_model_name",
+    "parse_sdp_audio",
     "profile_from_discovery",
     "repair_profile",
     "write_capture",
