@@ -65,6 +65,18 @@ from .models import (
 )
 from .network import DEFAULT_UDP_PORT, UdpDatagramDecoder, UdpTransport
 from .network_audio import NetworkAudioStatistics, NetworkAudioTransport
+from .presentation import (
+    ActivityStatus,
+    AvailabilityStatus,
+    ConnectionStatus,
+    HoldStatus,
+    PresentationSeverity,
+    ScannerPresentation,
+    SignalLevel,
+    classify_connection,
+    classify_signal,
+    present_radio_state,
+)
 from .profiles import (
     TRANSPORT_PREFERENCES,
     ConnectionProfile,
@@ -124,9 +136,11 @@ from .transport import (
 )
 
 __all__ = [
+    "ActivityStatus",
     "AudioChunk",
     "AudioStream",
     "AudioTransport",
+    "AvailabilityStatus",
     "PCM_CHANNELS",
     "PCM_SAMPLE_WIDTH",
     "PCMU_SAMPLE_RATE",
@@ -137,6 +151,7 @@ __all__ = [
     "ChargeStatus",
     "CommandRejectedError",
     "ConnectionProfile",
+    "ConnectionStatus",
     "ControlTransport",
     "DEFAULT_AUDIO_PATH",
     "DEFAULT_DISCOVERY_WORKERS",
@@ -154,6 +169,7 @@ __all__ = [
     "GetStatus",
     "GetVolume",
     "HoldSelection",
+    "HoldStatus",
     "HealthHistory",
     "HealthSummary",
     "HealthThresholds",
@@ -168,6 +184,7 @@ __all__ = [
     "Packet",
     "ProfileKind",
     "ProfileRepairResult",
+    "PresentationSeverity",
     "PreviousSelection",
     "PreferredRecoveryPolicy",
     "ProfileStore",
@@ -200,11 +217,13 @@ __all__ = [
     "ScannerInfo",
     "ScannerModel",
     "ScannerNode",
+    "ScannerPresentation",
     "SdpAudioDescription",
     "SessionCaptureWriter",
     "SerialTransport",
     "SetSquelch",
     "SetVolume",
+    "SignalLevel",
     "StartScannerInfoPush",
     "StateChange",
     "StatusResponse",
@@ -219,6 +238,8 @@ __all__ = [
     "ValidationStatus",
     "ValueResponse",
     "capabilities_for_model",
+    "classify_connection",
+    "classify_signal",
     "decode_mulaw",
     "decode_mulaw_sample",
     "discover_network_scanners",
@@ -229,6 +250,7 @@ __all__ = [
     "normalize_model_name",
     "parse_rtp_transport",
     "parse_sdp_audio",
+    "present_radio_state",
     "profile_from_discovery",
     "repair_profile",
     "write_capture",

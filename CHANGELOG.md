@@ -6,6 +6,13 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+### Added
+
+- Renderer-independent semantic presentation types for connection, activity,
+  signal, hold, availability, and severity states
+- Pure snapshot classification with normalized mute, recording, service-type,
+  and raw-signal values for future CLI and Textual renderers
+
 ## [0.11.1] - 2026-07-27
 
 ### Security
