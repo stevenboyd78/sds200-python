@@ -1,4 +1,4 @@
-from sds200.state import RadioState
+from sds200.state import RadioState, snapshot_from_scanner_info
 from sds200.xml_protocol import ScannerInfoParser
 
 XML = """<?xml version="1.0" encoding="utf-8"?>
@@ -10,6 +10,15 @@ XML = """<?xml version="1.0" encoding="utf-8"?>
 <SiteFrequency Freq=" 769.431250MHz" />
 <Property VOL="10" SQL="2" Sig="5" Rssi="-42" P25Status="P25" Mute="Unmute" Rec="Off" />
 </ScannerInfo>"""
+
+
+def test_scanner_info_converts_to_shared_snapshot() -> None:
+    snapshot = snapshot_from_scanner_info(ScannerInfoParser().parse("PSI", XML))
+
+    assert snapshot.channel == "Patch 65132"
+    assert snapshot.frequency == "769.431250MHz"
+    assert snapshot.signal == 5
+    assert snapshot.recording == "Off"
 
 
 def test_state_change_contains_rich_scanner_information() -> None:

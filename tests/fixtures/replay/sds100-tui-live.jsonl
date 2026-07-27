@@ -1,0 +1,39 @@
+{"endpoint": "usb://SDS100", "schema": "sds200.capture", "version": 1}
+{"connected": true, "delay_ms": 0.0, "direction": "connection"}
+{"data": "MDL", "delay_ms": 0.0, "direction": "tx"}
+{"data": "MDL,SDS100", "delay_ms": 0.0, "direction": "rx"}
+{"data": "VER", "delay_ms": 0.0, "direction": "tx"}
+{"data": "VER,Version 1.26.01", "delay_ms": 0.0, "direction": "rx"}
+{"data": "GSI", "delay_ms": 0.0, "direction": "tx"}
+{"data": "GSI,<XML>,", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<?xml version=\"1.0\" encoding=\"utf-8\"?>", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<ScannerInfo Mode=\"Trunk Scan\" V_Screen=\"trunk_scan\">", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<System Name=\"Example P25 System\" />", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<Department Name=\"Example Department\" />", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<Site Name=\"Example Simulcast\" Mod=\"NFM\" />", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<TGID Name=\"Initial Dispatch\" SvcType=\"Dispatch\" />", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<SiteFrequency Freq=\"769.431250MHz\" />", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<Property Sig=\"2\" Rssi=\"-96\" Rec=\"Off\" Mute=\"Unmute\" />", "delay_ms": 0.0, "direction": "rx"}
+{"data": "</ScannerInfo>", "delay_ms": 0.0, "direction": "rx"}
+{"data": "PSI,100", "delay_ms": 0.0, "direction": "tx"}
+{"data": "PSI,<XML>,", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<?xml version=\"1.0\" encoding=\"utf-8\"?>", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<ScannerInfo Mode=\"Trunk Scan\" V_Screen=\"trunk_scan\">", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<System Name=\"Example P25 System\" />", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<Department Name=\"Example Department\" />", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<Site Name=\"Example Simulcast\" Mod=\"NFM\" />", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<TGID Name=\"First Dispatch\" SvcType=\"Dispatch\" />", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<SiteFrequency Freq=\"769.431250MHz\" />", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<Property Sig=\"3\" Rssi=\"-84\" Rec=\"Off\" Mute=\"Unmute\" />", "delay_ms": 0.0, "direction": "rx"}
+{"data": "</ScannerInfo>", "delay_ms": 0.0, "direction": "rx"}
+{"data": "PSI,<XML>,", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<?xml version=\"1.0\" encoding=\"utf-8\"?>", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<ScannerInfo Mode=\"Trunk Scan\" V_Screen=\"trunk_scan\">", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<System Name=\"Example P25 System\" />", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<Department Name=\"Example Department\" />", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<Site Name=\"Example Simulcast\" Mod=\"NFM\" />", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<TGID Name=\"Second Dispatch\" SvcType=\"Interop\" />", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<SiteFrequency Freq=\"769.681250MHz\" />", "delay_ms": 0.0, "direction": "rx"}
+{"data": "<Property Sig=\"5\" Rssi=\"-70\" Rec=\"On\" Mute=\"Unmute\" />", "delay_ms": 0.0, "direction": "rx"}
+{"data": "</ScannerInfo>", "delay_ms": 0.0, "direction": "rx"}
+{"data": "PSI,0", "delay_ms": 0.0, "direction": "tx"}

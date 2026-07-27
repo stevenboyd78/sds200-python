@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from typing import ClassVar
+from threading import Event, Thread, current_thread
+from time import monotonic
+from typing import ClassVar, Protocol
 
 from rich.text import Text
 from textual.app import App, ComposeResult
@@ -10,8 +14,9 @@ from textual.containers import VerticalScroll
 from textual.widgets import Footer, Header, Static
 
 from .models import ScannerInfo
-from .presentation import ScannerPresentation, present_scanner_info
+from .presentation import ScannerPresentation, present_radio_state
 from .rich_cli import rich_style
+from .state import RadioStateSnapshot, snapshot_from_scanner_info
 from .theme import (
     DEFAULT_DARK_THEME,
     DEFAULT_LIGHT_THEME,
@@ -20,6 +25,36 @@ from .theme import (
     ThemeRole,
     theme_roles_for,
 )
+from .transport import TransportDiagnostic
+
+Unsubscribe = Callable[[], None]
+Clock = Callable[[], float]
+
+
+class ScannerTuiRadio(Protocol):
+    """Radio operations required by the live Textual adapter."""
+
+    @property
+    def connected(self) -> bool: ...
+
+    def on_state(
+        self,
+        callback: Callable[[RadioStateSnapshot], None],
+    ) -> Unsubscribe: ...
+
+    def on_connection(self, callback: Callable[[bool], None]) -> Unsubscribe: ...
+
+    def on_diagnostic(
+        self,
+        callback: Callable[[TransportDiagnostic], None],
+    ) -> Unsubscribe: ...
+
+    def scanner_info_push(
+        self,
+        interval_ms: int = 500,
+        *,
+        timeout: float = 3.0,
+    ) -> AbstractContextManager[ScannerInfo]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,7 +67,7 @@ class ScannerIdentity:
 
 
 class ScannerTuiApp(App[None]):
-    """Initial full-screen Textual shell for SDS scanner state."""
+    """Full-screen Textual interface for live SDS scanner state."""
 
     TITLE = "SDS Scanner"
     CSS: ClassVar[str] = """
@@ -66,7 +101,7 @@ class ScannerTuiApp(App[None]):
     }
 
     #status {
-        min-height: 4;
+        min-height: 6;
     }
     """
     BINDINGS: ClassVar[list[BindingType]] = [
@@ -79,14 +114,35 @@ class ScannerTuiApp(App[None]):
         identity: ScannerIdentity,
         info: ScannerInfo,
         *,
+        radio: ScannerTuiRadio | None = None,
+        interval_ms: int = 500,
+        stale_after: float = 3.0,
         connected: bool | None = True,
         palette: ThemePalette = DEFAULT_DARK_THEME,
+        clock: Clock = monotonic,
     ) -> None:
+        if interval_ms <= 0:
+            raise ValueError("PSI interval must be greater than zero")
+        if stale_after <= 0:
+            raise ValueError("Stale-state threshold must be greater than zero")
+
         super().__init__()
         self._identity = identity
-        self._info = info
+        self._snapshot = snapshot_from_scanner_info(info)
+        self._radio = radio
+        self._interval_ms = interval_ms
+        self._stale_after = stale_after
         self._connected = connected
         self._palette = palette
+        self._clock = clock
+        self._last_state_at = clock()
+        self._degraded = False
+        self._stale = False
+        self._stream_mode = "INITIAL SNAPSHOT"
+        self._status_message = "Initial scanner information loaded"
+        self._unsubscribers: list[Unsubscribe] = []
+        self._psi_stop = Event()
+        self._psi_thread: Thread | None = None
         self.title = f"{identity.model} Scanner"
         self.sub_title = identity.endpoint
 
@@ -95,6 +151,18 @@ class ScannerTuiApp(App[None]):
         """Return the active renderer-neutral palette."""
 
         return self._palette
+
+    @property
+    def stale(self) -> bool:
+        """Return whether the most recent live state exceeded the age threshold."""
+
+        return self._stale
+
+    @property
+    def live_thread_alive(self) -> bool:
+        """Return whether the PSI lifecycle thread is currently running."""
+
+        return self._psi_thread is not None and self._psi_thread.is_alive()
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -109,6 +177,13 @@ class ScannerTuiApp(App[None]):
 
     def on_mount(self) -> None:
         self._refresh_view()
+        if self._radio is not None:
+            check_interval = min(max(self._stale_after / 4, 0.1), 1.0)
+            self.set_interval(check_interval, self.check_stale)
+            self._start_live_updates()
+
+    def on_unmount(self) -> None:
+        self.stop_live_updates()
 
     def action_toggle_theme(self) -> None:
         """Toggle between the built-in semantic light and dark palettes."""
@@ -122,23 +197,142 @@ class ScannerTuiApp(App[None]):
 
     def update_snapshot(
         self,
-        info: ScannerInfo,
+        snapshot: RadioStateSnapshot,
         *,
         connected: bool | None,
+        degraded: bool = False,
     ) -> None:
-        """Replace the displayed scanner snapshot.
+        """Replace the displayed state from the Textual event-loop thread."""
 
-        Milestone 13.2 will call this from live scanner-state subscriptions.
-        """
-
-        self._info = info
+        self._snapshot = snapshot
         self._connected = connected
+        self._degraded = degraded
+        self._stale = False
+        self._last_state_at = self._clock()
+        self._stream_mode = "LIVE PSI"
+        self._status_message = "Live PSI update received"
+        self._refresh_view()
+
+    def check_stale(self) -> None:
+        """Update freshness after comparing the last PSI update with the threshold."""
+
+        if self._radio is None or self._connected is not True:
+            return
+        age = max(0.0, self._clock() - self._last_state_at)
+        stale = age >= self._stale_after
+        if stale == self._stale:
+            return
+        self._stale = stale
+        if stale:
+            self._status_message = f"No PSI update for {age:.1f} seconds"
+        self._refresh_view()
+
+    def stop_live_updates(self) -> None:
+        """Stop PSI streaming and remove every radio callback subscription."""
+
+        self._psi_stop.set()
+        for unsubscribe in tuple(self._unsubscribers):
+            unsubscribe()
+        self._unsubscribers.clear()
+
+        thread = self._psi_thread
+        if thread is not None and thread is not current_thread():
+            thread.join(timeout=2.0)
+        if thread is not None and not thread.is_alive():
+            self._psi_thread = None
+
+    def _start_live_updates(self) -> None:
+        assert self._radio is not None
+        if self.live_thread_alive:
+            return
+        self._connected = self._radio.connected
+        self._stream_mode = "STARTING PSI"
+        self._status_message = "Starting live scanner-information updates"
+        self._unsubscribers.extend(
+            (
+                self._radio.on_state(self._on_radio_state),
+                self._radio.on_connection(self._on_radio_connection),
+                self._radio.on_diagnostic(self._on_radio_diagnostic),
+            )
+        )
+        self._psi_stop.clear()
+        self._psi_thread = Thread(
+            target=self._run_psi_stream,
+            name="sds200-tui-psi",
+            daemon=True,
+        )
+        self._psi_thread.start()
+        self._refresh_view()
+
+    def _run_psi_stream(self) -> None:
+        assert self._radio is not None
+        try:
+            with self._radio.scanner_info_push(self._interval_ms) as first:
+                self._dispatch_from_radio(self._apply_scanner_info, first)
+                self._psi_stop.wait()
+        except Exception as exc:
+            if not self._psi_stop.is_set():
+                self._dispatch_from_radio(self._apply_stream_error, str(exc))
+
+    def _on_radio_state(self, snapshot: RadioStateSnapshot) -> None:
+        self._dispatch_from_radio(self._apply_radio_state, snapshot)
+
+    def _on_radio_connection(self, connected: bool) -> None:
+        self._dispatch_from_radio(self._apply_connection, connected)
+
+    def _on_radio_diagnostic(self, diagnostic: TransportDiagnostic) -> None:
+        self._dispatch_from_radio(self._apply_diagnostic, diagnostic)
+
+    def _dispatch_from_radio(
+        self,
+        callback: Callable[..., None],
+        *args: object,
+    ) -> None:
+        try:
+            self.call_from_thread(callback, *args)
+        except RuntimeError:
+            # The app may have completed between a radio callback and dispatch.
+            return
+
+    def _apply_scanner_info(self, info: ScannerInfo) -> None:
+        self._apply_radio_state(snapshot_from_scanner_info(info))
+
+    def _apply_radio_state(self, snapshot: RadioStateSnapshot) -> None:
+        self.update_snapshot(snapshot, connected=True)
+
+    def _apply_connection(self, connected: bool) -> None:
+        self._connected = connected
+        self._degraded = False
+        self._stale = False
+        self._last_state_at = self._clock()
+        if connected:
+            self._stream_mode = "WAITING FOR PSI"
+            self._status_message = "Transport connected; waiting for scanner state"
+        else:
+            self._stream_mode = "RECONNECTING"
+            self._status_message = "Transport disconnected; waiting to reconnect"
+        self._refresh_view()
+
+    def _apply_diagnostic(self, diagnostic: TransportDiagnostic) -> None:
+        kind = diagnostic.kind.casefold()
+        recovered = kind.endswith(("succeeded", "recovered"))
+        self._degraded = False if recovered else self._connected is True
+        self._stream_mode = _state_label(diagnostic.kind)
+        self._status_message = diagnostic.message
+        self._refresh_view()
+
+    def _apply_stream_error(self, message: str) -> None:
+        self._degraded = self._connected is True
+        self._stream_mode = "PSI ERROR"
+        self._status_message = message
         self._refresh_view()
 
     def _refresh_view(self) -> None:
-        presentation = present_scanner_info(
-            self._info,
+        presentation = present_radio_state(
+            self._snapshot,
             connected=self._connected,
+            degraded=self._degraded,
+            stale=self._stale,
         )
         roles = theme_roles_for(presentation)
         self._apply_theme_class()
@@ -157,22 +351,23 @@ class ScannerTuiApp(App[None]):
         )
         self.query_one("#system", Static).update(
             self._panel(
-                ("System", _display(self._info.system), ThemeRole.TEXT_PRIMARY),
-                ("Department", _display(self._info.department), ThemeRole.TEXT_PRIMARY),
-                ("Site", _display(self._info.site), ThemeRole.TEXT_PRIMARY),
+                ("System", _display(self._snapshot.system), ThemeRole.TEXT_PRIMARY),
+                ("Department", _display(self._snapshot.department), ThemeRole.TEXT_PRIMARY),
+                ("Site", _display(self._snapshot.site), ThemeRole.TEXT_PRIMARY),
             )
         )
         self.query_one("#channel", Static).update(
             self._panel(
-                ("Channel", _display(self._info.channel), ThemeRole.TEXT_PRIMARY),
-                ("Frequency", _display(self._info.frequency), ThemeRole.TEXT_PRIMARY),
-                ("Modulation", _display(self._info.modulation), ThemeRole.TEXT_PRIMARY),
-                ("Service", _display(self._info.service_type), ThemeRole.TEXT_PRIMARY),
+                ("Channel", _display(self._snapshot.channel), ThemeRole.TEXT_PRIMARY),
+                ("Frequency", _display(self._snapshot.frequency), ThemeRole.TEXT_PRIMARY),
+                ("Modulation", _display(self._snapshot.modulation), ThemeRole.TEXT_PRIMARY),
+                ("Service", _display(self._snapshot.service_type), ThemeRole.TEXT_PRIMARY),
             )
         )
         self.query_one("#state", Static).update(
             self._state_panel(presentation, roles)
         )
+        stream_mode = "STALE" if self._stale else self._stream_mode
         self.query_one("#status", Static).update(
             self._panel(
                 (
@@ -181,7 +376,8 @@ class ScannerTuiApp(App[None]):
                     roles.availability,
                 ),
                 ("Severity", _state_label(presentation.severity.value), roles.severity),
-                ("Mode", "INITIAL SNAPSHOT", ThemeRole.TEXT_PRIMARY),
+                ("Stream", stream_mode, ThemeRole.TEXT_PRIMARY),
+                ("Detail", self._status_message, ThemeRole.TEXT_PRIMARY),
             )
         )
 
@@ -229,17 +425,27 @@ def run_tui(
     model: str,
     firmware: str,
     info: ScannerInfo,
+    radio: ScannerTuiRadio,
+    interval_ms: int,
+    stale_after: float,
     connected: bool | None,
     palette: ThemePalette,
 ) -> None:
-    """Launch the Textual scanner shell and block until it exits."""
+    """Launch the live Textual scanner interface and block until it exits."""
 
-    ScannerTuiApp(
+    app = ScannerTuiApp(
         ScannerIdentity(endpoint=endpoint, model=model, firmware=firmware),
         info,
+        radio=radio,
+        interval_ms=interval_ms,
+        stale_after=stale_after,
         connected=connected,
         palette=palette,
-    ).run()
+    )
+    try:
+        app.run()
+    finally:
+        app.stop_live_updates()
 
 
 def _display(value: object | None) -> str:

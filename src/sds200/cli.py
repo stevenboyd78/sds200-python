@@ -420,7 +420,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers.add_parser("raw", help="Print packets until interrupted")
     subparsers.add_parser("scanner-info", help="Get structured GSI scanner information")
-    subparsers.add_parser("tui", help="Launch the optional full-screen Textual interface")
+    tui = subparsers.add_parser(
+        "tui",
+        help="Launch the optional full-screen Textual interface",
+    )
+    tui.add_argument(
+        "--interval",
+        type=_positive_integer,
+        default=500,
+        metavar="MS",
+        help="PSI update interval in milliseconds (default: 500)",
+    )
+    tui.add_argument(
+        "--stale-after",
+        type=_positive_float,
+        default=3.0,
+        metavar="SECONDS",
+        help="Mark live scanner state stale after this age (default: 3.0)",
+    )
     subparsers.add_parser(
         "capabilities",
         help="Show model limits, validation status, and supported control features",
@@ -1257,6 +1274,9 @@ def _run_tui(args: argparse.Namespace) -> int:
             model=str(radio.get_model()),
             firmware=str(radio.get_firmware()),
             info=radio.get_scanner_info(),
+            radio=radio,
+            interval_ms=args.interval,
+            stale_after=args.stale_after,
             connected=radio.connected,
             palette=palette_for_name(args.theme),
         )

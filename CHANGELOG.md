@@ -14,6 +14,12 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   Textual adapters
 - Dark/light TUI palette switching, explicit quit binding, and headless shell
   regression tests
+- Live PSI subscriptions that marshal radio callback updates safely into the
+  Textual event loop
+- Connected, degraded, reconnecting, disconnected, and stale-data presentation
+  with configurable PSI and freshness intervals
+- Deterministic callback unsubscription, PSI shutdown, and replay-driven live-state
+  regression coverage
 
 ## [0.12.0] - 2026-07-27
 

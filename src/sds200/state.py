@@ -38,6 +38,31 @@ class StateChange:
         return field in self.fields
 
 
+def snapshot_from_scanner_info(info: ScannerInfo) -> RadioStateSnapshot:
+    """Convert parsed GSI or PSI XML into the shared immutable state snapshot."""
+
+    return RadioStateSnapshot(
+        mode=info.mode,
+        screen=info.screen,
+        system=info.system,
+        department=info.department,
+        site=info.site,
+        channel=info.channel,
+        frequency=info.frequency,
+        modulation=info.modulation,
+        service_type=info.service_type,
+        talkgroup_id=info.talkgroup_id,
+        unit_id=info.unit_id,
+        volume=info.volume,
+        squelch=info.squelch,
+        signal=info.signal,
+        rssi=info.rssi,
+        p25_status=info.p25_status,
+        mute=info.mute,
+        recording=info.recording,
+    )
+
+
 class RadioState:
     def __init__(self) -> None:
         self._lock = RLock()
@@ -49,26 +74,7 @@ class RadioState:
             return self._snapshot
 
     def update(self, info: ScannerInfo) -> StateChange | None:
-        current = RadioStateSnapshot(
-            mode=info.mode,
-            screen=info.screen,
-            system=info.system,
-            department=info.department,
-            site=info.site,
-            channel=info.channel,
-            frequency=info.frequency,
-            modulation=info.modulation,
-            service_type=info.service_type,
-            talkgroup_id=info.talkgroup_id,
-            unit_id=info.unit_id,
-            volume=info.volume,
-            squelch=info.squelch,
-            signal=info.signal,
-            rssi=info.rssi,
-            p25_status=info.p25_status,
-            mute=info.mute,
-            recording=info.recording,
-        )
+        current = snapshot_from_scanner_info(info)
         with self._lock:
             previous = self._snapshot
             changed = frozenset(
