@@ -98,11 +98,13 @@ from .rtp import (
 from .rtsp import (
     DEFAULT_AUDIO_PATH,
     DEFAULT_RTSP_PORT,
+    RtpTransportInfo,
     RtspClient,
     RtspProtocolError,
     RtspResponse,
     RtspStatusError,
     SdpAudioDescription,
+    parse_rtp_transport,
     parse_sdp_audio,
 )
 from .scanner import (
@@ -183,6 +185,7 @@ __all__ = [
     "RtpSequenceTracker",
     "RtpTimestampObservation",
     "RtpTimestampTracker",
+    "RtpTransportInfo",
     "RtspClient",
     "RtspProtocolError",
     "RtspResponse",
@@ -224,10 +227,11 @@ __all__ = [
     "load_capture",
     "local_ipv4_networks",
     "normalize_model_name",
+    "parse_rtp_transport",
     "parse_sdp_audio",
     "profile_from_discovery",
     "repair_profile",
     "write_capture",
 ]
 
-__version__ = "0.11.0"
+__version__ = "0.11.1"

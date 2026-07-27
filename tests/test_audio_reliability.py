@@ -9,6 +9,7 @@ from typing import Any
 
 from sds200.audio import AudioChunk
 from sds200.network_audio import NetworkAudioTransport
+from sds200.rtsp import RtpTransportInfo
 
 
 class FixtureDatagramSocket:
@@ -50,8 +51,13 @@ class FixtureRtspClient:
     def __init__(self) -> None:
         self.teardowns = 0
 
-    def start(self, client_port: int) -> None:
+    def start(self, client_port: int) -> RtpTransportInfo:
         assert client_port == 48607
+        return RtpTransportInfo(
+            source="192.0.2.25",
+            server_port=56002,
+            ssrc=1449463210,
+        )
 
     def get_parameter(self) -> object:
         return object()
@@ -91,6 +97,7 @@ def test_sanitized_rtp_fixture_reports_reliability_statistics() -> None:
         "192.0.2.25",
         datagram_socket_factory=lambda _family, _type: datagram,
         rtsp_client_factory=lambda _host, _port, _path, _timeout: rtsp,
+        local_address_resolver=lambda _host, _port: "192.0.2.10",
     )
 
     transport.start(chunks.append)
@@ -129,6 +136,7 @@ def test_receive_failure_is_counted_and_session_can_stop_cleanly() -> None:
         "192.0.2.25",
         datagram_socket_factory=lambda _family, _type: datagram,
         rtsp_client_factory=lambda _host, _port, _path, _timeout: rtsp,
+        local_address_resolver=lambda _host, _port: "192.0.2.10",
     )
 
     transport.start(lambda _chunk: None)

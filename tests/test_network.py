@@ -5,6 +5,8 @@ import threading
 import time
 from collections.abc import Callable
 
+import pytest
+
 from sds200.network import UdpDatagramDecoder, UdpTransport
 from sds200.radio import SDS200
 from sds200.reliability import ReconnectPolicy
@@ -101,9 +103,37 @@ def test_udp_transport_sends_cr_terminated_command_and_receives_response() -> No
         transport.stop()
 
     assert factory.calls == [(socket.AF_INET, socket.SOCK_DGRAM)]
-    assert fake.bound == ("", 0)
+    assert fake.bound is None
     assert fake.remote == ("192.0.2.25", 50536)
     assert fake.sent == [b"MDL\r"]
+
+
+def test_udp_transport_resolves_specific_address_for_explicit_local_port() -> None:
+    fake = FakeDatagramSocket()
+    resolver_calls: list[tuple[str, int]] = []
+
+    def resolver(host: str, port: int) -> str:
+        resolver_calls.append((host, port))
+        return "192.0.2.10"
+
+    transport = UdpTransport(
+        "192.0.2.25",
+        local_port=42000,
+        reconnect=False,
+        socket_factory=FakeDatagramSocketFactory(fake),
+        local_address_resolver=resolver,
+    )
+
+    transport.start(lambda _line: None)
+    transport.stop()
+
+    assert resolver_calls == [("192.0.2.25", 50536)]
+    assert fake.bound == ("192.0.2.10", 42000)
+
+
+def test_udp_transport_rejects_wildcard_bind_address() -> None:
+    with pytest.raises(ValueError, match="must not bind all network interfaces"):
+        UdpTransport("192.0.2.25", local_host="0.0.0.0")
 
 
 def test_radio_network_factory_uses_existing_command_api() -> None:

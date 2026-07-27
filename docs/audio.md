@@ -51,14 +51,20 @@ with PcmuWavRecorder(Path("scanner-audio.wav")) as recorder:
 
 `NetworkAudioTransport.statistics` returns an immutable session snapshot with
 received datagrams and bytes, delivered packets and payload bytes, sequence gaps,
-estimated packet loss, duplicates, late packets, malformed packets, RTP timestamp
-discontinuities, missing-sample estimates, receive and callback errors,
-keepalives, teardown count, sequence endpoints, final timestamp, and SSRC.
+estimated packet loss, duplicates, late packets, malformed packets, unexpected
+source and SSRC rejections, RTP timestamp discontinuities, missing-sample
+estimates, receive and callback errors, keepalives, teardown count, sequence
+endpoints, final timestamp, and SSRC.
 
 Sequence tracking begins with the first packet actually received because the
 SDS200's `RTP-Info` starting sequence is not a reliable initialization value.
 Synthetic fixtures exercise loss, duplicate, late, malformed, wraparound, and
 backward-timestamp behavior without requiring scanner hardware.
+
+The RTP socket binds to the local IPv4 interface selected by the route to the
+scanner. Packets are accepted only from the source address, server port, and SSRC
+negotiated during RTSP `SETUP`; unexpected senders are counted and discarded.
+Explicit `0.0.0.0` RTP binds are rejected.
 
 The protocol is unauthenticated and unencrypted. Keep RTSP TCP port 554 and its
 negotiated RTP UDP port on a trusted LAN or behind a secured VPN.

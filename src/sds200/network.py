@@ -13,6 +13,7 @@ from typing import Protocol
 
 from .exceptions import ScannerConnectionError
 from .reliability import ReconnectCounter, ReconnectPolicy
+from .socket_utils import LocalAddressResolver, resolve_local_ipv4_address
 from .transport import (
     ConnectionHandler,
     DiagnosticHandler,
@@ -317,6 +318,7 @@ class UdpTransport:
         reconnect_policy: ReconnectPolicy | None = None,
         max_xml_retries: int = 2,
         socket_factory: DatagramSocketFactory = default_datagram_socket_factory,
+        local_address_resolver: LocalAddressResolver = resolve_local_ipv4_address,
     ) -> None:
         if not host.strip():
             raise ValueError("Network host must not be empty.")
@@ -324,6 +326,8 @@ class UdpTransport:
             raise ValueError("Remote UDP port must be between 1 and 65535.")
         if not 0 <= local_port <= 65535:
             raise ValueError("Local UDP port must be between 0 and 65535.")
+        if local_host == "0.0.0.0":
+            raise ValueError("Local UDP address must not bind all network interfaces.")
         if read_timeout <= 0:
             raise ValueError("Read timeout must be greater than zero.")
         if reconnect_interval <= 0:
@@ -346,6 +350,7 @@ class UdpTransport:
         self._reconnect_counter = ReconnectCounter(self.reconnect_policy)
         self.max_xml_retries = max_xml_retries
         self._socket_factory = socket_factory
+        self._local_address_resolver = local_address_resolver
         self._socket: DatagramSocketLike | None = None
         self._handler: LineHandler | None = None
         self._connection_handler: ConnectionHandler | None = None
@@ -465,7 +470,11 @@ class UdpTransport:
         try:
             udp_socket = self._socket_factory(socket.AF_INET, socket.SOCK_DGRAM)
             udp_socket.settimeout(self.read_timeout)
-            udp_socket.bind((self.local_host, self.local_port))
+            if self.local_host:
+                udp_socket.bind((self.local_host, self.local_port))
+            elif self.local_port:
+                bind_host = self._local_address_resolver(self.host, self.remote_port)
+                udp_socket.bind((bind_host, self.local_port))
             udp_socket.connect((self.host, self.remote_port))
         except OSError as exc:
             if udp_socket is not None:

@@ -39,7 +39,9 @@ class FakeNetworkAudioTransport:
             duplicate_packets=3,
             late_packets=4,
             malformed_packets=5,
-            timestamp_discontinuities=6,
+            unexpected_source_packets=6,
+            ssrc_mismatch_packets=7,
+            timestamp_discontinuities=8,
         )
 
     def stop(self) -> None:
@@ -105,7 +107,9 @@ def test_audio_cli_records_native_pcm_wave(
         "RTP duplicates: 3",
         "RTP late: 4",
         "RTP malformed: 5",
-        "Timestamp discontinuities: 6",
+        "RTP unexpected source: 6",
+        "RTP SSRC mismatches: 7",
+        "Timestamp discontinuities: 8",
         f"Output: {output}",
     ]
 

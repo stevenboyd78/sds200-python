@@ -4,6 +4,7 @@ import socket
 from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
+from ipaddress import IPv4Address, ip_address
 from types import MappingProxyType
 from typing import Protocol
 
@@ -63,6 +64,92 @@ class RtspResponse:
 class SdpAudioDescription:
     control: str
     payload_types: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RtpTransportInfo:
+    """RTP sender parameters negotiated by the SDS200 RTSP SETUP response."""
+
+    source: str
+    server_port: int
+    ssrc: int | None = None
+
+
+def parse_rtp_transport(value: str, *, client_port: int) -> RtpTransportInfo:
+    """Parse and validate the scanner-specific RTSP Transport response header."""
+    fields = [field.strip() for field in value.split(";") if field.strip()]
+    if not fields or fields[0].upper() != "RTP/AVP":
+        raise RtspProtocolError("RTSP SETUP returned an unsupported Transport profile.")
+
+    flags: set[str] = set()
+    parameters: dict[str, str] = {}
+    for field in fields[1:]:
+        name, separator, raw_value = field.partition("=")
+        name = name.strip().lower()
+        if not separator:
+            flags.add(name)
+            continue
+        if not name or not raw_value.strip():
+            raise RtspProtocolError("RTSP SETUP returned an invalid Transport parameter.")
+        parameters[name] = raw_value.strip()
+
+    if "unicast" not in flags:
+        raise RtspProtocolError("RTSP SETUP did not negotiate unicast RTP.")
+
+    negotiated_client_port = _parse_single_port(
+        parameters.get("client_port"),
+        name="client_port",
+    )
+    if negotiated_client_port != client_port:
+        raise RtspProtocolError(
+            "RTSP SETUP returned a client_port that does not match the bound RTP port."
+        )
+
+    source_value = parameters.get("source")
+    if source_value is None:
+        raise RtspProtocolError("RTSP SETUP response does not contain an RTP source.")
+    try:
+        source_address = ip_address(source_value)
+    except ValueError as exc:
+        raise RtspProtocolError("RTSP SETUP returned an invalid RTP source address.") from exc
+    if not isinstance(source_address, IPv4Address):
+        raise RtspProtocolError("RTSP SETUP returned a non-IPv4 RTP source address.")
+
+    server_port = _parse_single_port(
+        parameters.get("server_port"),
+        name="server_port",
+    )
+
+    raw_ssrc = parameters.get("ssrc")
+    ssrc: int | None = None
+    if raw_ssrc is not None:
+        base = 16 if raw_ssrc.lower().startswith("0x") or any(
+            character in "abcdefABCDEF" for character in raw_ssrc
+        ) else 10
+        try:
+            ssrc = int(raw_ssrc, base)
+        except ValueError as exc:
+            raise RtspProtocolError("RTSP SETUP returned an invalid RTP SSRC.") from exc
+        if not 0 <= ssrc <= 0xFFFFFFFF:
+            raise RtspProtocolError("RTSP SETUP returned an out-of-range RTP SSRC.")
+
+    return RtpTransportInfo(
+        source=str(source_address),
+        server_port=server_port,
+        ssrc=ssrc,
+    )
+
+
+def _parse_single_port(value: str | None, *, name: str) -> int:
+    if value is None or "-" in value:
+        raise RtspProtocolError(f"RTSP SETUP did not return a single {name} value.")
+    try:
+        port = int(value)
+    except ValueError as exc:
+        raise RtspProtocolError(f"RTSP SETUP returned an invalid {name} value.") from exc
+    if not 1 <= port <= 65535:
+        raise RtspProtocolError(f"RTSP SETUP returned an out-of-range {name} value.")
+    return port
 
 
 def parse_sdp_audio(body: bytes) -> SdpAudioDescription:
@@ -137,6 +224,7 @@ class RtspClient:
         self._content_base: str | None = None
         self._audio: SdpAudioDescription | None = None
         self._session: str | None = None
+        self._transport: RtpTransportInfo | None = None
 
     @property
     def endpoint(self) -> str:
@@ -145,6 +233,10 @@ class RtspClient:
     @property
     def session(self) -> str | None:
         return self._session
+
+    @property
+    def transport(self) -> RtpTransportInfo | None:
+        return self._transport
 
     @property
     def _aggregate_uri(self) -> str:
@@ -174,8 +266,9 @@ class RtspClient:
         self._content_base = None
         self._audio = None
         self._session = None
+        self._transport = None
 
-    def start(self, client_port: int) -> None:
+    def start(self, client_port: int) -> RtpTransportInfo:
         if not 1 <= client_port <= 65535:
             raise ValueError("RTP client port must be between 1 and 65535.")
         self.connect()
@@ -183,6 +276,8 @@ class RtspClient:
         self.describe()
         self.setup(client_port)
         self.play()
+        assert self._transport is not None
+        return self._transport
 
     def options(self) -> RtspResponse:
         return self._request("OPTIONS", self._aggregate_uri)
@@ -216,6 +311,10 @@ class RtspClient:
         self._session = session.split(";", 1)[0].strip()
         if not self._session:
             raise RtspProtocolError("RTSP SETUP returned an empty session identifier.")
+        transport = response.header("transport")
+        if transport is None:
+            raise RtspProtocolError("RTSP SETUP response does not contain a Transport header.")
+        self._transport = parse_rtp_transport(transport, client_port=client_port)
         return response
 
     def play(self) -> RtspResponse:

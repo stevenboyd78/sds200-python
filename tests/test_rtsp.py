@@ -4,7 +4,13 @@ from collections.abc import Iterable
 
 import pytest
 
-from sds200.rtsp import RtspClient, RtspProtocolError, RtspStatusError, parse_sdp_audio
+from sds200.rtsp import (
+    RtspClient,
+    RtspProtocolError,
+    RtspStatusError,
+    parse_rtp_transport,
+    parse_sdp_audio,
+)
 
 
 class FakeStreamSocket:
@@ -76,7 +82,16 @@ def test_scanner_specific_session_sequence_with_fragmented_responses() -> None:
                 },
                 body=sdp,
             ),
-            response(3, headers={"Session": "30026000"}),
+            response(
+                3,
+                headers={
+                    "Session": "30026000",
+                    "Transport": (
+                        "RTP/AVP;unicast;client_port=48607;"
+                        "source=192.0.2.25;server_port=56002;ssrc=1449463210"
+                    ),
+                },
+            ),
             response(4, headers={"Session": "30026000"}),
             response(5, headers={"Session": "30026000"}),
             response(6, headers={"Session": "30026000"}),
@@ -87,10 +102,14 @@ def test_scanner_specific_session_sequence_with_fragmented_responses() -> None:
     )
     client = make_client(stream)
 
-    client.start(48607)
+    transport = client.start(48607)
     client.get_parameter()
     client.teardown()
     client.close()
+
+    assert transport.source == "192.0.2.25"
+    assert transport.server_port == 56002
+    assert transport.ssrc == 1449463210
 
     requests = [value.decode("ascii") for value in stream.sent]
     assert requests[0].startswith("OPTIONS ")
@@ -141,4 +160,36 @@ def test_parse_sdp_requires_pcmu_audio_track() -> None:
     with pytest.raises(RtspProtocolError, match="PCMU"):
         parse_sdp_audio(
             b"v=0\r\nm=audio 0 RTP/AVP 8\r\na=control:trackID=1\r\n"
+        )
+
+
+def test_parse_rtp_transport_requires_matching_single_port_and_source() -> None:
+    transport = parse_rtp_transport(
+        "RTP/AVP;unicast;client_port=48607;source=192.0.2.25;"
+        "server_port=56002;ssrc=0x56650daa",
+        client_port=48607,
+    )
+
+    assert transport.source == "192.0.2.25"
+    assert transport.server_port == 56002
+    assert transport.ssrc == 0x56650DAA
+
+    with pytest.raises(RtspProtocolError, match="does not match"):
+        parse_rtp_transport(
+            "RTP/AVP;unicast;client_port=40000;source=192.0.2.25;"
+            "server_port=56002",
+            client_port=48607,
+        )
+
+    with pytest.raises(RtspProtocolError, match="RTP source"):
+        parse_rtp_transport(
+            "RTP/AVP;unicast;client_port=48607;server_port=56002",
+            client_port=48607,
+        )
+
+    with pytest.raises(RtspProtocolError, match="single server_port"):
+        parse_rtp_transport(
+            "RTP/AVP;unicast;client_port=48607;source=192.0.2.25;"
+            "server_port=56002-56003",
+            client_port=48607,
         )

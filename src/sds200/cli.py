@@ -1205,6 +1205,8 @@ def _run_audio(args: argparse.Namespace) -> int:
     print(f"RTP duplicates: {statistics.duplicate_packets}")
     print(f"RTP late: {statistics.late_packets}")
     print(f"RTP malformed: {statistics.malformed_packets}")
+    print(f"RTP unexpected source: {statistics.unexpected_source_packets}")
+    print(f"RTP SSRC mismatches: {statistics.ssrc_mismatch_packets}")
     print(f"Timestamp discontinuities: {statistics.timestamp_discontinuities}")
     print(f"Output: {output}")
     return 0

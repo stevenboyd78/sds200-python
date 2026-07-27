@@ -16,7 +16,14 @@ from .rtp import (
     RtpSequenceTracker,
     RtpTimestampTracker,
 )
-from .rtsp import DEFAULT_AUDIO_PATH, DEFAULT_RTSP_PORT, RtspClient, RtspProtocolError
+from .rtsp import (
+    DEFAULT_AUDIO_PATH,
+    DEFAULT_RTSP_PORT,
+    RtpTransportInfo,
+    RtspClient,
+    RtspProtocolError,
+)
+from .socket_utils import LocalAddressResolver, resolve_local_ipv4_address
 
 logger = logging.getLogger(__name__)
 MAX_RTP_DATAGRAM_SIZE = 65535
@@ -35,7 +42,7 @@ class AudioDatagramSocketLike(Protocol):
 
 
 class RtspSessionClientLike(Protocol):
-    def start(self, client_port: int) -> None: ...
+    def start(self, client_port: int) -> RtpTransportInfo: ...
 
     def get_parameter(self) -> object: ...
 
@@ -62,6 +69,8 @@ class NetworkAudioStatistics:
     duplicate_packets: int = 0
     late_packets: int = 0
     malformed_packets: int = 0
+    unexpected_source_packets: int = 0
+    ssrc_mismatch_packets: int = 0
     timestamp_discontinuities: int = 0
     timestamp_samples_missing: int = 0
     timestamp_backwards: int = 0
@@ -88,6 +97,8 @@ class _MutableNetworkAudioStatistics:
     duplicate_packets: int = 0
     late_packets: int = 0
     malformed_packets: int = 0
+    unexpected_source_packets: int = 0
+    ssrc_mismatch_packets: int = 0
     timestamp_discontinuities: int = 0
     timestamp_samples_missing: int = 0
     timestamp_backwards: int = 0
@@ -113,6 +124,8 @@ class _MutableNetworkAudioStatistics:
             duplicate_packets=self.duplicate_packets,
             late_packets=self.late_packets,
             malformed_packets=self.malformed_packets,
+            unexpected_source_packets=self.unexpected_source_packets,
+            ssrc_mismatch_packets=self.ssrc_mismatch_packets,
             timestamp_discontinuities=self.timestamp_discontinuities,
             timestamp_samples_missing=self.timestamp_samples_missing,
             timestamp_backwards=self.timestamp_backwards,
@@ -164,6 +177,7 @@ class NetworkAudioTransport:
         rtsp_client_factory: RtspSessionClientFactory = (
             default_rtsp_session_client_factory
         ),
+        local_address_resolver: LocalAddressResolver = resolve_local_ipv4_address,
     ) -> None:
         if not host.strip():
             raise ValueError("Audio host must not be empty.")
@@ -171,6 +185,8 @@ class NetworkAudioTransport:
             raise ValueError("RTSP port must be between 1 and 65535.")
         if not 0 <= local_port <= 65535:
             raise ValueError("Local RTP port must be between 0 and 65535.")
+        if local_host == "0.0.0.0":
+            raise ValueError("Local RTP address must not bind all network interfaces.")
         if read_timeout <= 0:
             raise ValueError("Audio read timeout must be greater than zero.")
         if rtsp_timeout <= 0:
@@ -188,6 +204,7 @@ class NetworkAudioTransport:
         self.keepalive_interval = keepalive_interval
         self._datagram_socket_factory = datagram_socket_factory
         self._rtsp_client_factory = rtsp_client_factory
+        self._local_address_resolver = local_address_resolver
         self._rtp_socket: AudioDatagramSocketLike | None = None
         self._rtsp_client: RtspSessionClientLike | None = None
         self._handler: AudioChunkHandler | None = None
@@ -200,6 +217,8 @@ class NetworkAudioTransport:
         self._statistics = _MutableNetworkAudioStatistics()
         self._sequence_tracker = RtpSequenceTracker()
         self._timestamp_tracker = RtpTimestampTracker()
+        self._expected_source: tuple[str, int] | None = None
+        self._expected_ssrc: int | None = None
 
     @property
     def endpoint(self) -> str:
@@ -231,10 +250,15 @@ class NetworkAudioTransport:
 
         rtp_socket: AudioDatagramSocketLike | None = None
         rtsp_client: RtspSessionClientLike | None = None
+        negotiated: RtpTransportInfo | None = None
         try:
             rtp_socket = self._datagram_socket_factory(socket.AF_INET, socket.SOCK_DGRAM)
             rtp_socket.settimeout(self.read_timeout)
-            rtp_socket.bind((self.local_host, self.local_port))
+            bind_host = self.local_host or self._local_address_resolver(
+                self.host,
+                self.rtsp_port,
+            )
+            rtp_socket.bind((bind_host, self.local_port))
             client_port = rtp_socket.getsockname()[1]
             if not 1 <= client_port <= 65535:
                 raise ScannerConnectionError(
@@ -247,7 +271,7 @@ class NetworkAudioTransport:
                 self.path,
                 self.rtsp_timeout,
             )
-            rtsp_client.start(client_port)
+            negotiated = rtsp_client.start(client_port)
         except (OSError, RtspProtocolError, ScannerConnectionError) as exc:
             if rtsp_client is not None:
                 with suppress(Exception):
@@ -261,8 +285,12 @@ class NetworkAudioTransport:
 
         assert rtp_socket is not None
         assert rtsp_client is not None
+        assert negotiated is not None
+        self._expected_source = (negotiated.source, negotiated.server_port)
+        self._expected_ssrc = negotiated.ssrc
         with self._statistics_lock:
             self._statistics.sessions_started += 1
+            self._statistics.ssrc = negotiated.ssrc
         with self._state_lock:
             self._rtp_socket = rtp_socket
             self._rtsp_client = rtsp_client
@@ -310,6 +338,8 @@ class NetworkAudioTransport:
         self._handler = None
         self._sequence_tracker.reset()
         self._timestamp_tracker.reset()
+        self._expected_source = None
+        self._expected_ssrc = None
 
     def _receiver_loop(self) -> None:
         while not self._stop.is_set():
@@ -318,7 +348,7 @@ class NetworkAudioTransport:
             if rtp_socket is None:
                 return
             try:
-                datagram, _source = rtp_socket.recvfrom(MAX_RTP_DATAGRAM_SIZE)
+                datagram, source = rtp_socket.recvfrom(MAX_RTP_DATAGRAM_SIZE)
             except TimeoutError:
                 continue
             except OSError:
@@ -332,12 +362,34 @@ class NetworkAudioTransport:
             with self._statistics_lock:
                 self._statistics.datagrams_received += 1
                 self._statistics.bytes_received += len(datagram)
+            if source != self._expected_source:
+                with self._statistics_lock:
+                    self._statistics.unexpected_source_packets += 1
+                logger.warning(
+                    "Discarding SDS200 RTP packet from unexpected source %s:%s",
+                    source[0],
+                    source[1],
+                )
+                continue
             try:
                 packet = RtpPacket.parse(datagram)
             except RtpProtocolError:
                 with self._statistics_lock:
                     self._statistics.malformed_packets += 1
                 logger.warning("Discarding invalid SDS200 RTP packet", exc_info=True)
+                continue
+
+            if self._expected_ssrc is None:
+                self._expected_ssrc = packet.ssrc
+                with self._statistics_lock:
+                    self._statistics.ssrc = packet.ssrc
+            elif packet.ssrc != self._expected_ssrc:
+                with self._statistics_lock:
+                    self._statistics.ssrc_mismatch_packets += 1
+                logger.warning(
+                    "Discarding SDS200 RTP packet with unexpected SSRC %s",
+                    packet.ssrc,
+                )
                 continue
 
             observation = self._sequence_tracker.observe(packet.sequence)
@@ -397,7 +449,6 @@ class NetworkAudioTransport:
                     statistics.first_sequence = packet.sequence
                 statistics.last_sequence = packet.sequence
                 statistics.last_timestamp = packet.timestamp
-                statistics.ssrc = packet.ssrc
 
             handler = self._handler
             if handler is not None:

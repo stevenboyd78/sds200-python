@@ -6,6 +6,25 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-07-27
+
+### Security
+
+- Avoided wildcard-interface binds for default SDS200 UDP control and RTP audio
+  sockets by using operating-system route selection
+- Restricted RTP audio ingestion to the source address, server port, and SSRC
+  negotiated by the scanner's RTSP `SETUP` response
+- Rejected explicit `0.0.0.0` control and RTP bind addresses
+
+### Added
+
+- Typed parsing for scanner RTSP `Transport` response parameters
+- Audio reliability counters for unexpected RTP sources and SSRC mismatches
+
+### Changed
+
+- Package version advanced to 0.11.1
+
 ## [0.11.0] - 2026-07-27
 
 ### Added
@@ -239,7 +258,8 @@ First planned GitHub prerelease.
 - Added serial discovery, transport, packet framing, core responses, CLI tools,
   examples, tests, and CI.
 
-[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.11.1...HEAD
+[0.11.1]: https://github.com/stevenboyd78/sds200-python/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.8.2...v0.9.0

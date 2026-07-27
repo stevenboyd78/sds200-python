@@ -65,6 +65,11 @@ radio = SDSScanner.network(
 )
 ```
 
+With the default local address and port, the connected UDP socket lets the
+operating system select the route-specific interface and an ephemeral port. A
+port-only override resolves and binds the route-selected local IPv4 address.
+Explicit `0.0.0.0` binds are rejected.
+
 The UDP transport reassembles numbered XML datagrams using the network
 `Footer` node's `No` and `EOT` attributes. An incomplete sequence is discarded
 rather than being passed to the protocol parser. One-shot commands then time
