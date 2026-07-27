@@ -5,11 +5,17 @@ import socket
 import threading
 from collections.abc import Callable
 from contextlib import suppress
+from dataclasses import dataclass
 from typing import Protocol
 
 from .audio import AudioChunk, AudioChunkHandler
 from .exceptions import ScannerConnectionError
-from .rtp import RtpPacket, RtpProtocolError, RtpSequenceTracker
+from .rtp import (
+    RtpPacket,
+    RtpProtocolError,
+    RtpSequenceTracker,
+    RtpTimestampTracker,
+)
 from .rtsp import DEFAULT_AUDIO_PATH, DEFAULT_RTSP_PORT, RtspClient, RtspProtocolError
 
 logger = logging.getLogger(__name__)
@@ -40,6 +46,86 @@ class RtspSessionClientLike(Protocol):
 
 AudioDatagramSocketFactory = Callable[[int, int], AudioDatagramSocketLike]
 RtspSessionClientFactory = Callable[[str, int, str, float], RtspSessionClientLike]
+
+
+@dataclass(frozen=True, slots=True)
+class NetworkAudioStatistics:
+    """Snapshot of one network-audio transport session."""
+
+    sessions_started: int = 0
+    datagrams_received: int = 0
+    bytes_received: int = 0
+    packets_delivered: int = 0
+    payload_bytes_delivered: int = 0
+    sequence_gaps: int = 0
+    packets_lost: int = 0
+    duplicate_packets: int = 0
+    late_packets: int = 0
+    malformed_packets: int = 0
+    timestamp_discontinuities: int = 0
+    timestamp_samples_missing: int = 0
+    timestamp_backwards: int = 0
+    receive_errors: int = 0
+    callback_errors: int = 0
+    keepalives_sent: int = 0
+    keepalive_failures: int = 0
+    teardowns_sent: int = 0
+    first_sequence: int | None = None
+    last_sequence: int | None = None
+    last_timestamp: int | None = None
+    ssrc: int | None = None
+
+
+@dataclass(slots=True)
+class _MutableNetworkAudioStatistics:
+    sessions_started: int = 0
+    datagrams_received: int = 0
+    bytes_received: int = 0
+    packets_delivered: int = 0
+    payload_bytes_delivered: int = 0
+    sequence_gaps: int = 0
+    packets_lost: int = 0
+    duplicate_packets: int = 0
+    late_packets: int = 0
+    malformed_packets: int = 0
+    timestamp_discontinuities: int = 0
+    timestamp_samples_missing: int = 0
+    timestamp_backwards: int = 0
+    receive_errors: int = 0
+    callback_errors: int = 0
+    keepalives_sent: int = 0
+    keepalive_failures: int = 0
+    teardowns_sent: int = 0
+    first_sequence: int | None = None
+    last_sequence: int | None = None
+    last_timestamp: int | None = None
+    ssrc: int | None = None
+
+    def snapshot(self) -> NetworkAudioStatistics:
+        return NetworkAudioStatistics(
+            sessions_started=self.sessions_started,
+            datagrams_received=self.datagrams_received,
+            bytes_received=self.bytes_received,
+            packets_delivered=self.packets_delivered,
+            payload_bytes_delivered=self.payload_bytes_delivered,
+            sequence_gaps=self.sequence_gaps,
+            packets_lost=self.packets_lost,
+            duplicate_packets=self.duplicate_packets,
+            late_packets=self.late_packets,
+            malformed_packets=self.malformed_packets,
+            timestamp_discontinuities=self.timestamp_discontinuities,
+            timestamp_samples_missing=self.timestamp_samples_missing,
+            timestamp_backwards=self.timestamp_backwards,
+            receive_errors=self.receive_errors,
+            callback_errors=self.callback_errors,
+            keepalives_sent=self.keepalives_sent,
+            keepalive_failures=self.keepalive_failures,
+            teardowns_sent=self.teardowns_sent,
+            first_sequence=self.first_sequence,
+            last_sequence=self.last_sequence,
+            last_timestamp=self.last_timestamp,
+            ssrc=self.ssrc,
+        )
 
 
 def default_audio_datagram_socket_factory(
@@ -110,7 +196,10 @@ class NetworkAudioTransport:
         self._stop = threading.Event()
         self._state_lock = threading.RLock()
         self._rtsp_lock = threading.Lock()
+        self._statistics_lock = threading.RLock()
+        self._statistics = _MutableNetworkAudioStatistics()
         self._sequence_tracker = RtpSequenceTracker()
+        self._timestamp_tracker = RtpTimestampTracker()
 
     @property
     def endpoint(self) -> str:
@@ -124,6 +213,11 @@ class NetworkAudioTransport:
         with self._state_lock:
             return self._rtp_socket is not None and self._rtsp_client is not None
 
+    @property
+    def statistics(self) -> NetworkAudioStatistics:
+        with self._statistics_lock:
+            return self._statistics.snapshot()
+
     def start(self, handler: AudioChunkHandler) -> None:
         with self._state_lock:
             if self._rtp_socket is not None:
@@ -131,6 +225,9 @@ class NetworkAudioTransport:
             self._handler = handler
             self._stop.clear()
             self._sequence_tracker.reset()
+            self._timestamp_tracker.reset()
+        with self._statistics_lock:
+            self._statistics = _MutableNetworkAudioStatistics()
 
         rtp_socket: AudioDatagramSocketLike | None = None
         rtsp_client: RtspSessionClientLike | None = None
@@ -164,6 +261,8 @@ class NetworkAudioTransport:
 
         assert rtp_socket is not None
         assert rtsp_client is not None
+        with self._statistics_lock:
+            self._statistics.sessions_started += 1
         with self._state_lock:
             self._rtp_socket = rtp_socket
             self._rtsp_client = rtsp_client
@@ -196,6 +295,8 @@ class NetworkAudioTransport:
             with self._rtsp_lock:
                 with suppress(Exception):
                     rtsp_client.teardown()
+                    with self._statistics_lock:
+                        self._statistics.teardowns_sent += 1
                 with suppress(Exception):
                     rtsp_client.close()
         if rtp_socket is not None:
@@ -208,6 +309,7 @@ class NetworkAudioTransport:
                 thread.join(timeout=max(1.0, self.read_timeout * 4))
         self._handler = None
         self._sequence_tracker.reset()
+        self._timestamp_tracker.reset()
 
     def _receiver_loop(self) -> None:
         while not self._stop.is_set():
@@ -221,18 +323,28 @@ class NetworkAudioTransport:
                 continue
             except OSError:
                 if not self._stop.is_set():
+                    with self._statistics_lock:
+                        self._statistics.receive_errors += 1
                     logger.exception("SDS200 RTP socket failed for %s", self.endpoint)
                 return
             if self._stop.is_set() or not datagram:
                 continue
+            with self._statistics_lock:
+                self._statistics.datagrams_received += 1
+                self._statistics.bytes_received += len(datagram)
             try:
                 packet = RtpPacket.parse(datagram)
             except RtpProtocolError:
+                with self._statistics_lock:
+                    self._statistics.malformed_packets += 1
                 logger.warning("Discarding invalid SDS200 RTP packet", exc_info=True)
                 continue
 
             observation = self._sequence_tracker.observe(packet.sequence)
             if observation.missing:
+                with self._statistics_lock:
+                    self._statistics.sequence_gaps += 1
+                    self._statistics.packets_lost += observation.missing
                 logger.warning(
                     "SDS200 RTP sequence gap: expected %s, received %s (%s missing)",
                     observation.expected,
@@ -240,17 +352,60 @@ class NetworkAudioTransport:
                     observation.missing,
                 )
             elif observation.duplicate:
+                with self._statistics_lock:
+                    self._statistics.duplicate_packets += 1
                 logger.debug("Discarding duplicate SDS200 RTP packet %s", packet.sequence)
                 continue
             elif observation.out_of_order:
-                logger.debug("Discarding out-of-order SDS200 RTP packet %s", packet.sequence)
+                with self._statistics_lock:
+                    self._statistics.late_packets += 1
+                logger.debug("Discarding late SDS200 RTP packet %s", packet.sequence)
                 continue
+
+            timestamp = self._timestamp_tracker.observe(
+                packet.timestamp,
+                len(packet.payload),
+            )
+            if timestamp.missing_samples:
+                with self._statistics_lock:
+                    self._statistics.timestamp_discontinuities += 1
+                    self._statistics.timestamp_samples_missing += (
+                        timestamp.missing_samples
+                    )
+                logger.warning(
+                    "SDS200 RTP timestamp discontinuity: expected %s, received %s "
+                    "(%s samples missing)",
+                    timestamp.expected,
+                    timestamp.timestamp,
+                    timestamp.missing_samples,
+                )
+            elif timestamp.backwards:
+                with self._statistics_lock:
+                    self._statistics.timestamp_discontinuities += 1
+                    self._statistics.timestamp_backwards += 1
+                logger.warning(
+                    "SDS200 RTP timestamp moved backwards: expected %s, received %s",
+                    timestamp.expected,
+                    timestamp.timestamp,
+                )
+
+            with self._statistics_lock:
+                statistics = self._statistics
+                statistics.packets_delivered += 1
+                statistics.payload_bytes_delivered += len(packet.payload)
+                if statistics.first_sequence is None:
+                    statistics.first_sequence = packet.sequence
+                statistics.last_sequence = packet.sequence
+                statistics.last_timestamp = packet.timestamp
+                statistics.ssrc = packet.ssrc
 
             handler = self._handler
             if handler is not None:
                 try:
                     handler(AudioChunk(packet.payload))
                 except Exception:
+                    with self._statistics_lock:
+                        self._statistics.callback_errors += 1
                     logger.exception("Unhandled exception in audio chunk callback")
 
     def _keepalive_loop(self) -> None:
@@ -262,7 +417,11 @@ class NetworkAudioTransport:
             try:
                 with self._rtsp_lock:
                     rtsp_client.get_parameter()
+                with self._statistics_lock:
+                    self._statistics.keepalives_sent += 1
             except (OSError, RtspProtocolError, ScannerConnectionError):
                 if not self._stop.is_set():
+                    with self._statistics_lock:
+                        self._statistics.keepalive_failures += 1
                     logger.exception("SDS200 RTSP keepalive failed for %s", self.endpoint)
                 return

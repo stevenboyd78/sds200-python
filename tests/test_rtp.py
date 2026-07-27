@@ -115,3 +115,33 @@ def test_sequence_tracker_reports_gaps_duplicates_and_late_packets() -> None:
 
     late = tracker.observe(12)
     assert late.out_of_order
+
+
+def test_sequence_tracker_detects_non_adjacent_duplicate() -> None:
+    tracker = RtpSequenceTracker()
+    tracker.observe(100)
+    tracker.observe(101)
+    tracker.observe(102)
+
+    duplicate = tracker.observe(100)
+
+    assert duplicate.duplicate
+    assert not duplicate.out_of_order
+
+
+def test_timestamp_tracker_reports_gaps_backwards_and_wraparound() -> None:
+    from sds200.rtp import RtpTimestampTracker
+
+    tracker = RtpTimestampTracker()
+    assert tracker.observe(0xFFFFFFFC, 4).expected is None
+    wrapped = tracker.observe(0, 4)
+    assert wrapped.expected == 0
+    assert wrapped.missing_samples == 0
+
+    gap = tracker.observe(8, 4)
+    assert gap.expected == 4
+    assert gap.missing_samples == 4
+
+    backwards = tracker.observe(4, 4)
+    assert backwards.expected == 12
+    assert backwards.backwards

@@ -1,0 +1,38 @@
+{
+  "description": "Sanitized SDS200-style RTP metadata with synthetic mu-law silence",
+  "clock_rate": 8000,
+  "payload_type": 0,
+  "packets": [
+    {
+      "sequence": 741,
+      "timestamp": 1000,
+      "ssrc": 1449463210,
+      "payload_hex": "ffffffff"
+    },
+    {
+      "sequence": 742,
+      "timestamp": 1004,
+      "ssrc": 1449463210,
+      "payload_hex": "ffffffff"
+    },
+    {
+      "sequence": 744,
+      "timestamp": 1012,
+      "ssrc": 1449463210,
+      "payload_hex": "ffffffff"
+    },
+    {
+      "sequence": 743,
+      "timestamp": 1008,
+      "ssrc": 1449463210,
+      "payload_hex": "ffffffff"
+    },
+    {
+      "sequence": 744,
+      "timestamp": 1012,
+      "ssrc": 1449463210,
+      "payload_hex": "ffffffff"
+    }
+  ],
+  "malformed_hex": "0000"
+}

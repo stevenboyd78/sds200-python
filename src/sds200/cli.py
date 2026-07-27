@@ -1199,7 +1199,13 @@ def _run_audio(args: argparse.Namespace) -> int:
     print(f"Recorded {elapsed:.1f} seconds")
     print(f"Packets: {recorder.packets}")
     print(f"Audio samples: {recorder.samples}")
+    statistics = transport.statistics
     print(f"Audio duration: {recorder.duration_seconds:.1f} seconds")
+    print(f"RTP lost: {statistics.packets_lost}")
+    print(f"RTP duplicates: {statistics.duplicate_packets}")
+    print(f"RTP late: {statistics.late_packets}")
+    print(f"RTP malformed: {statistics.malformed_packets}")
+    print(f"Timestamp discontinuities: {statistics.timestamp_discontinuities}")
     print(f"Output: {output}")
     return 0
 

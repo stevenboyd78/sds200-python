@@ -64,7 +64,7 @@ from .models import (
     ValueResponse,
 )
 from .network import DEFAULT_UDP_PORT, UdpDatagramDecoder, UdpTransport
-from .network_audio import NetworkAudioTransport
+from .network_audio import NetworkAudioStatistics, NetworkAudioTransport
 from .profiles import (
     TRANSPORT_PREFERENCES,
     ConnectionProfile,
@@ -92,6 +92,8 @@ from .rtp import (
     RtpProtocolError,
     RtpSequenceObservation,
     RtpSequenceTracker,
+    RtpTimestampObservation,
+    RtpTimestampTracker,
 )
 from .rtsp import (
     DEFAULT_AUDIO_PATH,
@@ -156,6 +158,7 @@ __all__ = [
     "ModelResponse",
     "NAVIGATION_TARGETS",
     "NavigationTarget",
+    "NetworkAudioStatistics",
     "NetworkAudioTransport",
     "NetworkScanner",
     "NextSelection",
@@ -178,6 +181,8 @@ __all__ = [
     "RtpProtocolError",
     "RtpSequenceObservation",
     "RtpSequenceTracker",
+    "RtpTimestampObservation",
+    "RtpTimestampTracker",
     "RtspClient",
     "RtspProtocolError",
     "RtspResponse",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 
 from .exceptions import ProtocolError
@@ -7,6 +8,9 @@ from .exceptions import ProtocolError
 RTP_VERSION = 2
 PCMU_PAYLOAD_TYPE = 0
 _MINIMUM_HEADER_SIZE = 12
+_SEQUENCE_MODULUS = 1 << 16
+_TIMESTAMP_MODULUS = 1 << 32
+_DEFAULT_SEQUENCE_HISTORY = 128
 
 
 class RtpProtocolError(ProtocolError):
@@ -114,7 +118,7 @@ class RtpPacket:
 
 @dataclass(frozen=True, slots=True)
 class RtpSequenceObservation:
-    """Result of comparing one RTP sequence number with the prior packet."""
+    """Result of comparing one RTP sequence number with prior packets."""
 
     sequence: int
     expected: int | None
@@ -124,10 +128,15 @@ class RtpSequenceObservation:
 
 
 class RtpSequenceTracker:
-    """Track 16-bit RTP sequence continuity, including wraparound."""
+    """Track RTP sequence continuity, wraparound, duplicates, and late packets."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, history_size: int = _DEFAULT_SEQUENCE_HISTORY) -> None:
+        if history_size <= 0:
+            raise ValueError("RTP sequence history size must be greater than zero.")
+        self.history_size = history_size
         self._last_sequence: int | None = None
+        self._recent_sequences: deque[int] = deque()
+        self._seen_sequences: set[int] = set()
 
     @property
     def last_sequence(self) -> int | None:
@@ -135,18 +144,21 @@ class RtpSequenceTracker:
 
     def reset(self) -> None:
         self._last_sequence = None
+        self._recent_sequences.clear()
+        self._seen_sequences.clear()
 
     def observe(self, sequence: int) -> RtpSequenceObservation:
-        if not 0 <= sequence <= 0xFFFF:
+        if not 0 <= sequence < _SEQUENCE_MODULUS:
             raise ValueError("RTP sequence number must be between 0 and 65535.")
 
         previous = self._last_sequence
         if previous is None:
             self._last_sequence = sequence
+            self._remember(sequence)
             return RtpSequenceObservation(sequence=sequence, expected=None)
 
         expected = (previous + 1) & 0xFFFF
-        if sequence == previous:
+        if sequence in self._seen_sequences:
             return RtpSequenceObservation(
                 sequence=sequence,
                 expected=expected,
@@ -154,19 +166,82 @@ class RtpSequenceTracker:
             )
         if sequence == expected:
             self._last_sequence = sequence
+            self._remember(sequence)
             return RtpSequenceObservation(sequence=sequence, expected=expected)
 
         forward_distance = (sequence - expected) & 0xFFFF
         if forward_distance < 0x8000:
             self._last_sequence = sequence
+            self._remember(sequence)
             return RtpSequenceObservation(
                 sequence=sequence,
                 expected=expected,
                 missing=forward_distance,
             )
 
+        self._remember(sequence)
         return RtpSequenceObservation(
             sequence=sequence,
             expected=expected,
             out_of_order=True,
+        )
+
+    def _remember(self, sequence: int) -> None:
+        if sequence in self._seen_sequences:
+            return
+        self._recent_sequences.append(sequence)
+        self._seen_sequences.add(sequence)
+        while len(self._recent_sequences) > self.history_size:
+            expired = self._recent_sequences.popleft()
+            self._seen_sequences.discard(expired)
+
+
+@dataclass(frozen=True, slots=True)
+class RtpTimestampObservation:
+    """Result of comparing an RTP timestamp with the expected PCMU clock."""
+
+    timestamp: int
+    expected: int | None
+    missing_samples: int = 0
+    backwards: bool = False
+
+
+class RtpTimestampTracker:
+    """Track the 32-bit RTP timestamp clock using payload sample counts."""
+
+    def __init__(self) -> None:
+        self._last_timestamp: int | None = None
+        self._last_samples = 0
+
+    @property
+    def last_timestamp(self) -> int | None:
+        return self._last_timestamp
+
+    def reset(self) -> None:
+        self._last_timestamp = None
+        self._last_samples = 0
+
+    def observe(self, timestamp: int, sample_count: int) -> RtpTimestampObservation:
+        if not 0 <= timestamp < _TIMESTAMP_MODULUS:
+            raise ValueError("RTP timestamp must be between 0 and 4294967295.")
+        if sample_count < 0:
+            raise ValueError("RTP sample count must not be negative.")
+
+        previous = self._last_timestamp
+        if previous is None:
+            self._last_timestamp = timestamp
+            self._last_samples = sample_count
+            return RtpTimestampObservation(timestamp=timestamp, expected=None)
+
+        expected = (previous + self._last_samples) & 0xFFFFFFFF
+        delta = (timestamp - expected) & 0xFFFFFFFF
+        backwards = delta >= 0x80000000
+        missing_samples = 0 if delta == 0 or backwards else delta
+        self._last_timestamp = timestamp
+        self._last_samples = sample_count
+        return RtpTimestampObservation(
+            timestamp=timestamp,
+            expected=expected,
+            missing_samples=missing_samples,
+            backwards=backwards,
         )

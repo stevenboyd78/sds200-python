@@ -9,6 +9,7 @@ import pytest
 
 from sds200 import cli
 from sds200.audio import AudioChunk, AudioChunkHandler
+from sds200.network_audio import NetworkAudioStatistics
 
 
 class FakeNetworkAudioTransport:
@@ -29,6 +30,17 @@ class FakeNetworkAudioTransport:
         self.started = True
         self._running = True
         handler(AudioChunk(bytes((0xFF, 0x80))))
+
+    @property
+    def statistics(self) -> NetworkAudioStatistics:
+        return NetworkAudioStatistics(
+            packets_delivered=1,
+            packets_lost=2,
+            duplicate_packets=3,
+            late_packets=4,
+            malformed_packets=5,
+            timestamp_discontinuities=6,
+        )
 
     def stop(self) -> None:
         self.stopped = True
@@ -89,6 +101,11 @@ def test_audio_cli_records_native_pcm_wave(
         "Packets: 1",
         "Audio samples: 2",
         "Audio duration: 0.0 seconds",
+        "RTP lost: 2",
+        "RTP duplicates: 3",
+        "RTP late: 4",
+        "RTP malformed: 5",
+        "Timestamp discontinuities: 6",
         f"Output: {output}",
     ]
 
