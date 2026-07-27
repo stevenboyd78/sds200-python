@@ -45,7 +45,12 @@ from .profiles import (
 )
 from .radio import SDSScanner
 from .reliability import ReconnectPolicy
-from .rich_cli import RichCliRenderer
+from .rich_cli import (
+    COLOR_MODES,
+    THEME_NAMES,
+    RichCliRenderer,
+    palette_for_name,
+)
 from .rtsp import DEFAULT_RTSP_PORT
 from .scanner import SUPPORTED_SCANNER_MODELS, ScannerModel, normalize_model_name
 
@@ -287,6 +292,26 @@ def build_parser() -> argparse.ArgumentParser:
         default=100,
         metavar="COUNT",
         help="Maximum in-memory health observations (default: 100)",
+    )
+    color = parser.add_mutually_exclusive_group()
+    color.add_argument(
+        "--color",
+        choices=COLOR_MODES,
+        default="auto",
+        help="ANSI styling policy: auto, always, or never (default: auto)",
+    )
+    color.add_argument(
+        "--no-color",
+        action="store_const",
+        const="never",
+        dest="color",
+        help="Disable ANSI styling (alias for --color never)",
+    )
+    parser.add_argument(
+        "--theme",
+        choices=THEME_NAMES,
+        default="dark",
+        help="Semantic CLI palette: dark or light (default: dark)",
     )
     parser.add_argument("-v", "--verbose", action="count", default=0)
     parser.add_argument("--trace", type=Path, help="Append raw traffic to a trace file")
@@ -1357,7 +1382,10 @@ def main(argv: list[str] | None = None) -> int:
 
             if args.action == "scanner-info":
                 info = radio.get_scanner_info()
-                RichCliRenderer().print_scanner_info(info, connected=radio.connected)
+                RichCliRenderer(
+                    palette=palette_for_name(args.theme),
+                    color=args.color,
+                ).print_scanner_info(info, connected=radio.connected)
                 return 0
 
             if args.action == "monitor":

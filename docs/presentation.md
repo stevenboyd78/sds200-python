@@ -97,3 +97,25 @@ Rich performs terminal capability detection. Interactive terminals receive seman
 styles, while redirected output, test captures, and pipelines retain the same
 line-oriented plain-text layout used before the adapter. Structured JSON output paths
 remain independent from Rich and continue to serialize domain data only.
+
+## CLI color and theme controls
+
+Global CLI options make color behavior explicit without changing the semantic
+content of the output:
+
+```text
+sdsctl --theme dark --color auto scanner-info
+sdsctl --theme light --color always scanner-info
+sdsctl --no-color scanner-info
+```
+
+`--color` accepts `auto`, `always`, or `never`; `--no-color` is an alias for
+`--color never`. Explicit `always` and `never` choices take priority over
+environment variables. With `--color auto`, the presence of `NO_COLOR` disables ANSI styling,
+`FORCE_COLOR` enables it, and `FORCE_COLOR=0` disables it. If neither variable is
+present, Rich performs normal terminal detection. When both variables are present,
+`NO_COLOR` takes priority.
+
+`--theme` accepts `dark` or `light`. Palette selection changes styling only. Labels,
+field values, ordering, and line structure remain identical with either palette and
+with color disabled, so scanner state is never communicated by color alone.

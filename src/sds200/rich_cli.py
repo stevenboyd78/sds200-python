@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import os
 import sys
-from typing import TextIO
+from collections.abc import Mapping
+from typing import Literal, TextIO
 
 from rich.console import Console
 from rich.style import Style
@@ -12,11 +14,17 @@ from .presentation import ScannerPresentation, present_radio_state
 from .state import RadioStateSnapshot
 from .theme import (
     DEFAULT_DARK_THEME,
+    DEFAULT_LIGHT_THEME,
     ThemePalette,
     ThemeRole,
     ThemeStyle,
     theme_roles_for,
 )
+
+ColorMode = Literal["auto", "always", "never"]
+ThemeName = Literal["dark", "light"]
+COLOR_MODES: tuple[ColorMode, ...] = ("auto", "always", "never")
+THEME_NAMES: tuple[ThemeName, ...] = ("dark", "light")
 
 
 class RichCliRenderer:
@@ -26,21 +34,40 @@ class RichCliRenderer:
         self,
         *,
         palette: ThemePalette = DEFAULT_DARK_THEME,
+        color: str = "auto",
+        environ: Mapping[str, str] | None = None,
         console: Console | None = None,
         file: TextIO | None = None,
     ) -> None:
         if console is not None and file is not None:
             raise ValueError("console and file are mutually exclusive")
         self._palette = palette
-        self._console = console or Console(
-            file=file or sys.stdout,
-            highlight=False,
-            markup=False,
-        )
+        self._color_mode = resolve_color_mode(color, environ=environ)
+        if console is not None:
+            self._console = console
+        else:
+            force_terminal: bool | None = None
+            no_color = False
+            if self._color_mode == "always":
+                force_terminal = True
+            elif self._color_mode == "never":
+                force_terminal = False
+                no_color = True
+            self._console = Console(
+                file=file or sys.stdout,
+                force_terminal=force_terminal,
+                no_color=no_color,
+                highlight=False,
+                markup=False,
+            )
 
     @property
     def palette(self) -> ThemePalette:
         return self._palette
+
+    @property
+    def color_mode(self) -> ColorMode:
+        return self._color_mode
 
     def style_for(self, role: ThemeRole | str) -> Style:
         """Resolve one semantic role into a Rich style."""
@@ -86,6 +113,41 @@ class RichCliRenderer:
             line.append(f"{label + ':':12s}", style=self.style_for(muted))
             line.append(str(value), style=self.style_for(role))
             self._console.print(line, soft_wrap=True)
+
+
+def resolve_color_mode(
+    requested: str = "auto",
+    *,
+    environ: Mapping[str, str] | None = None,
+) -> ColorMode:
+    """Resolve CLI and environment color policy into one stable mode."""
+
+    normalized = requested.strip().casefold()
+    if normalized not in COLOR_MODES:
+        choices = ", ".join(COLOR_MODES)
+        raise ValueError(f"color mode must be one of: {choices}")
+    mode = normalized
+    if mode != "auto":
+        return mode
+
+    environment = os.environ if environ is None else environ
+    if "NO_COLOR" in environment:
+        return "never"
+    if "FORCE_COLOR" in environment:
+        return "never" if environment["FORCE_COLOR"].strip() == "0" else "always"
+    return "auto"
+
+
+def palette_for_name(name: str) -> ThemePalette:
+    """Resolve a stable CLI theme name into a renderer-neutral palette."""
+
+    normalized = name.strip().casefold()
+    if normalized == "dark":
+        return DEFAULT_DARK_THEME
+    if normalized == "light":
+        return DEFAULT_LIGHT_THEME
+    choices = ", ".join(THEME_NAMES)
+    raise ValueError(f"theme must be one of: {choices}")
 
 
 def rich_style(style: ThemeStyle) -> Style:

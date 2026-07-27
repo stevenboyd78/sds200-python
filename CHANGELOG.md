@@ -6,6 +6,8 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-07-27
+
 ### Added
 
 - Renderer-independent semantic presentation types for connection, activity,
@@ -18,6 +20,14 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   introducing renderer dependencies
 - Complete immutable light and dark palettes with generic color and emphasis
   tokens for future Rich and Textual adapters
+- Explicit `--color`, `--no-color`, and `--theme` CLI controls with `NO_COLOR`
+  and `FORCE_COLOR` environment handling
+- Accessibility regression coverage proving semantic scanner information remains
+  identical when ANSI styling is disabled or palettes are changed
+
+### Changed
+
+- Package version advanced to 0.12.0
 
 ## [0.11.1] - 2026-07-27
 
@@ -271,7 +281,8 @@ First planned GitHub prerelease.
 - Added serial discovery, transport, packet framing, core responses, CLI tools,
   examples, tests, and CI.
 
-[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.11.1...HEAD
+[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/stevenboyd78/sds200-python/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.9.0...v0.10.0
