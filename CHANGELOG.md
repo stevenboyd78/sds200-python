@@ -6,6 +6,15 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+### Added
+
+- Optional Textual 8 full-screen application shell with USB, network, profile,
+  and replay launch support
+- Renderer-neutral scanner-information presentation shared by the Rich CLI and
+  Textual adapters
+- Dark/light TUI palette switching, explicit quit binding, and headless shell
+  regression tests
+
 ## [0.12.0] - 2026-07-27
 
 ### Added

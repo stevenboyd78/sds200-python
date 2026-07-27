@@ -420,6 +420,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers.add_parser("raw", help="Print packets until interrupted")
     subparsers.add_parser("scanner-info", help="Get structured GSI scanner information")
+    subparsers.add_parser("tui", help="Launch the optional full-screen Textual interface")
     subparsers.add_parser(
         "capabilities",
         help="Show model limits, validation status, and supported control features",
@@ -1238,6 +1239,30 @@ def _run_audio(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_tui(args: argparse.Namespace) -> int:
+    try:
+        from .tui import run_tui
+    except ModuleNotFoundError as exc:
+        missing = exc.name.split(".", 1)[0] if exc.name is not None else ""
+        if missing == "textual":
+            raise ValueError(
+                "Textual TUI support is not installed; install it with: "
+                'python -m pip install "sds200[tui]"'
+            ) from exc
+        raise
+
+    with selected_radio(args) as radio:
+        run_tui(
+            endpoint=radio.endpoint,
+            model=str(radio.get_model()),
+            firmware=str(radio.get_firmware()),
+            info=radio.get_scanner_info(),
+            connected=radio.connected,
+            palette=palette_for_name(args.theme),
+        )
+    return 0
+
+
 def _run_discovery(args: argparse.Namespace) -> int:
     if (
         args.port is not None
@@ -1298,6 +1323,9 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.action == "audio":
             return _run_audio(args)
+
+        if args.action == "tui":
+            return _run_tui(args)
 
         with selected_radio(args) as radio:
             if args.action == "info":

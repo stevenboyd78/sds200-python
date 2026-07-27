@@ -10,8 +10,7 @@ from rich.style import Style
 from rich.text import Text
 
 from .models import ScannerInfo
-from .presentation import ScannerPresentation, present_radio_state
-from .state import RadioStateSnapshot
+from .presentation import present_scanner_info
 from .theme import (
     DEFAULT_DARK_THEME,
     DEFAULT_LIGHT_THEME,
@@ -82,7 +81,7 @@ class RichCliRenderer:
     ) -> None:
         """Print scanner information with semantic terminal styling."""
 
-        presentation = _presentation_for_info(info, connected=connected)
+        presentation = present_scanner_info(info, connected=connected)
         roles = theme_roles_for(presentation)
         primary = ThemeRole.TEXT_PRIMARY
         muted = ThemeRole.TEXT_MUTED
@@ -160,34 +159,6 @@ def rich_style(style: ThemeStyle) -> Style:
         dim=style.dim,
         underline=style.underline,
     )
-
-
-def _presentation_for_info(
-    info: ScannerInfo,
-    *,
-    connected: bool | None,
-) -> ScannerPresentation:
-    snapshot = RadioStateSnapshot(
-        mode=info.mode,
-        screen=info.screen,
-        system=info.system,
-        department=info.department,
-        site=info.site,
-        channel=info.channel,
-        frequency=info.frequency,
-        modulation=info.modulation,
-        service_type=info.service_type,
-        talkgroup_id=info.talkgroup_id,
-        unit_id=info.unit_id,
-        volume=info.volume,
-        squelch=info.squelch,
-        signal=info.signal,
-        rssi=info.rssi,
-        p25_status=info.p25_status,
-        mute=info.mute,
-        recording=info.recording,
-    )
-    return present_radio_state(snapshot, connected=connected)
 
 
 def _number_or_dash(value: float | None) -> str:

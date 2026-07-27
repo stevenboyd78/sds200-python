@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, fields
 from enum import StrEnum
 
+from .models import ScannerInfo
 from .state import RadioStateSnapshot
 
 
@@ -171,6 +172,42 @@ def present_radio_state(
         muted=muted,
         recording=recording,
         raw_signal=snapshot.signal,
+    )
+
+
+def present_scanner_info(
+    info: ScannerInfo,
+    *,
+    connected: bool | None = None,
+    degraded: bool = False,
+    stale: bool = False,
+) -> ScannerPresentation:
+    """Derive renderer-independent meaning directly from scanner XML data."""
+
+    return present_radio_state(
+        RadioStateSnapshot(
+            mode=info.mode,
+            screen=info.screen,
+            system=info.system,
+            department=info.department,
+            site=info.site,
+            channel=info.channel,
+            frequency=info.frequency,
+            modulation=info.modulation,
+            service_type=info.service_type,
+            talkgroup_id=info.talkgroup_id,
+            unit_id=info.unit_id,
+            volume=info.volume,
+            squelch=info.squelch,
+            signal=info.signal,
+            rssi=info.rssi,
+            p25_status=info.p25_status,
+            mute=info.mute,
+            recording=info.recording,
+        ),
+        connected=connected,
+        degraded=degraded,
+        stale=stale,
     )
 
 

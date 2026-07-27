@@ -76,6 +76,7 @@ from .presentation import (
     classify_connection,
     classify_signal,
     present_radio_state,
+    present_scanner_info,
 )
 from .profiles import (
     TRANSPORT_PREFERENCES,
@@ -266,6 +267,7 @@ __all__ = [
     "parse_rtp_transport",
     "parse_sdp_audio",
     "present_radio_state",
+    "present_scanner_info",
     "profile_from_discovery",
     "repair_profile",
     "theme_roles_for",

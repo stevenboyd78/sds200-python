@@ -30,6 +30,7 @@ and live state updates.
 - Structured `GSI` and continuous `PSI` scanner information
 - Thread-safe synchronized radio state and change events
 - Live terminal monitoring
+- Optional [Textual full-screen TUI](docs/tui.md) for Raspberry Pi and terminal use
 - Exponential reconnect backoff with configurable retry limits
 - Traffic tracing, replayable JSON Lines session capture, and deterministic replay
 - Bounded health history plus failover and preferred-recovery diagnostics
@@ -66,6 +67,12 @@ Install the published package from PyPI:
 
 ```bash
 python -m pip install sds200
+```
+
+Install the optional full-screen TUI:
+
+```bash
+python -m pip install "sds200[tui]"
 ```
 
 Install from source for development:
@@ -123,6 +130,16 @@ Start the live monitor:
 ```bash
 sdsctl monitor
 ```
+
+Launch the optional Textual interface:
+
+```bash
+sdsctl tui
+```
+
+Press `Q` to quit and `T` to switch between the dark and light semantic palettes.
+The initial v0.13 shell is also available through network, profile, and replay
+selectors; see the [Textual TUI guide](docs/tui.md).
 
 Use an explicit port when automatic discovery is not appropriate:
 

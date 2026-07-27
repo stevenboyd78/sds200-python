@@ -13,8 +13,10 @@ from sds200.presentation import (
     classify_connection,
     classify_signal,
     present_radio_state,
+    present_scanner_info,
 )
 from sds200.state import RadioStateSnapshot
+from sds200.xml_protocol import ScannerInfoParser
 
 
 @pytest.mark.parametrize(
@@ -136,3 +138,22 @@ def test_presentation_is_immutable_and_serializes_without_renderer_types() -> No
         "recording": None,
         "raw_signal": 2,
     }
+
+
+def test_present_scanner_info_reuses_semantic_classifier() -> None:
+    info = ScannerInfoParser().parse(
+        "GSI",
+        """<?xml version="1.0" encoding="utf-8"?>
+<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+<TGID Name="Patch 65132" SvcType="Interop" />
+<Property Sig="5" Rec="On" Mute="Unmute" />
+</ScannerInfo>""",
+    )
+
+    presentation = present_scanner_info(info, connected=True)
+
+    assert presentation.activity is ActivityStatus.RECEIVING
+    assert presentation.signal is SignalLevel.STRONG
+    assert presentation.service_type == "Interop"
+    assert presentation.muted is False
+    assert presentation.recording is True
