@@ -1,8 +1,8 @@
 # Reliability and observability
 
 The reliability layer provides reconnect backoff, fallback failover, opt-in
-preferred transport recovery, bounded health history, structured events, and
-endpoint repair while keeping network audio deferred.
+preferred transport recovery, bounded health history, structured events,
+endpoint repair, and independent SDS200 RTP audio telemetry.
 
 ## Reconnect policy
 
@@ -38,6 +38,28 @@ sdsctl --profile home health --watch 5 --history --json
 The summary reports sample counts by status, error rate, average and maximum
 latency, connection changes, reconnects, failovers, preferred recoveries, and
 up to five recent errors. History is process-local and intentionally not persisted.
+
+## Network audio statistics
+
+`NetworkAudioTransport.statistics` is a per-session snapshot independent from
+radio health history. It reports datagrams and bytes received, PCMU packets and
+payload bytes delivered, sequence gaps, estimated packet loss, duplicates, late
+and malformed packets, timestamp discontinuities and missing samples, socket and
+callback errors, keepalive results, teardown count, sequence endpoints, final RTP
+timestamp, and SSRC.
+
+The `sdsctl audio` summary prints the most actionable counters after recording:
+
+```text
+RTP lost: 0
+RTP duplicates: 0
+RTP late: 0
+RTP malformed: 0
+Timestamp discontinuities: 0
+```
+
+A five-minute wired-LAN hardware soak delivered 7,500 320-sample packets without
+loss, duplication, reordering, malformed datagrams, or timestamp discontinuities.
 
 ## Structured events
 

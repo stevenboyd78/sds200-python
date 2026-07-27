@@ -70,6 +70,25 @@ sdsctl --host SCANNER_IP monitor
 sdsctl discover --network SCANNER_SUBNET --network-only
 ```
 
+Record and play a native WAV file, then run the five-minute audio soak:
+
+```bash
+sdsctl --host SCANNER_IP audio \
+  --output /tmp/sds200-release-audio.wav \
+  --duration 30 \
+  --force
+
+sdsctl --host SCANNER_IP audio \
+  --output /tmp/sds200-release-audio-soak.wav \
+  --duration 300 \
+  --force
+```
+
+Confirm both WAV files are 8 kHz mono signed 16-bit PCM and play successfully.
+For the soak, inspect packet loss, duplicate, late, malformed, and timestamp
+counters. Record all nonzero values in the release notes and investigate them
+before publishing. Remove the temporary audio files after validation.
+
 Check profile and health paths:
 
 ```bash
@@ -91,8 +110,10 @@ For a long-running reliability check, leave `events --json` and
 USB and Ethernet in turn. Confirm backoff, failover, preferred recovery, anti-flapping behavior, PSI restart, and clean
 shutdown behavior.
 
-Record the scanner model, firmware, Python version, operating system, and
-transports tested in the release notes. Do not publish private channel or network data.
+Record the scanner model, firmware, Python version, operating system,
+transports tested, audio soak duration, packet count, sample count, and RTP
+reliability counters in the release notes. Do not publish private channel,
+recorded audio, or network data.
 
 ## 4. Publish through Trusted Publishing
 
