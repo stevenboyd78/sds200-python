@@ -1,4 +1,12 @@
 from .audio import AudioChunk, AudioStream, AudioTransport
+from .audio_recording import (
+    PCM_CHANNELS,
+    PCM_SAMPLE_WIDTH,
+    PCMU_SAMPLE_RATE,
+    PcmuWavRecorder,
+    decode_mulaw,
+    decode_mulaw_sample,
+)
 from .commands import (
     NAVIGATION_TARGETS,
     GetChargeStatus,
@@ -115,6 +123,10 @@ __all__ = [
     "AudioChunk",
     "AudioStream",
     "AudioTransport",
+    "PCM_CHANNELS",
+    "PCM_SAMPLE_WIDTH",
+    "PCMU_SAMPLE_RATE",
+    "PcmuWavRecorder",
     "CaptureEvent",
     "CaptureFormatError",
     "CaptureSession",
@@ -199,6 +211,8 @@ __all__ = [
     "ValidationStatus",
     "ValueResponse",
     "capabilities_for_model",
+    "decode_mulaw",
+    "decode_mulaw_sample",
     "discover_network_scanners",
     "discover_scanners",
     "infer_model_from_device_name",

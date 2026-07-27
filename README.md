@@ -35,12 +35,14 @@ and live state updates.
 - Bounded health history plus failover and preferred-recovery diagnostics
 - JSON Lines events for connection, retry, failover, and state changes
 - Discovery-based repair for stale USB paths and scanner IP addresses
-- Separate public audio-stream architecture for future network audio
+- Hardware-validated SDS200 network audio over RTSP/RTP
+- Native G.711 mu-law decoding and streaming PCM WAV recording
 - UDP XML fragment validation, statistics, and bounded retries
 - Bash and Zsh tab completion
 - Strict MyPy typing, Ruff checks, and hardware-independent tests
 
-Network audio streaming remains on the roadmap but is deferred while control-path reliability matures. Its control-independent API groundwork remains available.
+Network audio remains independent from scanner control, so recording does not
+open or affect the USB serial or UDP control transport.
 
 ## Requirements
 
@@ -138,6 +140,30 @@ sdsctl --host 192.168.0.251 monitor
 ```
 
 The SDS200 virtual serial service uses UDP port `50536` by default.
+
+### SDS200 network audio recording
+
+Record the scanner's RTSP/RTP audio directly to an 8 kHz mono signed 16-bit PCM
+WAV file without requiring FFmpeg:
+
+```bash
+sdsctl --host 192.168.0.251 audio \
+  --output scanner-audio.wav \
+  --duration 30
+```
+
+Omit `--duration` to record until `Ctrl+C`. Existing files are protected unless
+overwrite is explicitly enabled:
+
+```bash
+sdsctl --host 192.168.0.251 audio \
+  --output scanner-audio.wav \
+  --force
+```
+
+The scanner requires a nonstandard single RTP client port during RTSP `SETUP`.
+The built-in transport handles that negotiation, receives payload type 0 PCMU,
+decodes it natively, and finalizes the WAV header during orderly shutdown.
 
 ### Connection profiles and fallback
 

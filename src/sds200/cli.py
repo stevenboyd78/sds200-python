@@ -8,9 +8,11 @@ import sys
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
-from time import sleep
+from time import monotonic, sleep
 from typing import Protocol, cast
 
+from .audio import AudioStream
+from .audio_recording import PcmuWavRecorder
 from .commands import NAVIGATION_TARGETS
 from .completion import (
     SUPPORTED_SHELLS,
@@ -31,6 +33,7 @@ from .exceptions import SDS200Error
 from .models import HealthSummary, RadioEvent, RadioHealth, StatusResponse
 from .monitor import TerminalMonitor
 from .network import DEFAULT_UDP_PORT
+from .network_audio import NetworkAudioTransport
 from .profiles import (
     TRANSPORT_PREFERENCES,
     ConnectionProfile,
@@ -42,6 +45,7 @@ from .profiles import (
 )
 from .radio import SDSScanner
 from .reliability import ReconnectPolicy
+from .rtsp import DEFAULT_RTSP_PORT
 from .scanner import SUPPORTED_SCANNER_MODELS, ScannerModel, normalize_model_name
 
 
@@ -393,6 +397,56 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser(
         "capabilities",
         help="Show model limits, validation status, and supported control features",
+    )
+
+    audio = subparsers.add_parser(
+        "audio",
+        help="Record SDS200 network audio to a PCM WAV file",
+    )
+    audio.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        metavar="FILE",
+        help="Destination 8 kHz mono signed 16-bit PCM WAV file",
+    )
+    audio.add_argument(
+        "--duration",
+        type=_positive_float,
+        metavar="SECONDS",
+        help="Stop after this many seconds; otherwise record until interrupted",
+    )
+    audio.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite an existing output file",
+    )
+    audio.add_argument(
+        "--rtsp-port",
+        type=_remote_port,
+        default=DEFAULT_RTSP_PORT,
+        metavar="PORT",
+        help=f"Scanner RTSP port (default: {DEFAULT_RTSP_PORT})",
+    )
+    audio.add_argument(
+        "--rtp-bind-address",
+        default="",
+        metavar="ADDRESS",
+        help="Local address for the RTP UDP socket",
+    )
+    audio.add_argument(
+        "--rtp-bind-port",
+        type=_local_port,
+        default=0,
+        metavar="PORT",
+        help="Local RTP UDP port; 0 selects an ephemeral port",
+    )
+    audio.add_argument(
+        "--keepalive-interval",
+        type=_positive_float,
+        default=15.0,
+        metavar="SECONDS",
+        help="RTSP GET_PARAMETER interval (default: 15.0)",
     )
 
     for action_name, action_help in (
@@ -1081,6 +1135,75 @@ def _manage_profile(args: argparse.Namespace, store: ProfileStore) -> int:
     raise ValueError(f"Unsupported profile action: {args.profile_action}")
 
 
+def _run_audio(args: argparse.Namespace) -> int:
+    if args.host is None:
+        raise ValueError("audio requires an explicit SDS200 --host")
+    if args.model not in {None, "SDS200"}:
+        raise ValueError("Network audio is only available on the SDS200")
+    if args.udp_port is not None or args.bind_address or args.bind_port:
+        raise ValueError(
+            "--udp-port, --bind-address, and --bind-port are control-only; "
+            "use the audio RTP options instead"
+        )
+    if args.connection_preference is not None:
+        raise ValueError("--prefer is not used with audio")
+    recovery_options = (
+        args.recover_preferred,
+        args.recovery_probe_interval,
+        args.recovery_probe_timeout,
+        args.recovery_stability_window,
+        args.recovery_cooldown,
+    )
+    if any(value is not None for value in recovery_options):
+        raise ValueError("Preferred recovery options are not used with audio")
+    if args.capture is not None:
+        raise ValueError("--capture is not supported for audio recordings")
+    if args.redact:
+        raise ValueError("--redact requires --capture")
+    if args.trace is not None:
+        raise ValueError("--trace currently records control traffic, not audio")
+    if args.replay_speed != 0:
+        raise ValueError("--replay-speed requires --replay")
+
+    output = args.output.expanduser()
+    transport = NetworkAudioTransport(
+        args.host,
+        rtsp_port=args.rtsp_port,
+        local_host=args.rtp_bind_address,
+        local_port=args.rtp_bind_port,
+        keepalive_interval=args.keepalive_interval,
+    )
+    stream = AudioStream(transport)
+    recorder = PcmuWavRecorder(output, overwrite=args.force)
+    unsubscribe = stream.on_chunk(recorder.write_chunk)
+    started_at = monotonic()
+
+    try:
+        with recorder:
+            try:
+                stream.start()
+                started_at = monotonic()
+                if args.duration is None:
+                    while True:
+                        sleep(3600)
+                else:
+                    sleep(args.duration)
+            except KeyboardInterrupt:
+                pass
+            finally:
+                stream.stop()
+    finally:
+        unsubscribe()
+
+    elapsed = monotonic() - started_at
+    print(f"Recorded {elapsed:.1f} seconds")
+    print(f"Packets: {recorder.packets}")
+    print(f"Audio samples: {recorder.samples}")
+    print(f"Audio duration: {recorder.duration_seconds:.1f} seconds")
+    print(f"Output: {output}")
+    return 0
+
+
 def _run_discovery(args: argparse.Namespace) -> int:
     if (
         args.port is not None
@@ -1138,6 +1261,9 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.action == "discover":
             return _run_discovery(args)
+
+        if args.action == "audio":
+            return _run_audio(args)
 
         with selected_radio(args) as radio:
             if args.action == "info":

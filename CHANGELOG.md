@@ -6,9 +6,13 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
-### Planned
+### Added
 
-- Validated SDS200 network audio transport after control reliability work
+- Hardware-validated SDS200 network audio transport using the scanner's strict
+  single-port RTSP/RTP negotiation
+- Native G.711 mu-law decoding to 8 kHz mono signed 16-bit PCM
+- Streaming WAV recording through `sdsctl --host HOST audio`, including duration,
+  overwrite, RTP bind, RTSP port, and keepalive options
 
 ## [0.10.0] - 2026-07-24
 
