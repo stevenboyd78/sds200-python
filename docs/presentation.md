@@ -48,3 +48,40 @@ Freshness is explicit. Callers set `stale=True` when their own age threshold is
 exceeded; the presentation layer does not contain a clock or impose a polling
 policy. Likewise, `degraded=True` represents transport or health information
 provided by the caller without coupling this module to a particular transport.
+
+## Theme roles and palettes
+
+`theme_roles_for()` converts a `ScannerPresentation` into stable `ThemeRole`
+values such as `connection.connected`, `activity.receiving`, `signal.strong`,
+and `severity.warning`. This selection still describes meaning; it does not
+return Rich styles, Textual CSS, ANSI escape sequences, or terminal objects.
+
+`ThemePalette` maps every semantic role to an immutable `ThemeStyle`. Styles use
+renderer-neutral foreground and background strings plus bold, dim, and underline
+flags. The built-in `DEFAULT_DARK_THEME` and `DEFAULT_LIGHT_THEME` provide
+complete starting palettes. Renderers translate these generic values into their
+own style systems.
+
+```python
+from sds200 import (
+    DEFAULT_DARK_THEME,
+    RadioStateSnapshot,
+    present_radio_state,
+    theme_roles_for,
+)
+
+presentation = present_radio_state(
+    RadioStateSnapshot(mode="Trunk Scan", signal=5, mute="Unmute"),
+    connected=True,
+)
+roles = theme_roles_for(presentation)
+style = DEFAULT_DARK_THEME.resolve(roles.signal)
+
+assert roles.signal == "signal.strong"
+assert style.foreground == "#5fd75f"
+assert style.bold is True
+```
+
+Color is supplementary. CLI and TUI adapters must continue to expose labels,
+symbols, ordering, or other non-color cues so connection, warning, hold, mute,
+and recording states remain understandable when color is disabled or unavailable.

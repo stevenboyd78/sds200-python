@@ -129,6 +129,15 @@ from .scanner import (
     normalize_model_name,
 )
 from .state import RadioState, RadioStateSnapshot, StateChange
+from .theme import (
+    DEFAULT_DARK_THEME,
+    DEFAULT_LIGHT_THEME,
+    PresentationThemeRoles,
+    ThemePalette,
+    ThemeRole,
+    ThemeStyle,
+    theme_roles_for,
+)
 from .transport import (
     ControlTransport,
     SerialTransport,
@@ -154,7 +163,9 @@ __all__ = [
     "ConnectionStatus",
     "ControlTransport",
     "DEFAULT_AUDIO_PATH",
+    "DEFAULT_DARK_THEME",
     "DEFAULT_DISCOVERY_WORKERS",
+    "DEFAULT_LIGHT_THEME",
     "DEFAULT_RTSP_PORT",
     "DEFAULT_SDS_PATTERN",
     "DEFAULT_SDS200_PATTERN",
@@ -185,6 +196,7 @@ __all__ = [
     "ProfileKind",
     "ProfileRepairResult",
     "PresentationSeverity",
+    "PresentationThemeRoles",
     "PreviousSelection",
     "PreferredRecoveryPolicy",
     "ProfileStore",
@@ -227,6 +239,9 @@ __all__ = [
     "StartScannerInfoPush",
     "StateChange",
     "StatusResponse",
+    "ThemePalette",
+    "ThemeRole",
+    "ThemeStyle",
     "TRANSPORT_PREFERENCES",
     "TransportCandidate",
     "TransportPreference",
@@ -253,6 +268,7 @@ __all__ = [
     "present_radio_state",
     "profile_from_discovery",
     "repair_profile",
+    "theme_roles_for",
     "write_capture",
 ]
 

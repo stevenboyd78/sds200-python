@@ -12,6 +12,10 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   signal, hold, availability, and severity states
 - Pure snapshot classification with normalized mute, recording, service-type,
   and raw-signal values for future CLI and Textual renderers
+- Stable semantic theme roles that map scanner presentation states without
+  introducing renderer dependencies
+- Complete immutable light and dark palettes with generic color and emphasis
+  tokens for future Rich and Textual adapters
 
 ## [0.11.1] - 2026-07-27
 
