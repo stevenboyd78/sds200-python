@@ -45,6 +45,7 @@ from .profiles import (
 )
 from .radio import SDSScanner
 from .reliability import ReconnectPolicy
+from .rich_cli import RichCliRenderer
 from .rtsp import DEFAULT_RTSP_PORT
 from .scanner import SUPPORTED_SCANNER_MODELS, ScannerModel, normalize_model_name
 
@@ -1356,22 +1357,7 @@ def main(argv: list[str] | None = None) -> int:
 
             if args.action == "scanner-info":
                 info = radio.get_scanner_info()
-                print(f"Mode:       {info.mode}")
-                print(f"Screen:     {info.screen}")
-                print(f"System:     {info.system}")
-                print(f"Department: {info.department}")
-                print(f"Site:       {info.site}")
-                print(f"Channel:    {info.channel}")
-                print(f"Frequency:  {info.frequency}")
-                print(f"Modulation: {info.modulation}")
-                rssi = f"{info.rssi:g}" if info.rssi is not None else "-"
-                battery = f"{info.battery:g}" if info.battery is not None else "-"
-                print(f"Service:    {info.service_type}")
-                print(f"Signal:     {info.signal}")
-                print(f"RSSI:       {rssi}")
-                print(f"Battery:    {battery}")
-                print(f"Recording:  {info.recording or '-'}")
-                print(f"Mute:       {info.mute or '-'}")
+                RichCliRenderer().print_scanner_info(info, connected=radio.connected)
                 return 0
 
             if args.action == "monitor":

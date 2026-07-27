@@ -85,3 +85,15 @@ assert style.bold is True
 Color is supplementary. CLI and TUI adapters must continue to expose labels,
 symbols, ordering, or other non-color cues so connection, warning, hold, mute,
 and recording states remain understandable when color is disabled or unavailable.
+
+## Rich CLI adapter
+
+The human-readable `scanner-info` command uses a narrow Rich adapter that converts
+`ThemeStyle` values into Rich `Style` objects. The adapter derives activity, signal,
+mute, and recording roles from `ScannerPresentation`; it does not infer meaning from
+colors inside the CLI.
+
+Rich performs terminal capability detection. Interactive terminals receive semantic
+styles, while redirected output, test captures, and pipelines retain the same
+line-oriented plain-text layout used before the adapter. Structured JSON output paths
+remain independent from Rich and continue to serialize domain data only.

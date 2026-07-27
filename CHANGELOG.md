@@ -12,6 +12,8 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   signal, hold, availability, and severity states
 - Pure snapshot classification with normalized mute, recording, service-type,
   and raw-signal values for future CLI and Textual renderers
+- Rich terminal adapter that renders scanner information from semantic presentation
+  roles while preserving plain-text output for redirected and captured streams
 - Stable semantic theme roles that map scanner presentation states without
   introducing renderer dependencies
 - Complete immutable light and dark palettes with generic color and emphasis
