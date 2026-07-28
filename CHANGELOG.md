@@ -6,6 +6,11 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+### Changed
+
+- Updated the README project status to describe the v0.14.0 TUI audio,
+  reliability, and lifecycle improvements.
+
 ## [0.14.0] - 2026-07-28
 
 ### Added

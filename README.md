@@ -480,12 +480,14 @@ documented separately in pull requests and release notes.
 
 ## Project status
 
-Version `0.13.0` adds the optional Textual workstation interface with continuous
-PSI state, reconnect and stale-data presentation, serialized hold/navigation,
-volume and squelch controls, responsive Raspberry Pi layouts, and deterministic
-headless and replay tests. SDS100 and SDS200 control support is hardware-validated;
-SDS150 hardware validation remains in progress. API compatibility is not guaranteed
-until version 1.0.
+Version `0.14.0` adds hardware-validated SDS200 network-audio recording to the
+optional Textual workstation interface, backed by a reusable
+`AudioRecordingSession` service and dedicated nonblocking audio worker. The TUI
+now reports live recording duration, packet and sample totals, RTP reliability
+counters, reconnect controls, and transition timestamps, while stable PSI streams
+no longer become falsely stale. SDS100 and SDS200 control support is
+hardware-validated; SDS150 hardware validation remains in progress. API
+compatibility is not guaranteed until version 1.0.
 
 See [CHANGELOG.md](CHANGELOG.md) for development history and planned changes.
 
