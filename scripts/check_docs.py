@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 REQUIRED_FILES = (
     Path("README.md"),
+    Path("ACKNOWLEDGMENTS.md"),
     Path("CHANGELOG.md"),
     Path("CONTRIBUTING.md"),
     Path("CODE_OF_CONDUCT.md"),

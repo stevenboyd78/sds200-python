@@ -6,6 +6,8 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-07-27
+
 ### Added
 
 - Optional Textual 8 full-screen application shell with USB, network, profile,
@@ -26,6 +28,15 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   explicit unavailable, success, and failure feedback
 - `sdsctl -V` and `sdsctl --version` flags for installed version information
 - Deterministic TUI control-worker and replay-command regression coverage
+- Automatic compact, standard, and wide TUI layouts for Raspberry Pi and terminal
+  displays, including short-screen identity consolidation
+- In-app `?` keyboard reference with a compact footer that keeps essential actions
+  visible without crowding small terminals
+- Project acknowledgment documentation for substantial ChatGPT-assisted development
+
+### Changed
+
+- Package and CLI version advanced to `0.13.0`
 
 ## [0.12.0] - 2026-07-27
 
@@ -302,7 +313,8 @@ First planned GitHub prerelease.
 - Added serial discovery, transport, packet framing, core responses, CLI tools,
   examples, tests, and CI.
 
-[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/stevenboyd78/sds200-python/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.10.0...v0.11.0
