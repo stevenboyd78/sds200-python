@@ -446,6 +446,44 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="SECONDS",
         help="Mark live scanner state stale after this age (default: 3.0)",
     )
+    tui.add_argument(
+        "--audio-output",
+        type=Path,
+        metavar="FILE",
+        help="Enable R-key SDS200 network recording to this PCM WAV file",
+    )
+    tui.add_argument(
+        "--audio-force",
+        action="store_true",
+        help="Overwrite an existing --audio-output file",
+    )
+    tui.add_argument(
+        "--audio-rtsp-port",
+        type=_remote_port,
+        default=DEFAULT_RTSP_PORT,
+        metavar="PORT",
+        help=f"Scanner audio RTSP port (default: {DEFAULT_RTSP_PORT})",
+    )
+    tui.add_argument(
+        "--audio-rtp-bind-address",
+        default="",
+        metavar="ADDRESS",
+        help="Local address for the TUI audio RTP socket",
+    )
+    tui.add_argument(
+        "--audio-rtp-bind-port",
+        type=_local_port,
+        default=0,
+        metavar="PORT",
+        help="Local TUI audio RTP port; 0 selects an ephemeral port",
+    )
+    tui.add_argument(
+        "--audio-keepalive-interval",
+        type=_positive_float,
+        default=15.0,
+        metavar="SECONDS",
+        help="TUI audio RTSP GET_PARAMETER interval (default: 15.0)",
+    )
     subparsers.add_parser(
         "capabilities",
         help="Show model limits, validation status, and supported control features",
@@ -1270,6 +1308,30 @@ def _run_tui(args: argparse.Namespace) -> int:
             ) from exc
         raise
 
+    if args.audio_force and args.audio_output is None:
+        raise ValueError("--audio-force requires --audio-output")
+
+    audio_session: AudioRecordingSession | None = None
+    if args.audio_output is not None:
+        if args.host is None:
+            raise ValueError(
+                "TUI audio requires an explicit SDS200 --host connection"
+            )
+        if args.model not in {None, "SDS200"}:
+            raise ValueError("TUI network audio is only available on the SDS200")
+        output = args.audio_output.expanduser()
+        audio_transport = NetworkAudioTransport(
+            args.host,
+            rtsp_port=args.audio_rtsp_port,
+            local_host=args.audio_rtp_bind_address,
+            local_port=args.audio_rtp_bind_port,
+            keepalive_interval=args.audio_keepalive_interval,
+        )
+        audio_session = AudioRecordingSession(
+            AudioStream(audio_transport),
+            PcmuWavRecorder(output, overwrite=args.audio_force),
+        )
+
     with selected_radio(args) as radio:
         run_tui(
             endpoint=radio.endpoint,
@@ -1277,6 +1339,7 @@ def _run_tui(args: argparse.Namespace) -> int:
             firmware=str(radio.get_firmware()),
             info=radio.get_scanner_info(),
             radio=radio,
+            audio_session=audio_session,
             interval_ms=args.interval,
             stale_after=args.stale_after,
             connected=radio.connected,

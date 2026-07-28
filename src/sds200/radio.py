@@ -459,6 +459,16 @@ class SDSScanner:
             self._closed.set()
             raise
 
+    def reconnect(self) -> None:
+        """Restart the control transport and preserve an active PSI interval."""
+        interval_ms = self._psi_interval_ms
+        self._psi_interval_ms = None
+        self.transport.stop()
+        self._closed.set()
+        self.connect()
+        if interval_ms is not None:
+            self.start_scanner_info_push(interval_ms)
+
     def close(self) -> None:
         if self.psi_active and self.connected:
             with suppress(SDS200Error, OSError, ValueError):
@@ -819,8 +829,9 @@ class SDSScanner:
             with self._health_lock:
                 self._last_state_at = info.received_at
             change = self.state.update(info)
+            current = self.state.snapshot
+            self.events.emit("state", current)
             if change is not None:
-                self.events.emit("state", change.current)
                 self.events.emit("state_change", change)
                 for field in change.fields:
                     self.events.emit(f"state.{field}", getattr(change.current, field))

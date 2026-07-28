@@ -38,6 +38,11 @@ class FakeControlRadio:
         self._lock = RLock()
         self._connection_callbacks: list[Callable[[bool], None]] = []
 
+    def reconnect(self) -> None:
+        self.calls.append(("reconnect",))
+        self.emit_connection(False)
+        self.emit_connection(True)
+
     def hold(
         self,
         target: NavigationTarget | str,
@@ -238,6 +243,14 @@ def test_tui_controls_report_disconnected_and_failed_commands() -> None:
             await pilot.pause()
             assert radio.calls == []
             assert "Unavailable" in _plain(app.query_one("#status", Static))
+
+            await pilot.press("c")
+            await _wait_for_calls(radio, 1)
+            await pilot.pause()
+            assert radio.calls == [("reconnect",)]
+            assert "Completed: Reconnect scanner" in _plain(
+                app.query_one("#status", Static)
+            )
 
             await asyncio.to_thread(radio.emit_connection, True)
             radio.fail_hold = True

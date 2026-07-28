@@ -361,3 +361,55 @@ def test_preferred_recovery_restarts_active_psi_stream() -> None:
         radio._psi_interval_ms = None
 
     assert transport.writes == ["PSI,500"]
+
+def test_identical_psi_frames_refresh_state_observers() -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport, expected_model="SDS200")
+    states: list[object] = []
+    changes: list[object] = []
+    radio.on_state(states.append)
+    radio.on_state_change(changes.append)
+    xml = """<?xml version="1.0" encoding="utf-8"?>
+<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+<System Name="Example System" Index="100" />
+<Property VOL="10" SQL="2" Sig="0" />
+</ScannerInfo>"""
+
+    with radio:
+        for _ in range(2):
+            transport.feed_line("PSI,<XML>,")
+            for line in xml.splitlines():
+                transport.feed_line(line)
+
+    assert len(states) == 2
+    assert len(changes) == 1
+
+
+def test_manual_reconnect_preserves_active_psi_interval() -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport, expected_model="SDS200")
+    xml = """<?xml version="1.0" encoding="utf-8"?>
+<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+<Property VOL="10" SQL="2" Sig="0" />
+</ScannerInfo>"""
+
+    radio.connect()
+    radio._psi_interval_ms = 500
+
+    def respond() -> None:
+        while transport.writes != ["PSI,500"]:
+            time.sleep(0.005)
+        transport.feed_line("PSI,<XML>,")
+        for line in xml.splitlines():
+            transport.feed_line(line)
+
+    thread = threading.Thread(target=respond, daemon=True)
+    thread.start()
+    radio.reconnect()
+    thread.join(timeout=1.0)
+
+    assert not thread.is_alive()
+    assert radio.connected
+    assert radio.psi_interval_ms == 500
+    radio._psi_interval_ms = None
+    radio.close()

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, suppress
 from dataclasses import dataclass, replace
+from datetime import datetime
 from threading import Event, Thread, current_thread
 from time import monotonic
 from typing import ClassVar, Protocol
@@ -13,6 +14,11 @@ from textual.binding import Binding, BindingType
 from textual.containers import VerticalScroll
 from textual.widgets import Footer, Header, Static
 
+from .audio_session import (
+    AudioRecordingSession,
+    AudioSessionSnapshot,
+    AudioSessionStatus,
+)
 from .commands import NavigationTarget
 from .models import ScannerInfo
 from .presentation import ScannerPresentation, present_radio_state
@@ -38,16 +44,25 @@ from .tui_controls import (
 
 Unsubscribe = Callable[[], None]
 Clock = Callable[[], float]
+WallClock = Callable[[], datetime]
+
+
+def _local_now() -> datetime:
+    return datetime.now().astimezone()
+
 
 KEY_HELP_TEXT = """Keyboard controls
 Q        Quit
 T        Toggle dark/light theme
+C        Reconnect scanner
+R        Start / stop audio recording
 H        Hold current channel
 S / D    Hold current system / department
 I        Hold current site
 N / P    Next / previous channel
 + / -    Raise / lower volume
 ] / [    Raise / lower squelch
+^p       Command Palette
 ?        Show or hide this help
 """
 
@@ -57,6 +72,8 @@ class ScannerTuiRadio(Protocol):
 
     @property
     def connected(self) -> bool: ...
+
+    def reconnect(self) -> None: ...
 
     def hold(
         self,
@@ -158,6 +175,10 @@ class ScannerTuiApp(App[None]):
         min-height: 9;
     }
 
+    #audio {
+        min-height: 10;
+    }
+
     #keys {
         display: none;
         min-height: 9;
@@ -180,6 +201,10 @@ class ScannerTuiApp(App[None]):
 
     Screen.-compact #status {
         min-height: 7;
+    }
+
+    Screen.-compact #audio {
+        min-height: 1;
     }
 
     Screen.-short #identity {
@@ -209,6 +234,15 @@ class ScannerTuiApp(App[None]):
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("q", "quit", "Quit"),
         Binding("t", "toggle_theme", "Theme"),
+        Binding(
+            "ctrl+p",
+            "command_palette",
+            "Command Palette",
+            key_display="^p",
+            priority=True,
+        ),
+        Binding("c", "reconnect", "Reconnect"),
+        Binding("r", "toggle_audio_recording", "Record"),
         Binding(
             "question_mark",
             "toggle_key_help",
@@ -245,11 +279,13 @@ class ScannerTuiApp(App[None]):
         info: ScannerInfo,
         *,
         radio: ScannerTuiRadio | None = None,
+        audio_session: AudioRecordingSession | None = None,
         interval_ms: int = 500,
         stale_after: float = 3.0,
         connected: bool | None = True,
         palette: ThemePalette = DEFAULT_DARK_THEME,
         clock: Clock = monotonic,
+        now: WallClock = _local_now,
     ) -> None:
         if interval_ms <= 0:
             raise ValueError("PSI interval must be greater than zero")
@@ -261,11 +297,23 @@ class ScannerTuiApp(App[None]):
         self._snapshot = snapshot_from_scanner_info(info)
         self._capabilities = capabilities_for_model(identity.model)
         self._radio = radio
+        self._audio_session = audio_session
+        self._audio_snapshot = (
+            audio_session.snapshot() if audio_session is not None else None
+        )
+        self._audio_message = (
+            "Ready to record" if audio_session is not None else "Audio unavailable"
+        )
+        self._audio_pending = False
+        self._audio_unsubscribe: Unsubscribe | None = None
         self._interval_ms = interval_ms
         self._stale_after = stale_after
         self._connected = connected
         self._palette = palette
         self._clock = clock
+        self._now = now
+        self._transition_values: dict[str, str] = {}
+        self._transition_since: dict[str, datetime] = {}
         self._last_state_at = clock()
         self._degraded = False
         self._stale = False
@@ -277,6 +325,10 @@ class ScannerTuiApp(App[None]):
         self._psi_stop = Event()
         self._psi_thread: Thread | None = None
         self._control_worker = ControlWorker(self._on_control_completed)
+        self._audio_worker = ControlWorker(
+            self._on_audio_completed,
+            thread_name="sds200-tui-audio",
+        )
         self.title = f"{identity.model} Scanner"
         self.sub_title = f"{identity.endpoint} | {identity.firmware}"
 
@@ -305,6 +357,12 @@ class ScannerTuiApp(App[None]):
         return self._control_worker.alive
 
     @property
+    def audio_thread_alive(self) -> bool:
+        """Return whether the dedicated audio lifecycle worker is running."""
+
+        return self._audio_worker.alive
+
+    @property
     def key_help_visible(self) -> bool:
         """Return whether the in-app keyboard reference is visible."""
 
@@ -319,6 +377,8 @@ class ScannerTuiApp(App[None]):
             yield Static(id="system", classes="panel", markup=False)
             yield Static(id="channel", classes="panel", markup=False)
             yield Static(id="state", classes="panel", markup=False)
+            if self._audio_session is not None:
+                yield Static(id="audio", classes="panel", markup=False)
             yield Static(id="status", classes="panel", markup=False)
         yield Footer()
 
@@ -329,8 +389,15 @@ class ScannerTuiApp(App[None]):
             check_interval = min(max(self._stale_after / 4, 0.1), 1.0)
             self.set_interval(check_interval, self.check_stale)
             self._start_live_updates()
+        if self._audio_session is not None:
+            self._audio_worker.start()
+            self._audio_unsubscribe = self._audio_session.on_state(
+                self._on_audio_state
+            )
+            self.set_interval(0.25, self._poll_audio_state)
 
     def on_unmount(self) -> None:
+        self.stop_audio()
         self.stop_live_updates()
         self.stop_controls()
 
@@ -354,6 +421,46 @@ class ScannerTuiApp(App[None]):
         else:
             self.screen.remove_class("show-keys")
             self._control_message = "Keyboard help hidden"
+        self._refresh_view()
+
+    def action_reconnect(self) -> None:
+        """Restart the scanner transport and resume the active PSI stream."""
+        radio = self._radio
+        if radio is None:
+            self._control_unavailable("No live scanner connection")
+            return
+        if self._identity.endpoint.startswith("replay://"):
+            self._control_unavailable("Replay sessions cannot reconnect")
+            return
+        self._submit_control(
+            ControlRequest("Reconnect scanner", radio.reconnect),
+            requires_connection=False,
+        )
+
+    def action_toggle_audio_recording(self) -> None:
+        """Start or stop the configured one-shot network-audio recording."""
+        session = self._audio_session
+        if session is None:
+            self._control_unavailable(
+                "Start the TUI with --audio-output to enable recording"
+            )
+            return
+        if self._audio_pending:
+            self._audio_message = "Audio operation already queued"
+            self._refresh_view()
+            return
+
+        snapshot = session.snapshot()
+        if snapshot.status is AudioSessionStatus.IDLE:
+            self._submit_audio(ControlRequest("Start recording", session.start))
+            return
+        if snapshot.active:
+            self._submit_audio(ControlRequest("Stop recording", session.stop))
+            return
+
+        self._audio_message = (
+            "Recording session completed; restart the TUI to record another file"
+        )
         self._refresh_view()
 
     def action_hold_channel(self) -> None:
@@ -553,6 +660,19 @@ class ScannerTuiApp(App[None]):
 
         self._control_worker.stop()
 
+    def stop_audio(self) -> None:
+        """Stop audio recording, remove callbacks, and stop its worker."""
+        session = self._audio_session
+        unsubscribe, self._audio_unsubscribe = self._audio_unsubscribe, None
+        if unsubscribe is not None:
+            unsubscribe()
+        self._audio_worker.stop()
+        if session is None:
+            return
+        with suppress(Exception):
+            session.stop()
+        self._audio_snapshot = session.snapshot()
+
     def _start_live_updates(self) -> None:
         assert self._radio is not None
         if self.live_thread_alive:
@@ -595,6 +715,19 @@ class ScannerTuiApp(App[None]):
     def _on_radio_diagnostic(self, diagnostic: TransportDiagnostic) -> None:
         self._dispatch_from_radio(self._apply_diagnostic, diagnostic)
 
+    def _on_audio_state(self, snapshot: AudioSessionSnapshot) -> None:
+        self._dispatch_from_radio(self._apply_audio_state, snapshot)
+
+    def _poll_audio_state(self) -> None:
+        session = self._audio_session
+        if session is None:
+            return
+        snapshot = session.snapshot()
+        if snapshot == self._audio_snapshot:
+            return
+        self._audio_snapshot = snapshot
+        self._refresh_view()
+
     def _dispatch_from_radio(
         self,
         callback: Callable[..., None],
@@ -606,8 +739,24 @@ class ScannerTuiApp(App[None]):
             # The app may have completed between a radio callback and dispatch.
             return
 
-    def _submit_control(self, request: ControlRequest) -> None:
-        if self._connected is not True:
+    def _submit_audio(self, request: ControlRequest) -> None:
+        try:
+            self._audio_worker.submit(request)
+        except RuntimeError as exc:
+            self._audio_message = f"Unavailable: {exc}"
+            self._refresh_view()
+            return
+        self._audio_pending = True
+        self._audio_message = f"Queued: {request.label}"
+        self._refresh_view()
+
+    def _submit_control(
+        self,
+        request: ControlRequest,
+        *,
+        requires_connection: bool = True,
+    ) -> None:
+        if requires_connection and self._connected is not True:
             self._control_unavailable("Controls are unavailable while disconnected")
             return
         try:
@@ -640,6 +789,50 @@ class ScannerTuiApp(App[None]):
             if request.on_success is not None:
                 request.on_success()
             self._control_message = f"Completed: {request.label}"
+        self._refresh_view()
+
+    def _on_audio_completed(
+        self,
+        request: ControlRequest,
+        error: Exception | None,
+    ) -> None:
+        self._dispatch_from_radio(self._apply_audio_result, request, error)
+
+    def _apply_audio_result(
+        self,
+        request: ControlRequest,
+        error: Exception | None,
+    ) -> None:
+        self._audio_pending = False
+        session = self._audio_session
+        if session is not None:
+            self._audio_snapshot = session.snapshot()
+        if error is not None:
+            self._audio_message = f"Failed: {request.label}: {error}"
+        elif (
+            self._audio_snapshot is not None
+            and self._audio_snapshot.status is AudioSessionStatus.RECORDING
+        ):
+            self._audio_message = "Recording in progress"
+        elif (
+            self._audio_snapshot is not None
+            and self._audio_snapshot.status is AudioSessionStatus.STOPPED
+        ):
+            self._audio_message = "Recording completed"
+        else:
+            self._audio_message = f"Completed: {request.label}"
+        self._refresh_view()
+
+    def _apply_audio_state(self, snapshot: AudioSessionSnapshot) -> None:
+        self._audio_snapshot = snapshot
+        if snapshot.error is not None:
+            self._audio_message = f"Failed: {snapshot.error}"
+        elif snapshot.status is AudioSessionStatus.RECORDING:
+            self._audio_message = "Recording in progress"
+        elif snapshot.status is AudioSessionStatus.STOPPING:
+            self._audio_message = "Finalizing WAV recording"
+        elif snapshot.status is AudioSessionStatus.STOPPED:
+            self._audio_message = "Recording completed"
         self._refresh_view()
 
     def _set_snapshot_volume(self, value: int) -> None:
@@ -714,7 +907,14 @@ class ScannerTuiApp(App[None]):
 
         self.query_one("#connection", Static).update(
             self._panel(
-                ("Connection", _state_label(presentation.connection.value), roles.connection),
+                (
+                    "Connection",
+                    self._transition_display(
+                        "connection",
+                        _state_label(presentation.connection.value),
+                    ),
+                    roles.connection,
+                ),
                 ("Endpoint", self._identity.endpoint, ThemeRole.TEXT_PRIMARY),
             )
         )
@@ -747,10 +947,20 @@ class ScannerTuiApp(App[None]):
             self._panel(
                 (
                     "Availability",
-                    _state_label(presentation.availability.value),
+                    self._transition_display(
+                        "availability",
+                        _state_label(presentation.availability.value),
+                    ),
                     roles.availability,
                 ),
-                ("Severity", _state_label(presentation.severity.value), roles.severity),
+                (
+                    "Severity",
+                    self._transition_display(
+                        "severity",
+                        _state_label(presentation.severity.value),
+                    ),
+                    roles.severity,
+                ),
                 ("Stream", stream_mode, ThemeRole.TEXT_PRIMARY),
                 (
                     "Volume",
@@ -771,6 +981,69 @@ class ScannerTuiApp(App[None]):
                 ("Control", self._control_message, ThemeRole.TEXT_PRIMARY),
                 ("Detail", self._status_message, ThemeRole.TEXT_PRIMARY),
             )
+        )
+
+        if self._audio_session is not None:
+            self.query_one("#audio", Static).update(self._audio_panel())
+
+    def _audio_panel(self) -> Text:
+        snapshot = self._audio_snapshot
+        assert snapshot is not None
+        reliability = snapshot.reliability
+        if snapshot.status is AudioSessionStatus.FAILED:
+            status_role = ThemeRole.SEVERITY_ERROR
+        elif snapshot.active:
+            status_role = ThemeRole.STATE_RECORDING
+        else:
+            status_role = ThemeRole.TEXT_PRIMARY
+        detail = snapshot.error or self._audio_message
+        return self._panel(
+            ("Audio", _state_label(snapshot.status.value), status_role),
+            (
+                "Elapsed",
+                f"{snapshot.elapsed_seconds:.1f} seconds",
+                ThemeRole.TEXT_PRIMARY,
+            ),
+            ("Output", str(snapshot.output_path), ThemeRole.TEXT_PRIMARY),
+            (
+                "Packets / samples",
+                f"{snapshot.packets} / {snapshot.samples}",
+                ThemeRole.TEXT_PRIMARY,
+            ),
+            (
+                "Audio duration",
+                f"{snapshot.audio_duration_seconds:.1f} seconds",
+                ThemeRole.TEXT_PRIMARY,
+            ),
+            (
+                "RTP loss / duplicate",
+                f"{reliability.packets_lost} / {reliability.duplicate_packets}",
+                ThemeRole.TEXT_PRIMARY,
+            ),
+            (
+                "RTP late / malformed",
+                f"{reliability.late_packets} / {reliability.malformed_packets}",
+                ThemeRole.TEXT_PRIMARY,
+            ),
+            (
+                "Source / SSRC",
+                (
+                    f"{reliability.unexpected_source_packets} / "
+                    f"{reliability.ssrc_mismatch_packets}"
+                ),
+                ThemeRole.TEXT_PRIMARY,
+            ),
+            (
+                "Receive / callback",
+                f"{reliability.receive_errors} / {reliability.callback_errors}",
+                ThemeRole.TEXT_PRIMARY,
+            ),
+            (
+                "Timestamp gaps",
+                str(reliability.timestamp_discontinuities),
+                ThemeRole.TEXT_PRIMARY,
+            ),
+            ("Audio control", detail, ThemeRole.TEXT_PRIMARY),
         )
 
     def _state_panel(
@@ -795,6 +1068,13 @@ class ScannerTuiApp(App[None]):
             ),
         )
 
+    def _transition_display(self, key: str, value: str) -> str:
+        if self._transition_values.get(key) != value:
+            self._transition_values[key] = value
+            self._transition_since[key] = self._now()
+        since = self._transition_since[key]
+        return f"{value} since {since:%H:%M:%S}"
+
     def _panel(self, *rows: tuple[str, str, ThemeRole]) -> Text:
         output = Text()
         label_style = rich_style(self._palette.resolve(ThemeRole.TEXT_MUTED))
@@ -818,6 +1098,7 @@ def run_tui(
     firmware: str,
     info: ScannerInfo,
     radio: ScannerTuiRadio,
+    audio_session: AudioRecordingSession | None = None,
     interval_ms: int,
     stale_after: float,
     connected: bool | None,
@@ -829,6 +1110,7 @@ def run_tui(
         ScannerIdentity(endpoint=endpoint, model=model, firmware=firmware),
         info,
         radio=radio,
+        audio_session=audio_session,
         interval_ms=interval_ms,
         stale_after=stale_after,
         connected=connected,
@@ -837,6 +1119,7 @@ def run_tui(
     try:
         app.run()
     finally:
+        app.stop_audio()
         app.stop_live_updates()
         app.stop_controls()
 
