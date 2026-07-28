@@ -73,8 +73,17 @@ def test_audio_cli_records_native_pcm_wave(
     output = tmp_path / "scanner.wav"
     transport = FakeNetworkAudioTransport()
     _install_fake_transport(monkeypatch, transport)
+    session_type = cli.AudioRecordingSession
+    monkeypatch.setattr(
+        cli,
+        "AudioRecordingSession",
+        lambda stream, recorder: session_type(
+            stream,
+            recorder,
+            clock=_monotonic([20.0, 20.0, 21.5, 21.5]),
+        ),
+    )
     monkeypatch.setattr(cli, "sleep", lambda _seconds: None)
-    monkeypatch.setattr(cli, "monotonic", _monotonic([10.0, 20.0, 21.5]))
 
     result = cli.main(
         [
