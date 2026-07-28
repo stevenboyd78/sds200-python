@@ -39,8 +39,14 @@ ControlCompletion = Callable[[ControlRequest, Exception | None], None]
 class ControlWorker:
     """Execute scanner controls sequentially away from the Textual event loop."""
 
-    def __init__(self, completed: ControlCompletion) -> None:
+    def __init__(
+        self,
+        completed: ControlCompletion,
+        *,
+        thread_name: str = "sds200-tui-controls",
+    ) -> None:
         self._completed = completed
+        self._thread_name = thread_name
         self._queue: queue.Queue[ControlRequest | None] = queue.Queue()
         self._stop = Event()
         self._thread: Thread | None = None
@@ -55,7 +61,7 @@ class ControlWorker:
         self._stop.clear()
         self._thread = Thread(
             target=self._run,
-            name="sds200-tui-controls",
+            name=self._thread_name,
             daemon=True,
         )
         self._thread.start()

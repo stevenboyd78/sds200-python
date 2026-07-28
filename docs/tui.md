@@ -58,6 +58,7 @@ Keyboard shortcuts:
 - `Q`: exit, stop PSI, unsubscribe callbacks, and close the connection
 - `T`: toggle between the built-in dark and light semantic palettes
 - `C`: restart the control transport and resume the active PSI interval
+- `R`: start or stop the configured SDS200 network-audio WAV recording
 - `Ctrl+P`: open Textual's Command Palette
 - `?`: show or hide the complete keyboard reference
 - `H`: hold the current indexed channel
@@ -100,6 +101,26 @@ only shows the essential quit, theme, and key-reference actions.
 The same responsive classes are exercised in headless Textual tests at compact and
 wide terminal sizes.
 
-Audio remains outside the TUI until the v0.14.0 audio-integration work.
+## Network audio recording
+
+TUI recording is opt-in and currently requires an explicit SDS200 network host.
+Supply the destination WAV path when launching the interface:
+
+```bash
+sdsctl --host 192.168.0.251 tui --audio-output recordings/scanner.wav
+```
+
+Press `R` to start recording and press it again to stop and finalize the WAV
+header. RTSP startup and shutdown run on a dedicated audio worker, independent
+of scanner controls and Textual's event loop. The audio panel reports lifecycle
+state, elapsed wall time, output path, packet and sample totals, audio duration,
+and live RTP loss, duplicate, late, malformed, source, SSRC, receive-error,
+callback-error, and timestamp-discontinuity counters.
+
+The configured recording session is intentionally one-shot. After it reaches
+`STOPPED` or `FAILED`, restart the TUI to create another recording. Existing
+files are protected unless `--audio-force` is supplied. Advanced transport
+options are available as `--audio-rtsp-port`, `--audio-rtp-bind-address`,
+`--audio-rtp-bind-port`, and `--audio-keepalive-interval`.
 
 Project authorship and AI-assisted development are documented in [Acknowledgments](../ACKNOWLEDGMENTS.md).
