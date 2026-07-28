@@ -73,3 +73,10 @@ def test_tui_bindings_include_clean_quit() -> None:
     bindings = {(binding.key, binding.action) for binding in ScannerTuiApp.BINDINGS}
     assert ("q", "quit") in bindings
     assert ("t", "toggle_theme") in bindings
+    assert ("h", "hold_channel") in bindings
+    assert ("n", "next_channel") in bindings
+    assert ("p", "previous_channel") in bindings
+    assert ("plus", "volume_up") in bindings
+    assert ("minus", "volume_down") in bindings
+    assert ("right_square_bracket", "squelch_up") in bindings
+    assert ("left_square_bracket", "squelch_down") in bindings

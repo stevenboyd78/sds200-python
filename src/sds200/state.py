@@ -13,7 +13,12 @@ class RadioStateSnapshot:
     system: str | None = None
     department: str | None = None
     site: str | None = None
+    system_index: int | None = None
+    department_index: int | None = None
+    site_index: int | None = None
     channel: str | None = None
+    channel_index: int | None = None
+    channel_kind: str | None = None
     frequency: str | None = None
     modulation: str | None = None
     service_type: str | None = None
@@ -47,7 +52,12 @@ def snapshot_from_scanner_info(info: ScannerInfo) -> RadioStateSnapshot:
         system=info.system,
         department=info.department,
         site=info.site,
+        system_index=info.system_index,
+        department_index=info.department_index,
+        site_index=info.site_index,
         channel=info.channel,
+        channel_index=info.channel_index,
+        channel_kind=info.channel_kind,
         frequency=info.frequency,
         modulation=info.modulation,
         service_type=info.service_type,

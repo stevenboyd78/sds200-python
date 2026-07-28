@@ -57,6 +57,16 @@ Keyboard shortcuts:
 
 - `Q`: exit, stop PSI, unsubscribe callbacks, and close the connection
 - `T`: toggle between the built-in dark and light semantic palettes
+- `H`: hold the current indexed channel
+- `N`: move to the next indexed channel
+- `P`: move to the previous indexed channel
+- `+` / `-`: raise or lower volume
+- `]` / `[`: raise or lower squelch
 
-Milestone 13.3 will add scanner controls. Audio remains outside the TUI until the
-v0.14.0 audio-integration work.
+Scanner commands execute sequentially on a background worker so a slow command
+round trip does not block the Textual event loop. Navigation controls are only
+available when live GSI/PSI data provides a documented `TGID` or conventional
+frequency index. The status panel reports queued, completed, unavailable, and
+failed controls without relying on color alone.
+
+Audio remains outside the TUI until the v0.14.0 audio-integration work.

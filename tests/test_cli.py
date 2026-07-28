@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from sds200 import cli
+from sds200 import __version__, cli
 from sds200.radio import SDSScanner
 from sds200.replay import CaptureEvent, write_capture
 
@@ -17,6 +17,18 @@ def _feed_gsi(transport: FakeTransport, xml: str) -> None:
     transport.feed_line("GSI,<XML>,")
     for line in xml.splitlines():
         transport.feed_line(line)
+
+
+@pytest.mark.parametrize("flag", ["-V", "--version"])
+def test_version_flags_report_installed_version(
+    flag: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([flag])
+
+    assert exc_info.value.code == 0
+    assert capsys.readouterr().out == f"sdsctl {__version__}\n"
 
 
 def test_sds100_battery_cli_uses_optional_gsi_property(

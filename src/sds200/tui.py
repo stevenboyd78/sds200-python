@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from contextlib import AbstractContextManager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from threading import Event, Thread, current_thread
 from time import monotonic
 from typing import ClassVar, Protocol
@@ -13,9 +13,11 @@ from textual.binding import Binding, BindingType
 from textual.containers import VerticalScroll
 from textual.widgets import Footer, Header, Static
 
+from .commands import NavigationTarget
 from .models import ScannerInfo
 from .presentation import ScannerPresentation, present_radio_state
 from .rich_cli import rich_style
+from .scanner import capabilities_for_model
 from .state import RadioStateSnapshot, snapshot_from_scanner_info
 from .theme import (
     DEFAULT_DARK_THEME,
@@ -26,6 +28,7 @@ from .theme import (
     theme_roles_for,
 )
 from .transport import TransportDiagnostic
+from .tui_controls import ControlRequest, ControlWorker, channel_navigation
 
 Unsubscribe = Callable[[], None]
 Clock = Callable[[], float]
@@ -36,6 +39,39 @@ class ScannerTuiRadio(Protocol):
 
     @property
     def connected(self) -> bool: ...
+
+    def hold(
+        self,
+        target: NavigationTarget | str,
+        first: str | int | None = None,
+        second: str | int | None = None,
+        *,
+        timeout: float = 2.0,
+    ) -> None: ...
+
+    def next(
+        self,
+        target: NavigationTarget | str,
+        first: str | int | None = None,
+        second: str | int | None = None,
+        *,
+        count: int = 1,
+        timeout: float = 2.0,
+    ) -> None: ...
+
+    def previous(
+        self,
+        target: NavigationTarget | str,
+        first: str | int | None = None,
+        second: str | int | None = None,
+        *,
+        count: int = 1,
+        timeout: float = 2.0,
+    ) -> None: ...
+
+    def set_volume(self, level: int, *, timeout: float = 2.0) -> None: ...
+
+    def set_squelch(self, level: int, *, timeout: float = 2.0) -> None: ...
 
     def on_state(
         self,
@@ -101,12 +137,29 @@ class ScannerTuiApp(App[None]):
     }
 
     #status {
-        min-height: 6;
+        min-height: 9;
     }
     """
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("q", "quit", "Quit"),
         Binding("t", "toggle_theme", "Theme"),
+        Binding("h", "hold_channel", "Hold"),
+        Binding("n", "next_channel", "Next"),
+        Binding("p", "previous_channel", "Previous"),
+        Binding("plus", "volume_up", "Vol +", key_display="+"),
+        Binding("minus", "volume_down", "Vol -", key_display="-"),
+        Binding(
+            "right_square_bracket",
+            "squelch_up",
+            "SQL +",
+            key_display="]",
+        ),
+        Binding(
+            "left_square_bracket",
+            "squelch_down",
+            "SQL -",
+            key_display="[",
+        ),
     ]
 
     def __init__(
@@ -129,6 +182,7 @@ class ScannerTuiApp(App[None]):
         super().__init__()
         self._identity = identity
         self._snapshot = snapshot_from_scanner_info(info)
+        self._capabilities = capabilities_for_model(identity.model)
         self._radio = radio
         self._interval_ms = interval_ms
         self._stale_after = stale_after
@@ -140,9 +194,11 @@ class ScannerTuiApp(App[None]):
         self._stale = False
         self._stream_mode = "INITIAL SNAPSHOT"
         self._status_message = "Initial scanner information loaded"
+        self._control_message = "Ready"
         self._unsubscribers: list[Unsubscribe] = []
         self._psi_stop = Event()
         self._psi_thread: Thread | None = None
+        self._control_worker = ControlWorker(self._on_control_completed)
         self.title = f"{identity.model} Scanner"
         self.sub_title = identity.endpoint
 
@@ -164,6 +220,12 @@ class ScannerTuiApp(App[None]):
 
         return self._psi_thread is not None and self._psi_thread.is_alive()
 
+    @property
+    def control_thread_alive(self) -> bool:
+        """Return whether the serialized scanner-control worker is running."""
+
+        return self._control_worker.alive
+
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         with VerticalScroll(id="body"):
@@ -178,12 +240,14 @@ class ScannerTuiApp(App[None]):
     def on_mount(self) -> None:
         self._refresh_view()
         if self._radio is not None:
+            self._control_worker.start()
             check_interval = min(max(self._stale_after / 4, 0.1), 1.0)
             self.set_interval(check_interval, self.check_stale)
             self._start_live_updates()
 
     def on_unmount(self) -> None:
         self.stop_live_updates()
+        self.stop_controls()
 
     def action_toggle_theme(self) -> None:
         """Toggle between the built-in semantic light and dark palettes."""
@@ -194,6 +258,113 @@ class ScannerTuiApp(App[None]):
             else DEFAULT_DARK_THEME
         )
         self._refresh_view()
+
+    def action_hold_channel(self) -> None:
+        """Hold the indexed channel reported by the current PSI snapshot."""
+
+        radio = self._radio
+        if radio is None:
+            self._control_unavailable("No live scanner connection")
+            return
+        self._queue_navigation(
+            "Hold channel",
+            lambda target, index: radio.hold(target, index),
+        )
+
+    def action_next_channel(self) -> None:
+        """Move to the next indexed channel without blocking the UI thread."""
+
+        radio = self._radio
+        if radio is None:
+            self._control_unavailable("No live scanner connection")
+            return
+        self._queue_navigation(
+            "Next channel",
+            lambda target, index: radio.next(target, index),
+        )
+
+    def action_previous_channel(self) -> None:
+        """Move to the previous indexed channel without blocking the UI thread."""
+
+        radio = self._radio
+        if radio is None:
+            self._control_unavailable("No live scanner connection")
+            return
+        self._queue_navigation(
+            "Previous channel",
+            lambda target, index: radio.previous(target, index),
+        )
+
+    def action_volume_up(self) -> None:
+        self._queue_volume(1)
+
+    def action_volume_down(self) -> None:
+        self._queue_volume(-1)
+
+    def action_squelch_up(self) -> None:
+        self._queue_squelch(1)
+
+    def action_squelch_down(self) -> None:
+        self._queue_squelch(-1)
+
+    def _queue_navigation(
+        self,
+        label: str,
+        operation: Callable[[NavigationTarget, int], None],
+    ) -> None:
+        if not self._capabilities.navigation_control:
+            self._control_unavailable("Navigation is not supported by this scanner")
+            return
+        selection = channel_navigation(self._snapshot)
+        if selection is None:
+            self._control_unavailable(
+                "Current PSI state does not provide a controllable channel index"
+            )
+            return
+        target, index = selection
+        self._submit_control(ControlRequest(label, lambda: operation(target, index)))
+
+    def _queue_volume(self, adjustment: int) -> None:
+        radio = self._radio
+        current = self._snapshot.volume
+        if radio is None or current is None:
+            self._control_unavailable("Current volume is unavailable")
+            return
+        target = min(
+            self._capabilities.maximum_volume,
+            max(0, current + adjustment),
+        )
+        if target == current:
+            self._control_unavailable(f"Volume is already {current}")
+            return
+        self._submit_control(
+            ControlRequest(
+                f"Volume {target}",
+                lambda: radio.set_volume(target),
+                lambda: self._set_snapshot_volume(target),
+            )
+        )
+
+    def _queue_squelch(self, adjustment: int) -> None:
+        radio = self._radio
+        current = self._snapshot.squelch
+        if radio is None or current is None:
+            self._control_unavailable("Current squelch is unavailable")
+            return
+        target = min(
+            self._capabilities.maximum_squelch,
+            max(0, current + adjustment),
+        )
+        if target == current:
+            self._control_unavailable(f"Squelch is already {current}")
+            return
+        self._submit_control(
+            ControlRequest(
+                f"Squelch {target}",
+                lambda: radio.set_squelch(target),
+                lambda: self._set_snapshot_squelch(target),
+            )
+        )
 
     def update_snapshot(
         self,
@@ -240,6 +411,11 @@ class ScannerTuiApp(App[None]):
             thread.join(timeout=2.0)
         if thread is not None and not thread.is_alive():
             self._psi_thread = None
+
+    def stop_controls(self) -> None:
+        """Stop the serialized command worker after its active request returns."""
+
+        self._control_worker.stop()
 
     def _start_live_updates(self) -> None:
         assert self._radio is not None
@@ -294,6 +470,48 @@ class ScannerTuiApp(App[None]):
             # The app may have completed between a radio callback and dispatch.
             return
 
+    def _submit_control(self, request: ControlRequest) -> None:
+        if self._connected is not True:
+            self._control_unavailable("Controls are unavailable while disconnected")
+            return
+        try:
+            self._control_worker.submit(request)
+        except RuntimeError as exc:
+            self._control_unavailable(str(exc))
+            return
+        self._control_message = f"Queued: {request.label}"
+        self._refresh_view()
+
+    def _control_unavailable(self, message: str) -> None:
+        self._control_message = f"Unavailable: {message}"
+        self._refresh_view()
+
+    def _on_control_completed(
+        self,
+        request: ControlRequest,
+        error: Exception | None,
+    ) -> None:
+        self._dispatch_from_radio(self._apply_control_result, request, error)
+
+    def _apply_control_result(
+        self,
+        request: ControlRequest,
+        error: Exception | None,
+    ) -> None:
+        if error is not None:
+            self._control_message = f"Failed: {request.label}: {error}"
+        else:
+            if request.on_success is not None:
+                request.on_success()
+            self._control_message = f"Completed: {request.label}"
+        self._refresh_view()
+
+    def _set_snapshot_volume(self, value: int) -> None:
+        self._snapshot = replace(self._snapshot, volume=value)
+
+    def _set_snapshot_squelch(self, value: int) -> None:
+        self._snapshot = replace(self._snapshot, squelch=value)
+
     def _apply_scanner_info(self, info: ScannerInfo) -> None:
         self._apply_radio_state(snapshot_from_scanner_info(info))
 
@@ -308,9 +526,11 @@ class ScannerTuiApp(App[None]):
         if connected:
             self._stream_mode = "WAITING FOR PSI"
             self._status_message = "Transport connected; waiting for scanner state"
+            self._control_message = "Ready"
         else:
             self._stream_mode = "RECONNECTING"
             self._status_message = "Transport disconnected; waiting to reconnect"
+            self._control_message = "Unavailable: scanner disconnected"
         self._refresh_view()
 
     def _apply_diagnostic(self, diagnostic: TransportDiagnostic) -> None:
@@ -377,6 +597,23 @@ class ScannerTuiApp(App[None]):
                 ),
                 ("Severity", _state_label(presentation.severity.value), roles.severity),
                 ("Stream", stream_mode, ThemeRole.TEXT_PRIMARY),
+                (
+                    "Volume",
+                    _level_display(
+                        self._snapshot.volume,
+                        self._capabilities.maximum_volume,
+                    ),
+                    ThemeRole.TEXT_PRIMARY,
+                ),
+                (
+                    "Squelch",
+                    _level_display(
+                        self._snapshot.squelch,
+                        self._capabilities.maximum_squelch,
+                    ),
+                    ThemeRole.TEXT_PRIMARY,
+                ),
+                ("Control", self._control_message, ThemeRole.TEXT_PRIMARY),
                 ("Detail", self._status_message, ThemeRole.TEXT_PRIMARY),
             )
         )
@@ -446,10 +683,17 @@ def run_tui(
         app.run()
     finally:
         app.stop_live_updates()
+        app.stop_controls()
 
 
 def _display(value: object | None) -> str:
     return "-" if value is None or str(value).strip() == "" else str(value)
+
+
+def _level_display(value: int | None, maximum: int) -> str:
+    if value is None:
+        return "-"
+    return f"{value}/{maximum}"
 
 
 def _state_label(value: str) -> str:

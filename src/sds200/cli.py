@@ -11,6 +11,7 @@ from pathlib import Path
 from time import monotonic, sleep
 from typing import Protocol, cast
 
+from . import __version__
 from .audio import AudioStream
 from .audio_recording import PcmuWavRecorder
 from .commands import NAVIGATION_TARGETS
@@ -178,6 +179,12 @@ def _add_profile_recovery_options(parser: argparse.ArgumentParser) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="sdsctl")
+    parser.add_argument(
+        "-V",
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+    )
     parser.add_argument(
         "--config",
         type=Path,

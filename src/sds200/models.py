@@ -132,6 +132,18 @@ class ScannerInfo:
         return self._attribute(("Site",), "Name")
 
     @property
+    def system_index(self) -> int | None:
+        return self._integer(self._attribute(("System",), "Index"))
+
+    @property
+    def department_index(self) -> int | None:
+        return self._integer(self._attribute(("Department",), "Index"))
+
+    @property
+    def site_index(self) -> int | None:
+        return self._integer(self._attribute(("Site",), "Index"))
+
+    @property
     def channel(self) -> str | None:
         return self._attribute(
             (
@@ -144,6 +156,27 @@ class ScannerInfo:
             ),
             "Name",
         )
+
+    @property
+    def channel_kind(self) -> str | None:
+        for tag in (
+            "ConvFrequency",
+            "TGID",
+            "SrchFrequency",
+            "CcHitsChannel",
+            "ToneOutChannel",
+            "WxChannel",
+        ):
+            if self.node(tag) is not None:
+                return tag
+        return None
+
+    @property
+    def channel_index(self) -> int | None:
+        kind = self.channel_kind
+        if kind is None:
+            return None
+        return self._integer(self._attribute((kind,), "Index"))
 
     @property
     def frequency(self) -> str | None:

@@ -20,6 +20,12 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   with configurable PSI and freshness intervals
 - Deterministic callback unsubscription, PSI shutdown, and replay-driven live-state
   regression coverage
+- Serialized background TUI command execution for hold, next, previous, volume,
+  and squelch controls without blocking Textual's event loop
+- PSI/GSI navigation-index retention with capability-aware channel controls and
+  explicit unavailable, success, and failure feedback
+- `sdsctl -V` and `sdsctl --version` flags for installed version information
+- Deterministic TUI control-worker and replay-command regression coverage
 
 ## [0.12.0] - 2026-07-27
 
