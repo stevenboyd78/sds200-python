@@ -9,12 +9,17 @@ from threading import Event, RLock
 from rich.text import Text
 from textual.widgets import Static
 
+from sds200.audio import AudioChunk, AudioStream
+from sds200.audio_recording import PcmuWavRecorder
+from sds200.audio_session import AudioRecordingSession, AudioSessionStatus
 from sds200.models import ScannerInfo
 from sds200.radio import SDSScanner
 from sds200.state import RadioStateSnapshot, snapshot_from_scanner_info
 from sds200.transport import TransportDiagnostic
 from sds200.tui import ScannerIdentity, ScannerTuiApp
 from sds200.xml_protocol import ScannerInfoParser
+
+from .fakes import FakeAudioTransport
 
 INITIAL_XML = """<?xml version="1.0" encoding="utf-8"?>
 <ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
@@ -48,10 +53,15 @@ class FakeLiveRadio:
         self.started = Event()
         self.stopped = Event()
         self.unsubscribe_count = 0
+        self.reconnect_calls = 0
         self._lock = RLock()
         self._state_callbacks: list[Callable[[RadioStateSnapshot], None]] = []
         self._connection_callbacks: list[Callable[[bool], None]] = []
         self._diagnostic_callbacks: list[Callable[[TransportDiagnostic], None]] = []
+
+    def reconnect(self) -> None:
+        self.reconnect_calls += 1
+        self.emit_connection(True)
 
     def on_state(self, callback: Callable[[RadioStateSnapshot], None]) -> Unsubscribe:
         return self._subscribe(self._state_callbacks, callback)
@@ -122,6 +132,7 @@ def _app(
     *,
     stale_after: float = 3.0,
     clock: Callable[[], float] | None = None,
+    audio_session: AudioRecordingSession | None = None,
 ) -> ScannerTuiApp:
     kwargs: dict[str, object] = {}
     if clock is not None:
@@ -134,6 +145,7 @@ def _app(
         ),
         radio.initial,
         radio=radio,
+        audio_session=audio_session,
         interval_ms=250,
         stale_after=stale_after,
         **kwargs,
@@ -144,6 +156,19 @@ def _plain(widget: Static) -> str:
     content = widget.content
     assert isinstance(content, Text)
     return content.plain
+
+
+async def _wait_for_audio_status(
+    session: AudioRecordingSession,
+    status: AudioSessionStatus,
+) -> None:
+    for _ in range(200):
+        if session.status is status:
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError(
+        f"Expected audio status {status.value}, received {session.status.value}"
+    )
 
 
 def test_live_state_callbacks_update_widgets_from_radio_threads() -> None:
@@ -242,3 +267,54 @@ def test_replay_fixture_streams_multiple_live_psi_states() -> None:
     assert [state.channel for state in states] == ["First Dispatch", "Second Dispatch"]
     assert states[-1].frequency == "769.681250MHz"
     assert states[-1].recording == "On"
+
+
+def test_scanner_reconnect_does_not_interrupt_active_audio_recording(
+    tmp_path: Path,
+) -> None:
+    async def exercise() -> None:
+        radio = FakeLiveRadio(_info())
+        transport = FakeAudioTransport()
+        recorder = PcmuWavRecorder(tmp_path / "reconnect-audio.wav")
+        session = AudioRecordingSession(AudioStream(transport), recorder)
+        app = _app(radio, audio_session=session)
+
+        async with app.run_test(size=(100, 46)) as pilot:
+            assert await asyncio.to_thread(radio.started.wait, 1.0)
+            await pilot.press("r")
+            await _wait_for_audio_status(session, AudioSessionStatus.RECORDING)
+
+            await asyncio.to_thread(radio.emit_connection, False)
+            await pilot.pause()
+            assert "DISCONNECTED" in _plain(app.query_one("#connection", Static))
+            assert session.status is AudioSessionStatus.RECORDING
+            assert transport.running
+            assert session.snapshot().packets == 0
+
+            transport.feed(AudioChunk(bytes((0xFF, 0x80, 0x00, 0x7F))))
+            assert session.snapshot().packets == 1
+
+            await pilot.press("c")
+            for _ in range(200):
+                if radio.reconnect_calls == 1:
+                    break
+                await asyncio.sleep(0.01)
+            else:
+                raise AssertionError("Reconnect request did not complete")
+            await pilot.pause()
+
+            assert "CONNECTED" in _plain(app.query_one("#connection", Static))
+            assert session.status is AudioSessionStatus.RECORDING
+            assert transport.running
+
+            await pilot.press("r")
+            await _wait_for_audio_status(session, AudioSessionStatus.STOPPED)
+
+        assert await asyncio.to_thread(radio.stopped.wait, 1.0)
+        assert radio.unsubscribe_count == 3
+        assert not app.live_thread_alive
+        assert not app.control_thread_alive
+        assert not app.audio_thread_alive
+        assert not recorder.open
+
+    asyncio.run(exercise())

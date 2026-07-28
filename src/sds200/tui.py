@@ -323,6 +323,7 @@ class ScannerTuiApp(App[None]):
         self._key_help_visible = False
         self._unsubscribers: list[Unsubscribe] = []
         self._psi_stop = Event()
+        self._shutdown_started = Event()
         self._psi_thread: Thread | None = None
         self._control_worker = ControlWorker(self._on_control_completed)
         self._audio_worker = ControlWorker(
@@ -383,6 +384,7 @@ class ScannerTuiApp(App[None]):
         yield Footer()
 
     def on_mount(self) -> None:
+        self._shutdown_started.clear()
         self._refresh_view()
         if self._radio is not None:
             self._control_worker.start()
@@ -397,6 +399,7 @@ class ScannerTuiApp(App[None]):
             self.set_interval(0.25, self._poll_audio_state)
 
     def on_unmount(self) -> None:
+        self._shutdown_started.set()
         self.stop_audio()
         self.stop_live_updates()
         self.stop_controls()
@@ -733,6 +736,8 @@ class ScannerTuiApp(App[None]):
         callback: Callable[..., None],
         *args: object,
     ) -> None:
+        if self._shutdown_started.is_set():
+            return
         try:
             self.call_from_thread(callback, *args)
         except RuntimeError:
@@ -1119,6 +1124,7 @@ def run_tui(
     try:
         app.run()
     finally:
+        app._shutdown_started.set()
         app.stop_audio()
         app.stop_live_updates()
         app.stop_controls()

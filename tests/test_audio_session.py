@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -11,7 +12,7 @@ from sds200.audio_session import AudioRecordingSession, AudioSessionStatus
 from sds200.exceptions import ScannerConnectionError
 from sds200.network_audio import NetworkAudioStatistics
 
-from .fakes import FakeAudioTransport
+from .fakes import BlockingStartAudioTransport, FakeAudioTransport
 
 
 class FakeClock:
@@ -130,5 +131,49 @@ def test_audio_recording_session_closes_recorder_after_stop_failure(
     snapshot = session.snapshot()
     assert snapshot.status is AudioSessionStatus.FAILED
     assert snapshot.error == "audio stop failed"
+    assert not transport.running
+    assert not recorder.open
+
+
+def test_audio_recording_session_serializes_stop_during_start(
+    tmp_path: Path,
+) -> None:
+    transport = BlockingStartAudioTransport()
+    recorder = PcmuWavRecorder(tmp_path / "concurrent-stop.wav")
+    session = AudioRecordingSession(AudioStream(transport), recorder)
+    start_errors: list[Exception] = []
+    stop_errors: list[Exception] = []
+
+    def start_session() -> None:
+        try:
+            session.start()
+        except Exception as error:
+            start_errors.append(error)
+
+    def stop_session() -> None:
+        try:
+            session.stop()
+        except Exception as error:
+            stop_errors.append(error)
+
+    start_thread = threading.Thread(target=start_session)
+    stop_thread = threading.Thread(target=stop_session)
+    start_thread.start()
+    assert transport.start_entered.wait(1.0)
+
+    stop_thread.start()
+    assert stop_thread.is_alive()
+    transport.release_start.set()
+
+    start_thread.join(timeout=2.0)
+    stop_thread.join(timeout=2.0)
+
+    assert not start_thread.is_alive()
+    assert not stop_thread.is_alive()
+    assert start_errors == []
+    assert stop_errors == []
+    assert session.status is AudioSessionStatus.STOPPED
+    assert transport.start_calls == 1
+    assert transport.stop_calls == 1
     assert not transport.running
     assert not recorder.open

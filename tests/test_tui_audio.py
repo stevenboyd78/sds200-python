@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import asyncio
 import struct
+import threading
 import wave
+from collections.abc import Callable
 from pathlib import Path
 
 from rich.text import Text
@@ -16,7 +18,7 @@ from sds200.network_audio import NetworkAudioStatistics
 from sds200.tui import ScannerIdentity, ScannerTuiApp
 from sds200.xml_protocol import ScannerInfoParser
 
-from .fakes import FakeAudioTransport
+from .fakes import BlockingStartAudioTransport, FakeAudioTransport
 
 
 class StatisticalFakeAudioTransport(FakeAudioTransport):
@@ -147,6 +149,96 @@ def test_tui_shutdown_finalizes_active_audio_recording(tmp_path: Path) -> None:
             assert recorder.open
 
         assert session.status is AudioSessionStatus.STOPPED
+        assert not recorder.open
+        assert not app.audio_thread_alive
+
+    asyncio.run(exercise())
+
+
+def test_tui_rejects_repeated_record_requests_while_starting(
+    tmp_path: Path,
+) -> None:
+    async def exercise() -> None:
+        transport = BlockingStartAudioTransport()
+        recorder = PcmuWavRecorder(tmp_path / "queued-start.wav")
+        session = AudioRecordingSession(AudioStream(transport), recorder)
+        app = _app(session)
+
+        async with app.run_test(size=(100, 46)) as pilot:
+            await pilot.press("r")
+            assert await asyncio.to_thread(transport.start_entered.wait, 1.0)
+
+            await pilot.press("r")
+            await pilot.pause()
+            audio = _plain(app.query_one("#audio", Static))
+            assert "Audio: STARTING" in audio
+            assert "Audio operation already queued" in audio
+            assert transport.start_calls == 1
+
+            transport.release_start.set()
+            await _wait_for_status(session, AudioSessionStatus.RECORDING)
+            await pilot.press("r")
+            await _wait_for_status(session, AudioSessionStatus.STOPPED)
+
+        assert transport.start_calls == 1
+        assert transport.stop_calls == 1
+        assert not recorder.open
+        assert not app.audio_thread_alive
+
+    asyncio.run(exercise())
+
+
+def test_tui_shutdown_coordinates_with_audio_start_in_progress(
+    tmp_path: Path,
+) -> None:
+    async def exercise() -> None:
+        transport = BlockingStartAudioTransport()
+        recorder = PcmuWavRecorder(tmp_path / "shutdown-during-start.wav")
+        session = AudioRecordingSession(AudioStream(transport), recorder)
+        app = _app(session)
+        shutdown_entered = threading.Event()
+        release_errors: list[Exception] = []
+        original_stop_audio = app.stop_audio
+        original_call_from_thread = app.call_from_thread
+        dispatch_after_shutdown = threading.Event()
+
+        def stop_audio() -> None:
+            shutdown_entered.set()
+            original_stop_audio()
+
+        def call_from_thread(
+            callback: Callable[..., object],
+            *args: object,
+            **kwargs: object,
+        ) -> object:
+            if shutdown_entered.is_set():
+                dispatch_after_shutdown.set()
+            return original_call_from_thread(callback, *args, **kwargs)
+
+        def release_start() -> None:
+            try:
+                if not shutdown_entered.wait(1.0):
+                    raise TimeoutError("TUI shutdown did not begin")
+                transport.release_start.set()
+            except Exception as error:
+                release_errors.append(error)
+
+        release_thread = threading.Thread(target=release_start)
+        release_thread.start()
+        app.stop_audio = stop_audio
+        app.call_from_thread = call_from_thread
+
+        async with app.run_test(size=(100, 46)) as pilot:
+            await pilot.press("r")
+            assert await asyncio.to_thread(transport.start_entered.wait, 1.0)
+
+        release_thread.join(timeout=1.0)
+        assert not release_thread.is_alive()
+        assert release_errors == []
+        assert not dispatch_after_shutdown.is_set()
+        assert session.status is AudioSessionStatus.STOPPED
+        assert transport.start_calls == 1
+        assert transport.stop_calls == 1
         assert not recorder.open
         assert not app.audio_thread_alive
 
