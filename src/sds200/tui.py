@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, replace
+from datetime import datetime
 from threading import Event, Thread, current_thread
 from time import monotonic
 from typing import ClassVar, Protocol
@@ -38,16 +39,24 @@ from .tui_controls import (
 
 Unsubscribe = Callable[[], None]
 Clock = Callable[[], float]
+WallClock = Callable[[], datetime]
+
+
+def _local_now() -> datetime:
+    return datetime.now().astimezone()
+
 
 KEY_HELP_TEXT = """Keyboard controls
 Q        Quit
 T        Toggle dark/light theme
+C        Reconnect scanner
 H        Hold current channel
 S / D    Hold current system / department
 I        Hold current site
 N / P    Next / previous channel
 + / -    Raise / lower volume
 ] / [    Raise / lower squelch
+^p       Command Palette
 ?        Show or hide this help
 """
 
@@ -57,6 +66,8 @@ class ScannerTuiRadio(Protocol):
 
     @property
     def connected(self) -> bool: ...
+
+    def reconnect(self) -> None: ...
 
     def hold(
         self,
@@ -210,6 +221,14 @@ class ScannerTuiApp(App[None]):
         Binding("q", "quit", "Quit"),
         Binding("t", "toggle_theme", "Theme"),
         Binding(
+            "ctrl+p",
+            "command_palette",
+            "Command Palette",
+            key_display="^p",
+            priority=True,
+        ),
+        Binding("c", "reconnect", "Reconnect"),
+        Binding(
             "question_mark",
             "toggle_key_help",
             "Keys",
@@ -250,6 +269,7 @@ class ScannerTuiApp(App[None]):
         connected: bool | None = True,
         palette: ThemePalette = DEFAULT_DARK_THEME,
         clock: Clock = monotonic,
+        now: WallClock = _local_now,
     ) -> None:
         if interval_ms <= 0:
             raise ValueError("PSI interval must be greater than zero")
@@ -266,6 +286,9 @@ class ScannerTuiApp(App[None]):
         self._connected = connected
         self._palette = palette
         self._clock = clock
+        self._now = now
+        self._transition_values: dict[str, str] = {}
+        self._transition_since: dict[str, datetime] = {}
         self._last_state_at = clock()
         self._degraded = False
         self._stale = False
@@ -355,6 +378,20 @@ class ScannerTuiApp(App[None]):
             self.screen.remove_class("show-keys")
             self._control_message = "Keyboard help hidden"
         self._refresh_view()
+
+    def action_reconnect(self) -> None:
+        """Restart the scanner transport and resume the active PSI stream."""
+        radio = self._radio
+        if radio is None:
+            self._control_unavailable("No live scanner connection")
+            return
+        if self._identity.endpoint.startswith("replay://"):
+            self._control_unavailable("Replay sessions cannot reconnect")
+            return
+        self._submit_control(
+            ControlRequest("Reconnect scanner", radio.reconnect),
+            requires_connection=False,
+        )
 
     def action_hold_channel(self) -> None:
         """Hold the indexed channel reported by the current PSI snapshot."""
@@ -606,8 +643,13 @@ class ScannerTuiApp(App[None]):
             # The app may have completed between a radio callback and dispatch.
             return
 
-    def _submit_control(self, request: ControlRequest) -> None:
-        if self._connected is not True:
+    def _submit_control(
+        self,
+        request: ControlRequest,
+        *,
+        requires_connection: bool = True,
+    ) -> None:
+        if requires_connection and self._connected is not True:
             self._control_unavailable("Controls are unavailable while disconnected")
             return
         try:
@@ -714,7 +756,14 @@ class ScannerTuiApp(App[None]):
 
         self.query_one("#connection", Static).update(
             self._panel(
-                ("Connection", _state_label(presentation.connection.value), roles.connection),
+                (
+                    "Connection",
+                    self._transition_display(
+                        "connection",
+                        _state_label(presentation.connection.value),
+                    ),
+                    roles.connection,
+                ),
                 ("Endpoint", self._identity.endpoint, ThemeRole.TEXT_PRIMARY),
             )
         )
@@ -747,10 +796,20 @@ class ScannerTuiApp(App[None]):
             self._panel(
                 (
                     "Availability",
-                    _state_label(presentation.availability.value),
+                    self._transition_display(
+                        "availability",
+                        _state_label(presentation.availability.value),
+                    ),
                     roles.availability,
                 ),
-                ("Severity", _state_label(presentation.severity.value), roles.severity),
+                (
+                    "Severity",
+                    self._transition_display(
+                        "severity",
+                        _state_label(presentation.severity.value),
+                    ),
+                    roles.severity,
+                ),
                 ("Stream", stream_mode, ThemeRole.TEXT_PRIMARY),
                 (
                     "Volume",
@@ -794,6 +853,13 @@ class ScannerTuiApp(App[None]):
                 recording_role,
             ),
         )
+
+    def _transition_display(self, key: str, value: str) -> str:
+        if self._transition_values.get(key) != value:
+            self._transition_values[key] = value
+            self._transition_since[key] = self._now()
+        since = self._transition_since[key]
+        return f"{value} since {since:%H:%M:%S}"
 
     def _panel(self, *rows: tuple[str, str, ThemeRole]) -> Text:
         output = Text()

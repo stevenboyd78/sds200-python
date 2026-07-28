@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 
 from rich.text import Text
 from textual.widgets import Static
@@ -73,6 +74,16 @@ def test_tui_bindings_include_clean_quit() -> None:
     bindings = {(binding.key, binding.action) for binding in ScannerTuiApp.BINDINGS}
     assert ("q", "quit") in bindings
     assert ("t", "toggle_theme") in bindings
+    assert ("c", "reconnect") in bindings
+    assert ("ctrl+p", "command_palette") in bindings
+    palette_binding = next(
+        binding
+        for binding in ScannerTuiApp.BINDINGS
+        if binding.action == "command_palette"
+    )
+    assert palette_binding.description == "Command Palette"
+    assert palette_binding.key_display == "^p"
+    assert palette_binding.show
     assert ("question_mark", "toggle_key_help") in bindings
     assert ("h", "hold_channel") in bindings
     assert ("s", "hold_system") in bindings
@@ -104,6 +115,8 @@ def test_tui_responsive_breakpoints_and_key_help() -> None:
             assert "Hold current system / department" in keys
             assert "Hold current site" in keys
             assert "Raise / lower squelch" in keys
+            assert "Reconnect scanner" in keys
+            assert "Command Palette" in keys
 
             await pilot.press("question_mark")
             await pilot.pause()
@@ -115,5 +128,37 @@ def test_tui_responsive_breakpoints_and_key_help() -> None:
             await pilot.pause()
             assert wide.screen.has_class("-wide")
             assert wide.screen.has_class("-tall")
+
+    asyncio.run(exercise())
+
+def test_tui_status_transitions_include_local_since_timestamps() -> None:
+    async def exercise() -> None:
+        now = [datetime(2026, 7, 28, 4, 18, 32)]
+        app = ScannerTuiApp(
+            ScannerIdentity(
+                endpoint="udp://192.168.0.251:50536",
+                model="SDS200",
+                firmware="Version 1.26.01",
+            ),
+            ScannerInfoParser().parse("GSI", XML),
+            palette=DEFAULT_DARK_THEME,
+            now=lambda: now[0],
+        )
+
+        async with app.run_test(size=(80, 32)) as pilot:
+            connection = _plain(app.query_one("#connection", Static))
+            status = _plain(app.query_one("#status", Static))
+            assert "CONNECTED since 04:18:32" in connection
+            assert "AVAILABLE since 04:18:32" in status
+            assert "NORMAL since 04:18:32" in status
+
+            now[0] = datetime(2026, 7, 28, 4, 20, 5)
+            app._apply_connection(False)
+            await pilot.pause()
+            connection = _plain(app.query_one("#connection", Static))
+            status = _plain(app.query_one("#status", Static))
+            assert "DISCONNECTED since 04:20:05" in connection
+            assert "UNAVAILABLE since 04:20:05" in status
+            assert "ERROR since 04:20:05" in status
 
     asyncio.run(exercise())

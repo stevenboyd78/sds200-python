@@ -36,13 +36,13 @@ sdsctl --host 192.168.0.251 tui --interval 250 --stale-after 2
 
 The interface shows:
 
-- connection endpoint and connected, degraded, or disconnected status
+- connection endpoint and connected, degraded, or disconnected status with the local transition time
 - scanner model and firmware
 - system, department, and site
 - channel, frequency, modulation, and service type
 - semantic activity, signal, hold, mute, and recording state
 - live PSI, reconnect, diagnostic, and stale-data status
-- availability and severity derived from the shared presentation model
+- availability and severity derived from the shared presentation model, each with the local transition time
 
 Radio callbacks originate on control-transport threads. The adapter marshals every
 widget update into Textual's event loop, unsubscribes callbacks on shutdown, and
@@ -57,6 +57,8 @@ Keyboard shortcuts:
 
 - `Q`: exit, stop PSI, unsubscribe callbacks, and close the connection
 - `T`: toggle between the built-in dark and light semantic palettes
+- `C`: restart the control transport and resume the active PSI interval
+- `Ctrl+P`: open Textual's Command Palette
 - `?`: show or hide the complete keyboard reference
 - `H`: hold the current indexed channel
 - `S`: hold the current indexed system
@@ -72,7 +74,10 @@ round trip does not block the Textual event loop. Hold controls use the document
 system, department, site, TGID, or conventional-frequency indexes from live GSI/PSI
 state. Channel next/previous controls require a documented `TGID` or conventional
 frequency index. The status panel reports queued, completed, unavailable, and
-failed controls without relying on color alone.
+failed controls without relying on color alone. The connection, availability, and
+severity labels include `since HH:MM:SS` using local time; the timestamp changes only
+when the displayed state changes. Repeated unchanged PSI frames still refresh data
+freshness, preventing an active but stable channel from aging into a false stale state.
 
 The deterministic `sds100-tui-controls.jsonl` replay is a strict, one-shot command
 script rather than a scanner simulator. For a manual control pass, start a fresh TUI
