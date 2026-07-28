@@ -6,6 +6,37 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-07-28
+
+### Added
+
+- Reusable `AudioRecordingSession` service with immutable lifecycle and reliability
+  snapshots for renderer-independent integrations
+- Opt-in SDS200 network-audio recording in the Textual TUI with `R` start/stop
+  controls and automatic WAV finalization during shutdown
+- Dedicated TUI audio worker so RTSP startup and teardown cannot block scanner
+  controls or Textual's event loop
+- Live TUI audio panel for elapsed time, output path, packet and sample totals, audio
+  duration, and RTP reliability counters
+- Local `since HH:MM:SS` transition timestamps for connection, availability, and
+  severity states
+- Nonblocking TUI reconnect action that preserves the active PSI interval
+
+### Changed
+
+- `sdsctl audio` now delegates recording lifecycle and cleanup to the shared audio
+  session service
+- Every valid GSI/PSI frame now refreshes state observers while field-change events
+  remain limited to actual value changes
+- Package and CLI version advanced to `0.14.0`
+
+### Fixed
+
+- Stable channels with repeated unchanged PSI frames no longer age into a false
+  stale state
+- Textual's footer now renders the command-palette binding as `^p Command Palette`
+  without duplicated wording
+
 ## [0.13.0] - 2026-07-27
 
 ### Added

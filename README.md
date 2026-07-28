@@ -31,7 +31,7 @@ and live state updates.
 - Thread-safe synchronized radio state and change events
 - Live terminal monitoring
 - Optional responsive [Textual full-screen TUI](docs/tui.md) for Raspberry Pi and
-  terminal use with non-blocking scanner controls
+  terminal use with non-blocking scanner and SDS200 audio-recording controls
 - Exponential reconnect backoff with configurable retry limits
 - Traffic tracing, replayable JSON Lines session capture, and deterministic replay
 - Bounded health history plus failover and preferred-recovery diagnostics
@@ -138,10 +138,18 @@ Launch the optional Textual interface:
 sdsctl tui
 ```
 
-Press `Q` to quit, `T` to switch semantic palettes, and `?` for the full keyboard
-reference. The v0.13 TUI provides non-blocking scanner controls and automatic
-compact, standard, and wide layouts through USB, network, profile, and replay
-selectors; see the [Textual TUI guide](docs/tui.md).
+Press `Q` to quit, `T` to switch semantic palettes, `C` to reconnect, and `?`
+for the full keyboard reference. The v0.14 TUI provides non-blocking scanner
+controls and automatic compact, standard, and wide layouts through USB, network,
+profile, and replay selectors; see the [Textual TUI guide](docs/tui.md).
+
+With an explicit SDS200 network host, opt in to WAV recording and use `R` to start
+or stop the one-shot recording session:
+
+```bash
+sdsctl --host 192.168.0.251 tui \
+  --audio-output scanner-audio.wav
+```
 
 Use an explicit port when automatic discovery is not appropriate:
 
@@ -183,7 +191,8 @@ sdsctl --host 192.168.0.251 audio \
 
 The scanner requires a nonstandard single RTP client port during RTSP `SETUP`.
 The built-in transport handles that negotiation, receives payload type 0 PCMU,
-decodes it natively, and finalizes the WAV header during orderly shutdown.
+decodes it natively, and finalizes the WAV header during orderly shutdown. The
+same transport and recording session power the opt-in TUI audio controls.
 
 Each recording summary reports estimated packet loss, duplicates, late and
 malformed packets, and RTP timestamp discontinuities. A five-minute SDS200

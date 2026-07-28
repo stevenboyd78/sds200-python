@@ -71,17 +71,23 @@ sdsctl --host SCANNER_IP monitor
 sdsctl discover --network SCANNER_SUBNET --network-only
 ```
 
-For a v0.13 or later release, run the Textual interface on the intended Raspberry
-Pi or workstation terminal:
+For a v0.14 or later release, run the Textual interface on the intended Raspberry
+Pi or workstation terminal, including an opt-in audio destination:
 
 ```bash
-sdsctl --host SCANNER_IP tui
+rm -f /tmp/sds200-tui-release.wav
+sdsctl --host SCANNER_IP tui \
+  --audio-output /tmp/sds200-tui-release.wav
 ```
 
 Verify the compact 64 by 20 and standard 80 by 24 layouts, press `?` to open and
-close keyboard help, switch themes with `T`, and smoke-test hold, navigation,
-volume, and squelch controls. Confirm `Q` exits without leaving PSI or control
-threads running.
+close keyboard help, switch themes with `T`, reconnect with `C`, and smoke-test
+hold, navigation, volume, and squelch controls. Press `R` to start and stop a
+recording, confirm live audio and RTP counters update without delaying scanner
+controls, and verify the finalized file is 8 kHz mono signed 16-bit PCM. Repeat
+while quitting with `Q` during an active recording and confirm the WAV is finalized
+without leaving PSI, control, or audio threads running. Remove the temporary file
+after validation.
 
 Record and play a native WAV file, then run the five-minute audio soak:
 
