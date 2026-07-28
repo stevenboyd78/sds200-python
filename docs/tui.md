@@ -1,8 +1,9 @@
 # Textual TUI
 
-Version 0.13 introduces an optional full-screen Textual interface for
-SDS scanners. Textual is deliberately kept out of the core installation so the
-library and existing CLI remain lightweight.
+Version 0.13 introduced the optional full-screen Textual interface for SDS
+scanners, and version 0.14 adds integrated SDS200 network-audio recording. Textual
+is deliberately kept out of the core installation so the library and existing CLI
+remain lightweight.
 
 Install the optional interface from PyPI:
 
