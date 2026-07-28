@@ -6,6 +6,7 @@ This checklist prepares a GitHub prerelease. Set `VERSION` to the intended packa
 
 - Confirm the default branch is clean and current.
 - Confirm `pyproject.toml` and `sds200.__version__` both contain the intended release version.
+- Confirm `sdsctl -V` and `sdsctl --version` report that same version.
 - Update `CHANGELOG.md`.
 - Verify README examples against the current CLI.
 - Confirm no traces, scanner identifiers, private IP details, or credentials
@@ -69,6 +70,18 @@ sdsctl --host SCANNER_IP scanner-info
 sdsctl --host SCANNER_IP monitor
 sdsctl discover --network SCANNER_SUBNET --network-only
 ```
+
+For a v0.13 or later release, run the Textual interface on the intended Raspberry
+Pi or workstation terminal:
+
+```bash
+sdsctl --host SCANNER_IP tui
+```
+
+Verify the compact 64 by 20 and standard 80 by 24 layouts, press `?` to open and
+close keyboard help, switch themes with `T`, and smoke-test hold, navigation,
+volume, and squelch controls. Confirm `Q` exits without leaving PSI or control
+threads running.
 
 Record and play a native WAV file, then run the five-minute audio soak:
 
@@ -154,6 +167,7 @@ source /tmp/sds200-release-check/bin/activate
 python -m pip install --upgrade pip
 python -m pip install --no-cache-dir sds200==VERSION
 sdsctl --help
+sdsctl --version
 python -c "import sds200; print(sds200.__version__)"
 deactivate
 rm -rf /tmp/sds200-release-check

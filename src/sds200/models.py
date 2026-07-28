@@ -136,12 +136,24 @@ class ScannerInfo:
         return self._integer(self._attribute(("System",), "Index"))
 
     @property
+    def system_hold(self) -> str | None:
+        return self._attribute(("System",), "Hold")
+
+    @property
     def department_index(self) -> int | None:
         return self._integer(self._attribute(("Department",), "Index"))
 
     @property
+    def department_hold(self) -> str | None:
+        return self._attribute(("Department",), "Hold")
+
+    @property
     def site_index(self) -> int | None:
         return self._integer(self._attribute(("Site",), "Index"))
+
+    @property
+    def site_hold(self) -> str | None:
+        return self._attribute(("Site",), "Hold")
 
     @property
     def channel(self) -> str | None:
@@ -177,6 +189,13 @@ class ScannerInfo:
         if kind is None:
             return None
         return self._integer(self._attribute((kind,), "Index"))
+
+    @property
+    def channel_hold(self) -> str | None:
+        kind = self.channel_kind
+        if kind is None:
+            return None
+        return self._attribute((kind,), "Hold")
 
     @property
     def frequency(self) -> str | None:

@@ -3,10 +3,11 @@ from sds200.xml_protocol import ScannerInfoParser
 
 XML = """<?xml version="1.0" encoding="utf-8"?>
 <ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
-<System Name="Utah Communications Authority (P25)" Index="100" />
-<Department Name="Harris Dynamic Patch - Northern Utah" Index="200" />
-<Site Name="Utah County Simulcast" Index="300" Mod="NFM" />
-<TGID Name="Patch 65132" Index="400" TGID="TGID:65132" SvcType="Interop" U_Id="UID:9190014" />
+<System Name="Utah Communications Authority (P25)" Index="100" Hold="On" />
+<Department Name="Harris Dynamic Patch - Northern Utah" Index="200" Hold="Off" />
+<Site Name="Utah County Simulcast" Index="300" Hold="Off" Mod="NFM" />
+<TGID Name="Patch 65132" Index="400" Hold="On" TGID="TGID:65132"
+  SvcType="Interop" U_Id="UID:9190014" />
 <SiteFrequency Freq=" 769.431250MHz" />
 <Property VOL="10" SQL="2" Sig="5" Rssi="-42" P25Status="P25" Mute="Unmute" Rec="Off" />
 </ScannerInfo>"""
@@ -21,6 +22,10 @@ def test_scanner_info_converts_to_shared_snapshot() -> None:
     assert snapshot.site_index == 300
     assert snapshot.channel_index == 400
     assert snapshot.channel_kind == "TGID"
+    assert snapshot.system_hold == "On"
+    assert snapshot.department_hold == "Off"
+    assert snapshot.site_hold == "Off"
+    assert snapshot.channel_hold == "On"
     assert snapshot.frequency == "769.431250MHz"
     assert snapshot.signal == 5
     assert snapshot.recording == "Off"

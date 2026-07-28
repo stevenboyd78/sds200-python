@@ -34,8 +34,8 @@ def _app() -> ScannerTuiApp:
 
 def _plain(widget: Static) -> str:
     content = widget.content
-    assert isinstance(content, Text)
-    return content.plain
+    assert isinstance(content, (str, Text))
+    return content if isinstance(content, str) else content.plain
 
 
 def test_tui_shell_renders_identity_and_semantic_snapshot() -> None:
@@ -73,10 +73,47 @@ def test_tui_bindings_include_clean_quit() -> None:
     bindings = {(binding.key, binding.action) for binding in ScannerTuiApp.BINDINGS}
     assert ("q", "quit") in bindings
     assert ("t", "toggle_theme") in bindings
+    assert ("question_mark", "toggle_key_help") in bindings
     assert ("h", "hold_channel") in bindings
+    assert ("s", "hold_system") in bindings
+    assert ("d", "hold_department") in bindings
+    assert ("i", "hold_site") in bindings
     assert ("n", "next_channel") in bindings
     assert ("p", "previous_channel") in bindings
     assert ("plus", "volume_up") in bindings
     assert ("minus", "volume_down") in bindings
     assert ("right_square_bracket", "squelch_up") in bindings
     assert ("left_square_bracket", "squelch_down") in bindings
+
+
+def test_tui_responsive_breakpoints_and_key_help() -> None:
+    async def exercise() -> None:
+        compact = _app()
+        async with compact.run_test(size=(64, 20)) as pilot:
+            await pilot.pause()
+            assert compact.screen.has_class("-compact")
+            assert compact.screen.has_class("-short")
+            assert not compact.key_help_visible
+
+            await pilot.press("question_mark")
+            await pilot.pause()
+            assert compact.key_help_visible
+            assert compact.screen.has_class("show-keys")
+            keys = _plain(compact.query_one("#keys", Static))
+            assert "Hold current channel" in keys
+            assert "Hold current system / department" in keys
+            assert "Hold current site" in keys
+            assert "Raise / lower squelch" in keys
+
+            await pilot.press("question_mark")
+            await pilot.pause()
+            assert not compact.key_help_visible
+            assert not compact.screen.has_class("show-keys")
+
+        wide = _app()
+        async with wide.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            assert wide.screen.has_class("-wide")
+            assert wide.screen.has_class("-tall")
+
+    asyncio.run(exercise())

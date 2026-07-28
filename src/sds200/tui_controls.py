@@ -4,12 +4,24 @@ import queue
 from collections.abc import Callable
 from dataclasses import dataclass
 from threading import Event, Thread, current_thread
+from typing import Literal
 
 from .commands import NavigationTarget
 from .state import RadioStateSnapshot
 
 ControlOperation = Callable[[], None]
 ControlSuccess = Callable[[], None]
+HoldScope = Literal["system", "department", "site", "channel"]
+
+
+@dataclass(frozen=True, slots=True)
+class HoldSelection:
+    """One documented HLD target resolved from the current PSI/GSI state."""
+
+    scope: HoldScope
+    target: NavigationTarget
+    first: int
+    second: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +90,40 @@ class ControlWorker:
                 self._completed(request, error)
             finally:
                 self._queue.task_done()
+
+
+def hold_selection(
+    snapshot: RadioStateSnapshot,
+    scope: HoldScope,
+) -> HoldSelection | None:
+    """Resolve a system, department, site, or channel hold from PSI indexes."""
+
+    if scope == "system":
+        if snapshot.system_index is None:
+            return None
+        return HoldSelection(scope, "SYS", snapshot.system_index)
+    if scope == "department":
+        if snapshot.department_index is None or snapshot.system_index is None:
+            return None
+        return HoldSelection(
+            scope,
+            "DEPT",
+            snapshot.department_index,
+            snapshot.system_index,
+        )
+    if scope == "site":
+        if snapshot.site_index is None:
+            return None
+        return HoldSelection(scope, "SITE", snapshot.site_index)
+    if snapshot.channel_index is None:
+        return None
+    if snapshot.channel_kind == "TGID":
+        target: NavigationTarget = "TGID"
+    elif snapshot.channel_kind == "ConvFrequency":
+        target = "CFREQ"
+    else:
+        return None
+    return HoldSelection(scope, target, snapshot.channel_index)
 
 
 def channel_navigation(

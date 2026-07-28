@@ -28,10 +28,28 @@ from .theme import (
     theme_roles_for,
 )
 from .transport import TransportDiagnostic
-from .tui_controls import ControlRequest, ControlWorker, channel_navigation
+from .tui_controls import (
+    ControlRequest,
+    ControlWorker,
+    HoldScope,
+    channel_navigation,
+    hold_selection,
+)
 
 Unsubscribe = Callable[[], None]
 Clock = Callable[[], float]
+
+KEY_HELP_TEXT = """Keyboard controls
+Q        Quit
+T        Toggle dark/light theme
+H        Hold current channel
+S / D    Hold current system / department
+I        Hold current site
+N / P    Next / previous channel
++ / -    Raise / lower volume
+] / [    Raise / lower squelch
+?        Show or hide this help
+"""
 
 
 class ScannerTuiRadio(Protocol):
@@ -139,26 +157,85 @@ class ScannerTuiApp(App[None]):
     #status {
         min-height: 9;
     }
+
+    #keys {
+        display: none;
+        min-height: 9;
+    }
+
+    Screen.show-keys #keys {
+        display: block;
+    }
+
+    Screen.-compact #body {
+        padding: 0;
+    }
+
+    Screen.-compact .panel {
+        min-height: 1;
+        margin-bottom: 0;
+        padding: 0 1;
+        border: none;
+    }
+
+    Screen.-compact #status {
+        min-height: 7;
+    }
+
+    Screen.-short #identity {
+        display: none;
+    }
+
+    Screen.-wide #body {
+        layout: grid;
+        grid-size: 2;
+        grid-columns: 1fr 1fr;
+        grid-gutter: 0 1;
+    }
+
+    Screen.-wide #keys {
+        column-span: 2;
+    }
     """
+    HORIZONTAL_BREAKPOINTS: list[tuple[int, str]] | None = [
+        (0, "-compact"),
+        (80, "-standard"),
+        (120, "-wide"),
+    ]
+    VERTICAL_BREAKPOINTS: list[tuple[int, str]] | None = [
+        (0, "-short"),
+        (32, "-tall"),
+    ]
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("q", "quit", "Quit"),
         Binding("t", "toggle_theme", "Theme"),
-        Binding("h", "hold_channel", "Hold"),
-        Binding("n", "next_channel", "Next"),
-        Binding("p", "previous_channel", "Previous"),
-        Binding("plus", "volume_up", "Vol +", key_display="+"),
-        Binding("minus", "volume_down", "Vol -", key_display="-"),
+        Binding(
+            "question_mark",
+            "toggle_key_help",
+            "Keys",
+            key_display="?",
+        ),
+        Binding("h", "hold_channel", "Hold channel", show=False),
+        Binding("s", "hold_system", "Hold system", show=False),
+        Binding("d", "hold_department", "Hold department", show=False),
+        Binding("i", "hold_site", "Hold site", show=False),
+        Binding("n", "next_channel", "Next", show=False),
+        Binding("p", "previous_channel", "Previous", show=False),
+        Binding("plus", "volume_up", "Vol +", key_display="+", show=False),
+        Binding("minus", "volume_down", "Vol -", key_display="-", show=False),
         Binding(
             "right_square_bracket",
             "squelch_up",
             "SQL +",
             key_display="]",
+            show=False,
         ),
         Binding(
             "left_square_bracket",
             "squelch_down",
             "SQL -",
             key_display="[",
+            show=False,
         ),
     ]
 
@@ -195,12 +272,13 @@ class ScannerTuiApp(App[None]):
         self._stream_mode = "INITIAL SNAPSHOT"
         self._status_message = "Initial scanner information loaded"
         self._control_message = "Ready"
+        self._key_help_visible = False
         self._unsubscribers: list[Unsubscribe] = []
         self._psi_stop = Event()
         self._psi_thread: Thread | None = None
         self._control_worker = ControlWorker(self._on_control_completed)
         self.title = f"{identity.model} Scanner"
-        self.sub_title = identity.endpoint
+        self.sub_title = f"{identity.endpoint} | {identity.firmware}"
 
     @property
     def palette(self) -> ThemePalette:
@@ -226,9 +304,16 @@ class ScannerTuiApp(App[None]):
 
         return self._control_worker.alive
 
+    @property
+    def key_help_visible(self) -> bool:
+        """Return whether the in-app keyboard reference is visible."""
+
+        return self._key_help_visible
+
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         with VerticalScroll(id="body"):
+            yield Static(KEY_HELP_TEXT, id="keys", classes="panel", markup=False)
             yield Static(id="connection", classes="panel", markup=False)
             yield Static(id="identity", classes="panel", markup=False)
             yield Static(id="system", classes="panel", markup=False)
@@ -259,17 +344,37 @@ class ScannerTuiApp(App[None]):
         )
         self._refresh_view()
 
+    def action_toggle_key_help(self) -> None:
+        """Show or hide the full keyboard reference."""
+
+        self._key_help_visible = not self._key_help_visible
+        if self._key_help_visible:
+            self.screen.add_class("show-keys")
+            self._control_message = "Keyboard help shown"
+        else:
+            self.screen.remove_class("show-keys")
+            self._control_message = "Keyboard help hidden"
+        self._refresh_view()
+
     def action_hold_channel(self) -> None:
         """Hold the indexed channel reported by the current PSI snapshot."""
 
-        radio = self._radio
-        if radio is None:
-            self._control_unavailable("No live scanner connection")
-            return
-        self._queue_navigation(
-            "Hold channel",
-            lambda target, index: radio.hold(target, index),
-        )
+        self._queue_hold("channel")
+
+    def action_hold_system(self) -> None:
+        """Hold the indexed system reported by the current PSI snapshot."""
+
+        self._queue_hold("system")
+
+    def action_hold_department(self) -> None:
+        """Hold the indexed department reported by the current PSI snapshot."""
+
+        self._queue_hold("department")
+
+    def action_hold_site(self) -> None:
+        """Hold the indexed site reported by the current PSI snapshot."""
+
+        self._queue_hold("site")
 
     def action_next_channel(self) -> None:
         """Move to the next indexed channel without blocking the UI thread."""
@@ -306,6 +411,33 @@ class ScannerTuiApp(App[None]):
 
     def action_squelch_down(self) -> None:
         self._queue_squelch(-1)
+
+    def _queue_hold(self, scope: HoldScope) -> None:
+        radio = self._radio
+        if radio is None:
+            self._control_unavailable("No live scanner connection")
+            return
+        if not self._capabilities.navigation_control:
+            self._control_unavailable("Navigation is not supported by this scanner")
+            return
+        selection = hold_selection(self._snapshot, scope)
+        if selection is None:
+            self._control_unavailable(
+                f"Current PSI state does not provide a {scope} hold index"
+            )
+            return
+        label = f"Hold {scope}"
+        self._submit_control(
+            ControlRequest(
+                label,
+                lambda: radio.hold(
+                    selection.target,
+                    selection.first,
+                    selection.second,
+                ),
+                lambda: self._set_hold_scope(scope),
+            )
+        )
 
     def _queue_navigation(
         self,
@@ -387,7 +519,11 @@ class ScannerTuiApp(App[None]):
     def check_stale(self) -> None:
         """Update freshness after comparing the last PSI update with the threshold."""
 
-        if self._radio is None or self._connected is not True:
+        if (
+            self._radio is None
+            or self._connected is not True
+            or self._identity.endpoint.startswith("replay://")
+        ):
             return
         age = max(0.0, self._clock() - self._last_state_at)
         stale = age >= self._stale_after
@@ -512,6 +648,25 @@ class ScannerTuiApp(App[None]):
     def _set_snapshot_squelch(self, value: int) -> None:
         self._snapshot = replace(self._snapshot, squelch=value)
 
+    def _set_hold_scope(self, scope: HoldScope) -> None:
+        mode = self._snapshot.mode
+        if mode is not None and "hold" not in mode.casefold():
+            mode = f"{mode} Hold"
+        if scope == "system":
+            self._snapshot = replace(
+                self._snapshot, mode=mode, system_hold="On"
+            )
+        elif scope == "department":
+            self._snapshot = replace(
+                self._snapshot, mode=mode, department_hold="On"
+            )
+        elif scope == "site":
+            self._snapshot = replace(self._snapshot, mode=mode, site_hold="On")
+        else:
+            self._snapshot = replace(
+                self._snapshot, mode=mode, channel_hold="On"
+            )
+
     def _apply_scanner_info(self, info: ScannerInfo) -> None:
         self._apply_radio_state(snapshot_from_scanner_info(info))
 
@@ -631,7 +786,7 @@ class ScannerTuiApp(App[None]):
         return self._panel(
             ("Activity", _state_label(presentation.activity.value), roles.activity),
             ("Signal", signal, roles.signal),
-            ("Hold", _state_label(presentation.hold.value), roles.hold),
+            ("Hold", _hold_display(self._snapshot, presentation), roles.hold),
             ("Mute", _boolean_state(presentation.muted, "MUTED", "UNMUTED"), muted_role),
             (
                 "Recording",
@@ -698,6 +853,25 @@ def _level_display(value: int | None, maximum: int) -> str:
 
 def _state_label(value: str) -> str:
     return value.replace("_", " ").upper()
+
+
+def _hold_display(
+    snapshot: RadioStateSnapshot,
+    presentation: ScannerPresentation,
+) -> str:
+    scopes = tuple(
+        label
+        for label, value in (
+            ("SYSTEM", snapshot.system_hold),
+            ("DEPARTMENT", snapshot.department_hold),
+            ("SITE", snapshot.site_hold),
+            ("CHANNEL", snapshot.channel_hold),
+        )
+        if value is not None and value.strip().casefold() == "on"
+    )
+    if scopes:
+        return " + ".join(scopes)
+    return _state_label(presentation.hold.value)
 
 
 def _boolean_state(value: bool | None, true_text: str, false_text: str) -> str:

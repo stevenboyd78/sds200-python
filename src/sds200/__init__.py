@@ -274,4 +274,4 @@ __all__ = [
     "write_capture",
 ]
 
-__version__ = "0.12.0"
+__version__ = "0.13.0"

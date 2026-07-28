@@ -30,7 +30,8 @@ and live state updates.
 - Structured `GSI` and continuous `PSI` scanner information
 - Thread-safe synchronized radio state and change events
 - Live terminal monitoring
-- Optional [Textual full-screen TUI](docs/tui.md) for Raspberry Pi and terminal use
+- Optional responsive [Textual full-screen TUI](docs/tui.md) for Raspberry Pi and
+  terminal use with non-blocking scanner controls
 - Exponential reconnect backoff with configurable retry limits
 - Traffic tracing, replayable JSON Lines session capture, and deterministic replay
 - Bounded health history plus failover and preferred-recovery diagnostics
@@ -137,8 +138,9 @@ Launch the optional Textual interface:
 sdsctl tui
 ```
 
-Press `Q` to quit and `T` to switch between the dark and light semantic palettes.
-The initial v0.13 shell is also available through network, profile, and replay
+Press `Q` to quit, `T` to switch semantic palettes, and `?` for the full keyboard
+reference. The v0.13 TUI provides non-blocking scanner controls and automatic
+compact, standard, and wide layouts through USB, network, profile, and replay
 selectors; see the [Textual TUI guide](docs/tui.md).
 
 Use an explicit port when automatic discovery is not appropriate:
@@ -443,7 +445,9 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting and
 - [LAN discovery and profiles](docs/discovery-and-profiles.md)
 - [Fallback profiles](docs/fallback-profiles.md)
 - [Reliability and observability](docs/reliability.md)
+- [Textual TUI](docs/tui.md)
 - [Audio subsystem architecture](docs/audio.md)
+- [Acknowledgments](ACKNOWLEDGMENTS.md)
 - [Contributing](CONTRIBUTING.md)
 - [Support](SUPPORT.md)
 - [Changelog](CHANGELOG.md)
@@ -467,13 +471,20 @@ documented separately in pull requests and release notes.
 
 ## Project status
 
-Version `0.11.0` adds hardware-validated SDS200 RTSP/RTP network audio, native
-PCM WAV recording, and RTP reliability telemetry while preserving the existing
-USB, Ethernet-control, fallback, monitoring, profile, capture, and replay paths.
-SDS100 USB support is hardware-validated; SDS150 hardware validation is still in
-progress. API compatibility is not guaranteed until version 1.0.
+Version `0.13.0` adds the optional Textual workstation interface with continuous
+PSI state, reconnect and stale-data presentation, serialized hold/navigation,
+volume and squelch controls, responsive Raspberry Pi layouts, and deterministic
+headless and replay tests. SDS100 and SDS200 control support is hardware-validated;
+SDS150 hardware validation remains in progress. API compatibility is not guaranteed
+until version 1.0.
 
 See [CHANGELOG.md](CHANGELOG.md) for development history and planned changes.
+
+## Acknowledgments
+
+This project is created and maintained by Steven Boyd, with substantial development
+assistance from OpenAI's ChatGPT. AI-assisted contributions are reviewed and tested
+by the maintainer before inclusion. See [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md).
 
 ## License
 

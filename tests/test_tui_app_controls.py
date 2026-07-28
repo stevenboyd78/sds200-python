@@ -17,10 +17,10 @@ from sds200.xml_protocol import ScannerInfoParser
 
 XML = """<?xml version="1.0" encoding="utf-8"?>
 <ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
-<System Name="Example P25 System" Index="100" />
-<Department Name="Example Department" Index="200" />
-<Site Name="Example Simulcast" Index="300" Mod="NFM" />
-<TGID Name="Example Dispatch" Index="400" TGID="TGID:65132" SvcType="Interop" />
+<System Name="Example P25 System" Index="100" Hold="Off" />
+<Department Name="Example Department" Index="200" Hold="Off" />
+<Site Name="Example Simulcast" Index="300" Hold="Off" Mod="NFM" />
+<TGID Name="Example Dispatch" Index="400" Hold="Off" TGID="TGID:65132" SvcType="Interop" />
 <SiteFrequency Freq="769.431250MHz" />
 <Property VOL="10" SQL="2" Sig="5" Rssi="-86" Rec="Off" Mute="Unmute" />
 </ScannerInfo>"""
@@ -46,10 +46,10 @@ class FakeControlRadio:
         *,
         timeout: float = 2.0,
     ) -> None:
-        del second, timeout
+        del timeout
         if self.fail_hold:
             raise RuntimeError("hold rejected")
-        self.calls.append(("hold", target, first))
+        self.calls.append(("hold", target, first, second))
 
     def next(
         self,
@@ -164,12 +164,24 @@ def test_tui_controls_execute_in_order_and_update_status() -> None:
 
         async with app.run_test(size=(80, 38)) as pilot:
             assert await asyncio.to_thread(radio.started.wait, 1.0)
-            await pilot.press("h", "n", "p", "plus", "right_square_bracket")
-            await _wait_for_calls(radio, 5)
+            await pilot.press(
+                "h",
+                "s",
+                "d",
+                "i",
+                "n",
+                "p",
+                "plus",
+                "right_square_bracket",
+            )
+            await _wait_for_calls(radio, 8)
             await pilot.pause()
 
             assert radio.calls == [
-                ("hold", "TGID", 400),
+                ("hold", "TGID", 400, None),
+                ("hold", "SYS", 100, None),
+                ("hold", "DEPT", 200, 100),
+                ("hold", "SITE", 300, None),
                 ("next", "TGID", 400, 1),
                 ("previous", "TGID", 400, 1),
                 ("volume", 11),
@@ -179,8 +191,36 @@ def test_tui_controls_execute_in_order_and_update_status() -> None:
             assert "Volume: 11/29" in status
             assert "Squelch: 3/19" in status
             assert "Completed: Squelch 3" in status
+            state = _plain(app.query_one("#state", Static))
+            assert "Hold: SYSTEM + DEPARTMENT + SITE + CHANNEL" in state
 
         assert not app.control_thread_alive
+
+    asyncio.run(exercise())
+
+
+def test_tui_replay_session_does_not_age_into_stale_state() -> None:
+    async def exercise() -> None:
+        now = [0.0]
+        radio = FakeControlRadio(ScannerInfoParser().parse("GSI", XML))
+        app = ScannerTuiApp(
+            ScannerIdentity(
+                endpoint="replay:///tmp/sds100-tui-controls.jsonl",
+                model="SDS100",
+                firmware="Version 1.26.01",
+            ),
+            radio.initial,
+            radio=radio,
+            interval_ms=250,
+            stale_after=1.0,
+            clock=lambda: now[0],
+        )
+
+        async with app.run_test(size=(80, 38)):
+            assert await asyncio.to_thread(radio.started.wait, 1.0)
+            now[0] = 5.0
+            app.check_stale()
+            assert not app.stale
 
     asyncio.run(exercise())
 
