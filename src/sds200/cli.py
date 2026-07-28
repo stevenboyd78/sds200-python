@@ -8,12 +8,13 @@ import sys
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
-from time import monotonic, sleep
+from time import sleep
 from typing import Protocol, cast
 
 from . import __version__
 from .audio import AudioStream
 from .audio_recording import PcmuWavRecorder
+from .audio_session import AudioRecordingSession
 from .commands import NAVIGATION_TARGETS
 from .completion import (
     SUPPORTED_SHELLS,
@@ -1226,32 +1227,26 @@ def _run_audio(args: argparse.Namespace) -> int:
     )
     stream = AudioStream(transport)
     recorder = PcmuWavRecorder(output, overwrite=args.force)
-    unsubscribe = stream.on_chunk(recorder.write_chunk)
-    started_at = monotonic()
+    session = AudioRecordingSession(stream, recorder)
 
     try:
-        with recorder:
-            try:
-                stream.start()
-                started_at = monotonic()
-                if args.duration is None:
-                    while True:
-                        sleep(3600)
-                else:
-                    sleep(args.duration)
-            except KeyboardInterrupt:
-                pass
-            finally:
-                stream.stop()
+        session.start()
+        if args.duration is None:
+            while True:
+                sleep(3600)
+        else:
+            sleep(args.duration)
+    except KeyboardInterrupt:
+        pass
     finally:
-        unsubscribe()
+        session.stop()
 
-    elapsed = monotonic() - started_at
-    print(f"Recorded {elapsed:.1f} seconds")
-    print(f"Packets: {recorder.packets}")
-    print(f"Audio samples: {recorder.samples}")
-    statistics = transport.statistics
-    print(f"Audio duration: {recorder.duration_seconds:.1f} seconds")
+    snapshot = session.snapshot()
+    print(f"Recorded {snapshot.elapsed_seconds:.1f} seconds")
+    print(f"Packets: {snapshot.packets}")
+    print(f"Audio samples: {snapshot.samples}")
+    statistics = snapshot.reliability
+    print(f"Audio duration: {snapshot.audio_duration_seconds:.1f} seconds")
     print(f"RTP lost: {statistics.packets_lost}")
     print(f"RTP duplicates: {statistics.duplicate_packets}")
     print(f"RTP late: {statistics.late_packets}")

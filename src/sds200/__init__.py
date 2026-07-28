@@ -7,6 +7,12 @@ from .audio_recording import (
     decode_mulaw,
     decode_mulaw_sample,
 )
+from .audio_session import (
+    AudioRecordingSession,
+    AudioReliabilitySnapshot,
+    AudioSessionSnapshot,
+    AudioSessionStatus,
+)
 from .commands import (
     NAVIGATION_TARGETS,
     GetChargeStatus,
@@ -148,6 +154,10 @@ from .transport import (
 __all__ = [
     "ActivityStatus",
     "AudioChunk",
+    "AudioRecordingSession",
+    "AudioReliabilitySnapshot",
+    "AudioSessionSnapshot",
+    "AudioSessionStatus",
     "AudioStream",
     "AudioTransport",
     "AvailabilityStatus",
