@@ -217,6 +217,28 @@ class FakeAudioTransport:
         self._handler(chunk)
 
 
+class BlockingStartAudioTransport(FakeAudioTransport):
+    """Hold audio startup until a fault-injection test releases it."""
+
+    def __init__(self, endpoint: str = "audio://scanner") -> None:
+        super().__init__(endpoint)
+        self.start_entered = threading.Event()
+        self.release_start = threading.Event()
+        self.start_calls = 0
+        self.stop_calls = 0
+
+    def start(self, handler: AudioChunkHandler) -> None:
+        self.start_calls += 1
+        self.start_entered.set()
+        if not self.release_start.wait(5.0):
+            raise TimeoutError("Blocked audio startup was not released")
+        super().start(handler)
+
+    def stop(self) -> None:
+        self.stop_calls += 1
+        super().stop()
+
+
 class ModelProbeTransport(FakeTransport):
     def __init__(
         self,

@@ -6,10 +6,21 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+### Added
+
+- Deterministic fault-injection coverage for concurrent audio start/stop,
+  repeated TUI recording requests, shutdown during audio startup, and scanner
+  reconnects while recording.
+
 ### Changed
 
 - Updated the README project status to describe the v0.14.0 TUI audio,
   reliability, and lifecycle improvements.
+
+### Fixed
+
+- Suppressed background TUI callback dispatch after shutdown begins so in-flight
+  audio and scanner-control workers can terminate without callback/join contention.
 
 ## [0.14.0] - 2026-07-28
 
