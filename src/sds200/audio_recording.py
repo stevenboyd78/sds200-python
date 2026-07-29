@@ -97,14 +97,21 @@ class PcmuWavRecorder:
     def write_pcmu(self, data: bytes) -> None:
         if not data:
             return
-        pcm = decode_mulaw(data)
+        self.write_pcm(decode_mulaw(data))
+
+    def write_pcm(self, data: bytes) -> None:
+        """Write little-endian signed 16-bit mono PCM frames."""
+        if not data:
+            return
+        if len(data) % PCM_SAMPLE_WIDTH:
+            raise ValueError("PCM data must contain complete 16-bit samples")
         with self._lock:
             writer = self._writer
             if writer is None:
                 raise RuntimeError("WAV recorder is not open")
-            writer.writeframesraw(pcm)
+            writer.writeframesraw(data)
             self._packets += 1
-            self._samples += len(data)
+            self._samples += len(data) // PCM_SAMPLE_WIDTH
 
     def close(self) -> None:
         with self._lock:

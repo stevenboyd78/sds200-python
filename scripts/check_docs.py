@@ -11,6 +11,7 @@ REQUIRED_FILES = (
     Path("README.md"),
     Path("ACKNOWLEDGMENTS.md"),
     Path("CHANGELOG.md"),
+    Path("ROADMAP.md"),
     Path("CONTRIBUTING.md"),
     Path("CODE_OF_CONDUCT.md"),
     Path("SECURITY.md"),
@@ -72,6 +73,8 @@ def main() -> int:
         errors.append("README does not link to transport documentation.")
     if "SECURITY.md" not in readme:
         errors.append("README does not link to the security policy.")
+    if "ROADMAP.md" not in readme:
+        errors.append("README does not link to the project roadmap.")
 
     for markdown in markdown_files():
         text = markdown.read_text(encoding="utf-8")

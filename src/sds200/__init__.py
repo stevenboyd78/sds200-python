@@ -13,6 +13,14 @@ from .audio_session import (
     AudioSessionSnapshot,
     AudioSessionStatus,
 )
+from .audio_sinks import (
+    AudioFanoutSession,
+    AudioFanoutSnapshot,
+    PcmSink,
+    PcmSinkStatistics,
+    PcmWavSink,
+    SoundDevicePlaybackSink,
+)
 from .commands import (
     NAVIGATION_TARGETS,
     GetChargeStatus,
@@ -43,6 +51,7 @@ from .discovery import (
     local_ipv4_networks,
 )
 from .exceptions import (
+    AudioOutputError,
     CaptureFormatError,
     CommandRejectedError,
     ReplayMismatchError,
@@ -154,6 +163,9 @@ from .transport import (
 __all__ = [
     "ActivityStatus",
     "AudioChunk",
+    "AudioFanoutSession",
+    "AudioFanoutSnapshot",
+    "AudioOutputError",
     "AudioRecordingSession",
     "AudioReliabilitySnapshot",
     "AudioSessionSnapshot",
@@ -204,6 +216,9 @@ __all__ = [
     "NextSelection",
     "PCMU_PAYLOAD_TYPE",
     "Packet",
+    "PcmSink",
+    "PcmSinkStatistics",
+    "PcmWavSink",
     "ProfileKind",
     "ProfileRepairResult",
     "PresentationSeverity",
@@ -247,6 +262,7 @@ __all__ = [
     "SetSquelch",
     "SetVolume",
     "SignalLevel",
+    "SoundDevicePlaybackSink",
     "StartScannerInfoPush",
     "StateChange",
     "StatusResponse",
