@@ -6,6 +6,8 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-07-28
+
 ### Added
 
 - Deterministic fault-injection coverage for concurrent audio start/stop,
@@ -18,8 +20,10 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Changed
 
+- Package and CLI version advanced to `0.15.0`.
 - Updated the README project status to describe the v0.14.0 TUI audio,
-  reliability, and lifecycle improvements.
+  reliability, and lifecycle improvements alongside the v0.15.0 operational
+  hardening.
 
 ### Fixed
 
@@ -27,6 +31,8 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   audio and scanner-control workers can terminate without callback/join contention.
 - Reconnect stale PSI streams automatically after a configurable sustained-stale
   interval while leaving an active SDS200 RTP audio recording uninterrupted.
+- Preserved the configured PSI interval after a reconnect timeout so later
+  automatic recovery attempts continue restarting the scanner-information stream.
 
 ## [0.14.0] - 2026-07-28
 

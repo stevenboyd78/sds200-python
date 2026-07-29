@@ -47,7 +47,7 @@ sdsctl --host 192.168.0.251 tui \
 ```
 
 Use `--no-psi-auto-recover` to retain warning-only behavior. The recovery
-recovery never begins before `--stale-after`; a smaller recovery value is
+never begins before `--stale-after`; a smaller recovery value is
 raised to the stale threshold. Operational recovery
 entries can be persisted with the options described in
 [Operational logging](logging.md).
