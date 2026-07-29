@@ -11,6 +11,10 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 - Deterministic fault-injection coverage for concurrent audio start/stop,
   repeated TUI recording requests, shutdown during audio startup, and scanner
   reconnects while recording.
+- Configurable operational logging with explicit levels, optional persistent
+  files, logrotate compatibility, and systemd/journald guidance.
+- Automatic rate-limited TUI recovery when a connected UDP control transport
+  stops delivering PSI updates.
 
 ### Changed
 
@@ -21,6 +25,8 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 - Suppressed background TUI callback dispatch after shutdown begins so in-flight
   audio and scanner-control workers can terminate without callback/join contention.
+- Reconnect stale PSI streams automatically after a configurable sustained-stale
+  interval while leaving an active SDS200 RTP audio recording uninterrupted.
 
 ## [0.14.0] - 2026-07-28
 

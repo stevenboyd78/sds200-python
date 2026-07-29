@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import threading
 from collections.abc import Callable
 from contextlib import suppress
@@ -13,6 +14,8 @@ from typing import Protocol, Self, runtime_checkable
 from .audio import AudioStream, AudioTransport
 from .audio_recording import PcmuWavRecorder
 from .events import EventBus
+
+logger = logging.getLogger(__name__)
 
 
 class AudioSessionStatus(StrEnum):
@@ -210,6 +213,11 @@ class AudioRecordingSession:
 
     def start(self) -> None:
         with self._lifecycle_lock:
+            logger.info(
+                "audio recording starting endpoint=%s output=%s",
+                self.stream.endpoint,
+                self.recorder.path,
+            )
             with self._state_lock:
                 if self._status is not AudioSessionStatus.IDLE:
                     raise RuntimeError("Audio recording sessions can only be started once.")
@@ -235,6 +243,11 @@ class AudioRecordingSession:
                     self._stopped_at = self._now()
                     self._error = _error_message(error)
                 self._emit_state()
+                logger.exception(
+                    "audio recording start failed endpoint=%s output=%s",
+                    self.stream.endpoint,
+                    self.recorder.path,
+                )
                 raise
 
             with self._state_lock:
@@ -245,6 +258,11 @@ class AudioRecordingSession:
                 self._elapsed_seconds = 0.0
                 self._status = AudioSessionStatus.RECORDING
             self._emit_state()
+            logger.info(
+                "audio recording started endpoint=%s output=%s",
+                self.stream.endpoint,
+                self.recorder.path,
+            )
 
     def stop(self) -> None:
         with self._lifecycle_lock:
@@ -294,6 +312,31 @@ class AudioRecordingSession:
                 )
                 self._error = _error_message(failure) if failure is not None else None
             self._emit_state()
+
+            snapshot = self.snapshot()
+            if failure is None:
+                logger.info(
+                    "audio recording stopped endpoint=%s output=%s "
+                    "duration_seconds=%.1f packets=%d samples=%d",
+                    snapshot.endpoint,
+                    snapshot.output_path,
+                    snapshot.elapsed_seconds,
+                    snapshot.packets,
+                    snapshot.samples,
+                )
+            else:
+                logger.error(
+                    "audio recording stop failed endpoint=%s output=%s error=%s",
+                    snapshot.endpoint,
+                    snapshot.output_path,
+                    snapshot.error,
+                )
+            if any(snapshot.reliability.as_dict().values()):
+                logger.warning(
+                    "audio recording reliability counters nonzero endpoint=%s counters=%s",
+                    snapshot.endpoint,
+                    snapshot.reliability.as_dict(),
+                )
 
             if failure is not None:
                 raise failure

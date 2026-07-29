@@ -31,6 +31,41 @@ def test_version_flags_report_installed_version(
     assert capsys.readouterr().out == f"sdsctl {__version__}\n"
 
 
+def test_global_logging_options_parse_before_subcommand(tmp_path: Path) -> None:
+    path = tmp_path / "sdsctl.log"
+    args = cli.build_parser().parse_args(
+        [
+            "--log-level",
+            "debug",
+            "--log-file",
+            str(path),
+            "info",
+        ]
+    )
+
+    assert args.log_level == "DEBUG"
+    assert args.log_file == path
+
+
+def test_tui_psi_recovery_options_parse() -> None:
+    args = cli.build_parser().parse_args(
+        [
+            "--host",
+            "192.168.0.251",
+            "tui",
+            "--no-psi-auto-recover",
+            "--psi-recover-after",
+            "20",
+            "--psi-recovery-cooldown",
+            "90",
+        ]
+    )
+
+    assert not args.psi_auto_recover
+    assert args.psi_recover_after == 20.0
+    assert args.psi_recovery_cooldown == 90.0
+
+
 def test_sds100_battery_cli_uses_optional_gsi_property(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

@@ -462,12 +462,22 @@ class SDSScanner:
     def reconnect(self) -> None:
         """Restart the control transport and preserve an active PSI interval."""
         interval_ms = self._psi_interval_ms
+        logger.info(
+            "scanner reconnect starting endpoint=%s psi_interval_ms=%s",
+            self.endpoint,
+            interval_ms,
+        )
         self._psi_interval_ms = None
         self.transport.stop()
         self._closed.set()
         self.connect()
         if interval_ms is not None:
             self.start_scanner_info_push(interval_ms)
+        logger.info(
+            "scanner reconnect completed endpoint=%s psi_interval_ms=%s",
+            self.endpoint,
+            interval_ms,
+        )
 
     def close(self) -> None:
         if self.psi_active and self.connected:
@@ -726,6 +736,11 @@ class SDSScanner:
         if self.psi_active:
             raise RuntimeError("PSI scanner information push is already active.")
 
+        logger.info(
+            "PSI stream starting endpoint=%s interval_ms=%d",
+            self.endpoint,
+            interval_ms,
+        )
         first_updates: queue.Queue[ScannerInfo] = queue.Queue(maxsize=1)
 
         def capture_first_update(response: object) -> None:
@@ -744,12 +759,15 @@ class SDSScanner:
                 timeout=max(0.0, deadline - monotonic()),
             )
             if initial is not None:
+                logger.info("PSI stream started endpoint=%s", self.endpoint)
                 return initial
 
             try:
-                return first_updates.get(
+                first = first_updates.get(
                     timeout=max(0.0, deadline - monotonic()),
                 )
+                logger.info("PSI stream started endpoint=%s", self.endpoint)
+                return first
             except queue.Empty as exc:
                 raise CommandTimeoutError(
                     "Timed out waiting for the first PSI scanner information update."
@@ -766,6 +784,7 @@ class SDSScanner:
     def stop_scanner_info_push(self) -> None:
         if not self.psi_active:
             return
+        logger.info("PSI stream stopping endpoint=%s", self.endpoint)
         self._psi_interval_ms = None
         if self.connected:
             self.send("PSI,0")

@@ -35,6 +35,23 @@ freshness threshold may be adjusted independently:
 sdsctl --host 192.168.0.251 tui --interval 250 --stale-after 2
 ```
 
+When a UDP transport remains logically connected but stops delivering PSI frames,
+the TUI warns at the stale threshold and automatically queues the existing
+nonblocking reconnect operation after 10 seconds. Attempts are rate-limited to
+one per 60 seconds and do not stop an active SDS200 network-audio recording:
+
+```bash
+sdsctl --host 192.168.0.251 tui \
+  --psi-recover-after 10 \
+  --psi-recovery-cooldown 60
+```
+
+Use `--no-psi-auto-recover` to retain warning-only behavior. The recovery
+recovery never begins before `--stale-after`; a smaller recovery value is
+raised to the stale threshold. Operational recovery
+entries can be persisted with the options described in
+[Operational logging](logging.md).
+
 The interface shows:
 
 - connection endpoint and connected, degraded, or disconnected status with the local transition time
@@ -43,6 +60,7 @@ The interface shows:
 - channel, frequency, modulation, and service type
 - semantic activity, signal, hold, mute, and recording state
 - live PSI, reconnect, diagnostic, and stale-data status
+- automatic PSI recovery attempt, success, and failure totals
 - availability and severity derived from the shared presentation model, each with the local transition time
 
 Radio callbacks originate on control-transport threads. The adapter marshals every
@@ -80,6 +98,7 @@ failed controls without relying on color alone. The connection, availability, an
 severity labels include `since HH:MM:SS` using local time; the timestamp changes only
 when the displayed state changes. Repeated unchanged PSI frames still refresh data
 freshness, preventing an active but stable channel from aging into a false stale state.
+Only an actual absence of valid PSI frames triggers automatic recovery.
 
 The deterministic `sds100-tui-controls.jsonl` replay is a strict, one-shot command
 script rather than a scanner simulator. For a manual control pass, start a fresh TUI
