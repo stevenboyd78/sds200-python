@@ -35,6 +35,8 @@ and live state updates.
 - Exponential reconnect backoff with configurable retry limits
 - Traffic tracing, replayable JSON Lines session capture, and deterministic replay
 - Bounded health history plus failover and preferred-recovery diagnostics
+- Configurable operational logging to stderr, journald, or a logrotate-managed file
+- Automatic rate-limited recovery from a connected-but-stale TUI PSI stream
 - JSON Lines events for connection, retry, failover, and state changes
 - Discovery-based repair for stale USB paths and scanner IP addresses
 - Hardware-validated SDS200 network audio over RTSP/RTP
@@ -141,7 +143,9 @@ sdsctl tui
 Press `Q` to quit, `T` to switch semantic palettes, `C` to reconnect, and `?`
 for the full keyboard reference. The v0.14 TUI provides non-blocking scanner
 controls and automatic compact, standard, and wide layouts through USB, network,
-profile, and replay selectors; see the [Textual TUI guide](docs/tui.md).
+profile, and replay selectors. A sustained stale PSI stream is automatically
+reconnected without stopping active network audio; see the
+[Textual TUI guide](docs/tui.md).
 
 With an explicit SDS200 network host, opt in to WAV recording and use `R` to start
 or stop the one-shot recording session:
@@ -278,6 +282,19 @@ sdsctl --profile home events --json
 sdsctl --host 192.168.0.251 --trace scanner.trace monitor
 ```
 
+
+Select an operational log level or append logs to a persistent file:
+
+```bash
+sdsctl --log-level INFO --host 192.168.0.251 monitor
+sdsctl --log-level DEBUG --log-file /var/log/sdsctl.log \
+  --host 192.168.0.251 events
+```
+
+`-v` selects `INFO`, `-vv` selects `DEBUG`, and an explicit `--log-level`
+overrides verbosity. Raw scanner traffic remains separate under `--trace`.
+See [Operational logging](docs/logging.md) for journald, permissions, and
+logrotate examples.
 
 Reconnects use capped exponential backoff. Retry forever by default, or set a
 finite recovery budget:

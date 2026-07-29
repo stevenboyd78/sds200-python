@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from contextlib import AbstractContextManager, suppress
 from dataclasses import dataclass, replace
@@ -45,6 +46,8 @@ from .tui_controls import (
 Unsubscribe = Callable[[], None]
 Clock = Callable[[], float]
 WallClock = Callable[[], datetime]
+logger = logging.getLogger(__name__)
+AUTO_PSI_RECOVERY_LABEL = "Recover stale PSI"
 
 
 def _local_now() -> datetime:
@@ -282,6 +285,9 @@ class ScannerTuiApp(App[None]):
         audio_session: AudioRecordingSession | None = None,
         interval_ms: int = 500,
         stale_after: float = 3.0,
+        psi_auto_recover: bool = True,
+        psi_recover_after: float = 10.0,
+        psi_recovery_cooldown: float = 60.0,
         connected: bool | None = True,
         palette: ThemePalette = DEFAULT_DARK_THEME,
         clock: Clock = monotonic,
@@ -291,6 +297,10 @@ class ScannerTuiApp(App[None]):
             raise ValueError("PSI interval must be greater than zero")
         if stale_after <= 0:
             raise ValueError("Stale-state threshold must be greater than zero")
+        if psi_recover_after <= 0:
+            raise ValueError("PSI recovery threshold must be greater than zero")
+        if psi_recovery_cooldown < 0:
+            raise ValueError("PSI recovery cooldown must not be negative")
 
         super().__init__()
         self._identity = identity
@@ -308,6 +318,9 @@ class ScannerTuiApp(App[None]):
         self._audio_unsubscribe: Unsubscribe | None = None
         self._interval_ms = interval_ms
         self._stale_after = stale_after
+        self._psi_auto_recover = psi_auto_recover
+        self._psi_recover_after = max(stale_after, psi_recover_after)
+        self._psi_recovery_cooldown = psi_recovery_cooldown
         self._connected = connected
         self._palette = palette
         self._clock = clock
@@ -317,6 +330,13 @@ class ScannerTuiApp(App[None]):
         self._last_state_at = clock()
         self._degraded = False
         self._stale = False
+        self._stale_since_at: float | None = None
+        self._psi_recovery_in_progress = False
+        self._psi_recovery_started_at: float | None = None
+        self._last_psi_recovery_at: float | None = None
+        self._psi_recovery_attempts = 0
+        self._psi_recovery_successes = 0
+        self._psi_recovery_failures = 0
         self._stream_mode = "INITIAL SNAPSHOT"
         self._status_message = "Initial scanner information loaded"
         self._control_message = "Ready"
@@ -435,6 +455,7 @@ class ScannerTuiApp(App[None]):
         if self._identity.endpoint.startswith("replay://"):
             self._control_unavailable("Replay sessions cannot reconnect")
             return
+        logger.info("manual scanner reconnect requested endpoint=%s", self._identity.endpoint)
         self._submit_control(
             ControlRequest("Reconnect scanner", radio.reconnect),
             requires_connection=False,
@@ -617,11 +638,31 @@ class ScannerTuiApp(App[None]):
     ) -> None:
         """Replace the displayed state from the Textual event-loop thread."""
 
+        observed_at = self._clock()
+        if self._stale_since_at is not None:
+            outage_seconds = max(0.0, observed_at - self._stale_since_at)
+            if self._psi_recovery_started_at is not None:
+                self._psi_recovery_successes += 1
+                logger.info(
+                    "PSI stream recovered endpoint=%s outage_seconds=%.1f attempt=%d",
+                    self._identity.endpoint,
+                    outage_seconds,
+                    self._psi_recovery_attempts,
+                )
+            else:
+                logger.info(
+                    "PSI stream resumed endpoint=%s outage_seconds=%.1f",
+                    self._identity.endpoint,
+                    outage_seconds,
+                )
+        self._stale_since_at = None
+        self._psi_recovery_started_at = None
+        self._psi_recovery_in_progress = False
         self._snapshot = snapshot
         self._connected = connected
         self._degraded = degraded
         self._stale = False
-        self._last_state_at = self._clock()
+        self._last_state_at = observed_at
         self._stream_mode = "LIVE PSI"
         self._status_message = "Live PSI update received"
         self._refresh_view()
@@ -635,14 +676,71 @@ class ScannerTuiApp(App[None]):
             or self._identity.endpoint.startswith("replay://")
         ):
             return
-        age = max(0.0, self._clock() - self._last_state_at)
+        now = self._clock()
+        age = max(0.0, now - self._last_state_at)
         stale = age >= self._stale_after
-        if stale == self._stale:
+        if stale != self._stale:
+            self._stale = stale
+            if stale:
+                if self._stale_since_at is None:
+                    self._stale_since_at = self._last_state_at
+                self._status_message = f"No PSI update for {age:.1f} seconds"
+                logger.warning(
+                    "PSI stream stale endpoint=%s age_seconds=%.1f",
+                    self._identity.endpoint,
+                    age,
+                )
+            self._refresh_view()
+
+        if (
+            stale
+            and self._psi_auto_recover
+            and age >= self._psi_recover_after
+        ):
+            self._request_psi_recovery(now=now, age=age)
+
+    def _request_psi_recovery(self, *, now: float, age: float) -> None:
+        radio = self._radio
+        if radio is None or self._psi_recovery_in_progress:
             return
-        self._stale = stale
-        if stale:
-            self._status_message = f"No PSI update for {age:.1f} seconds"
-        self._refresh_view()
+        if (
+            self._last_psi_recovery_at is not None
+            and now - self._last_psi_recovery_at < self._psi_recovery_cooldown
+        ):
+            return
+
+        if self._psi_recovery_started_at is not None:
+            self._psi_recovery_failures += 1
+            logger.warning(
+                "previous PSI recovery did not restore state endpoint=%s attempt=%d",
+                self._identity.endpoint,
+                self._psi_recovery_attempts,
+            )
+
+        self._psi_recovery_attempts += 1
+        self._psi_recovery_in_progress = True
+        self._psi_recovery_started_at = now
+        self._last_psi_recovery_at = now
+        logger.warning(
+            "PSI recovery requested endpoint=%s age_seconds=%.1f attempt=%d",
+            self._identity.endpoint,
+            age,
+            self._psi_recovery_attempts,
+        )
+        submitted = self._submit_control(
+            ControlRequest(AUTO_PSI_RECOVERY_LABEL, radio.reconnect),
+            requires_connection=False,
+        )
+        if submitted:
+            return
+        self._psi_recovery_in_progress = False
+        self._psi_recovery_started_at = None
+        self._psi_recovery_failures += 1
+        logger.error(
+            "PSI recovery could not be queued endpoint=%s attempt=%d",
+            self._identity.endpoint,
+            self._psi_recovery_attempts,
+        )
 
     def stop_live_updates(self) -> None:
         """Stop PSI streaming and remove every radio callback subscription."""
@@ -760,17 +858,18 @@ class ScannerTuiApp(App[None]):
         request: ControlRequest,
         *,
         requires_connection: bool = True,
-    ) -> None:
+    ) -> bool:
         if requires_connection and self._connected is not True:
             self._control_unavailable("Controls are unavailable while disconnected")
-            return
+            return False
         try:
             self._control_worker.submit(request)
         except RuntimeError as exc:
             self._control_unavailable(str(exc))
-            return
+            return False
         self._control_message = f"Queued: {request.label}"
         self._refresh_view()
+        return True
 
     def _control_unavailable(self, message: str) -> None:
         self._control_message = f"Unavailable: {message}"
@@ -788,6 +887,23 @@ class ScannerTuiApp(App[None]):
         request: ControlRequest,
         error: Exception | None,
     ) -> None:
+        if request.label == AUTO_PSI_RECOVERY_LABEL:
+            self._psi_recovery_in_progress = False
+            if error is None:
+                logger.info(
+                    "PSI reconnect completed endpoint=%s attempt=%d waiting_for_state=true",
+                    self._identity.endpoint,
+                    self._psi_recovery_attempts,
+                )
+            else:
+                self._psi_recovery_started_at = None
+                self._psi_recovery_failures += 1
+                logger.error(
+                    "PSI recovery failed endpoint=%s attempt=%d error=%s",
+                    self._identity.endpoint,
+                    self._psi_recovery_attempts,
+                    error,
+                )
         if error is not None:
             self._control_message = f"Failed: {request.label}: {error}"
         else:
@@ -968,6 +1084,15 @@ class ScannerTuiApp(App[None]):
                 ),
                 ("Stream", stream_mode, ThemeRole.TEXT_PRIMARY),
                 (
+                    "PSI recovery A/S/F",
+                    (
+                        f"{self._psi_recovery_attempts} / "
+                        f"{self._psi_recovery_successes} / "
+                        f"{self._psi_recovery_failures}"
+                    ),
+                    ThemeRole.TEXT_PRIMARY,
+                ),
+                (
                     "Volume",
                     _level_display(
                         self._snapshot.volume,
@@ -1106,6 +1231,9 @@ def run_tui(
     audio_session: AudioRecordingSession | None = None,
     interval_ms: int,
     stale_after: float,
+    psi_auto_recover: bool = True,
+    psi_recover_after: float = 10.0,
+    psi_recovery_cooldown: float = 60.0,
     connected: bool | None,
     palette: ThemePalette,
 ) -> None:
@@ -1118,6 +1246,9 @@ def run_tui(
         audio_session=audio_session,
         interval_ms=interval_ms,
         stale_after=stale_after,
+        psi_auto_recover=psi_auto_recover,
+        psi_recover_after=psi_recover_after,
+        psi_recovery_cooldown=psi_recovery_cooldown,
         connected=connected,
         palette=palette,
     )

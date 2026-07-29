@@ -133,6 +133,9 @@ def _app(
     stale_after: float = 3.0,
     clock: Callable[[], float] | None = None,
     audio_session: AudioRecordingSession | None = None,
+    psi_auto_recover: bool = True,
+    psi_recover_after: float = 10.0,
+    psi_recovery_cooldown: float = 60.0,
 ) -> ScannerTuiApp:
     kwargs: dict[str, object] = {}
     if clock is not None:
@@ -148,6 +151,9 @@ def _app(
         audio_session=audio_session,
         interval_ms=250,
         stale_after=stale_after,
+        psi_auto_recover=psi_auto_recover,
+        psi_recover_after=psi_recover_after,
+        psi_recovery_cooldown=psi_recovery_cooldown,
         **kwargs,
     )
 
@@ -168,6 +174,16 @@ async def _wait_for_audio_status(
         await asyncio.sleep(0.01)
     raise AssertionError(
         f"Expected audio status {status.value}, received {session.status.value}"
+    )
+
+
+async def _wait_for_reconnects(radio: FakeLiveRadio, count: int) -> None:
+    for _ in range(200):
+        if radio.reconnect_calls == count:
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError(
+        f"Expected {count} reconnect calls, received {radio.reconnect_calls}"
     )
 
 
@@ -246,6 +262,108 @@ def test_stale_live_state_recovers_after_next_psi_update() -> None:
             await pilot.pause()
             assert not app.stale
             assert "AVAILABLE" in _plain(app.query_one("#status", Static))
+
+    asyncio.run(exercise())
+
+
+def test_stale_live_state_automatically_reconnects_with_cooldown() -> None:
+    async def exercise() -> None:
+        now = [100.0]
+        radio = FakeLiveRadio(_info())
+        app = _app(
+            radio,
+            stale_after=2.0,
+            clock=lambda: now[0],
+            psi_recover_after=5.0,
+            psi_recovery_cooldown=60.0,
+        )
+        updated = snapshot_from_scanner_info(_info(UPDATED_XML, command="PSI"))
+
+        async with app.run_test(size=(80, 36)) as pilot:
+            assert await asyncio.to_thread(radio.started.wait, 1.0)
+
+            now[0] = 102.5
+            app.check_stale()
+            assert app.stale
+            assert radio.reconnect_calls == 0
+
+            now[0] = 105.1
+            app.check_stale()
+            await _wait_for_reconnects(radio, 1)
+            await pilot.pause()
+            status = _plain(app.query_one("#status", Static))
+            assert "PSI recovery A/S/F: 1 / 0 / 0" in status
+
+            now[0] = 116.0
+            app.check_stale()
+            assert radio.reconnect_calls == 1
+
+            now[0] = 166.0
+            app.check_stale()
+            await _wait_for_reconnects(radio, 2)
+            await pilot.pause()
+            status = _plain(app.query_one("#status", Static))
+            assert "PSI recovery A/S/F: 2 / 0 / 1" in status
+
+            now[0] = 167.0
+            await asyncio.to_thread(radio.emit_state, updated)
+            await pilot.pause()
+            status = _plain(app.query_one("#status", Static))
+            assert "LIVE PSI" in status
+            assert "PSI recovery A/S/F: 2 / 1 / 1" in status
+
+    asyncio.run(exercise())
+
+
+def test_automatic_psi_recovery_does_not_interrupt_audio_recording(
+    tmp_path: Path,
+) -> None:
+    async def exercise() -> None:
+        now = [100.0]
+        radio = FakeLiveRadio(_info())
+        transport = FakeAudioTransport()
+        recorder = PcmuWavRecorder(tmp_path / "automatic-recovery-audio.wav")
+        session = AudioRecordingSession(AudioStream(transport), recorder)
+        app = _app(
+            radio,
+            stale_after=2.0,
+            clock=lambda: now[0],
+            audio_session=session,
+            psi_recover_after=5.0,
+        )
+        updated = snapshot_from_scanner_info(_info(UPDATED_XML, command="PSI"))
+
+        async with app.run_test(size=(100, 46)) as pilot:
+            assert await asyncio.to_thread(radio.started.wait, 1.0)
+            await pilot.press("r")
+            await _wait_for_audio_status(session, AudioSessionStatus.RECORDING)
+
+            transport.feed(AudioChunk(bytes((0xFF, 0x80, 0x00, 0x7F))))
+            assert session.snapshot().packets == 1
+
+            now[0] = 105.1
+            app.check_stale()
+            await _wait_for_reconnects(radio, 1)
+            await pilot.pause()
+
+            assert session.status is AudioSessionStatus.RECORDING
+            assert transport.running
+            transport.feed(AudioChunk(bytes((0x7F, 0x00, 0x80, 0xFF))))
+            assert session.snapshot().packets == 2
+
+            now[0] = 106.0
+            await asyncio.to_thread(radio.emit_state, updated)
+            await pilot.pause()
+            assert "PSI recovery A/S/F: 1 / 1 / 0" in _plain(
+                app.query_one("#status", Static)
+            )
+            assert session.status is AudioSessionStatus.RECORDING
+
+            await pilot.press("r")
+            await _wait_for_audio_status(session, AudioSessionStatus.STOPPED)
+
+        assert not recorder.open
+        assert not app.audio_thread_alive
 
     asyncio.run(exercise())
 

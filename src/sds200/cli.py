@@ -32,6 +32,7 @@ from .discovery import (
     discover_network_scanners,
 )
 from .exceptions import SDS200Error
+from .logging_config import LOG_LEVEL_NAMES, configure_logging
 from .models import HealthSummary, RadioEvent, RadioHealth, StatusResponse
 from .monitor import TerminalMonitor
 from .network import DEFAULT_UDP_PORT
@@ -55,6 +56,8 @@ from .rich_cli import (
 )
 from .rtsp import DEFAULT_RTSP_PORT
 from .scanner import SUPPORTED_SCANNER_MODELS, ScannerModel, normalize_model_name
+
+logger = logging.getLogger(__name__)
 
 
 class _CompletableAction(Protocol):
@@ -321,7 +324,24 @@ def build_parser() -> argparse.ArgumentParser:
         default="dark",
         help="Semantic CLI palette: dark or light (default: dark)",
     )
-    parser.add_argument("-v", "--verbose", action="count", default=0)
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="count",
+        default=0,
+        help="Increase logging verbosity; repeat for DEBUG",
+    )
+    parser.add_argument(
+        "--log-level",
+        type=str.upper,
+        choices=LOG_LEVEL_NAMES,
+        help="Operational log level; overrides -v/--verbose",
+    )
+    parser.add_argument(
+        "--log-file",
+        type=Path,
+        help="Append operational logs to a watched file in addition to stderr",
+    )
     parser.add_argument("--trace", type=Path, help="Append raw traffic to a trace file")
     parser.add_argument(
         "--capture",
@@ -445,6 +465,26 @@ def build_parser() -> argparse.ArgumentParser:
         default=3.0,
         metavar="SECONDS",
         help="Mark live scanner state stale after this age (default: 3.0)",
+    )
+    tui.add_argument(
+        "--psi-auto-recover",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Reconnect automatically after sustained stale PSI (default: enabled)",
+    )
+    tui.add_argument(
+        "--psi-recover-after",
+        type=_positive_float,
+        default=10.0,
+        metavar="SECONDS",
+        help="Reconnect after PSI remains stale this long (default: 10.0)",
+    )
+    tui.add_argument(
+        "--psi-recovery-cooldown",
+        type=_non_negative_float,
+        default=60.0,
+        metavar="SECONDS",
+        help="Minimum interval between automatic PSI reconnects (default: 60.0)",
     )
     tui.add_argument(
         "--audio-output",
@@ -728,15 +768,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show repairs without writing the profile file",
     )
     return parser
-
-
-def configure_logging(verbose: int) -> None:
-    level = logging.WARNING
-    if verbose == 1:
-        level = logging.INFO
-    elif verbose >= 2:
-        level = logging.DEBUG
-    logging.basicConfig(level=level, format="%(levelname)s %(name)s: %(message)s")
 
 
 def selected_port(
@@ -1342,6 +1373,9 @@ def _run_tui(args: argparse.Namespace) -> int:
             audio_session=audio_session,
             interval_ms=args.interval,
             stale_after=args.stale_after,
+            psi_auto_recover=args.psi_auto_recover,
+            psi_recover_after=args.psi_recover_after,
+            psi_recovery_cooldown=args.psi_recovery_cooldown,
             connected=radio.connected,
             palette=palette_for_name(args.theme),
         )
@@ -1393,7 +1427,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     enable_tab_completion(parser)
     args = parser.parse_args(argv)
-    configure_logging(args.verbose)
+
+    try:
+        configure_logging(
+            args.verbose,
+            level_name=args.log_level,
+            log_file=args.log_file,
+        )
+    except OSError as exc:
+        print(f"error: could not configure logging: {exc}", file=sys.stderr)
+        return 2
+
+    logger.info("sdsctl starting version=%s action=%s", __version__, args.action)
 
     try:
         if args.action == "completion":
@@ -1528,6 +1573,8 @@ def main(argv: list[str] | None = None) -> int:
     except (SDS200Error, OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    finally:
+        logger.info("sdsctl stopped action=%s", args.action)
     return 0
 
 
