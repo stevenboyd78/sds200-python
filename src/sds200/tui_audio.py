@@ -170,6 +170,7 @@ class PcmSinkRouter:
 
     def __init__(self) -> None:
         self._lifecycle_lock = threading.RLock()
+        self._submit_lock = threading.Lock()
         self._state_lock = threading.RLock()
         self._sinks: list[PcmSink] = []
         self._running = False
@@ -236,20 +237,24 @@ class PcmSinkRouter:
                 if sink not in self._sinks:
                     return
                 self._sinks.remove(sink)
+            # Wait for a callback that already captured this sink to finish.
+            with self._submit_lock:
+                pass
             if stop:
                 sink.stop()
 
     def submit_pcm(self, data: bytes) -> None:
-        with self._state_lock:
-            if not self._running:
-                return
-            sinks = tuple(self._sinks)
-            self._bytes_submitted += len(data)
-        for sink in sinks:
-            try:
-                sink.submit_pcm(data)
-            except Exception:
-                logger.exception("TUI audio sink rejected PCM sink=%s", sink.name)
+        with self._submit_lock:
+            with self._state_lock:
+                if not self._running:
+                    return
+                sinks = tuple(self._sinks)
+                self._bytes_submitted += len(data)
+            for sink in sinks:
+                try:
+                    sink.submit_pcm(data)
+                except Exception:
+                    logger.exception("TUI audio sink rejected PCM sink=%s", sink.name)
 
     def stop(self) -> None:
         with self._lifecycle_lock:
@@ -259,6 +264,9 @@ class PcmSinkRouter:
                 self._running = False
                 sinks = tuple(reversed(self._sinks))
                 self._sinks.clear()
+            # Do not stop sinks while an in-flight callback is submitting PCM.
+            with self._submit_lock:
+                pass
             failure: BaseException | None = None
             for sink in sinks:
                 try:
@@ -478,36 +486,50 @@ class TuiAudioSession:
                 }:
                     raise RuntimeError("An audio recording is already active")
                 self._status = AudioSessionStatus.STARTING
-                self._error = None
+                self._started_at = None
+                self._started_clock = None
                 self._stopped_at = None
+                self._elapsed_seconds = 0.0
+                self._last_packets = 0
+                self._last_samples = 0
+                self._error = None
             self._emit_state()
 
-            path = self.path_policy.next_path(
-                self._now(),
-                explicit_used=self._explicit_used,
-            )
-            recorder = PcmuWavRecorder(path, overwrite=self.path_policy.overwrite)
-            sink = PcmWavSink(recorder)
+            path: Path | None = None
+            recorder: PcmuWavRecorder | None = None
+            sink: PcmWavSink | None = None
             try:
+                path = self.path_policy.next_path(
+                    self._now(),
+                    explicit_used=self._explicit_used,
+                )
+                recorder = PcmuWavRecorder(
+                    path,
+                    overwrite=self.path_policy.overwrite,
+                )
+                sink = PcmWavSink(recorder)
                 self._router.attach(sink)
             except BaseException as error:
+                if recorder is not None:
+                    with suppress(Exception):
+                        recorder.close()
                 with self._state_lock:
                     self._status = AudioSessionStatus.FAILED
                     self._stopped_at = self._now()
                     self._error = _error_message(error)
-                    self._output_path = path
+                    self._output_path = path or self.path_policy.display_path
                 self._emit_state()
                 raise
 
+            assert path is not None
+            assert recorder is not None
+            assert sink is not None
             with self._state_lock:
                 self._recording_sink = sink
                 self._recorder = recorder
                 self._output_path = path
                 self._started_clock = self._clock()
                 self._started_at = self._now()
-                self._elapsed_seconds = 0.0
-                self._last_packets = 0
-                self._last_samples = 0
                 self._status = AudioSessionStatus.RECORDING
                 if self.path_policy.output is not None:
                     self._explicit_used = True

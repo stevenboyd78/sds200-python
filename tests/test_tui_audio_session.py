@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 import wave
 from datetime import UTC, datetime
@@ -8,8 +9,10 @@ from pathlib import Path
 import pytest
 
 from sds200.audio import AudioChunk, AudioChunkHandler, AudioStream
+from sds200.audio_session import AudioSessionStatus
 from sds200.audio_sinks import PcmSinkStatistics
 from sds200.tui_audio import (
+    PcmSinkRouter,
     RecordingPathPolicy,
     SavedPlaybackStatus,
     TuiAudioSession,
@@ -79,12 +82,91 @@ class CollectingPlaybackSink:
         self.stop_calls += 1
 
 
+class BlockingSink:
+    def __init__(self) -> None:
+        self._running = False
+        self.submitting = threading.Event()
+        self.release = threading.Event()
+        self.stopped_during_submit = False
+
+    @property
+    def name(self) -> str:
+        return "blocking:test"
+
+    @property
+    def running(self) -> bool:
+        return self._running
+
+    @property
+    def statistics(self) -> PcmSinkStatistics:
+        return PcmSinkStatistics()
+
+    def start(self) -> None:
+        self._running = True
+
+    def submit_pcm(self, data: bytes) -> None:
+        del data
+        self.submitting.set()
+        self.release.wait(timeout=1.0)
+
+    def stop(self) -> None:
+        self.stopped_during_submit = self.submitting.is_set() and not self.release.is_set()
+        self._running = False
+
+
 def _wait_for_saved_stop(session: TuiAudioSession) -> None:
     for _ in range(200):
         if session.saved_playback_status is SavedPlaybackStatus.STOPPED:
             return
         time.sleep(0.01)
     raise AssertionError("Saved recording did not finish playing")
+
+
+def test_pcm_router_waits_for_in_flight_submission_before_stopping_sink() -> None:
+    router = PcmSinkRouter()
+    sink = BlockingSink()
+    router.attach(sink)
+    router.start()
+
+    submit_thread = threading.Thread(target=router.submit_pcm, args=(bytes((0, 0)),))
+    submit_thread.start()
+    assert sink.submitting.wait(timeout=1.0)
+
+    detach_thread = threading.Thread(target=router.detach, args=(sink,))
+    detach_thread.start()
+    time.sleep(0.02)
+    assert detach_thread.is_alive()
+    assert sink.running
+
+    sink.release.set()
+    submit_thread.join(timeout=1.0)
+    detach_thread.join(timeout=1.0)
+
+    assert not submit_thread.is_alive()
+    assert not detach_thread.is_alive()
+    assert not sink.stopped_during_submit
+    assert not sink.running
+    router.stop()
+
+
+def test_recording_path_failure_transitions_session_to_failed(tmp_path: Path) -> None:
+    invalid_directory = tmp_path / "not-a-directory"
+    invalid_directory.write_text("occupied", encoding="utf-8")
+    transport = CountingAudioTransport()
+    session = TuiAudioSession(
+        AudioStream(transport),
+        RecordingPathPolicy(directory=invalid_directory),
+    )
+
+    session.open_audio()
+    with pytest.raises(OSError):
+        session.start()
+
+    snapshot = session.snapshot()
+    assert snapshot.status is AudioSessionStatus.FAILED
+    assert not snapshot.active
+    assert snapshot.error is not None
+    session.close()
 
 
 def test_recording_path_policy_rejects_unsafe_templates(tmp_path: Path) -> None:
