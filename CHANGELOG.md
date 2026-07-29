@@ -6,6 +6,21 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+### Added
+
+- Transport-independent decoded-PCM fanout sessions with independently buffered
+  sink destinations.
+- Optional live playback through the local default or selected PortAudio output
+  device, including queue, underflow, overflow, and dropped-audio counters.
+- A maintained project roadmap covering active, planned, and exploratory work.
+
+### Changed
+
+- `sdsctl audio` now supports playback-only, recording-only, or simultaneous
+  playback and WAV recording from one SDS200 RTSP/RTP session.
+- PCM WAV writes used by the fanout pipeline now run on a dedicated worker instead
+  of the RTP receive callback.
+
 ## [0.15.0] - 2026-07-28
 
 ### Added

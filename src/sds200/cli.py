@@ -15,6 +15,12 @@ from . import __version__
 from .audio import AudioStream
 from .audio_recording import PcmuWavRecorder
 from .audio_session import AudioRecordingSession
+from .audio_sinks import (
+    AudioFanoutSession,
+    PcmSink,
+    PcmWavSink,
+    SoundDevicePlaybackSink,
+)
 from .commands import NAVIGATION_TARGETS
 from .completion import (
     SUPPORTED_SHELLS,
@@ -111,6 +117,13 @@ def _local_port(value: str) -> int:
     if not 0 <= parsed <= 65535:
         raise argparse.ArgumentTypeError("port must be between 0 and 65535")
     return parsed
+
+
+def _audio_device(value: str) -> str | int:
+    try:
+        return int(value)
+    except ValueError:
+        return value
 
 
 def _scanner_model(value: str) -> ScannerModel:
@@ -531,14 +544,31 @@ def build_parser() -> argparse.ArgumentParser:
 
     audio = subparsers.add_parser(
         "audio",
-        help="Record SDS200 network audio to a PCM WAV file",
+        help="Play and/or record SDS200 network audio",
     )
     audio.add_argument(
         "--output",
         type=Path,
-        required=True,
         metavar="FILE",
         help="Destination 8 kHz mono signed 16-bit PCM WAV file",
+    )
+    audio.add_argument(
+        "--play",
+        action="store_true",
+        help="Play live audio through a local output device",
+    )
+    audio.add_argument(
+        "--device",
+        type=_audio_device,
+        metavar="DEVICE",
+        help="PortAudio output device name or index (default: system output)",
+    )
+    audio.add_argument(
+        "--buffer-ms",
+        type=_positive_integer,
+        default=250,
+        metavar="MS",
+        help="Bounded local-playback queue in milliseconds (default: 250)",
     )
     audio.add_argument(
         "--duration",
@@ -1286,7 +1316,14 @@ def _run_audio(args: argparse.Namespace) -> int:
     if args.replay_speed != 0:
         raise ValueError("--replay-speed requires --replay")
 
-    output = args.output.expanduser()
+    if args.force and args.output is None:
+        raise ValueError("--force requires --output")
+    if args.device is not None and not args.play:
+        raise ValueError("--device requires --play")
+    if args.output is None and not args.play:
+        raise ValueError("audio requires --play, --output, or both")
+
+    output = args.output.expanduser() if args.output is not None else None
     transport = NetworkAudioTransport(
         args.host,
         rtsp_port=args.rtsp_port,
@@ -1295,8 +1332,17 @@ def _run_audio(args: argparse.Namespace) -> int:
         keepalive_interval=args.keepalive_interval,
     )
     stream = AudioStream(transport)
-    recorder = PcmuWavRecorder(output, overwrite=args.force)
-    session = AudioRecordingSession(stream, recorder)
+    sinks: list[PcmSink] = []
+    playback: SoundDevicePlaybackSink | None = None
+    if args.play:
+        playback = SoundDevicePlaybackSink(
+            device=args.device,
+            buffer_ms=args.buffer_ms,
+        )
+        sinks.append(playback)
+    if output is not None:
+        sinks.append(PcmWavSink(PcmuWavRecorder(output, overwrite=args.force)))
+    session = AudioFanoutSession(stream, sinks)
 
     try:
         session.start()
@@ -1311,11 +1357,10 @@ def _run_audio(args: argparse.Namespace) -> int:
         session.stop()
 
     snapshot = session.snapshot()
-    print(f"Recorded {snapshot.elapsed_seconds:.1f} seconds")
+    print(f"Streamed {snapshot.audio_duration_seconds:.1f} seconds")
     print(f"Packets: {snapshot.packets}")
     print(f"Audio samples: {snapshot.samples}")
-    statistics = snapshot.reliability
-    print(f"Audio duration: {snapshot.audio_duration_seconds:.1f} seconds")
+    statistics = transport.statistics
     print(f"RTP lost: {statistics.packets_lost}")
     print(f"RTP duplicates: {statistics.duplicate_packets}")
     print(f"RTP late: {statistics.late_packets}")
@@ -1323,7 +1368,19 @@ def _run_audio(args: argparse.Namespace) -> int:
     print(f"RTP unexpected source: {statistics.unexpected_source_packets}")
     print(f"RTP SSRC mismatches: {statistics.ssrc_mismatch_packets}")
     print(f"Timestamp discontinuities: {statistics.timestamp_discontinuities}")
-    print(f"Output: {output}")
+    if playback is not None:
+        playback_statistics = playback.statistics
+        print(f"Playback device: {args.device or 'default'}")
+        print(f"Playback written bytes: {playback_statistics.bytes_written}")
+        print(f"Playback dropped bytes: {playback_statistics.bytes_dropped}")
+        print(f"Playback underflows: {playback_statistics.underflows}")
+        print(f"Playback overflows: {playback_statistics.overflows}")
+        print(
+            "Playback callback statuses: "
+            f"{playback_statistics.callback_statuses}"
+        )
+    if output is not None:
+        print(f"Output: {output}")
     return 0
 
 

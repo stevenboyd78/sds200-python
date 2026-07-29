@@ -40,13 +40,16 @@ and live state updates.
 - JSON Lines events for connection, retry, failover, and state changes
 - Discovery-based repair for stale USB paths and scanner IP addresses
 - Hardware-validated SDS200 network audio over RTSP/RTP
-- Native G.711 mu-law decoding and streaming PCM WAV recording
+- Native G.711 mu-law decoding with independently buffered PCM destinations
+- Optional live playback through the local default or selected audio output device
+- Simultaneous local playback and streaming PCM WAV recording from one RTSP session
 - UDP XML fragment validation, statistics, and bounded retries
 - Bash and Zsh tab completion
 - Strict MyPy typing, Ruff checks, and hardware-independent tests
 
-Network audio remains independent from scanner control, so recording does not
-open or affect the USB serial or UDP control transport.
+Network audio remains independent from scanner control, so playback and recording
+do not open or affect the USB serial or UDP control transport. See the
+[project roadmap](ROADMAP.md) for planned TUI and remote-streaming destinations.
 
 ## Requirements
 
@@ -76,6 +79,12 @@ Install the optional full-screen TUI:
 
 ```bash
 python -m pip install "sds200[tui]"
+```
+
+Install optional local audio playback support:
+
+```bash
+python -m pip install "sds200[playback]"
 ```
 
 Install from source for development:
@@ -173,7 +182,13 @@ sdsctl --host 192.168.0.251 monitor
 
 The SDS200 virtual serial service uses UDP port `50536` by default.
 
-### SDS200 network audio recording
+### SDS200 network audio playback and recording
+
+Listen to the scanner through the operating system's default audio output:
+
+```bash
+sdsctl --host 192.168.0.251 audio --play
+```
 
 Record the scanner's RTSP/RTP audio directly to an 8 kHz mono signed 16-bit PCM
 WAV file without requiring FFmpeg:
@@ -193,10 +208,25 @@ sdsctl --host 192.168.0.251 audio \
   --force
 ```
 
+Playback and recording can share one RTSP/RTP session:
+
+```bash
+sdsctl --host 192.168.0.251 audio \
+  --play \
+  --output scanner-audio.wav
+```
+
+Use `--device DEVICE` to choose a PortAudio output device and `--buffer-ms` to
+change the bounded playback queue. Playback underflow inserts silence; overflow
+drops the oldest queued audio so the output remains live. The summary reports both
+conditions and the number of dropped PCM bytes.
+
 The scanner requires a nonstandard single RTP client port during RTSP `SETUP`.
 The built-in transport handles that negotiation, receives payload type 0 PCMU,
-decodes it natively, and finalizes the WAV header during orderly shutdown. The
-same transport and recording session power the opt-in TUI audio controls.
+decodes each accepted packet once, and fans the PCM out to independently buffered
+destinations. WAV disk writes and local sound-device callbacks cannot block RTP
+reception. The existing recording session continues to power the opt-in TUI audio
+controls until the planned TUI fanout milestone.
 
 Each recording summary reports estimated packet loss, duplicates, late and
 malformed packets, and RTP timestamp discontinuities. A five-minute SDS200
@@ -466,6 +496,7 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting and
 
 ## Documentation
 
+- [Project roadmap](ROADMAP.md)
 - [Supported scanner models](docs/supported-models.md)
 - [Control transports](docs/transports.md)
 - [LAN discovery and profiles](docs/discovery-and-profiles.md)

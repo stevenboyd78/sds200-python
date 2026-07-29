@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import struct
 import wave
-from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -60,11 +59,6 @@ def _install_fake_transport(
     monkeypatch.setattr(cli, "NetworkAudioTransport", factory)
 
 
-def _monotonic(values: list[float]) -> Callable[[], float]:
-    iterator = iter(values)
-    return iterator.__next__
-
-
 def test_audio_cli_records_native_pcm_wave(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -73,16 +67,6 @@ def test_audio_cli_records_native_pcm_wave(
     output = tmp_path / "scanner.wav"
     transport = FakeNetworkAudioTransport()
     _install_fake_transport(monkeypatch, transport)
-    session_type = cli.AudioRecordingSession
-    monkeypatch.setattr(
-        cli,
-        "AudioRecordingSession",
-        lambda stream, recorder: session_type(
-            stream,
-            recorder,
-            clock=_monotonic([20.0, 20.0, 21.5, 21.5]),
-        ),
-    )
     monkeypatch.setattr(cli, "sleep", lambda _seconds: None)
 
     result = cli.main(
@@ -108,10 +92,9 @@ def test_audio_cli_records_native_pcm_wave(
         assert struct.unpack("<2h", recording.readframes(2)) == (0, 32124)
 
     assert capsys.readouterr().out.splitlines() == [
-        "Recorded 1.5 seconds",
+        "Streamed 0.0 seconds",
         "Packets: 1",
         "Audio samples: 2",
-        "Audio duration: 0.0 seconds",
         "RTP lost: 2",
         "RTP duplicates: 3",
         "RTP late: 4",
@@ -161,3 +144,67 @@ def test_audio_cli_refuses_to_overwrite_existing_file(
     assert not transport.started
     assert output.read_bytes() == b"keep"
     assert "File exists" in capsys.readouterr().err
+
+
+def test_audio_parser_accepts_playback_without_output() -> None:
+    args = cli.build_parser().parse_args(
+        [
+            "--host",
+            "192.168.0.251",
+            "audio",
+            "--play",
+            "--device",
+            "USB Audio",
+            "--buffer-ms",
+            "400",
+        ]
+    )
+
+    assert args.play
+    assert args.output is None
+    assert args.device == "USB Audio"
+    assert args.buffer_ms == 400
+
+
+def test_audio_parser_converts_numeric_device_index() -> None:
+    args = cli.build_parser().parse_args(
+        ["--host", "192.168.0.251", "audio", "--play", "--device", "2"]
+    )
+
+    assert args.device == 2
+
+
+def test_audio_parser_accepts_simultaneous_playback_and_recording(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "scanner.wav"
+    args = cli.build_parser().parse_args(
+        [
+            "--host",
+            "192.168.0.251",
+            "audio",
+            "--play",
+            "--output",
+            str(output),
+        ]
+    )
+
+    assert args.play
+    assert args.output == output
+
+
+@pytest.mark.parametrize(
+    ("options", "message"),
+    [
+        ([], "audio requires --play, --output, or both"),
+        (["--force"], "--force requires --output"),
+        (["--device", "USB Audio"], "--device requires --play"),
+    ],
+)
+def test_audio_cli_rejects_invalid_destination_options(
+    options: list[str],
+    message: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert cli.main(["--host", "192.168.0.251", "audio", *options]) == 2
+    assert message in capsys.readouterr().err

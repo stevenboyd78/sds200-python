@@ -44,6 +44,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+playback = [
+  "sounddevice>=0.5.3,<0.6",
+]
+
 tui = [
   "textual>=8.2,<9",
 ]

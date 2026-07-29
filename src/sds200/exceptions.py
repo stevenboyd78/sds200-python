@@ -18,6 +18,10 @@ class ScannerConnectionError(SDS200Error):
     """The scanner control connection could not be established or maintained."""
 
 
+class AudioOutputError(SDS200Error):
+    """A configured PCM audio sink could not be started or maintained."""
+
+
 class CommandTimeoutError(SDS200Error):
     """A command did not receive a matching response before its timeout."""
 
