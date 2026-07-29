@@ -5,6 +5,7 @@ import pytest
 
 from sds200.exceptions import (
     CommandRejectedError,
+    CommandTimeoutError,
     UnsupportedScannerFeatureError,
     UnsupportedScannerModelError,
 )
@@ -413,3 +414,45 @@ def test_manual_reconnect_preserves_active_psi_interval() -> None:
     assert radio.psi_interval_ms == 500
     radio._psi_interval_ms = None
     radio.close()
+
+
+def test_failed_reconnect_preserves_active_psi_interval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport, expected_model="SDS200")
+    xml = """<?xml version="1.0" encoding="utf-8"?>
+<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+<Property VOL="10" SQL="2" Sig="0" />
+</ScannerInfo>"""
+
+    radio.connect()
+    radio._psi_interval_ms = 500
+    start_scanner_info_push = radio.start_scanner_info_push
+
+    def start_with_short_timeout(
+        interval_ms: int = 500,
+        *,
+        timeout: float = 3.0,
+    ) -> object:
+        del timeout
+        return start_scanner_info_push(interval_ms, timeout=0.05)
+
+    monkeypatch.setattr(radio, "start_scanner_info_push", start_with_short_timeout)
+
+    with pytest.raises(CommandTimeoutError):
+        radio.reconnect()
+
+    assert radio.psi_interval_ms == 500
+    assert transport.writes == ["PSI,500", "PSI,0"]
+
+    def respond() -> None:
+        while transport.writes.count("PSI,500") < 2:
+            time.sleep(0.005)
+        transport.feed_line("PSI,<XML>,")
+        for line in xml.splitlines():
+            transport.feed_line(line)
+
+    thread = threading.Thread(target=respond, daemon=True)
+    thread.start()
+    radio.reconnect()

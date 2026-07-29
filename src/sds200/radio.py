@@ -470,9 +470,13 @@ class SDSScanner:
         self._psi_interval_ms = None
         self.transport.stop()
         self._closed.set()
-        self.connect()
-        if interval_ms is not None:
-            self.start_scanner_info_push(interval_ms)
+        try:
+            self.connect()
+            if interval_ms is not None:
+                self.start_scanner_info_push(interval_ms)
+        except Exception:
+            self._psi_interval_ms = interval_ms
+            raise
         logger.info(
             "scanner reconnect completed endpoint=%s psi_interval_ms=%s",
             self.endpoint,
