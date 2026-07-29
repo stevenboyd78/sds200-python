@@ -1,5 +1,9 @@
 # sds200-python
 
+<p align="center">
+  <img src="docs/assets/sds200-python-logo.svg" alt="sds200-python logo" width="720">
+</p>
+
 [![CI](https://github.com/stevenboyd78/sds200-python/actions/workflows/ci.yml/badge.svg)](https://github.com/stevenboyd78/sds200-python/actions/workflows/ci.yml)
 ![Python 3.11–3.14](https://img.shields.io/badge/python-3.11--3.14-blue)
 ![Development status: alpha](https://img.shields.io/badge/status-alpha-orange)

@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="240" viewBox="0 0 960 240" role="img" aria-labelledby="title desc">
+  <title id="title">sds200-python logo</title>
+  <desc id="desc">A scanner display with a terminal prompt, radio waves, and the sds200-python wordmark.</desc>
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#334155"/>
+      <stop offset="1" stop-color="#172033"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#0891b2"/>
+    </linearGradient>
+    <filter id="screenGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <style>
+      .wordmark-main { fill: #334155; }
+      @media (prefers-color-scheme: dark) {
+        .wordmark-main { fill: #e2e8f0; }
+      }
+    </style>
+  </defs>
+
+  <g id="scanner-mark" transform="translate(18 22)">
+    <rect x="0" y="26" width="182" height="166" rx="38" fill="url(#body)" stroke="#0f172a" stroke-width="4"/>
+    <path d="M18 52c16-16 38-20 62-20h50c22 0 35 4 44 12" fill="none" stroke="#64748b" stroke-width="5" stroke-linecap="round" opacity=".72"/>
+
+    <rect x="26" y="68" width="122" height="82" rx="14" fill="#0b4455" stroke="#071b2c" stroke-width="5"/>
+    <rect x="31" y="73" width="112" height="72" rx="10" fill="url(#screen)" filter="url(#screenGlow)"/>
+
+    <path d="M48 95l27 14-27 14" fill="none" stroke="#ecfeff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M81 125h30" fill="none" stroke="#ecfeff" stroke-width="8" stroke-linecap="round"/>
+
+    <circle cx="155" cy="61" r="13" fill="#fbbf24" stroke="#fff7cc" stroke-width="2"/>
+
+    <g fill="#0f1b2d" opacity=".95">
+      <rect x="158" y="107" width="18" height="6" rx="3"/>
+      <rect x="154" y="121" width="22" height="6" rx="3"/>
+      <rect x="150" y="135" width="26" height="6" rx="3"/>
+    </g>
+
+    <g fill="none" stroke="#22d3ee" stroke-width="7" stroke-linecap="round">
+      <path d="M150 28c18 6 32 20 38 38"/>
+      <path d="M153 5c31 8 55 32 63 63"/>
+    </g>
+  </g>
+
+  <g id="wordmark" transform="translate(250 0)">
+    <text x="0" y="148" class="wordmark-main" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace" font-size="70" font-weight="650" letter-spacing="-4">sds200</text>
+    <text x="270" y="148" fill="#06b6d4" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace" font-size="70" font-weight="650" letter-spacing="-4">-python</text>
+  </g>
+</svg>
