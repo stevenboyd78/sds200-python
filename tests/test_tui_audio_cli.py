@@ -8,8 +8,8 @@ from typing import Self
 import pytest
 
 from sds200 import cli, tui
-from sds200.audio_session import AudioRecordingSession
 from sds200.models import ScannerInfo
+from sds200.tui_audio import TuiAudioSession
 from sds200.xml_protocol import ScannerInfoParser
 
 from .fakes import FakeAudioTransport
@@ -76,8 +76,9 @@ def test_tui_cli_builds_optional_audio_session(
 
     assert result == 0
     session = captured["audio_session"]
-    assert isinstance(session, AudioRecordingSession)
-    assert session.recorder.path == output
+    assert isinstance(session, TuiAudioSession)
+    assert session.path_policy.output == output
+    assert not session.repeatable
     assert session.stream.transport is audio_transport
 
 
