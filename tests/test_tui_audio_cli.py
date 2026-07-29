@@ -8,8 +8,8 @@ from typing import Self
 import pytest
 
 from sds200 import cli, tui
-from sds200.tui_audio import TuiAudioSession
 from sds200.models import ScannerInfo
+from sds200.tui_audio import TuiAudioSession
 from sds200.xml_protocol import ScannerInfoParser
 
 from .fakes import FakeAudioTransport
