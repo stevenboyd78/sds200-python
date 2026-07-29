@@ -141,11 +141,11 @@ sdsctl tui
 ```
 
 Press `Q` to quit, `T` to switch semantic palettes, `C` to reconnect, and `?`
-for the full keyboard reference. The v0.14 TUI provides non-blocking scanner
-controls and automatic compact, standard, and wide layouts through USB, network,
-profile, and replay selectors. A sustained stale PSI stream is automatically
-reconnected without stopping active network audio; see the
-[Textual TUI guide](docs/tui.md).
+for the full keyboard reference. The v0.15 TUI provides non-blocking scanner
+controls, automatic compact, standard, and wide layouts, operational recovery
+logging, and rate-limited stale-PSI recovery through USB, network, profile, and
+replay selectors. A sustained stale PSI stream is automatically reconnected
+without stopping active network audio; see the [Textual TUI guide](docs/tui.md).
 
 With an explicit SDS200 network host, opt in to WAV recording and use `R` to start
 or stop the one-shot recording session:
@@ -471,6 +471,7 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting and
 - [LAN discovery and profiles](docs/discovery-and-profiles.md)
 - [Fallback profiles](docs/fallback-profiles.md)
 - [Reliability and observability](docs/reliability.md)
+- [Operational logging](docs/logging.md)
 - [Textual TUI](docs/tui.md)
 - [Audio subsystem architecture](docs/audio.md)
 - [Acknowledgments](ACKNOWLEDGMENTS.md)
@@ -497,12 +498,13 @@ documented separately in pull requests and release notes.
 
 ## Project status
 
-Version `0.14.0` adds hardware-validated SDS200 network-audio recording to the
-optional Textual workstation interface, backed by a reusable
-`AudioRecordingSession` service and dedicated nonblocking audio worker. The TUI
-now reports live recording duration, packet and sample totals, RTP reliability
-counters, reconnect controls, and transition timestamps, while stable PSI streams
-no longer become falsely stale. SDS100 and SDS200 control support is
+Version `0.15.0` hardens the optional Textual workstation interface for sustained
+Raspberry Pi operation. It adds configurable operational logging, automatic
+rate-limited recovery from a connected-but-stale PSI stream, and deterministic
+fault-injection coverage for audio startup, shutdown, repeated requests, and
+scanner reconnects. Failed PSI reconnects preserve their requested update interval
+so recovery continues after control traffic returns, while active SDS200 network
+audio remains uninterrupted. SDS100 and SDS200 control support is
 hardware-validated; SDS150 hardware validation remains in progress. API
 compatibility is not guaranteed until version 1.0.
 
