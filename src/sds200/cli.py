@@ -14,7 +14,6 @@ from typing import Protocol, cast
 from . import __version__
 from .audio import AudioStream
 from .audio_recording import PcmuWavRecorder
-from .audio_session import AudioRecordingSession
 from .audio_sinks import (
     AudioFanoutSession,
     PcmSink,
@@ -62,6 +61,11 @@ from .rich_cli import (
 )
 from .rtsp import DEFAULT_RTSP_PORT
 from .scanner import SUPPORTED_SCANNER_MODELS, ScannerModel, normalize_model_name
+from .tui_audio import (
+    DEFAULT_RECORDING_TEMPLATE,
+    RecordingPathPolicy,
+    TuiAudioSession,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -499,16 +503,53 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="SECONDS",
         help="Minimum interval between automatic PSI reconnects (default: 60.0)",
     )
-    tui.add_argument(
+    tui_audio_destination = tui.add_mutually_exclusive_group()
+    tui_audio_destination.add_argument(
         "--audio-output",
         type=Path,
         metavar="FILE",
-        help="Enable R-key SDS200 network recording to this PCM WAV file",
+        help="Use one explicit R-key PCM WAV destination",
+    )
+    tui_audio_destination.add_argument(
+        "--audio-directory",
+        type=Path,
+        metavar="DIRECTORY",
+        help="Store repeatable timestamped recordings and build the TUI library",
+    )
+    tui.add_argument(
+        "--audio-template",
+        metavar="TEMPLATE",
+        help="Recording filename template using {timestamp} (requires --audio-directory)",
     )
     tui.add_argument(
         "--audio-force",
         action="store_true",
-        help="Overwrite an existing --audio-output file",
+        help="Overwrite an existing explicit --audio-output file",
+    )
+    tui.add_argument(
+        "--audio-playback",
+        action="store_true",
+        help="Start immediate unmuted live playback and enable saved playback",
+    )
+    tui.add_argument(
+        "--audio-device",
+        type=_audio_device,
+        metavar="DEVICE",
+        help="PortAudio output device name or index (requires --audio-playback)",
+    )
+    tui.add_argument(
+        "--audio-buffer-ms",
+        type=_positive_integer,
+        default=250,
+        metavar="MS",
+        help="Bounded TUI playback queue in milliseconds (default: 250)",
+    )
+    tui.add_argument(
+        "--audio-history-limit",
+        type=_positive_integer,
+        default=100,
+        metavar="COUNT",
+        help="Newest compatible recordings retained in the TUI library (default: 100)",
     )
     tui.add_argument(
         "--audio-rtsp-port",
@@ -1398,16 +1439,26 @@ def _run_tui(args: argparse.Namespace) -> int:
 
     if args.audio_force and args.audio_output is None:
         raise ValueError("--audio-force requires --audio-output")
+    if args.audio_template is not None and args.audio_directory is None:
+        raise ValueError("--audio-template requires --audio-directory")
+    if args.audio_device is not None and not args.audio_playback:
+        raise ValueError("--audio-device requires --audio-playback")
 
-    audio_session: AudioRecordingSession | None = None
-    if args.audio_output is not None:
+    audio_requested = any(
+        (
+            args.audio_output is not None,
+            args.audio_directory is not None,
+            args.audio_playback,
+        )
+    )
+    audio_session: TuiAudioSession | None = None
+    if audio_requested:
         if args.host is None:
             raise ValueError(
                 "TUI audio requires an explicit SDS200 --host connection"
             )
         if args.model not in {None, "SDS200"}:
             raise ValueError("TUI network audio is only available on the SDS200")
-        output = args.audio_output.expanduser()
         audio_transport = NetworkAudioTransport(
             args.host,
             rtsp_port=args.audio_rtsp_port,
@@ -1415,9 +1466,26 @@ def _run_tui(args: argparse.Namespace) -> int:
             local_port=args.audio_rtp_bind_port,
             keepalive_interval=args.audio_keepalive_interval,
         )
-        audio_session = AudioRecordingSession(
+        audio_session = TuiAudioSession(
             AudioStream(audio_transport),
-            PcmuWavRecorder(output, overwrite=args.audio_force),
+            RecordingPathPolicy(
+                output=(
+                    args.audio_output.expanduser()
+                    if args.audio_output is not None
+                    else None
+                ),
+                directory=(
+                    args.audio_directory.expanduser()
+                    if args.audio_directory is not None
+                    else None
+                ),
+                template=args.audio_template or DEFAULT_RECORDING_TEMPLATE,
+                overwrite=args.audio_force,
+            ),
+            live_playback=args.audio_playback,
+            device=args.audio_device,
+            buffer_ms=args.audio_buffer_ms,
+            history_limit=args.audio_history_limit,
         )
 
     with selected_radio(args) as radio:

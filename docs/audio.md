@@ -84,10 +84,11 @@ with AudioFanoutSession(stream, sinks):
     run_application()
 ```
 
-The older direct `AudioRecordingSession` API remains available for the current
-one-shot TUI recording workflow. A later milestone will move the TUI onto the
-fanout session so playback and repeatable recording share one network-audio
-transport.
+The direct one-shot `AudioRecordingSession` API remains available for callers that
+want one stream and one recorder. The TUI uses `TuiAudioSession` with a dynamic PCM
+sink router: one long-lived fanout owns RTSP/RTP reception while live playback,
+repeatable WAV sinks, and saved-recording playback are attached or detached without
+opening a second scanner audio session.
 
 ## Reliability statistics
 

@@ -13,6 +13,10 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 - Optional live playback through the local default or selected PortAudio output
   device, including queue, underflow, overflow, and dropped-audio counters.
 - A maintained project roadmap covering active, planned, and exploratory work.
+- Repeatable TUI recordings with collision-safe local timestamp filenames, a
+  newest-first recording library, and saved-recording playback controls.
+- Immediate unmuted TUI live playback through the default or selected PortAudio
+  device.
 
 ### Changed
 
@@ -20,6 +24,9 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   playback and WAV recording from one SDS200 RTSP/RTP session.
 - PCM WAV writes used by the fanout pipeline now run on a dedicated worker instead
   of the RTP receive callback.
+- TUI playback and repeatable recording now share one long-lived RTSP/RTP stream;
+  playing a saved recording temporarily suspends local live playback without
+  interrupting scanner reception or an active WAV recording.
 
 ## [0.15.0] - 2026-07-28
 

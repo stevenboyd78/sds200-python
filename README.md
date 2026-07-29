@@ -87,6 +87,12 @@ Install optional local audio playback support:
 python -m pip install "sds200[playback]"
 ```
 
+Install the TUI with live and saved-recording playback:
+
+```bash
+python -m pip install "sds200[tui,playback]"
+```
+
 Install from source for development:
 
 ```bash

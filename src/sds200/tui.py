@@ -35,6 +35,7 @@ from .theme import (
     theme_roles_for,
 )
 from .transport import TransportDiagnostic
+from .tui_audio import SavedPlaybackStatus, TuiAudioSession
 from .tui_controls import (
     ControlRequest,
     ControlWorker,
@@ -59,6 +60,12 @@ Q        Quit
 T        Toggle dark/light theme
 C        Reconnect scanner
 R        Start / stop audio recording
+A        Toggle live scanner playback
+L        Show or hide saved recordings
+↑ / ↓    Select a saved recording
+Enter    Play the selected recording
+Space    Pause / resume saved playback
+Esc      Stop saved playback and close the library
 H        Hold current channel
 S / D    Hold current system / department
 I        Hold current site
@@ -246,6 +253,23 @@ class ScannerTuiApp(App[None]):
         ),
         Binding("c", "reconnect", "Reconnect"),
         Binding("r", "toggle_audio_recording", "Record"),
+        Binding("a", "toggle_audio_playback", "Live audio"),
+        Binding("l", "toggle_recording_library", "Recordings"),
+        Binding("up", "recording_library_up", "Previous recording", show=False),
+        Binding("down", "recording_library_down", "Next recording", show=False),
+        Binding("enter", "play_selected_recording", "Play recording", show=False),
+        Binding(
+            "space",
+            "toggle_saved_playback_pause",
+            "Pause recording",
+            show=False,
+        ),
+        Binding(
+            "escape",
+            "close_recording_library",
+            "Close recordings",
+            show=False,
+        ),
         Binding(
             "question_mark",
             "toggle_key_help",
@@ -282,7 +306,7 @@ class ScannerTuiApp(App[None]):
         info: ScannerInfo,
         *,
         radio: ScannerTuiRadio | None = None,
-        audio_session: AudioRecordingSession | None = None,
+        audio_session: AudioRecordingSession | TuiAudioSession | None = None,
         interval_ms: int = 500,
         stale_after: float = 3.0,
         psi_auto_recover: bool = True,
@@ -308,14 +332,23 @@ class ScannerTuiApp(App[None]):
         self._capabilities = capabilities_for_model(identity.model)
         self._radio = radio
         self._audio_session = audio_session
+        self._tui_audio_session = (
+            audio_session if isinstance(audio_session, TuiAudioSession) else None
+        )
         self._audio_snapshot = (
             audio_session.snapshot() if audio_session is not None else None
         )
         self._audio_message = (
-            "Ready to record" if audio_session is not None else "Audio unavailable"
+            "Audio stream ready to start"
+            if self._tui_audio_session is not None
+            else "Ready to record"
+            if audio_session is not None
+            else "Audio unavailable"
         )
         self._audio_pending = False
         self._audio_unsubscribe: Unsubscribe | None = None
+        self._recording_library_visible = False
+        self._recording_library_index = 0
         self._interval_ms = interval_ms
         self._stale_after = stale_after
         self._psi_auto_recover = psi_auto_recover
@@ -417,6 +450,13 @@ class ScannerTuiApp(App[None]):
                 self._on_audio_state
             )
             self.set_interval(0.25, self._poll_audio_state)
+            if self._tui_audio_session is not None:
+                self._submit_audio(
+                    ControlRequest(
+                        "Start audio stream",
+                        self._tui_audio_session.open_audio,
+                    )
+                )
 
     def on_unmount(self) -> None:
         self._shutdown_started.set()
@@ -462,12 +502,20 @@ class ScannerTuiApp(App[None]):
         )
 
     def action_toggle_audio_recording(self) -> None:
-        """Start or stop the configured one-shot network-audio recording."""
+        """Start or stop the configured network-audio recording."""
         session = self._audio_session
         if session is None:
             self._control_unavailable(
-                "Start the TUI with --audio-output to enable recording"
+                "Start the TUI with --audio-directory or --audio-output "
+                "to enable recording"
             )
+            return
+        managed = self._tui_audio_session
+        if managed is not None and not managed.recording_enabled:
+            self._audio_message = (
+                "Recording unavailable: configure --audio-directory or --audio-output"
+            )
+            self._refresh_view()
             return
         if self._audio_pending:
             self._audio_message = "Audio operation already queued"
@@ -475,17 +523,114 @@ class ScannerTuiApp(App[None]):
             return
 
         snapshot = session.snapshot()
-        if snapshot.status is AudioSessionStatus.IDLE:
-            self._submit_audio(ControlRequest("Start recording", session.start))
-            return
         if snapshot.active:
             self._submit_audio(ControlRequest("Stop recording", session.stop))
             return
+        if snapshot.status is AudioSessionStatus.IDLE or (
+            managed is not None
+            and managed.repeatable
+            and snapshot.status
+            in {AudioSessionStatus.STOPPED, AudioSessionStatus.FAILED}
+        ):
+            self._submit_audio(ControlRequest("Start recording", session.start))
+            return
 
         self._audio_message = (
-            "Recording session completed; restart the TUI to record another file"
+            "Explicit recording completed; use --audio-directory for another file"
         )
         self._refresh_view()
+
+    def action_toggle_audio_playback(self) -> None:
+        """Enable or disable live local scanner playback."""
+        session = self._tui_audio_session
+        if session is None:
+            self._audio_message = "Live playback is unavailable"
+            self._refresh_view()
+            return
+        if self._audio_pending:
+            self._audio_message = "Audio operation already queued"
+            self._refresh_view()
+            return
+        self._submit_audio(
+            ControlRequest("Toggle live playback", session.toggle_live_playback)
+        )
+
+    def action_toggle_recording_library(self) -> None:
+        """Show or hide the newest compatible recordings."""
+        session = self._tui_audio_session
+        if session is None:
+            return
+        self._recording_library_visible = not self._recording_library_visible
+        if self._recording_library_visible:
+            session.refresh_recordings()
+            self._recording_library_index = min(
+                self._recording_library_index,
+                max(0, len(session.recordings) - 1),
+            )
+            self._audio_message = "Recording library opened"
+        else:
+            self._audio_message = "Recording library closed"
+        self._refresh_view()
+
+    def action_recording_library_up(self) -> None:
+        if not self._recording_library_visible:
+            return
+        self._recording_library_index = max(0, self._recording_library_index - 1)
+        self._refresh_view()
+
+    def action_recording_library_down(self) -> None:
+        session = self._tui_audio_session
+        if session is None or not self._recording_library_visible:
+            return
+        self._recording_library_index = min(
+            max(0, len(session.recordings) - 1),
+            self._recording_library_index + 1,
+        )
+        self._refresh_view()
+
+    def action_play_selected_recording(self) -> None:
+        session = self._tui_audio_session
+        if session is None or not self._recording_library_visible:
+            return
+        entries = session.recordings
+        if not entries:
+            self._audio_message = "No compatible recordings found"
+            self._refresh_view()
+            return
+        entry = entries[self._recording_library_index]
+        self._submit_audio(
+            ControlRequest(
+                "Play saved recording",
+                lambda: session.play_recording(entry.path),
+            )
+        )
+
+    def action_toggle_saved_playback_pause(self) -> None:
+        session = self._tui_audio_session
+        if session is None or not self._recording_library_visible:
+            return
+        self._submit_audio(
+            ControlRequest(
+                "Pause or resume saved playback",
+                session.toggle_saved_playback_pause,
+            )
+        )
+
+    def action_close_recording_library(self) -> None:
+        session = self._tui_audio_session
+        if session is None or not self._recording_library_visible:
+            return
+        self._recording_library_visible = False
+        if session.saved_playback_status in {
+            SavedPlaybackStatus.PLAYING,
+            SavedPlaybackStatus.PAUSED,
+        }:
+            self._submit_audio(
+                ControlRequest("Stop saved playback", session.stop_saved_playback)
+            )
+        else:
+            self._audio_message = "Recording library closed"
+            self._refresh_view()
 
     def action_hold_channel(self) -> None:
         """Hold the indexed channel reported by the current PSI snapshot."""
@@ -762,7 +907,7 @@ class ScannerTuiApp(App[None]):
         self._control_worker.stop()
 
     def stop_audio(self) -> None:
-        """Stop audio recording, remove callbacks, and stop its worker."""
+        """Finalize recording and stop saved, live, and network audio."""
         session = self._audio_session
         unsubscribe, self._audio_unsubscribe = self._audio_unsubscribe, None
         if unsubscribe is not None:
@@ -771,7 +916,7 @@ class ScannerTuiApp(App[None]):
         if session is None:
             return
         with suppress(Exception):
-            session.stop()
+            session.close()
         self._audio_snapshot = session.snapshot()
 
     def _start_live_updates(self) -> None:
@@ -928,8 +1073,31 @@ class ScannerTuiApp(App[None]):
         session = self._audio_session
         if session is not None:
             self._audio_snapshot = session.snapshot()
+        managed = self._tui_audio_session
         if error is not None:
             self._audio_message = f"Failed: {request.label}: {error}"
+        elif request.label == "Start audio stream" and managed is not None:
+            self._audio_message = (
+                "Live playback active"
+                if managed.live_playback_active
+                else "Audio stream ready"
+            )
+        elif request.label == "Toggle live playback" and managed is not None:
+            self._audio_message = (
+                "Live playback enabled"
+                if managed.live_playback_enabled
+                else "Live playback disabled"
+            )
+        elif request.label == "Play saved recording":
+            self._audio_message = "Saved recording playing"
+        elif request.label == "Pause or resume saved playback" and managed is not None:
+            self._audio_message = (
+                "Saved playback paused"
+                if managed.saved_playback_status is SavedPlaybackStatus.PAUSED
+                else "Saved recording playing"
+            )
+        elif request.label == "Stop saved playback":
+            self._audio_message = "Saved playback stopped"
         elif (
             self._audio_snapshot is not None
             and self._audio_snapshot.status is AudioSessionStatus.RECORDING
@@ -946,8 +1114,24 @@ class ScannerTuiApp(App[None]):
 
     def _apply_audio_state(self, snapshot: AudioSessionSnapshot) -> None:
         self._audio_snapshot = snapshot
+        managed = self._tui_audio_session
         if snapshot.error is not None:
             self._audio_message = f"Failed: {snapshot.error}"
+        elif (
+            managed is not None
+            and managed.saved_playback_status is SavedPlaybackStatus.FAILED
+        ):
+            self._audio_message = f"Saved playback failed: {managed.saved_playback_error}"
+        elif (
+            managed is not None
+            and managed.saved_playback_status is SavedPlaybackStatus.PLAYING
+        ):
+            self._audio_message = "Saved recording playing"
+        elif (
+            managed is not None
+            and managed.saved_playback_status is SavedPlaybackStatus.PAUSED
+        ):
+            self._audio_message = "Saved playback paused"
         elif snapshot.status is AudioSessionStatus.RECORDING:
             self._audio_message = "Recording in progress"
         elif snapshot.status is AudioSessionStatus.STOPPING:
@@ -1117,6 +1301,8 @@ class ScannerTuiApp(App[None]):
             self.query_one("#audio", Static).update(self._audio_panel())
 
     def _audio_panel(self) -> Text:
+        if self._tui_audio_session is not None:
+            return self._tui_audio_panel()
         snapshot = self._audio_snapshot
         assert snapshot is not None
         reliability = snapshot.reliability
@@ -1176,6 +1362,115 @@ class ScannerTuiApp(App[None]):
             ("Audio control", detail, ThemeRole.TEXT_PRIMARY),
         )
 
+    def _tui_audio_panel(self) -> Text:
+        session = self._tui_audio_session
+        snapshot = self._audio_snapshot
+        assert session is not None
+        assert snapshot is not None
+        reliability = snapshot.reliability
+        saved_status = session.saved_playback_status
+        if saved_status in {SavedPlaybackStatus.PLAYING, SavedPlaybackStatus.PAUSED}:
+            live_playback = "SUSPENDED FOR SAVED PLAYBACK"
+        elif session.live_playback_active:
+            live_playback = "ON"
+        elif session.live_playback_enabled:
+            live_playback = "STARTING"
+        else:
+            live_playback = "OFF"
+        saved_path = session.saved_playback_path
+        saved_playback = _state_label(saved_status.value)
+        if saved_path is not None:
+            saved_playback = f"{saved_playback} — {saved_path.name}"
+        if snapshot.status is AudioSessionStatus.FAILED:
+            status_role = ThemeRole.SEVERITY_ERROR
+        elif snapshot.active:
+            status_role = ThemeRole.STATE_RECORDING
+        else:
+            status_role = ThemeRole.TEXT_PRIMARY
+        last_completed = session.last_completed
+        rows: list[tuple[str, str, ThemeRole]] = [
+            ("Live playback", live_playback, ThemeRole.TEXT_PRIMARY),
+            ("Saved playback", saved_playback, ThemeRole.TEXT_PRIMARY),
+            ("Recording", _state_label(snapshot.status.value), status_role),
+            (
+                "Elapsed",
+                f"{snapshot.elapsed_seconds:.1f} seconds",
+                ThemeRole.TEXT_PRIMARY,
+            ),
+            ("Output", str(snapshot.output_path), ThemeRole.TEXT_PRIMARY),
+            (
+                "Packets / samples",
+                f"{snapshot.packets} / {snapshot.samples}",
+                ThemeRole.TEXT_PRIMARY,
+            ),
+            (
+                "Completed this session",
+                str(session.completed_recordings),
+                ThemeRole.TEXT_PRIMARY,
+            ),
+            (
+                "Last completed",
+                last_completed.path.name if last_completed is not None else "-",
+                ThemeRole.TEXT_PRIMARY,
+            ),
+            (
+                "RTP loss / duplicate",
+                f"{reliability.packets_lost} / {reliability.duplicate_packets}",
+                ThemeRole.TEXT_PRIMARY,
+            ),
+            ("Audio control", snapshot.error or self._audio_message, ThemeRole.TEXT_PRIMARY),
+        ]
+        playback_statistics = session.playback_statistics
+        if playback_statistics is not None:
+            rows.append(
+                (
+                    "Playback underflow / dropped",
+                    (
+                        f"{playback_statistics.underflows} / "
+                        f"{playback_statistics.bytes_dropped} bytes"
+                    ),
+                    ThemeRole.TEXT_PRIMARY,
+                )
+            )
+        if self._recording_library_visible:
+            entries = session.recordings
+            self._recording_library_index = min(
+                self._recording_library_index,
+                max(0, len(entries) - 1),
+            )
+            rows.append(
+                (
+                    "Recordings",
+                    f"{len(entries)} newest first",
+                    ThemeRole.TEXT_PRIMARY,
+                )
+            )
+            if not entries:
+                rows.append((">", "No compatible WAV recordings", ThemeRole.TEXT_PRIMARY))
+            else:
+                start = max(
+                    0,
+                    min(
+                        self._recording_library_index - 2,
+                        max(0, len(entries) - 5),
+                    ),
+                )
+                for index in range(start, min(start + 5, len(entries))):
+                    entry = entries[index]
+                    marker = ">" if index == self._recording_library_index else " "
+                    rows.append(
+                        (
+                            f"{marker} {index + 1}",
+                            (
+                                f"{entry.recorded_at:%Y-%m-%d %H:%M:%S} | "
+                                f"{entry.duration_seconds:.1f}s | "
+                                f"{_size_display(entry.size_bytes)} | {entry.path.name}"
+                            ),
+                            ThemeRole.TEXT_PRIMARY,
+                        )
+                    )
+        return self._panel(*rows)
+
     def _state_panel(
         self,
         presentation: ScannerPresentation,
@@ -1228,7 +1523,7 @@ def run_tui(
     firmware: str,
     info: ScannerInfo,
     radio: ScannerTuiRadio,
-    audio_session: AudioRecordingSession | None = None,
+    audio_session: AudioRecordingSession | TuiAudioSession | None = None,
     interval_ms: int,
     stale_after: float,
     psi_auto_recover: bool = True,
@@ -1269,6 +1564,14 @@ def _level_display(value: int | None, maximum: int) -> str:
     if value is None:
         return "-"
     return f"{value}/{maximum}"
+
+
+def _size_display(value: int) -> str:
+    if value < 1024:
+        return f"{value} B"
+    if value < 1024 * 1024:
+        return f"{value / 1024:.1f} KiB"
+    return f"{value / (1024 * 1024):.1f} MiB"
 
 
 def _state_label(value: str) -> str:

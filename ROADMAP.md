@@ -7,28 +7,20 @@ produce new information.
 
 ## Active milestone
 
-### Milestone 16.1 — Live local audio playback
-
-- Introduce a transport-independent PCM sink contract.
-- Decode each accepted SDS200 PCMU packet once and fan the PCM out to independently
-  buffered destinations.
-- Add `sdsctl audio --play` using the operating system's default output device.
-- Support playback-only, recording-only, and simultaneous playback plus recording.
-- Keep sound-device support optional and provide clear installation diagnostics.
-- Report playback queue, underflow, overflow, and dropped-audio counters.
-- Hardware-validate default-device playback and simultaneous WAV recording on the
-  Raspberry Pi workstation.
-
-## Planned milestones
-
 ### Milestone 16.2 — TUI audio workflow and repeatable recordings
 
-- Add TUI playback status and controls without opening a second RTSP/RTP session.
+- Add immediate unmuted TUI live playback and status controls without opening a
+  second RTSP/RTP session.
 - Allow multiple recording sessions without restarting the TUI.
 - Generate collision-safe local timestamp filenames from an output directory and
   optional filename template.
 - Preserve explicit one-file output and overwrite protection.
+- List compatible recordings newest first with timestamp, duration, and size.
+- Play, pause, resume, and stop saved recordings while automatically suspending and
+  restoring enabled live playback.
 - Show completion summaries and recording history.
+
+## Planned milestones
 
 ### Milestone 16.3 — Remote audio destinations
 
@@ -81,3 +73,6 @@ produce new information.
   reusable recording sessions, and Textual audio controls.
 - Milestone 15: deterministic TUI lifecycle hardening, operational logging,
   automatic stale-PSI recovery, Raspberry Pi fault injection, and v0.15.0.
+- Milestone 16.1: decoded-PCM fanout, optional local playback, simultaneous playback
+  and recording, sink reliability counters, roadmap enforcement, and SDS200 hardware
+  validation.
