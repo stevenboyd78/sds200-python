@@ -21,6 +21,10 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 - A service-neutral remote PCM destination core with environment-backed secret
   references, bounded worker queues, reconnect backoff, redacted failures, and
   immutable operational snapshots.
+- A Broadcastify-compatible Icecast source adapter with a fixed 22.05 kHz,
+  16 kbps constant-bit-rate mono MP3 profile, FFmpeg process isolation, static
+  source metadata, injected test seams, and interruptible shutdown.
+
 ### Changed
 
 - `sdsctl audio` now supports playback-only, recording-only, or simultaneous
