@@ -7,21 +7,6 @@ produce new information.
 
 ## Active milestone
 
-### Milestone 16.2 — TUI audio workflow and repeatable recordings
-
-- Add immediate unmuted TUI live playback and status controls without opening a
-  second RTSP/RTP session.
-- Allow multiple recording sessions without restarting the TUI.
-- Generate collision-safe local timestamp filenames from an output directory and
-  optional filename template.
-- Preserve explicit one-file output and overwrite protection.
-- List compatible recordings newest first with timestamp, duration, and size.
-- Play, pause, resume, and stop saved recordings while automatically suspending and
-  restoring enabled live playback.
-- Show completion summaries and recording history.
-
-## Planned milestones
-
 ### Milestone 16.3 — Remote audio destinations
 
 - Add a destination configuration model that keeps credentials out of command-line
@@ -34,6 +19,8 @@ produce new information.
   service cannot delay scanner RTP reception, local playback, or recording.
 - Add deterministic disconnect, retry, credential-redaction, and shutdown tests
   before hardware/service validation.
+
+## Planned milestones
 
 ### Milestone 16.4 — Recording metadata and organization
 
@@ -76,3 +63,6 @@ produce new information.
 - Milestone 16.1: decoded-PCM fanout, optional local playback, simultaneous playback
   and recording, sink reliability counters, roadmap enforcement, and SDS200 hardware
   validation.
+- Milestone 16.2: immediate TUI live playback, repeatable recordings, a newest-first
+  recording library, saved-recording playback, one shared RTSP/RTP stream, deferred
+  PortAudio startup, warm mute and resume behavior, and SDS200 hardware validation.
