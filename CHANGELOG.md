@@ -13,6 +13,8 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 - Optional live playback through the local default or selected PortAudio output
   device, including queue, underflow, overflow, and dropped-audio counters.
 - A maintained project roadmap covering active, planned, and exploratory work.
+- Version-controlled GitHub Wiki source with task-oriented home, installation,
+  troubleshooting, navigation, and publishing guidance.
 - Repeatable TUI recordings with collision-safe local timestamp filenames, a
   newest-first recording library, and saved-recording playback controls.
 - Immediate unmuted TUI live playback through the default or selected PortAudio
