@@ -7,21 +7,6 @@ produce new information.
 
 ## Active milestone
 
-### Milestone 16.3 — Remote audio destinations
-
-- Add a destination configuration model that keeps credentials out of command-line
-  history and operational logs.
-- Investigate and implement a Broadcastify-compatible feed sink with the required
-  codec, metadata, reconnect, and backoff behavior.
-- Investigate and implement an Asterisk music-on-hold stream sink or documented
-  adapter suitable for a configured music-on-hold class.
-- Isolate every remote destination behind its own bounded queue so a slow or failed
-  service cannot delay scanner RTP reception, local playback, or recording.
-- Add deterministic disconnect, retry, credential-redaction, and shutdown tests
-  before hardware/service validation.
-
-## Planned milestones
-
 ### Milestone 16.4 — Recording metadata and organization
 
 - Add optional sidecar JSON metadata.
@@ -29,6 +14,8 @@ produce new information.
   recording boundaries when available.
 - Add safe filename components derived from scanner state.
 - Define retention and organization helpers without deleting recordings by default.
+
+## Planned milestones
 
 ### Milestone 16.5 — SDS150 hardware validation
 
@@ -66,3 +53,7 @@ produce new information.
 - Milestone 16.2: immediate TUI live playback, repeatable recordings, a newest-first
   recording library, saved-recording playback, one shared RTSP/RTP stream, deferred
   PortAudio startup, warm mute and resume behavior, and SDS200 hardware validation.
+- Milestone 16.3: service-neutral remote PCM destinations, a Broadcastify-compatible
+  Icecast source adapter, an Asterisk Music-on-Hold bridge, deterministic reconnect
+  and shutdown validation, physical SDS200 testing, and assigned production-feed
+  authorization and routing validation.

@@ -30,6 +30,11 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   a bounded nonblocking stdout worker, network-profile support, clean pipe-close
   handling, and orderly `SIGHUP`, `SIGTERM`, and `SIGINT` shutdown.
 
+- Physical SDS200 validation tools and evidence for Broadcastify-compatible local
+  Icecast streaming, forced-disconnect recovery, and assigned production-feed
+  authorization and routing, including sanitized counters, MP3 profile and signal
+  checks, reconnect state, credential exclusion, and orphan-process detection.
+
 ### Changed
 
 - `sdsctl audio` now supports playback-only, recording-only, or simultaneous
