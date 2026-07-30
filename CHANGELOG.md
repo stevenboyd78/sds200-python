@@ -18,6 +18,9 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 - Immediate unmuted TUI live playback through the default or selected PortAudio
   device.
 
+- A service-neutral remote PCM destination core with environment-backed secret
+  references, bounded worker queues, reconnect backoff, redacted failures, and
+  immutable operational snapshots.
 ### Changed
 
 - `sdsctl audio` now supports playback-only, recording-only, or simultaneous

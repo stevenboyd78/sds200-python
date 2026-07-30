@@ -113,6 +113,28 @@ scanner. Packets are accepted only from the source address, server port, and SSR
 negotiated during RTSP `SETUP`; unexpected senders are counted and discarded.
 Explicit `0.0.0.0` RTP binds are rejected.
 
+## Remote destination core
+
+Milestone 16.3 introduces a service-neutral `RemotePcmSink` foundation before any
+Broadcastify or Asterisk adapter is enabled. The sink owns a bounded newest-audio
+queue and performs connection creation, blocking writes, reconnect backoff, and
+connection shutdown on its worker thread. Scanner RTP reception and all other PCM
+destinations therefore remain independent from a slow or failed remote service.
+
+`RemoteDestinationConfig` rejects credentials embedded in endpoint URLs.
+Credentials are represented by named `EnvironmentSecret` references and resolved
+only when the worker opens an adapter connection. Resolved values are excluded from
+configuration representations, snapshots, and log messages; connection exceptions
+are redacted before they are retained or reported.
+
+`RemotePcmSinkSnapshot` reports immutable queue, throughput, connection-attempt,
+reconnect, failure, retry, and last-error state. Service adapters receive the
+configuration and resolved secret mapping through an injected
+`RemoteConnectionFactory`. Adapter connections provide a prompt, thread-safe
+`interrupt()` operation so shutdown can unblock an in-flight `write_pcm()` before
+the worker finalizes the connection with `close()`. No production remote service
+adapter or command-line configuration is available yet.
+
 The protocol is unauthenticated and unencrypted. Keep RTSP TCP port 554 and its
 negotiated RTP UDP port on a trusted LAN or behind a secured VPN. Remote streaming
 credentials must not be passed through command-line arguments or written to logs.

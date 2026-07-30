@@ -105,6 +105,15 @@ from .profiles import (
 )
 from .radio import SDS200, SDSScanner
 from .reliability import HealthHistory, HealthThresholds, ReconnectPolicy
+from .remote_audio import (
+    EnvironmentSecret,
+    RemoteAudioConnection,
+    RemoteConnectionFactory,
+    RemoteDestinationConfig,
+    RemotePcmSink,
+    RemotePcmSinkSnapshot,
+    RemoteSinkState,
+)
 from .replay import (
     CaptureEvent,
     CaptureSession,
@@ -185,6 +194,7 @@ __all__ = [
     "ConnectionProfile",
     "ConnectionStatus",
     "ControlTransport",
+    "EnvironmentSecret",
     "DEFAULT_AUDIO_PATH",
     "DEFAULT_DARK_THEME",
     "DEFAULT_DISCOVERY_WORKERS",
@@ -232,6 +242,12 @@ __all__ = [
     "RadioStateSnapshot",
     "RecordingTransport",
     "ReconnectPolicy",
+    "RemoteAudioConnection",
+    "RemoteConnectionFactory",
+    "RemoteDestinationConfig",
+    "RemotePcmSink",
+    "RemotePcmSinkSnapshot",
+    "RemoteSinkState",
     "ReplayMismatchError",
     "ReplayTransport",
     "RtpPacket",
