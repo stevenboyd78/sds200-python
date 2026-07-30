@@ -20,6 +20,8 @@ recovery.
 - `SoundDevicePlaybackSink` sends PCM to the selected PortAudio output device.
 - `PcmWavSink` moves WAV writes to a worker thread and finalizes the
   `PcmuWavRecorder` during shutdown.
+- `PcmStreamSink` writes raw PCM through a bounded nonblocking descriptor worker
+  for foreground process integrations such as Asterisk custom Music on Hold.
 
 A sink's `submit_pcm()` method must not block on device, disk, encoder, or network
 I/O. Each sink owns its buffering and failure behavior so one destination cannot
@@ -197,6 +199,77 @@ and [Barix Icecast source setup][broadcastify-barix] for the service-side profil
 
 [broadcastify-alternative]: https://support.broadcastify.com/hc/en-us/articles/204740015-Alternative-Broadcasting-Software-and-Clients
 [broadcastify-barix]: https://support.broadcastify.com/hc/en-us/articles/22099461024539-Barix-Instreamer-Setup-for-Broadcastify
+
+## Asterisk Music-on-Hold bridge
+
+Milestone 16.3.2 adds a foreground `sdsctl asterisk-moh` bridge for Asterisk's
+custom Music-on-Hold mode. Asterisk starts the command and reads raw audio from
+its standard output. The bridge reserves `stdout` exclusively for 8 kHz mono
+16-bit signed-linear PCM; logging and errors remain on `stderr` so text can
+never corrupt the audio stream.
+
+The bridge reuses the decoded fanout PCM directly. It does not start FFmpeg,
+resample, or add an Asterisk Python dependency. `PcmStreamSink` duplicates the
+output descriptor, places it in nonblocking mode, and writes from a bounded
+worker queue. Short writes are completed, slow-reader overflow discards the
+oldest queued audio, and a closed Asterisk pipe ends the command cleanly.
+
+Create a network-capable profile where the Asterisk service account can read
+it. The profile stores the scanner address, not a remote-service credential:
+
+```bash
+sudo install -d -o asterisk -g asterisk /etc/asterisk/sds200
+sudo -u asterisk /opt/sds200/.venv/bin/sdsctl \
+  --config /etc/asterisk/sds200/profiles.toml \
+  profile add scanner-moh --host 192.168.0.251
+```
+
+Add a custom class to `musiconhold.conf`. Use the absolute path to the installed
+`sdsctl` executable because Asterisk services commonly have a restricted
+`PATH`:
+
+```ini
+[scanner]
+mode=custom
+application=/opt/sds200/.venv/bin/sdsctl --config /etc/asterisk/sds200/profiles.toml --profile scanner-moh asterisk-moh
+format=slin
+kill_escalation_delay=5000
+```
+
+Asterisk's sample configuration defines `mode=custom` as an application whose
+output Asterisk consumes and uses `format` to identify that output. `slin` is
+the 8 kHz signed-linear format, matching the SDS200 fanout's 8 kHz, mono,
+little-endian 16-bit PCM. The longer escalation delay gives RTSP teardown and
+worker cleanup time after Asterisk sends `SIGHUP`; the command also handles
+`SIGTERM` and `SIGINT`. The default process-group kill method is retained so
+Asterisk's escalation also reaches any service wrapper or descendants.
+
+Reload Music on Hold and confirm the class is visible:
+
+```bash
+asterisk -rx "module reload res_musiconhold.so"
+asterisk -rx "moh show classes"
+```
+
+For a service-account smoke test outside Asterisk, capture a few seconds of raw
+signed-linear audio. `timeout` sends `SIGTERM`, which the bridge converts into
+an orderly stop:
+
+```bash
+sudo -u asterisk timeout --signal=TERM 5 \
+  /opt/sds200/.venv/bin/sdsctl \
+  --config /etc/asterisk/sds200/profiles.toml \
+  --profile scanner-moh asterisk-moh > /tmp/scanner-moh.sln
+```
+
+The Asterisk service account must be able to reach the scanner's RTSP and RTP
+ports. Keep that traffic on the same trusted LAN or secured VPN described
+below. See Asterisk's [Music-on-Hold sample configuration][asterisk-moh-sample]
+and [audio-format reference][asterisk-audio-formats] for the custom-process and
+signed-linear contracts.
+
+[asterisk-moh-sample]: https://github.com/asterisk/asterisk/blob/master/configs/samples/musiconhold.conf.sample
+[asterisk-audio-formats]: https://docs.asterisk.org/Operation/Asterisk-Audio-and-Video-Capabilities/
 
 ## SDS200 LAN security
 

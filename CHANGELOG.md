@@ -24,6 +24,9 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 - A Broadcastify-compatible Icecast source adapter with a fixed 22.05 kHz,
   16 kbps constant-bit-rate mono MP3 profile, FFmpeg process isolation, static
   source metadata, injected test seams, and interruptible shutdown.
+- An Asterisk custom Music-on-Hold bridge with direct 8 kHz signed-linear PCM,
+  a bounded nonblocking stdout worker, network-profile support, clean pipe-close
+  handling, and orderly `SIGHUP`, `SIGTERM`, and `SIGINT` shutdown.
 
 ### Changed
 
