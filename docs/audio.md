@@ -271,6 +271,81 @@ signed-linear contracts.
 [asterisk-moh-sample]: https://github.com/asterisk/asterisk/blob/master/configs/samples/musiconhold.conf.sample
 [asterisk-audio-formats]: https://docs.asterisk.org/Operation/Asterisk-Audio-and-Video-Capabilities/
 
+## Remote audio validation
+
+Milestone 16.3.3 validates the remote-audio pipeline against a physical SDS200
+running firmware 1.26.01. The validation host ran Ubuntu 26.04 LTS, Python
+3.14.4, FFmpeg 8.0.1 with `libmp3lame`, and Asterisk 22.5.2.
+
+### Asterisk service validation
+
+The `scanner` custom Music-on-Hold class was installed under the `asterisk`
+service account with an absolute `sdsctl` path, a service-readable saved network
+profile, `format=slin`, the default process-group kill method, and a 5-second
+kill-escalation delay.
+
+A direct service-account capture submitted and wrote 136,320 PCM bytes with zero
+drops. A Local-channel Asterisk test then recorded exactly 15 seconds of mono,
+8 kHz, 16-bit signed-linear audio: 120,000 frames, 119,865 nonzero samples, a
+peak amplitude of 10,876, and RMS amplitude of 2,960.45. A normal module reload
+retained the unchanged custom source. A controlled module unload removed the
+bridge without leaving an orphan, and loading the module recreated the bridge
+with a distinct process ID.
+
+### Broadcastify-compatible loopback validation
+
+Two manual validators exercise the production Broadcastify adapter with the
+physical scanner and real FFmpeg encoder while keeping all traffic on
+`127.0.0.1:8500`:
+
+- `scripts/validate_broadcastify_loopback.py` accepts one Icecast-compatible
+  source session, verifies and sanitizes its request, captures the MP3 stream,
+  probes its codec profile, decodes it, and rejects silence or PCM loss.
+- `scripts/validate_broadcastify_reconnect.py` deliberately resets the first
+  source connection, requires a successful retry and second source session, and
+  verifies post-reconnect encoded audio and cleanup.
+
+Set `SDS200_BROADCASTIFY_PASSWORD` to an ephemeral local test value before
+running either validator; the value is checked during authentication but never
+written to the evidence files. Stop any other SDS200 RTSP/RTP audio consumer
+before starting a validation run.
+
+```bash
+export SDS200_BROADCASTIFY_PASSWORD="$(
+  python -c 'import secrets; print(secrets.token_urlsafe(32))'
+)"
+
+python scripts/validate_broadcastify_loopback.py \
+  --host 192.168.0.251 \
+  --duration 15 \
+  --output-dir /tmp/sds200-broadcastify-loopback
+
+python scripts/validate_broadcastify_reconnect.py \
+  --host 192.168.0.251 \
+  --drop-after-bytes 4096 \
+  --post-reconnect-duration 10 \
+  --output-dir /tmp/sds200-broadcastify-reconnect
+
+unset SDS200_BROADCASTIFY_PASSWORD
+```
+
+The uninterrupted loopback delivered 376 RTP packets and 120,320 audio samples
+with every RTP reliability counter at zero. All 240,640 submitted PCM bytes were
+written without drops or queue overflow. The captured stream was mono MP3 at
+22.05 kHz and 16 kbps, with 14.811 seconds of decoded non-silent audio.
+
+The forced-disconnect run delivered 339 RTP packets without transport loss or
+callback errors. It recorded two connection attempts, two successful
+connections, one failure, and one reconnect. The interrupted write accounted
+for 640 dropped PCM bytes while queue overflows remained zero. The second source
+session produced 10.005 seconds of non-silent mono MP3 at 22.05 kHz and 16 kbps.
+Both runs stopped FFmpeg cleanly.
+
+These loopback results validate scanner reception, secret handling, Icecast
+request construction, MP3 encoding, retry/backoff, reconnection, and shutdown.
+Authorization and routing against Broadcastify's production service remain
+pending feed approval and assigned Technicals settings.
+
 ## SDS200 LAN security
 
 The protocol is unauthenticated and unencrypted. Keep RTSP TCP port 554 and its
