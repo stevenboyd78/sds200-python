@@ -1,3 +1,12 @@
+from .asterisk_moh import (
+    ASTERISK_MOH_CHANNELS,
+    ASTERISK_MOH_FORMAT,
+    ASTERISK_MOH_SAMPLE_RATE,
+    ASTERISK_MOH_SAMPLE_WIDTH,
+    AsteriskMohSignalController,
+    PcmStreamSink,
+    PcmStreamSinkSnapshot,
+)
 from .audio import AudioChunk, AudioStream, AudioTransport
 from .audio_recording import (
     PCM_CHANNELS,
@@ -179,7 +188,12 @@ from .transport import (
 )
 
 __all__ = [
+    "ASTERISK_MOH_CHANNELS",
+    "ASTERISK_MOH_FORMAT",
+    "ASTERISK_MOH_SAMPLE_RATE",
+    "ASTERISK_MOH_SAMPLE_WIDTH",
     "ActivityStatus",
+    "AsteriskMohSignalController",
     "AudioChunk",
     "AudioFanoutSession",
     "AudioFanoutSnapshot",
@@ -243,6 +257,8 @@ __all__ = [
     "Packet",
     "PcmSink",
     "PcmSinkStatistics",
+    "PcmStreamSink",
+    "PcmStreamSinkSnapshot",
     "PcmWavSink",
     "ProfileKind",
     "ProfileRepairResult",

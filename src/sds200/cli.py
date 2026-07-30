@@ -9,9 +9,10 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from time import sleep
-from typing import Protocol, cast
+from typing import BinaryIO, Protocol, cast
 
 from . import __version__
+from .asterisk_moh import AsteriskMohSignalController, PcmStreamSink
 from .audio import AudioStream
 from .audio_recording import PcmuWavRecorder
 from .audio_sinks import (
@@ -648,6 +649,59 @@ def build_parser() -> argparse.ArgumentParser:
         default=15.0,
         metavar="SECONDS",
         help="RTSP GET_PARAMETER interval (default: 15.0)",
+    )
+
+    asterisk_moh = subparsers.add_parser(
+        "asterisk-moh",
+        help="Stream SDS200 network audio to Asterisk custom Music on Hold",
+    )
+    asterisk_moh.add_argument(
+        "--rtsp-port",
+        type=_remote_port,
+        default=DEFAULT_RTSP_PORT,
+        metavar="PORT",
+        help=f"Scanner RTSP port (default: {DEFAULT_RTSP_PORT})",
+    )
+    asterisk_moh.add_argument(
+        "--rtsp-timeout",
+        type=_positive_float,
+        default=2.0,
+        metavar="SECONDS",
+        help="RTSP operation timeout (default: 2.0)",
+    )
+    asterisk_moh.add_argument(
+        "--rtp-bind-address",
+        default="",
+        metavar="ADDRESS",
+        help="Local address for the RTP UDP socket",
+    )
+    asterisk_moh.add_argument(
+        "--rtp-bind-port",
+        type=_local_port,
+        default=0,
+        metavar="PORT",
+        help="Local RTP UDP port; 0 selects an ephemeral port",
+    )
+    asterisk_moh.add_argument(
+        "--keepalive-interval",
+        type=_positive_float,
+        default=15.0,
+        metavar="SECONDS",
+        help="RTSP GET_PARAMETER interval (default: 15.0)",
+    )
+    asterisk_moh.add_argument(
+        "--buffer-seconds",
+        type=_positive_float,
+        default=1.0,
+        metavar="SECONDS",
+        help="Bounded newest-audio stdout queue (default: 1.0)",
+    )
+    asterisk_moh.add_argument(
+        "--stop-timeout",
+        type=_positive_float,
+        default=1.0,
+        metavar="SECONDS",
+        help="Maximum stdout-worker shutdown time (default: 1.0)",
     )
 
     for action_name, action_help in (
@@ -1327,6 +1381,105 @@ def _manage_profile(args: argparse.Namespace, store: ProfileStore) -> int:
     raise ValueError(f"Unsupported profile action: {args.profile_action}")
 
 
+
+def _asterisk_moh_host(args: argparse.Namespace) -> str:
+    if args.port is not None:
+        raise ValueError("asterisk-moh does not use USB serial control")
+    if args.replay is not None:
+        raise ValueError("asterisk-moh does not support replay captures")
+    if args.udp_port is not None or args.bind_address or args.bind_port:
+        raise ValueError(
+            "--udp-port, --bind-address, and --bind-port are control-only; "
+            "use the Asterisk MOH RTP options instead"
+        )
+    if args.connection_preference is not None:
+        raise ValueError("--prefer is not used with asterisk-moh")
+    recovery_options = (
+        args.recover_preferred,
+        args.recovery_probe_interval,
+        args.recovery_probe_timeout,
+        args.recovery_stability_window,
+        args.recovery_cooldown,
+    )
+    if any(value is not None for value in recovery_options):
+        raise ValueError("Preferred recovery options are not used with asterisk-moh")
+    if args.capture is not None:
+        raise ValueError("--capture is not supported for asterisk-moh")
+    if args.redact:
+        raise ValueError("--redact requires --capture")
+    if args.trace is not None:
+        raise ValueError("--trace currently records control traffic, not audio")
+    if args.replay_speed != 0:
+        raise ValueError("--replay-speed requires --replay")
+
+    if args.profile is not None:
+        if args.model is not None:
+            raise ValueError("--model cannot override a saved profile")
+        profile = ProfileStore(args.config).get(args.profile)
+        if profile.kind not in {"network", "fallback"} or profile.host is None:
+            raise ValueError(
+                "asterisk-moh requires a network-capable SDS200 connection profile"
+            )
+        return profile.host
+
+    if args.host is None:
+        raise ValueError(
+            "asterisk-moh requires --host or a network-capable SDS200 --profile"
+        )
+    if args.model not in {None, "SDS200"}:
+        raise ValueError("Asterisk MOH network audio is only available on the SDS200")
+    return cast(str, args.host)
+
+
+def _stdout_binary_stream() -> BinaryIO:
+    output = getattr(sys.stdout, "buffer", None)
+    if output is None:
+        raise ValueError("asterisk-moh requires a binary standard-output stream")
+    return cast(BinaryIO, output)
+
+
+def _run_asterisk_moh(args: argparse.Namespace) -> int:
+    host = _asterisk_moh_host(args)
+    transport = NetworkAudioTransport(
+        host,
+        rtsp_port=args.rtsp_port,
+        local_host=args.rtp_bind_address,
+        local_port=args.rtp_bind_port,
+        rtsp_timeout=args.rtsp_timeout,
+        keepalive_interval=args.keepalive_interval,
+    )
+    sink = PcmStreamSink(
+        _stdout_binary_stream(),
+        name="asterisk-moh",
+        buffer_seconds=args.buffer_seconds,
+        stop_timeout=args.stop_timeout,
+    )
+    session = AudioFanoutSession(AudioStream(transport), (sink,))
+
+    with AsteriskMohSignalController() as stop:
+        try:
+            session.start()
+            while not stop.wait(0.1):
+                if sink.wait(0):
+                    break
+        except KeyboardInterrupt:
+            pass
+        finally:
+            session.stop()
+
+    snapshot = sink.snapshot()
+    logger.info(
+        "Asterisk MOH bridge stopped host=%s submitted=%d written=%d dropped=%d "
+        "reader_closed=%s",
+        host,
+        snapshot.statistics.bytes_submitted,
+        snapshot.statistics.bytes_written,
+        snapshot.statistics.bytes_dropped,
+        snapshot.reader_closed,
+    )
+    return 0
+
+
 def _run_audio(args: argparse.Namespace) -> int:
     if args.host is None:
         raise ValueError("audio requires an explicit SDS200 --host")
@@ -1573,6 +1726,9 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.action == "discover":
             return _run_discovery(args)
+
+        if args.action == "asterisk-moh":
+            return _run_asterisk_moh(args)
 
         if args.action == "audio":
             return _run_audio(args)
