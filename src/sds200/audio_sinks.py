@@ -59,6 +59,16 @@ class PcmSink(Protocol):
     def stop(self) -> None: ...
 
 
+@runtime_checkable
+class MuteablePcmSink(PcmSink, Protocol):
+    """PCM sink that can stay prepared while intentional silence is emitted."""
+
+    @property
+    def muted(self) -> bool: ...
+
+    def set_muted(self, muted: bool) -> None: ...
+
+
 @dataclass(frozen=True, slots=True)
 class AudioFanoutSnapshot:
     """Current state of one transport-independent PCM fanout session."""
@@ -301,6 +311,7 @@ class SoundDevicePlaybackSink:
         self._underflows = 0
         self._overflows = 0
         self._callback_statuses = 0
+        self._muted = False
 
     @property
     def name(self) -> str:
@@ -310,6 +321,11 @@ class SoundDevicePlaybackSink:
     def running(self) -> bool:
         with self._lock:
             return self._stream is not None
+
+    @property
+    def muted(self) -> bool:
+        with self._lock:
+            return self._muted
 
     @property
     def statistics(self) -> PcmSinkStatistics:
@@ -357,9 +373,17 @@ class SoundDevicePlaybackSink:
             self._stream = stream
         logger.info("audio playback started device=%s", self.device or "default")
 
-    def submit_pcm(self, data: bytes) -> None:
-        dropped = self._buffer.push(data)
+    def set_muted(self, muted: bool) -> None:
         with self._lock:
+            self._muted = muted
+            if muted:
+                self._buffer.clear()
+
+    def submit_pcm(self, data: bytes) -> None:
+        with self._lock:
+            if self._muted:
+                return
+            dropped = self._buffer.push(data)
             self._bytes_submitted += len(data)
             self._bytes_dropped += dropped
             if dropped:
@@ -394,6 +418,14 @@ class SoundDevicePlaybackSink:
     ) -> None:
         del time_info
         requested = frames * PCM_CHANNELS * PCM_SAMPLE_WIDTH
+        with self._lock:
+            muted = self._muted
+        if muted:
+            cast(_WritableBuffer, outdata)[:] = bytes(requested)
+            with self._lock:
+                if bool(status):
+                    self._callback_statuses += 1
+            return
         pcm = self._buffer.pop(requested)
         missing = requested - len(pcm)
         cast(_WritableBuffer, outdata)[:] = pcm + bytes(missing)

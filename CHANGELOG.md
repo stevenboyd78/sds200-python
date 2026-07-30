@@ -27,6 +27,15 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 - TUI playback and repeatable recording now share one long-lived RTSP/RTP stream;
   playing a saved recording temporarily suspends local live playback without
   interrupting scanner reception or an active WAV recording.
+- SDS200 host TUI sessions now expose live playback controls even without
+  `--audio-playback`; the flag requests automatic startup after connected live PSI.
+
+### Fixed
+
+- Deferred PortAudio startup until the first connected live PSI refresh, preventing
+  playback initialization from leaving stale startup panels in wide terminals.
+- Live playback toggles now keep a prepared output device warm and muted until TUI
+  shutdown, without counting intentional muted callbacks as underflows.
 
 ## [0.15.0] - 2026-07-28
 

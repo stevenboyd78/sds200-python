@@ -152,6 +152,20 @@ def test_sounddevice_playback_uses_nonblocking_bounded_buffer() -> None:
     assert underflow == bytes(16)
     assert sink.statistics.underflows == 1
 
+    sink.set_muted(True)
+    sink.submit_pcm(bytes(range(16)))
+    muted = bytearray(16)
+    module.stream.callback(muted, 8, object(), object())
+    assert muted == bytes(16)
+    statistics = sink.statistics
+    assert statistics.bytes_submitted == 32
+    assert statistics.queued_bytes == 0
+    assert statistics.underflows == 1
+    assert statistics.callback_statuses == 2
+    assert sink.muted
+
+    sink.set_muted(False)
+    assert not sink.muted
     sink.stop()
     assert module.stream.closed
     assert not sink.running

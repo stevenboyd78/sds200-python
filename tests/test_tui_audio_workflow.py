@@ -8,8 +8,14 @@ from textual.widgets import Static
 
 from sds200.audio import AudioChunk, AudioStream
 from sds200.audio_session import AudioSessionStatus
+from sds200.audio_sinks import PcmSinkStatistics
+from sds200.state import snapshot_from_scanner_info
 from sds200.tui import ScannerIdentity, ScannerTuiApp
-from sds200.tui_audio import RecordingPathPolicy, TuiAudioSession
+from sds200.tui_audio import (
+    RecordingPathPolicy,
+    SavedPlaybackStatus,
+    TuiAudioSession,
+)
 from sds200.xml_protocol import ScannerInfoParser
 
 from .fakes import FakeAudioTransport
@@ -33,6 +39,37 @@ def _plain(widget: Static) -> str:
     return content if isinstance(content, str) else content.plain
 
 
+class CollectingPlaybackSink:
+    def __init__(self) -> None:
+        self._running = False
+        self.start_calls = 0
+        self.stop_calls = 0
+
+    @property
+    def name(self) -> str:
+        return "playback:test"
+
+    @property
+    def running(self) -> bool:
+        return self._running
+
+    @property
+    def statistics(self) -> PcmSinkStatistics:
+        return PcmSinkStatistics()
+
+    def start(self) -> None:
+        self._running = True
+        self.start_calls += 1
+
+    def submit_pcm(self, data: bytes) -> None:
+        del data
+        assert self._running
+
+    def stop(self) -> None:
+        self._running = False
+        self.stop_calls += 1
+
+
 async def _wait_for_status(
     session: TuiAudioSession,
     status: AudioSessionStatus,
@@ -44,6 +81,145 @@ async def _wait_for_status(
     raise AssertionError(
         f"Expected audio status {status.value}, received {session.status.value}"
     )
+
+
+def test_tui_defers_requested_playback_until_connected_live_psi() -> None:
+    async def exercise() -> None:
+        transport = FakeAudioTransport()
+        playback = CollectingPlaybackSink()
+        info = ScannerInfoParser().parse("GSI", XML)
+        session = TuiAudioSession(
+            AudioStream(transport),
+            RecordingPathPolicy(),
+            live_playback=True,
+            playback_sink=playback,
+        )
+        app = ScannerTuiApp(
+            ScannerIdentity(
+                endpoint="udp://192.0.2.25:50536",
+                model="SDS200",
+                firmware="Version 1.26.01",
+            ),
+            info,
+            audio_session=session,
+            connected=True,
+        )
+
+        async with app.run_test(size=(120, 40)):
+            for _ in range(200):
+                if session.open and not app._audio_pending:
+                    break
+                await asyncio.sleep(0.01)
+            assert session.open
+            assert session.live_playback_enabled
+            assert not session.live_playback_active
+            assert not playback.running
+
+            app._apply_radio_state(snapshot_from_scanner_info(info))
+            for _ in range(200):
+                if session.live_playback_active and not app._audio_pending:
+                    break
+                await asyncio.sleep(0.01)
+
+            assert session.live_playback_active
+            assert playback.running
+            panel = _plain(app.query_one("#audio", Static))
+            assert "Live playback: ON" in panel
+            assert "Playback device: ACTIVE" in panel
+
+        assert playback.stop_calls == 1
+
+    asyncio.run(exercise())
+
+
+def test_tui_manual_playback_toggle_keeps_device_prepared() -> None:
+    async def exercise() -> None:
+        transport = FakeAudioTransport()
+        playback = CollectingPlaybackSink()
+        session = TuiAudioSession(
+            AudioStream(transport),
+            RecordingPathPolicy(),
+            playback_sink=playback,
+        )
+        app = ScannerTuiApp(
+            ScannerIdentity(
+                endpoint="udp://192.0.2.25:50536",
+                model="SDS200",
+                firmware="Version 1.26.01",
+            ),
+            ScannerInfoParser().parse("GSI", XML),
+            audio_session=session,
+        )
+
+        async with app.run_test(size=(120, 40)) as pilot:
+            for _ in range(200):
+                if session.open and not app._audio_pending:
+                    break
+                await asyncio.sleep(0.01)
+
+            await pilot.press("a")
+            for _ in range(200):
+                if session.live_playback_active and not app._audio_pending:
+                    break
+                await asyncio.sleep(0.01)
+            assert playback.running
+            assert session.live_playback_active
+
+            await pilot.press("a")
+            for _ in range(200):
+                if not session.live_playback_active and not app._audio_pending:
+                    break
+                await asyncio.sleep(0.01)
+            assert playback.running
+            assert playback.stop_calls == 0
+            panel = _plain(app.query_one("#audio", Static))
+            assert "Live playback: OFF" in panel
+            assert "Playback device: READY / MUTED" in panel
+
+        assert playback.stop_calls == 1
+
+    asyncio.run(exercise())
+
+
+def test_tui_panel_reports_active_device_during_saved_playback() -> None:
+    async def exercise() -> None:
+        transport = FakeAudioTransport()
+        playback = CollectingPlaybackSink()
+        session = TuiAudioSession(
+            AudioStream(transport),
+            RecordingPathPolicy(),
+            playback_sink=playback,
+        )
+        app = ScannerTuiApp(
+            ScannerIdentity(
+                endpoint="udp://192.0.2.25:50536",
+                model="SDS200",
+                firmware="Version 1.26.01",
+            ),
+            ScannerInfoParser().parse("GSI", XML),
+            audio_session=session,
+        )
+
+        async with app.run_test(size=(120, 40)):
+            for _ in range(200):
+                if session.open and not app._audio_pending:
+                    break
+                await asyncio.sleep(0.01)
+            assert session.open
+            assert not app._audio_pending
+
+            playback.start()
+            with session._state_lock:
+                session._saved_status = SavedPlaybackStatus.PLAYING
+            app._refresh_view()
+
+            panel = _plain(app.query_one("#audio", Static))
+            assert "Saved playback: PLAYING" in panel
+            assert "Playback device: ACTIVE" in panel
+
+        assert playback.stop_calls == 1
+
+    asyncio.run(exercise())
 
 
 def test_tui_creates_consecutive_recordings_and_lists_the_library(
