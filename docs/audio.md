@@ -132,8 +132,73 @@ reconnect, failure, retry, and last-error state. Service adapters receive the
 configuration and resolved secret mapping through an injected
 `RemoteConnectionFactory`. Adapter connections provide a prompt, thread-safe
 `interrupt()` operation so shutdown can unblock an in-flight `write_pcm()` before
-the worker finalizes the connection with `close()`. No production remote service
-adapter or command-line configuration is available yet.
+the worker finalizes the connection with `close()`. The Broadcastify adapter below
+is the first production implementation; command-line configuration is not
+available yet.
+
+## Broadcastify feed adapter
+
+Milestone 16.3.1 adds a Broadcastify-compatible Icecast source connection on top
+of `RemotePcmSink`. Broadcastify's documented mono profile is fixed at 22.05 kHz,
+16 kbps constant-bit-rate MP3. The adapter accepts the fanout layer's 8 kHz mono
+signed 16-bit PCM and starts an FFmpeg process that resamples and encodes it before
+a dedicated connection pump sends the MP3 bytes to the configured Icecast mount.
+
+An approved Broadcastify feed supplies its receiver server, port, mount, and source
+password on the feed owner's **Technicals** tab. Supported live-audio ports are 80,
+8000, 8080, and 8500. The adapter sends static Icecast source metadata including
+the stream name, scanner genre, public flag, bitrate, sample rate, and mono channel
+count. Dynamic alpha-tag updates synchronized with PSI state are not enabled yet.
+
+Install an FFmpeg build with the `libmp3lame` encoder and make the executable
+available on `PATH`. Keep the source password outside application arguments and
+configuration files. For an interactive shell, read it without echoing the value:
+
+```bash
+read -rsp "Broadcastify source password: " SDS200_BROADCASTIFY_PASSWORD
+printf '\n'
+export SDS200_BROADCASTIFY_PASSWORD
+```
+
+Create the sink with only an environment-variable reference in Python:
+
+```python
+from sds200 import (
+    BroadcastifyConfig,
+    EnvironmentSecret,
+    create_broadcastify_sink,
+)
+
+feed = BroadcastifyConfig(
+    name="county-feed",
+    server="audio1.broadcastify.com",
+    port=80,
+    mount="/replace-with-technicals-mount",
+    password=EnvironmentSecret("SDS200_BROADCASTIFY_PASSWORD"),
+    stream_name="County Public Safety",
+)
+broadcastify_sink = create_broadcastify_sink(feed)
+```
+
+Attach `broadcastify_sink` to the same `AudioFanoutSession` used for local playback
+or WAV recording. Connection creation, FFmpeg input, encoded-output pumping,
+reconnect backoff, and shutdown remain outside the scanner RTP callback. The
+adapter's `interrupt()` path closes the Icecast socket and terminates FFmpeg so a
+blocked network or encoder operation cannot hold up application shutdown.
+
+Broadcastify currently documents plain Icecast source ports rather than TLS source
+endpoints. The source authorization header is therefore transported over an
+unencrypted TCP connection. Use only the server and port assigned by Broadcastify,
+protect the host running the feed, and never expose the source port or credentials
+in logs.
+
+See [Broadcastify's alternative-client requirements][broadcastify-alternative]
+and [Barix Icecast source setup][broadcastify-barix] for the service-side profile.
+
+[broadcastify-alternative]: https://support.broadcastify.com/hc/en-us/articles/204740015-Alternative-Broadcasting-Software-and-Clients
+[broadcastify-barix]: https://support.broadcastify.com/hc/en-us/articles/22099461024539-Barix-Instreamer-Setup-for-Broadcastify
+
+## SDS200 LAN security
 
 The protocol is unauthenticated and unencrypted. Keep RTSP TCP port 554 and its
 negotiated RTP UDP port on a trusted LAN or behind a secured VPN. Remote streaming
