@@ -343,8 +343,51 @@ Both runs stopped FFmpeg cleanly.
 
 These loopback results validate scanner reception, secret handling, Icecast
 request construction, MP3 encoding, retry/backoff, reconnection, and shutdown.
-Authorization and routing against Broadcastify's production service remain
-pending feed approval and assigned Technicals settings.
+
+### Live Broadcastify service validation
+
+`scripts/validate_broadcastify_live.py` validates the assigned production feed
+without accepting credentials on the command line or retaining endpoint details
+in its evidence file. Set the assigned server, port, mount, stream name, and
+source password through environment variables, then stop any competing SDS200
+audio consumer before running the validator:
+
+```bash
+export SDS200_BROADCASTIFY_SERVER='assigned receiver server'
+export SDS200_BROADCASTIFY_PORT='assigned source port'
+export SDS200_BROADCASTIFY_MOUNT='/assigned mount'
+export SDS200_BROADCASTIFY_STREAM_NAME='approved feed name'
+
+read -rsp 'Broadcastify source password: ' SDS200_BROADCASTIFY_PASSWORD
+printf '\n'
+export SDS200_BROADCASTIFY_PASSWORD
+
+python scripts/validate_broadcastify_live.py \
+  --host 192.168.0.251 \
+  --duration 60 \
+  --output /tmp/sds200-broadcastify-live-summary.json
+
+unset SDS200_BROADCASTIFY_PASSWORD
+unset SDS200_BROADCASTIFY_SERVER
+unset SDS200_BROADCASTIFY_PORT
+unset SDS200_BROADCASTIFY_MOUNT
+unset SDS200_BROADCASTIFY_STREAM_NAME
+```
+
+The assigned production service accepted the source on the first connection
+attempt over its assigned port. The 60-second run delivered 1,505 RTP packets
+and 481,600 audio samples, representing 60.200 seconds of decoded audio. All
+963,200 submitted PCM bytes were written with zero drops or queue overflows.
+The transport reported no packet loss, sequence gaps, duplicate, late,
+malformed, unexpected-source, SSRC-mismatch, timestamp, receive, or callback
+errors. Shutdown sent RTSP teardown, left the sink stopped with an empty queue,
+and left no FFmpeg process running.
+
+The retained JSON contains counters and state only. It excludes the source
+password, receiver server, assigned mount, and approved feed name. Together
+with the loopback and forced-disconnect results, this validates production
+Broadcastify authorization and routing, the fixed MP3 encoder profile, scanner
+audio delivery, secret handling, recovery behavior, and orderly shutdown.
 
 ## SDS200 LAN security
 

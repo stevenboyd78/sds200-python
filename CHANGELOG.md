@@ -28,9 +28,10 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   a bounded nonblocking stdout worker, network-profile support, clean pipe-close
   handling, and orderly `SIGHUP`, `SIGTERM`, and `SIGINT` shutdown.
 
-- Physical SDS200 validation tools for Broadcastify-compatible local Icecast
-  streaming and forced-disconnect recovery, including sanitized request evidence,
-  MP3 profile and signal checks, reconnect counters, and orphan-process detection.
+- Physical SDS200 validation tools and evidence for Broadcastify-compatible local
+  Icecast streaming, forced-disconnect recovery, and assigned production-feed
+  authorization and routing, including sanitized counters, MP3 profile and signal
+  checks, reconnect state, credential exclusion, and orphan-process detection.
 
 ### Changed
 
