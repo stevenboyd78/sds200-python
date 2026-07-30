@@ -8,6 +8,7 @@ from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
+from time import monotonic
 from typing import BinaryIO, Protocol, cast
 
 from .audio_recording import PCM_CHANNELS, PCM_SAMPLE_WIDTH, PCMU_SAMPLE_RATE
@@ -310,20 +311,37 @@ class BroadcastifyConnection:
             source_socket = self._socket
             pump_thread = self._pump_thread
 
+        deadline = monotonic() + self.config.encoder_stop_timeout
         if not interrupted:
             _close_binary_stream(process.stdin)
-        returncode = _terminate_encoder(process, self.config.encoder_stop_timeout)
-        pump_thread.join(timeout=self.config.encoder_stop_timeout)
-        pump_alive = pump_thread.is_alive()
-        if pump_alive:
+
+        returncode: int | None = None
+        cleanup_error: AudioOutputError | None = None
+        try:
+            returncode = _terminate_encoder(process, deadline)
+        except AudioOutputError as error:
+            cleanup_error = error
+
+        detail = ""
+        if (
+            cleanup_error is None
+            and not interrupted
+            and returncode is not None
+            and returncode != 0
+        ):
+            detail = _read_encoder_error(process.stderr)
+
+        if cleanup_error is None:
+            pump_thread.join(timeout=_remaining_timeout(deadline))
+        if pump_thread.is_alive():
             _close_socket(source_socket)
             if process.poll() is None:
                 with suppress(OSError):
                     process.kill()
-            pump_thread.join(timeout=self.config.encoder_stop_timeout)
-            pump_alive = pump_thread.is_alive()
+            _close_binary_stream(process.stdout)
+            pump_thread.join(timeout=_remaining_timeout(deadline))
+        pump_alive = pump_thread.is_alive()
 
-        detail = "" if interrupted or returncode == 0 else _read_encoder_error(process.stderr)
         _close_binary_stream(process.stdout)
         _close_binary_stream(process.stderr)
         _close_socket(source_socket)
@@ -332,11 +350,13 @@ class BroadcastifyConnection:
             self._closed = True
             self._closing = False
 
-        if interrupted:
-            return
         if pump_alive:
             raise AudioOutputError("Broadcastify encoded-audio worker did not stop.")
-        if returncode != 0 and not encoder_failure_reported:
+        if cleanup_error is not None:
+            raise cleanup_error
+        if interrupted:
+            return
+        if returncode is not None and returncode != 0 and not encoder_failure_reported:
             suffix = "" if not detail else f": {detail}"
             raise AudioOutputError(
                 f"Broadcastify FFmpeg encoder exited with status {returncode}{suffix}."
@@ -501,21 +521,29 @@ def _read_response_headers(source_socket: _SocketLike) -> bytes:
     return bytes(response)
 
 
-def _terminate_encoder(process: _EncoderProcess, timeout: float) -> int:
+def _terminate_encoder(process: _EncoderProcess, deadline: float) -> int:
     try:
-        return process.wait(timeout=timeout)
+        return process.wait(timeout=_cleanup_stage_timeout(deadline))
     except subprocess.TimeoutExpired:
         with suppress(OSError):
             process.terminate()
     try:
-        return process.wait(timeout=timeout)
+        return process.wait(timeout=_cleanup_stage_timeout(deadline))
     except subprocess.TimeoutExpired:
         with suppress(OSError):
             process.kill()
         try:
-            return process.wait(timeout=timeout)
+            return process.wait(timeout=_cleanup_stage_timeout(deadline))
         except subprocess.TimeoutExpired as error:
             raise AudioOutputError("Broadcastify FFmpeg encoder did not stop.") from error
+
+
+def _cleanup_stage_timeout(deadline: float) -> float:
+    return _remaining_timeout(deadline) / 2.0
+
+
+def _remaining_timeout(deadline: float) -> float:
+    return max(0.0, deadline - monotonic())
 
 
 def _read_encoder_error(stream: BinaryIO) -> str:

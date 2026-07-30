@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import io
 import queue
+import subprocess
 import threading
 from collections.abc import Callable
 from time import monotonic, sleep
@@ -149,6 +150,20 @@ class FakeEncoder:
     def kill(self) -> None:
         self.killed = True
         self.returncode = -9
+        self.stdout.close()
+
+
+class StubbornEncoder(FakeEncoder):
+    def wait(self, timeout: float | None = None) -> int:
+        delay = 0.0 if timeout is None else timeout
+        sleep(delay)
+        raise subprocess.TimeoutExpired(cmd="ffmpeg", timeout=delay)
+
+    def terminate(self) -> None:
+        self.terminated = True
+
+    def kill(self) -> None:
+        self.killed = True
         self.stdout.close()
 
 
@@ -320,6 +335,35 @@ def test_broadcastify_connection_interrupts_encoder_and_socket() -> None:
     assert source_socket.shutdown_calls >= 1
     assert len(errors) == 1
     assert isinstance(errors[0], AudioOutputError)
+
+
+def test_broadcastify_sink_shutdown_bounds_stubborn_encoder_cleanup() -> None:
+    source_socket = FakeSocket()
+    encoder = StubbornEncoder()
+    sink = create_broadcastify_sink(
+        config(encoder_stop_timeout=0.08, stop_timeout=0.5),
+        environ={"SDS200_BROADCASTIFY_PASSWORD": "feed-password"},
+        socket_factory=lambda address, timeout: source_socket,
+        encoder_factory=lambda command: encoder,
+    )
+
+    sink.start()
+    sink.submit_pcm(b"\x01\x00")
+    wait_until(lambda: sink.snapshot().statistics.bytes_written == 2)
+
+    started = monotonic()
+    with pytest.raises(AudioOutputError, match="FFmpeg encoder did not stop"):
+        sink.stop()
+    elapsed = monotonic() - started
+
+    assert elapsed < 0.5
+    assert source_socket.closed
+    assert encoder.stdin.closed
+    assert encoder.stdout.closed
+    assert encoder.stderr.closed
+    assert encoder.terminated
+    assert encoder.killed
+    assert sink.snapshot().state == "stopped"
 
 
 def test_create_broadcastify_sink_uses_remote_retry_and_redaction_core() -> None:
