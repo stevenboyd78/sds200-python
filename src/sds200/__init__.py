@@ -122,6 +122,15 @@ from .profiles import (
     repair_profile,
 )
 from .radio import SDS200, SDSScanner
+from .recording_metadata import (
+    RECORDING_METADATA_SCHEMA,
+    RECORDING_METADATA_VERSION,
+    RecordingMetadata,
+    RecordingSource,
+    RecordingState,
+    recording_metadata_path,
+    write_recording_metadata,
+)
 from .reliability import HealthHistory, HealthThresholds, ReconnectPolicy
 from .remote_audio import (
     EnvironmentSecret,
@@ -271,6 +280,11 @@ __all__ = [
     "RadioHealth",
     "RadioState",
     "RadioStateSnapshot",
+    "RECORDING_METADATA_SCHEMA",
+    "RECORDING_METADATA_VERSION",
+    "RecordingMetadata",
+    "RecordingSource",
+    "RecordingState",
     "RecordingTransport",
     "ReconnectPolicy",
     "RemoteAudioConnection",
@@ -343,9 +357,11 @@ __all__ = [
     "present_radio_state",
     "present_scanner_info",
     "profile_from_discovery",
+    "recording_metadata_path",
     "repair_profile",
     "theme_roles_for",
     "write_capture",
+    "write_recording_metadata",
 ]
 
 __version__ = "0.15.0"
