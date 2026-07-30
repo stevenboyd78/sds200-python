@@ -28,6 +28,7 @@ from .audio_session import (
 )
 from .audio_sinks import (
     AudioFanoutSession,
+    MuteablePcmSink,
     PcmSink,
     PcmSinkStatistics,
     PcmWavSink,
@@ -46,6 +47,11 @@ def _local_now() -> datetime:
 
 def _error_message(error: BaseException) -> str:
     return str(error) or type(error).__name__
+
+
+def _set_playback_muted(playback: PcmSink, muted: bool) -> None:
+    if isinstance(playback, MuteablePcmSink):
+        playback.set_muted(muted)
 
 
 @dataclass(frozen=True, slots=True)
@@ -304,12 +310,11 @@ class TuiAudioSession:
         self._history_limit = history_limit
         self._router = PcmSinkRouter()
         self._fanout = AudioFanoutSession(stream, (self._router,))
-        self._playback: PcmSink | None = playback_sink
-        if live_playback and self._playback is None:
-            self._playback = SoundDevicePlaybackSink(
-                device=device,
-                buffer_ms=buffer_ms,
-            )
+        self._playback: PcmSink = playback_sink or SoundDevicePlaybackSink(
+            device=device,
+            buffer_ms=buffer_ms,
+        )
+        _set_playback_muted(self._playback, True)
         self._live_playback_enabled = live_playback
         self._live_playback_attached = False
         self._lifecycle_lock = threading.RLock()
@@ -361,7 +366,11 @@ class TuiAudioSession:
 
     @property
     def playback_available(self) -> bool:
-        return self._playback is not None
+        return True
+
+    @property
+    def playback_prepared(self) -> bool:
+        return self._playback.running
 
     @property
     def live_playback_enabled(self) -> bool:
@@ -446,23 +455,12 @@ class TuiAudioSession:
         )
 
     def open_audio(self) -> None:
-        """Start the shared RTSP/RTP stream and immediate live playback."""
+        """Start the shared RTSP/RTP stream without opening the output device."""
         with self._lifecycle_lock:
             with self._state_lock:
                 if self._open:
                     return
-            playback = self._playback
-            if self._live_playback_enabled and playback is not None:
-                self._router.attach(playback)
-                self._live_playback_attached = True
-            try:
-                self._fanout.start()
-            except BaseException:
-                if self._live_playback_attached and playback is not None:
-                    with suppress(Exception):
-                        self._router.detach(playback)
-                    self._live_playback_attached = False
-                raise
+            self._fanout.start()
             with self._state_lock:
                 self._open = True
             self.refresh_recordings()
@@ -604,12 +602,36 @@ class TuiAudioSession:
             if failure is not None:
                 raise failure
 
+    def request_live_playback(self, enabled: bool) -> None:
+        """Change the requested playback state without touching the output device."""
+        with self._state_lock:
+            self._live_playback_enabled = enabled
+
+    def start_live_playback(self) -> None:
+        """Prepare and attach live playback while retaining the shared stream."""
+        playback = self._playback
+        with self._lifecycle_lock:
+            if not self.open:
+                self.open_audio()
+            with self._state_lock:
+                self._live_playback_enabled = True
+                saved_active = self._saved_status in {
+                    SavedPlaybackStatus.PLAYING,
+                    SavedPlaybackStatus.PAUSED,
+                }
+                attached = self._live_playback_attached
+            if saved_active:
+                self._emit_state()
+                return
+            if not attached:
+                self._router.attach(playback)
+                _set_playback_muted(playback, False)
+                with self._state_lock:
+                    self._live_playback_attached = True
+            self._emit_state()
+
     def toggle_live_playback(self) -> None:
         playback = self._playback
-        if playback is None:
-            raise RuntimeError(
-                "Start the TUI with --audio-playback to enable playback controls"
-            )
         with self._lifecycle_lock:
             if not self.open:
                 self.open_audio()
@@ -626,10 +648,12 @@ class TuiAudioSession:
                 return
             if enabled and not attached:
                 self._router.attach(playback)
+                _set_playback_muted(playback, False)
                 with self._state_lock:
                     self._live_playback_attached = True
             elif not enabled and attached:
-                self._router.detach(playback)
+                self._router.detach(playback, stop=False)
+                _set_playback_muted(playback, True)
                 with self._state_lock:
                     self._live_playback_attached = False
             self._emit_state()
@@ -671,10 +695,6 @@ class TuiAudioSession:
 
     def play_recording(self, path: Path) -> None:
         playback = self._playback
-        if playback is None:
-            raise RuntimeError(
-                "Start the TUI with --audio-playback to play saved recordings"
-            )
         requested = path.expanduser().resolve()
         entry = next(
             (item for item in self.refresh_recordings() if item.path.resolve() == requested),
@@ -692,6 +712,7 @@ class TuiAudioSession:
                 self._router.detach(playback)
                 with self._state_lock:
                     self._live_playback_attached = False
+            _set_playback_muted(playback, False)
             playback.start()
             self._saved_stop.clear()
             self._saved_pause.clear()
@@ -743,10 +764,22 @@ class TuiAudioSession:
                 if not self._open:
                     return
                 self._open = False
-            self._fanout.stop()
+            failure: BaseException | None = None
+            try:
+                self._fanout.stop()
+            except BaseException as error:
+                failure = error
+            if self._playback.running:
+                try:
+                    self._playback.stop()
+                except BaseException as error:
+                    if failure is None:
+                        failure = error
             with self._state_lock:
                 self._live_playback_attached = False
             self._emit_state()
+            if failure is not None:
+                raise failure
 
     def __enter__(self) -> Self:
         self.open_audio()
@@ -758,7 +791,6 @@ class TuiAudioSession:
     def _run_saved_playback(self, path: Path) -> None:
         failure: BaseException | None = None
         playback = self._playback
-        assert playback is not None
         if isinstance(playback, SoundDevicePlaybackSink):
             buffer_seconds = playback.buffer_ms / 1000
             chunk_frames = max(
@@ -824,6 +856,7 @@ class TuiAudioSession:
             if resume_live:
                 try:
                     self._router.attach(playback)
+                    _set_playback_muted(playback, False)
                 except BaseException as error:
                     with self._state_lock:
                         self._saved_status = SavedPlaybackStatus.FAILED

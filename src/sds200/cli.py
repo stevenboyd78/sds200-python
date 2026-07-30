@@ -529,13 +529,13 @@ def build_parser() -> argparse.ArgumentParser:
     tui.add_argument(
         "--audio-playback",
         action="store_true",
-        help="Start immediate unmuted live playback and enable saved playback",
+        help="Start live playback after the first connected live PSI update",
     )
     tui.add_argument(
         "--audio-device",
         type=_audio_device,
         metavar="DEVICE",
-        help="PortAudio output device name or index (requires --audio-playback)",
+        help="PortAudio output device name or index for TUI playback",
     )
     tui.add_argument(
         "--audio-buffer-ms",
@@ -1441,14 +1441,12 @@ def _run_tui(args: argparse.Namespace) -> int:
         raise ValueError("--audio-force requires --audio-output")
     if args.audio_template is not None and args.audio_directory is None:
         raise ValueError("--audio-template requires --audio-directory")
-    if args.audio_device is not None and not args.audio_playback:
-        raise ValueError("--audio-device requires --audio-playback")
-
-    audio_requested = any(
+    audio_requested = args.host is not None or any(
         (
             args.audio_output is not None,
             args.audio_directory is not None,
             args.audio_playback,
+            args.audio_device is not None,
         )
     )
     audio_session: TuiAudioSession | None = None

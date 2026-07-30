@@ -54,6 +54,9 @@ def test_tui_shell_renders_identity_and_semantic_snapshot() -> None:
             assert "STRONG (5)" in state
             assert "RECORDING" in state
             assert "UNMUTED" in state
+            audio = _plain(app.query_one("#audio", Static))
+            assert "Live playback: UNAVAILABLE" in audio
+            assert "Recording: UNAVAILABLE" in audio
 
     asyncio.run(exercise())
 

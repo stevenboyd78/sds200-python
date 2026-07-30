@@ -225,6 +225,7 @@ class ScannerTuiApp(App[None]):
         layout: grid;
         grid-size: 2;
         grid-columns: 1fr 1fr;
+        grid-rows: auto;
         grid-gutter: 0 1;
     }
 
@@ -339,13 +340,18 @@ class ScannerTuiApp(App[None]):
             audio_session.snapshot() if audio_session is not None else None
         )
         self._audio_message = (
-            "Audio stream ready to start"
+            "Waiting for connected live PSI before starting playback"
+            if self._tui_audio_session is not None
+            and self._tui_audio_session.live_playback_enabled
+            else "Press A to start live playback"
             if self._tui_audio_session is not None
             else "Ready to record"
             if audio_session is not None
-            else "Audio unavailable"
+            else "Network audio requires an SDS200 --host connection"
         )
         self._audio_pending = False
+        self._audio_autostart_scheduled = False
+        self._received_live_psi = False
         self._audio_unsubscribe: Unsubscribe | None = None
         self._recording_library_visible = False
         self._recording_library_index = 0
@@ -431,8 +437,7 @@ class ScannerTuiApp(App[None]):
             yield Static(id="system", classes="panel", markup=False)
             yield Static(id="channel", classes="panel", markup=False)
             yield Static(id="state", classes="panel", markup=False)
-            if self._audio_session is not None:
-                yield Static(id="audio", classes="panel", markup=False)
+            yield Static(id="audio", classes="panel", markup=False)
             yield Static(id="status", classes="panel", markup=False)
         yield Footer()
 
@@ -550,6 +555,17 @@ class ScannerTuiApp(App[None]):
         if self._audio_pending:
             self._audio_message = "Audio operation already queued"
             self._refresh_view()
+            return
+        if session.live_playback_enabled and not session.live_playback_active:
+            session.request_live_playback(False)
+            self._audio_autostart_scheduled = False
+            self._audio_message = "Live playback auto-start cancelled"
+            self._refresh_view()
+            return
+        if not session.live_playback_active:
+            self._submit_audio(
+                ControlRequest("Start live playback", session.start_live_playback)
+            )
             return
         self._submit_audio(
             ControlRequest("Toggle live playback", session.toggle_live_playback)
@@ -1075,13 +1091,17 @@ class ScannerTuiApp(App[None]):
             self._audio_snapshot = session.snapshot()
         managed = self._tui_audio_session
         if error is not None:
+            if request.label == "Start live playback" and managed is not None:
+                managed.request_live_playback(False)
             self._audio_message = f"Failed: {request.label}: {error}"
         elif request.label == "Start audio stream" and managed is not None:
             self._audio_message = (
-                "Live playback active"
-                if managed.live_playback_active
+                "Waiting for connected live PSI before starting playback"
+                if managed.live_playback_enabled and not self._received_live_psi
                 else "Audio stream ready"
             )
+        elif request.label == "Start live playback" and managed is not None:
+            self._audio_message = "Live playback active"
         elif request.label == "Toggle live playback" and managed is not None:
             self._audio_message = (
                 "Live playback enabled"
@@ -1111,6 +1131,8 @@ class ScannerTuiApp(App[None]):
         else:
             self._audio_message = f"Completed: {request.label}"
         self._refresh_view()
+        if error is None and request.label == "Start audio stream":
+            self._schedule_live_playback_autostart()
 
     def _apply_audio_state(self, snapshot: AudioSessionSnapshot) -> None:
         self._audio_snapshot = snapshot
@@ -1169,7 +1191,42 @@ class ScannerTuiApp(App[None]):
         self._apply_radio_state(snapshot_from_scanner_info(info))
 
     def _apply_radio_state(self, snapshot: RadioStateSnapshot) -> None:
+        self._received_live_psi = True
         self.update_snapshot(snapshot, connected=True)
+        self._schedule_live_playback_autostart()
+
+    def _schedule_live_playback_autostart(self) -> None:
+        session = self._tui_audio_session
+        if (
+            session is None
+            or not session.live_playback_enabled
+            or session.live_playback_active
+            or not session.open
+            or self._connected is not True
+            or not self._received_live_psi
+            or self._audio_pending
+            or self._audio_autostart_scheduled
+        ):
+            return
+        self._audio_autostart_scheduled = True
+        self.call_after_refresh(self._start_scheduled_live_playback)
+
+    def _start_scheduled_live_playback(self) -> None:
+        self._audio_autostart_scheduled = False
+        session = self._tui_audio_session
+        if (
+            session is None
+            or not session.live_playback_enabled
+            or session.live_playback_active
+            or not session.open
+            or self._connected is not True
+            or not self._received_live_psi
+            or self._audio_pending
+        ):
+            return
+        self._submit_audio(
+            ControlRequest("Start live playback", session.start_live_playback)
+        )
 
     def _apply_connection(self, connected: bool) -> None:
         self._connected = connected
@@ -1297,14 +1354,19 @@ class ScannerTuiApp(App[None]):
             )
         )
 
-        if self._audio_session is not None:
-            self.query_one("#audio", Static).update(self._audio_panel())
+        self.query_one("#audio", Static).update(self._audio_panel())
 
     def _audio_panel(self) -> Text:
         if self._tui_audio_session is not None:
             return self._tui_audio_panel()
         snapshot = self._audio_snapshot
-        assert snapshot is not None
+        if snapshot is None:
+            return self._panel(
+                ("Live playback", "UNAVAILABLE", ThemeRole.TEXT_PRIMARY),
+                ("Saved playback", "UNAVAILABLE", ThemeRole.TEXT_PRIMARY),
+                ("Recording", "UNAVAILABLE", ThemeRole.TEXT_PRIMARY),
+                ("Audio control", self._audio_message, ThemeRole.TEXT_PRIMARY),
+            )
         reliability = snapshot.reliability
         if snapshot.status is AudioSessionStatus.FAILED:
             status_role = ThemeRole.SEVERITY_ERROR
@@ -1374,9 +1436,19 @@ class ScannerTuiApp(App[None]):
         elif session.live_playback_active:
             live_playback = "ON"
         elif session.live_playback_enabled:
-            live_playback = "STARTING"
+            live_playback = "WAITING"
         else:
             live_playback = "OFF"
+        if saved_status is SavedPlaybackStatus.PLAYING:
+            playback_device = "ACTIVE"
+        elif saved_status is SavedPlaybackStatus.PAUSED:
+            playback_device = "ACTIVE / PAUSED"
+        elif session.live_playback_active:
+            playback_device = "ACTIVE"
+        elif session.playback_prepared:
+            playback_device = "READY / MUTED"
+        else:
+            playback_device = "NOT STARTED"
         saved_path = session.saved_playback_path
         saved_playback = _state_label(saved_status.value)
         if saved_path is not None:
@@ -1388,10 +1460,16 @@ class ScannerTuiApp(App[None]):
         else:
             status_role = ThemeRole.TEXT_PRIMARY
         last_completed = session.last_completed
+        recording_status = (
+            _state_label(snapshot.status.value)
+            if session.recording_enabled
+            else "UNAVAILABLE"
+        )
         rows: list[tuple[str, str, ThemeRole]] = [
             ("Live playback", live_playback, ThemeRole.TEXT_PRIMARY),
+            ("Playback device", playback_device, ThemeRole.TEXT_PRIMARY),
             ("Saved playback", saved_playback, ThemeRole.TEXT_PRIMARY),
-            ("Recording", _state_label(snapshot.status.value), status_role),
+            ("Recording", recording_status, status_role),
             (
                 "Elapsed",
                 f"{snapshot.elapsed_seconds:.1f} seconds",

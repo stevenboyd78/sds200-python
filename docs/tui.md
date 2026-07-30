@@ -130,8 +130,9 @@ wide terminal sizes.
 
 ## Network audio playback, recording, and library
 
-TUI audio requires an explicit SDS200 network host. Start immediate unmuted live
-playback and create repeatable timestamped recordings in one directory:
+TUI audio requires an explicit SDS200 network host. Every such TUI session exposes
+manual live and saved playback controls. Request automatic live playback and create
+repeatable timestamped recordings in one directory:
 
 ```bash
 sdsctl --host 192.168.0.251 tui \
@@ -145,10 +146,13 @@ Install both optional feature sets for that workflow:
 python -m pip install "sds200[tui,playback]"
 ```
 
-`--audio-playback` opens the default output device as the TUI starts. Select a
-different PortAudio device with `--audio-device`, and adjust the bounded queue with
-`--audio-buffer-ms`. Press `A` to disable or re-enable live playback while retaining
-the single RTSP/RTP stream.
+Press `A` to start live playback manually, even when `--audio-playback` was not
+provided. The output device opens only when playback first starts and remains
+prepared while playback is muted, avoiding repeated PortAudio initialization.
+
+Use `--audio-playback` to request automatic startup after the scanner is connected
+and the first live PSI update has been displayed. Select a different output with
+`--audio-device`, and adjust the bounded playback queue with `--audio-buffer-ms`.
 
 Press `R` to start and stop recordings. Directory mode generates local-time names
 such as `sds200-20260729-025501.wav`; collisions add `-2`, `-3`, and later suffixes.

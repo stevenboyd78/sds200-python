@@ -197,6 +197,10 @@ def test_tui_audio_starts_live_playback_and_records_repeatedly(tmp_path: Path) -
 
     session.open_audio()
     assert transport.start_calls == 1
+    assert not playback.running
+    assert not session.live_playback_active
+
+    session.start_live_playback()
     assert playback.running
     assert session.live_playback_active
 
@@ -223,6 +227,36 @@ def test_tui_audio_starts_live_playback_and_records_repeatedly(tmp_path: Path) -
     session.close()
     assert transport.stop_calls == 1
     assert not playback.running
+
+
+def test_live_playback_toggle_keeps_prepared_sink_running(tmp_path: Path) -> None:
+    transport = CountingAudioTransport()
+    playback = CollectingPlaybackSink()
+    session = TuiAudioSession(
+        AudioStream(transport),
+        RecordingPathPolicy(directory=tmp_path),
+        playback_sink=playback,
+    )
+
+    session.open_audio()
+    session.start_live_playback()
+    assert playback.running
+    assert session.live_playback_active
+
+    session.toggle_live_playback()
+    assert playback.running
+    assert not session.live_playback_active
+    assert not session.live_playback_enabled
+    assert playback.stop_calls == 0
+
+    session.start_live_playback()
+    assert playback.running
+    assert session.live_playback_active
+    assert playback.stop_calls == 0
+
+    session.close()
+    assert not playback.running
+    assert playback.stop_calls == 1
 
 
 def test_explicit_output_remains_one_shot_and_protected(tmp_path: Path) -> None:
