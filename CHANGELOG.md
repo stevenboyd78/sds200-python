@@ -34,6 +34,9 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   Icecast streaming, forced-disconnect recovery, and assigned production-feed
   authorization and routing, including sanitized counters, MP3 profile and signal
   checks, reconnect state, credential exclusion, and orphan-process detection.
+- A versioned recording-metadata model with scanner boundary state, audio and
+  reliability statistics, deterministic JSON serialization, and collision-safe
+  atomic sidecar writes.
 
 ### Changed
 

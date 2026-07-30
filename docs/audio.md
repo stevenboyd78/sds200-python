@@ -92,6 +92,34 @@ sink router: one long-lived fanout owns RTSP/RTP reception while live playback,
 repeatable WAV sinks, and saved-recording playback are attached or detached without
 opening a second scanner audio session.
 
+## Recording metadata foundation
+
+Milestone 16.4.0 adds the renderer-neutral `RecordingMetadata` schema without
+changing recording behavior. It combines immutable start and stop
+`AudioSessionSnapshot` values with optional `RadioStateSnapshot` boundary state.
+The versioned JSON records the WAV filename and fixed PCM format, scanner identity
+and endpoint, UTC boundaries, system, department, site, channel, frequency, audio
+totals, and RTP reliability counters.
+
+`recording_metadata_path()` uses an unambiguous adjacent `<recording>.wav.json`
+name. `write_recording_metadata()` serializes sorted, indented JSON through a
+same-directory temporary file and refuses to replace an existing sidecar unless
+`overwrite=True` is explicit. Automatic sidecar creation is intentionally deferred
+to the recording-session integration slice.
+
+```python
+from sds200 import RecordingMetadata, write_recording_metadata
+
+metadata = RecordingMetadata.from_snapshots(
+    started_snapshot,
+    stopped_snapshot,
+    scanner="SDS200",
+    started_state=state_at_start,
+    stopped_state=state_at_stop,
+)
+sidecar_path = write_recording_metadata(metadata)
+```
+
 ## Reliability statistics
 
 `NetworkAudioTransport.statistics` returns an immutable session snapshot with
