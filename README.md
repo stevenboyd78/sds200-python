@@ -506,6 +506,8 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting and
 
 ## Documentation
 
+- [GitHub Wiki](https://github.com/stevenboyd78/sds200-python/wiki)
+  — task-oriented installation, setup, and troubleshooting guides
 - [Project roadmap](ROADMAP.md)
 - [Supported scanner models](docs/supported-models.md)
 - [Control transports](docs/transports.md)
