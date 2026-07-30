@@ -30,6 +30,7 @@ class RecordingConnection:
         self.write_gate = write_gate
         self.write_started = write_started
         self.writes: list[bytes] = []
+        self.interrupted = False
         self.closed = False
 
     def write_pcm(self, data: bytes) -> None:
@@ -41,6 +42,11 @@ class RecordingConnection:
             message, self.fail_message = self.fail_message, None
             raise OSError(message)
         self.writes.append(data)
+
+    def interrupt(self) -> None:
+        self.interrupted = True
+        if self.write_gate is not None:
+            self.write_gate.set()
 
     def close(self) -> None:
         self.closed = True
@@ -220,6 +226,25 @@ def test_remote_sink_reconnects_and_redacts_connection_errors() -> None:
     assert second.closed
 
 
+def test_initial_connection_retries_do_not_count_as_reconnects() -> None:
+    connection = RecordingConnection()
+    factory = SequenceFactory(OSError("offline"), connection)
+    sink = RemotePcmSink(remote_config(), factory)
+    pcm = b"\x01\x00"
+
+    sink.start()
+    sink.submit_pcm(pcm)
+    wait_until(lambda: connection.writes == [pcm])
+
+    snapshot = sink.snapshot()
+    assert snapshot.connection_attempts == 2
+    assert snapshot.successful_connections == 1
+    assert snapshot.reconnects == 0
+    assert snapshot.failures == 1
+
+    sink.stop()
+
+
 def test_remote_sink_reports_retry_exhaustion_without_secret_leakage() -> None:
     secret_value = "never-log-this"
     factory = SequenceFactory(
@@ -257,6 +282,30 @@ def test_remote_sink_reports_retry_exhaustion_without_secret_leakage() -> None:
         sink.stop()
     assert secret_value not in str(error.value)
     assert "<redacted>" in str(error.value)
+
+
+def test_remote_sink_shutdown_interrupts_blocked_write() -> None:
+    write_gate = threading.Event()
+    write_started = threading.Event()
+    connection = RecordingConnection(
+        fail_message="write interrupted",
+        write_gate=write_gate,
+        write_started=write_started,
+    )
+    sink = RemotePcmSink(remote_config(), SequenceFactory(connection))
+    pcm = b"\x01\x00"
+
+    sink.start()
+    sink.submit_pcm(pcm)
+    assert write_started.wait(timeout=1.0)
+    sink.stop()
+
+    assert connection.interrupted
+    assert connection.closed
+    assert not sink.running
+    snapshot = sink.snapshot()
+    assert snapshot.statistics.bytes_dropped == len(pcm)
+    assert snapshot.failures == 0
 
 
 def test_remote_sink_shutdown_interrupts_backoff() -> None:

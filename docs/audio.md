@@ -130,8 +130,10 @@ are redacted before they are retained or reported.
 `RemotePcmSinkSnapshot` reports immutable queue, throughput, connection-attempt,
 reconnect, failure, retry, and last-error state. Service adapters receive the
 configuration and resolved secret mapping through an injected
-`RemoteConnectionFactory`. No production remote service adapter or command-line
-configuration is available yet.
+`RemoteConnectionFactory`. Adapter connections provide a prompt, thread-safe
+`interrupt()` operation so shutdown can unblock an in-flight `write_pcm()` before
+the worker finalizes the connection with `close()`. No production remote service
+adapter or command-line configuration is available yet.
 
 The protocol is unauthenticated and unencrypted. Keep RTSP TCP port 554 and its
 negotiated RTP UDP port on a trusted LAN or behind a secured VPN. Remote streaming

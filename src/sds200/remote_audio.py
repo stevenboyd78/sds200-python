@@ -106,6 +106,10 @@ class RemoteAudioConnection(Protocol):
 
     def write_pcm(self, data: bytes) -> None: ...
 
+    def interrupt(self) -> None:
+        """Promptly interrupt an in-flight write from another thread."""
+        ...
+
     def close(self) -> None: ...
 
 
@@ -156,6 +160,8 @@ class RemotePcmSink:
         self._queue: deque[bytes] = deque()
         self._queued_bytes = 0
         self._thread: threading.Thread | None = None
+        self._active_connection: RemoteAudioConnection | None = None
+        self._active_secret_values: tuple[str, ...] = ()
         self._started = False
         self._stopping = False
         self._stopped = False
@@ -269,7 +275,26 @@ class RemotePcmSink:
                     self._state = "stopping"
                 self._drop_queued_locked()
             thread = self._thread
+            connection = self._active_connection
+            secret_values = self._active_secret_values
             self._condition.notify_all()
+
+        interrupt_error: str | None = None
+        if connection is not None:
+            try:
+                connection.interrupt()
+            except Exception as error:
+                interrupt_error = _redact_error(error, secret_values)
+                with self._condition:
+                    self._failures += 1
+                    self._last_error = interrupt_error
+                logger.warning(
+                    "remote audio connection interrupt failed "
+                    "name=%s endpoint=%s error=%s",
+                    self.config.name,
+                    self.config.endpoint,
+                    interrupt_error,
+                )
 
         if thread is not None:
             thread.join(timeout=self.config.stop_timeout)
@@ -282,7 +307,7 @@ class RemotePcmSink:
             self._thread = None
             self._stopped = True
             self._state = "stopped"
-            terminal_error = self._terminal_error
+            terminal_error = self._terminal_error or interrupt_error
 
         logger.info(
             "remote audio sink stopped name=%s endpoint=%s",
@@ -333,9 +358,12 @@ class RemotePcmSink:
                     connection = candidate
                     active_secret_values = tuple(resolved_secrets.values())
                     with self._condition:
+                        had_successful_connection = self._successful_connections > 0
                         self._successful_connections += 1
-                        if attempt_number > 1:
+                        if had_successful_connection:
                             self._reconnects += 1
+                        self._active_connection = connection
+                        self._active_secret_values = active_secret_values
                         self._retry_attempt = 0
                         self._next_retry_delay = None
                         self._state = "connected"
@@ -359,12 +387,18 @@ class RemotePcmSink:
                 except Exception as error:
                     with self._condition:
                         self._bytes_dropped += len(data)
+                        if self._active_connection is connection:
+                            self._active_connection = None
+                            self._active_secret_values = ()
                     self._close_connection(
                         connection,
                         active_secret_values,
                         terminal=False,
                     )
                     connection = None
+                    with self._condition:
+                        if self._stopping:
+                            return
                     if not self._wait_after_failure(error, active_secret_values):
                         return
                     active_secret_values = ()
@@ -374,6 +408,10 @@ class RemotePcmSink:
                     self._bytes_written += len(data)
         finally:
             if connection is not None:
+                with self._condition:
+                    if self._active_connection is connection:
+                        self._active_connection = None
+                        self._active_secret_values = ()
                 self._close_connection(
                     connection,
                     active_secret_values,
