@@ -230,6 +230,23 @@ class ScannerInfo:
         return status if status not in (None, "None", "Data") else None
 
     @property
+    def sub_audio_detected(self) -> str | None:
+        """Return the scanner-reported detected tone or digital code."""
+
+        value = self._attribute(
+            (
+                "CcHitsChannel",
+                "SrchFrequency",
+                "ConvFrequency",
+                "SiteFrequency",
+                "ConventionalDiscovery",
+                "TrunkingDiscovery",
+            ),
+            "SAD",
+        )
+        return value if value is not None and value.casefold() != "none" else None
+
+    @property
     def service_type(self) -> str | None:
         return self._attribute(("ConvFrequency", "TGID"), "SvcType")
 

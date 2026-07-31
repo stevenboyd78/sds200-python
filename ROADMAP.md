@@ -23,11 +23,11 @@ and ideas that are not ready for scheduling are recorded in
     fallback.
   - Preserve the raw scanner `Mode` and `V_Screen` values.
   - Add fixture and transition coverage for mode-specific GSI/PSI state.
-- **16.5.2 — Quick Search and Close Call — active**
+- **16.5.2 — Quick Search and Close Call — complete**
   - Present search frequency, modulation, hold/hit state, signal, RSSI, and
     reported tone or digital-code details.
   - Support both `SrchFrequency` and `CcHitsChannel` scanner-state nodes.
-- **16.5.3 — Weather Mode**
+- **16.5.3 — Weather Mode — active**
   - Present weather channel, frequency, scan/hold state, signal, and RSSI.
   - Capture alert and SAME details when the scanner reports them.
 - **16.5.4 — Tone Out Mode**
@@ -205,3 +205,6 @@ fixtures before renderer-specific implementation.
 - Milestone 16.5.1: renderer-neutral scanner-screen classification, preserved raw
   `Mode` and `V_Screen` values, an unknown-screen fallback, and synthetic GSI/PSI
   fixture and transition coverage.
+- Milestone 16.5.2: mode-aware Quick Search and Close Call TUI panels with
+  frequency or hit details, modulation, hold state, signal, RSSI, and detected
+  `SAD` tone or digital-code reporting.

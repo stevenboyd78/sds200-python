@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
+from pathlib import Path
 
 from rich.text import Text
 from textual.widgets import Static
@@ -10,6 +11,8 @@ from sds200.theme import DEFAULT_DARK_THEME, DEFAULT_LIGHT_THEME
 from sds200.tui import ScannerIdentity, ScannerTuiApp
 from sds200.tui_logging import TuiLogBuffer
 from sds200.xml_protocol import ScannerInfoParser
+
+FIXTURES = Path(__file__).parent / "fixtures" / "scanner_info"
 
 XML = """<?xml version="1.0" encoding="utf-8"?>
 <ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
@@ -31,6 +34,19 @@ def _app(log_buffer: TuiLogBuffer | None = None) -> ScannerTuiApp:
         ),
         ScannerInfoParser().parse("GSI", XML),
         log_buffer=log_buffer,
+        palette=DEFAULT_DARK_THEME,
+    )
+
+
+def _fixture_app(name: str) -> ScannerTuiApp:
+    xml = (FIXTURES / name).read_text(encoding="utf-8")
+    return ScannerTuiApp(
+        ScannerIdentity(
+            endpoint="udp://192.168.0.251:50536",
+            model="SDS200",
+            firmware="Version 1.26.01",
+        ),
+        ScannerInfoParser().parse("GSI", xml),
         palette=DEFAULT_DARK_THEME,
     )
 
@@ -57,6 +73,66 @@ def test_tui_shell_renders_identity_and_semantic_snapshot() -> None:
             audio = _plain(app.query_one("#audio", Static))
             assert "Live playback: UNAVAILABLE" in audio
             assert "Recording: UNAVAILABLE" in audio
+
+    asyncio.run(exercise())
+
+
+def test_tui_renders_mode_aware_quick_search_and_close_call_details() -> None:
+    async def exercise() -> None:
+        cases = (
+            (
+                "synthetic-quick-search.xml",
+                (
+                    "Mode: Quick Search Hold",
+                    "V_Screen: quick_search",
+                    "State node: SrchFrequency",
+                ),
+                (
+                    "Search frequency: 154.280000MHz",
+                    "Modulation: NFM",
+                    "Hold: ON",
+                    "Signal: GOOD (3)",
+                    "RSSI: -82",
+                    "Detected tone / code: CTCSS 123.0Hz",
+                ),
+            ),
+            (
+                "synthetic-close-call.xml",
+                (
+                    "Mode: Close Call Hits",
+                    "V_Screen: close_call",
+                    "State node: CcHitsChannel",
+                ),
+                (
+                    "Close Call hit: Synthetic Close Call Hit",
+                    "Frequency: 155.752500MHz",
+                    "Modulation: NFM",
+                    "Hold: OFF",
+                    "Signal: STRONG (4)",
+                    "RSSI: -71",
+                    "Detected tone / code: NAC 293h",
+                ),
+            ),
+        )
+
+        for fixture_name, system_values, channel_values in cases:
+            app = _fixture_app(fixture_name)
+            async with app.run_test(size=(80, 36)):
+                system_widget = app.query_one("#system", Static)
+                channel_widget = app.query_one("#channel", Static)
+                system = _plain(system_widget)
+                channel = _plain(channel_widget)
+
+                assert system_widget.border_title == "Screen Mode"
+                assert channel_widget.border_title == (
+                    "Quick Search"
+                    if fixture_name == "synthetic-quick-search.xml"
+                    else "Close Call"
+                )
+                for value in system_values:
+                    assert value in system
+                for value in channel_values:
+                    assert value in channel
 
     asyncio.run(exercise())
 

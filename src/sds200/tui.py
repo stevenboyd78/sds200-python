@@ -26,7 +26,11 @@ from .models import ScannerInfo
 from .presentation import ScannerPresentation, present_radio_state
 from .rich_cli import rich_style
 from .scanner import capabilities_for_model
-from .state import RadioStateSnapshot, snapshot_from_scanner_info
+from .state import (
+    RadioStateSnapshot,
+    ScannerScreenKind,
+    snapshot_from_scanner_info,
+)
 from .theme import (
     DEFAULT_DARK_THEME,
     DEFAULT_LIGHT_THEME,
@@ -1355,21 +1359,20 @@ class ScannerTuiApp(App[None]):
                 ("Firmware", self._identity.firmware, ThemeRole.TEXT_PRIMARY),
             )
         )
-        self.query_one("#system", Static).update(
-            self._panel(
-                ("System", _display(self._snapshot.system), ThemeRole.TEXT_PRIMARY),
-                ("Department", _display(self._snapshot.department), ThemeRole.TEXT_PRIMARY),
-                ("Site", _display(self._snapshot.site), ThemeRole.TEXT_PRIMARY),
-            )
-        )
-        self.query_one("#channel", Static).update(
-            self._panel(
-                ("Channel", _display(self._snapshot.channel), ThemeRole.TEXT_PRIMARY),
-                ("Frequency", _display(self._snapshot.frequency), ThemeRole.TEXT_PRIMARY),
-                ("Modulation", _display(self._snapshot.modulation), ThemeRole.TEXT_PRIMARY),
-                ("Service", _display(self._snapshot.service_type), ThemeRole.TEXT_PRIMARY),
-            )
-        )
+        system_widget = self.query_one("#system", Static)
+        channel_widget = self.query_one("#channel", Static)
+        if self._snapshot.screen_kind is ScannerScreenKind.SEARCH:
+            system_widget.border_title = "Screen Mode"
+            channel_widget.border_title = "Quick Search"
+        elif self._snapshot.screen_kind is ScannerScreenKind.CLOSE_CALL:
+            system_widget.border_title = "Screen Mode"
+            channel_widget.border_title = "Close Call"
+        else:
+            system_widget.border_title = "System / Site"
+            channel_widget.border_title = "Channel"
+
+        system_widget.update(self._system_panel())
+        channel_widget.update(self._channel_panel(presentation, roles))
         self.query_one("#state", Static).update(self._state_panel(presentation, roles))
         stream_mode = "STALE" if self._stale else self._stream_mode
         self.query_one("#status", Static).update(
@@ -1423,6 +1426,108 @@ class ScannerTuiApp(App[None]):
 
         self.query_one("#audio", Static).update(self._audio_panel())
         self._refresh_log_panel()
+
+    def _system_panel(self) -> Text:
+        if self._snapshot.screen_kind in {
+            ScannerScreenKind.SEARCH,
+            ScannerScreenKind.CLOSE_CALL,
+        }:
+            return self._panel(
+                ("Mode", _display(self._snapshot.mode), ThemeRole.TEXT_PRIMARY),
+                ("V_Screen", _display(self._snapshot.screen), ThemeRole.TEXT_PRIMARY),
+                (
+                    "State node",
+                    _display(self._snapshot.channel_kind),
+                    ThemeRole.TEXT_PRIMARY,
+                ),
+            )
+
+        return self._panel(
+            ("System", _display(self._snapshot.system), ThemeRole.TEXT_PRIMARY),
+            ("Department", _display(self._snapshot.department), ThemeRole.TEXT_PRIMARY),
+            ("Site", _display(self._snapshot.site), ThemeRole.TEXT_PRIMARY),
+        )
+
+    def _channel_panel(
+        self,
+        presentation: ScannerPresentation,
+        roles: PresentationThemeRoles,
+    ) -> Text:
+        screen_kind = self._snapshot.screen_kind
+        if screen_kind not in {
+            ScannerScreenKind.SEARCH,
+            ScannerScreenKind.CLOSE_CALL,
+        }:
+            return self._panel(
+                ("Channel", _display(self._snapshot.channel), ThemeRole.TEXT_PRIMARY),
+                (
+                    "Frequency",
+                    _display(self._snapshot.frequency),
+                    ThemeRole.TEXT_PRIMARY,
+                ),
+                (
+                    "Modulation",
+                    _display(self._snapshot.modulation),
+                    ThemeRole.TEXT_PRIMARY,
+                ),
+                (
+                    "Service",
+                    _display(self._snapshot.service_type),
+                    ThemeRole.TEXT_PRIMARY,
+                ),
+            )
+
+        rows: list[tuple[str, str, ThemeRole]] = []
+        if screen_kind is ScannerScreenKind.SEARCH:
+            rows.append(
+                (
+                    "Search frequency",
+                    _display(self._snapshot.frequency),
+                    ThemeRole.TEXT_PRIMARY,
+                )
+            )
+        else:
+            rows.extend(
+                (
+                    (
+                        "Close Call hit",
+                        _display(self._snapshot.channel),
+                        roles.activity,
+                    ),
+                    (
+                        "Frequency",
+                        _display(self._snapshot.frequency),
+                        ThemeRole.TEXT_PRIMARY,
+                    ),
+                )
+            )
+
+        rows.extend(
+            (
+                (
+                    "Modulation",
+                    _display(self._snapshot.modulation),
+                    ThemeRole.TEXT_PRIMARY,
+                ),
+                (
+                    "Hold",
+                    (
+                        _state_label(self._snapshot.channel_hold)
+                        if self._snapshot.channel_hold
+                        else "-"
+                    ),
+                    roles.hold,
+                ),
+                ("Signal", _signal_display(presentation), roles.signal),
+                ("RSSI", _rssi_display(self._snapshot.rssi), ThemeRole.TEXT_PRIMARY),
+                (
+                    "Detected tone / code",
+                    _display(self._snapshot.sub_audio_detected),
+                    ThemeRole.TEXT_PRIMARY,
+                ),
+            )
+        )
+        return self._panel(*rows)
 
     def _audio_panel(self) -> Text:
         if self._tui_audio_session is not None:
@@ -1619,12 +1724,9 @@ class ScannerTuiApp(App[None]):
     ) -> Text:
         muted_role = roles.muted or ThemeRole.TEXT_PRIMARY
         recording_role = roles.recording or ThemeRole.TEXT_PRIMARY
-        signal = _state_label(presentation.signal.value)
-        if presentation.raw_signal is not None:
-            signal = f"{signal} ({presentation.raw_signal})"
         return self._panel(
             ("Activity", _state_label(presentation.activity.value), roles.activity),
-            ("Signal", signal, roles.signal),
+            ("Signal", _signal_display(presentation), roles.signal),
             ("Hold", _hold_display(self._snapshot, presentation), roles.hold),
             ("Mute", _boolean_state(presentation.muted, "MUTED", "UNMUTED"), muted_role),
             (
@@ -1701,6 +1803,17 @@ def run_tui(
 
 def _display(value: object | None) -> str:
     return "-" if value is None or str(value).strip() == "" else str(value)
+
+
+def _signal_display(presentation: ScannerPresentation) -> str:
+    signal = _state_label(presentation.signal.value)
+    if presentation.raw_signal is not None:
+        signal = f"{signal} ({presentation.raw_signal})"
+    return signal
+
+
+def _rssi_display(value: float | None) -> str:
+    return "-" if value is None else f"{value:g}"
 
 
 def _level_display(value: int | None, maximum: int) -> str:
