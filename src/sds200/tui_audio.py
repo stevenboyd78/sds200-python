@@ -35,6 +35,12 @@ from .audio_sinks import (
     SoundDevicePlaybackSink,
 )
 from .events import EventBus
+from .recording_metadata import (
+    RecordingMetadata,
+    recording_metadata_path,
+    write_recording_metadata,
+)
+from .state import RadioStateSnapshot
 
 logger = logging.getLogger(__name__)
 DEFAULT_RECORDING_TEMPLATE = "sds200-{timestamp}.wav"
@@ -124,14 +130,29 @@ class RecordingPathPolicy:
     def repeatable(self) -> bool:
         return self.directory is not None
 
-    def next_path(self, now: datetime, *, explicit_used: bool) -> Path:
+    def next_path(
+        self,
+        now: datetime,
+        *,
+        explicit_used: bool,
+        metadata: bool = False,
+    ) -> Path:
+        def available(candidate: Path) -> bool:
+            return not candidate.exists() and (
+                not metadata or not recording_metadata_path(candidate).exists()
+            )
+
         if self.output is not None:
             if explicit_used:
                 raise RuntimeError(
                     "The explicit TUI audio output has already been used; "
                     "restart the TUI or use --audio-directory"
                 )
-            return self.output.expanduser()
+            output = self.output.expanduser()
+            sidecar = recording_metadata_path(output)
+            if metadata and not self.overwrite and sidecar.exists():
+                raise FileExistsError(f"Recording metadata already exists: {sidecar}")
+            return output
         if self.directory is None:
             raise RuntimeError("TUI audio recording is not configured")
 
@@ -140,13 +161,13 @@ class RecordingPathPolicy:
         timestamp = now.strftime("%Y%m%d-%H%M%S")
         name = self.template.format(timestamp=timestamp)
         candidate = directory / name
-        if not candidate.exists():
+        if available(candidate):
             return candidate
         for sequence in range(2, 10_000):
             suffixed = candidate.with_name(
                 f"{candidate.stem}-{sequence}{candidate.suffix}"
             )
-            if not suffixed.exists():
+            if available(suffixed):
                 return suffixed
         raise RuntimeError("Could not allocate a collision-safe audio filename")
 
@@ -296,18 +317,28 @@ class TuiAudioSession:
         device: str | int | None = None,
         buffer_ms: int = 250,
         history_limit: int = 100,
+        metadata: bool = False,
+        scanner: str | None = None,
         playback_sink: PcmSink | None = None,
         clock: Callable[[], float] = monotonic,
         now: Callable[[], datetime] = _local_now,
     ) -> None:
         if history_limit <= 0:
             raise ValueError("Audio history limit must be greater than zero")
+        if scanner is not None and not scanner.strip():
+            raise ValueError("Audio scanner identity must not be empty")
         self.stream = stream
         self.path_policy = path_policy
         self.events = EventBus()
         self._clock = clock
         self._now = now
         self._history_limit = history_limit
+        self._metadata_enabled = metadata
+        self._scanner = scanner.strip() if scanner is not None else None
+        self._radio_state = RadioStateSnapshot()
+        self._recording_started_snapshot: AudioSessionSnapshot | None = None
+        self._recording_started_state: RadioStateSnapshot | None = None
+        self._last_metadata_path: Path | None = None
         self._router = PcmSinkRouter()
         self._fanout = AudioFanoutSession(stream, (self._router,))
         self._playback: PcmSink = playback_sink or SoundDevicePlaybackSink(
@@ -365,6 +396,15 @@ class TuiAudioSession:
         return self.path_policy.repeatable
 
     @property
+    def metadata_enabled(self) -> bool:
+        return self._metadata_enabled
+
+    @property
+    def last_metadata_path(self) -> Path | None:
+        with self._state_lock:
+            return self._last_metadata_path
+
+    @property
     def playback_available(self) -> bool:
         return True
 
@@ -416,6 +456,12 @@ class TuiAudioSession:
     def playback_statistics(self) -> PcmSinkStatistics | None:
         playback = self._playback
         return playback.statistics if playback is not None else None
+
+    def update_radio_state(self, snapshot: RadioStateSnapshot) -> None:
+        """Retain the latest immutable scanner state for recording boundaries."""
+
+        with self._state_lock:
+            self._radio_state = snapshot
 
     def on_state(
         self,
@@ -491,6 +537,9 @@ class TuiAudioSession:
                 self._last_packets = 0
                 self._last_samples = 0
                 self._error = None
+                self._recording_started_snapshot = None
+                self._recording_started_state = None
+                self._last_metadata_path = None
             self._emit_state()
 
             path: Path | None = None
@@ -500,6 +549,7 @@ class TuiAudioSession:
                 path = self.path_policy.next_path(
                     self._now(),
                     explicit_used=self._explicit_used,
+                    metadata=self._metadata_enabled,
                 )
                 recorder = PcmuWavRecorder(
                     path,
@@ -529,8 +579,13 @@ class TuiAudioSession:
                 self._started_clock = self._clock()
                 self._started_at = self._now()
                 self._status = AudioSessionStatus.RECORDING
+                started_state = self._radio_state
                 if self.path_policy.output is not None:
                     self._explicit_used = True
+            started_snapshot = self.snapshot()
+            with self._state_lock:
+                self._recording_started_snapshot = started_snapshot
+                self._recording_started_state = started_state
             logger.info(
                 "TUI audio recording started endpoint=%s output=%s",
                 self.stream.endpoint,
@@ -552,6 +607,8 @@ class TuiAudioSession:
                 sink, self._recording_sink = self._recording_sink, None
                 recorder, self._recorder = self._recorder, None
                 started_clock = self._started_clock
+                started_snapshot = self._recording_started_snapshot
+                started_state = self._recording_started_state
             self._emit_state()
 
             failure: BaseException | None = None
@@ -566,8 +623,57 @@ class TuiAudioSession:
             samples = recorder.samples if recorder is not None else 0
             output_path = recorder.path if recorder is not None else self._output_path
             with self._state_lock:
+                elapsed_seconds = self._elapsed_seconds
                 if started_clock is not None:
-                    self._elapsed_seconds = max(0.0, ended - started_clock)
+                    elapsed_seconds = max(0.0, ended - started_clock)
+                stopped_state = self._radio_state
+
+            stopped_snapshot = AudioSessionSnapshot(
+                status=(
+                    AudioSessionStatus.FAILED
+                    if failure is not None
+                    else AudioSessionStatus.STOPPED
+                ),
+                endpoint=self.stream.endpoint,
+                output_path=output_path,
+                started_at=(
+                    started_snapshot.started_at
+                    if started_snapshot is not None
+                    else self._started_at
+                ),
+                stopped_at=stopped_at,
+                elapsed_seconds=elapsed_seconds,
+                packets=packets,
+                samples=samples,
+                audio_duration_seconds=samples / PCMU_SAMPLE_RATE,
+                reliability=self._reliability_snapshot(),
+                error=_error_message(failure) if failure is not None else None,
+            )
+
+            metadata_path: Path | None = None
+            if failure is None and self._metadata_enabled:
+                if started_snapshot is None:
+                    failure = RuntimeError(
+                        "Recording metadata start boundary is unavailable"
+                    )
+                else:
+                    try:
+                        metadata = RecordingMetadata.from_snapshots(
+                            started_snapshot,
+                            stopped_snapshot,
+                            scanner=self._scanner,
+                            started_state=started_state,
+                            stopped_state=stopped_state,
+                        )
+                        metadata_path = write_recording_metadata(
+                            metadata,
+                            overwrite=self.path_policy.overwrite,
+                        )
+                    except BaseException as error:
+                        failure = error
+
+            with self._state_lock:
+                self._elapsed_seconds = elapsed_seconds
                 self._started_clock = None
                 self._stopped_at = stopped_at
                 self._last_packets = packets
@@ -579,6 +685,9 @@ class TuiAudioSession:
                     else AudioSessionStatus.STOPPED
                 )
                 self._error = _error_message(failure) if failure is not None else None
+                self._recording_started_snapshot = None
+                self._recording_started_state = None
+                self._last_metadata_path = metadata_path
                 if failure is None:
                     self._completed_count += 1
             self.refresh_recordings()
@@ -593,10 +702,11 @@ class TuiAudioSession:
                         None,
                     )
             logger.info(
-                "TUI audio recording stopped endpoint=%s output=%s samples=%d",
+                "TUI audio recording stopped endpoint=%s output=%s samples=%d metadata=%s",
                 self.stream.endpoint,
                 output_path,
                 samples,
+                metadata_path or "-",
             )
             self._emit_state()
             if failure is not None:

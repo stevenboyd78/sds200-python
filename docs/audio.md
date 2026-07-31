@@ -104,8 +104,25 @@ totals, and RTP reliability counters.
 `recording_metadata_path()` uses an unambiguous adjacent `<recording>.wav.json`
 name. `write_recording_metadata()` serializes sorted, indented JSON through a
 same-directory temporary file and refuses to replace an existing sidecar unless
-`overwrite=True` is explicit. Automatic sidecar creation is intentionally deferred
-to the recording-session integration slice.
+`overwrite=True` is explicit.
+
+TUI recording sidecars are opt-in. Add `--audio-metadata` with either
+`--audio-directory` or `--audio-output`:
+
+```bash
+sdsctl --host 192.168.0.251 tui \
+  --audio-directory ~/scanner-recordings \
+  --audio-metadata
+```
+
+`ScannerTuiApp` forwards each immutable live PSI snapshot to `TuiAudioSession`.
+The session captures the latest available scanner state at successful recording
+start and stop boundaries, then writes the sidecar after WAV finalization.
+A requested metadata-write failure marks the recording operation failed rather
+than silently reporting success. Timestamp allocation also avoids an existing
+sidecar, so an orphaned `<recording>.wav.json` cannot be overwritten by a later
+repeatable recording. The standalone `sdsctl audio` command is unchanged because
+it does not own a scanner-control PSI stream.
 
 ```python
 from sds200 import RecordingMetadata, write_recording_metadata

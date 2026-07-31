@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import struct
 import threading
 import wave
@@ -15,7 +16,10 @@ from sds200.audio import AudioChunk, AudioStream
 from sds200.audio_recording import PcmuWavRecorder
 from sds200.audio_session import AudioRecordingSession, AudioSessionStatus
 from sds200.network_audio import NetworkAudioStatistics
+from sds200.recording_metadata import recording_metadata_path
+from sds200.state import RadioStateSnapshot
 from sds200.tui import ScannerIdentity, ScannerTuiApp
+from sds200.tui_audio import RecordingPathPolicy, TuiAudioSession
 from sds200.xml_protocol import ScannerInfoParser
 
 from .fakes import BlockingStartAudioTransport, FakeAudioTransport
@@ -50,7 +54,9 @@ XML = (
 )
 
 
-def _app(session: AudioRecordingSession) -> ScannerTuiApp:
+def _app(
+    session: AudioRecordingSession | TuiAudioSession,
+) -> ScannerTuiApp:
     return ScannerTuiApp(
         ScannerIdentity(
             endpoint="udp://192.0.2.25:50536",
@@ -69,7 +75,7 @@ def _plain(widget: Static) -> str:
 
 
 async def _wait_for_status(
-    session: AudioRecordingSession,
+    session: AudioRecordingSession | TuiAudioSession,
     status: AudioSessionStatus,
 ) -> None:
     for _ in range(200):
@@ -132,6 +138,58 @@ def test_tui_audio_binding_records_updates_and_stops(tmp_path: Path) -> None:
                 -32124,
                 0,
             )
+
+    asyncio.run(exercise())
+
+
+def test_tui_managed_recording_uses_live_state_for_metadata(
+    tmp_path: Path,
+) -> None:
+    async def exercise() -> None:
+        output = tmp_path / "managed.wav"
+        transport = FakeAudioTransport()
+        session = TuiAudioSession(
+            AudioStream(transport),
+            RecordingPathPolicy(output=output),
+            metadata=True,
+            scanner="SDS200",
+        )
+        app = _app(session)
+
+        async with app.run_test(size=(100, 46)) as pilot:
+            for _ in range(200):
+                if session.open and not app._audio_pending:
+                    break
+                await asyncio.sleep(0.01)
+            assert session.open
+            assert not app._audio_pending
+
+            await pilot.press("r")
+            await _wait_for_status(session, AudioSessionStatus.RECORDING)
+            app.update_snapshot(
+                RadioStateSnapshot(
+                    system="County",
+                    department="Fire",
+                    site="North",
+                    channel="Tac 1",
+                    frequency="154.2800",
+                ),
+                connected=True,
+            )
+            await pilot.press("r")
+            await _wait_for_status(session, AudioSessionStatus.STOPPED)
+            await pilot.pause()
+            assert "Recording and metadata completed" in _plain(
+                app.query_one("#audio", Static)
+            )
+
+        payload = json.loads(
+            recording_metadata_path(output).read_text(encoding="utf-8")
+        )
+        assert payload["boundaries"]["started"]["state"]["channel"] == (
+            "Example Dispatch"
+        )
+        assert payload["boundaries"]["stopped"]["state"]["channel"] == "Tac 1"
 
     asyncio.run(exercise())
 

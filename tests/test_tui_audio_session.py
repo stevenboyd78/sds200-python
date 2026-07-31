@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import threading
 import time
 import wave
@@ -11,6 +12,8 @@ import pytest
 from sds200.audio import AudioChunk, AudioChunkHandler, AudioStream
 from sds200.audio_session import AudioSessionStatus
 from sds200.audio_sinks import PcmSinkStatistics
+from sds200.recording_metadata import recording_metadata_path
+from sds200.state import RadioStateSnapshot
 from sds200.tui_audio import (
     PcmSinkRouter,
     RecordingPathPolicy,
@@ -217,6 +220,7 @@ def test_tui_audio_starts_live_playback_and_records_repeatedly(tmp_path: Path) -
         "sds200-20260729-025501-2.wav",
     }
     assert len(playback.received) == 2
+    assert list(tmp_path.glob("*.json")) == []
     for entry in session.recordings:
         with wave.open(str(entry.path), "rb") as recording:
             assert recording.getnchannels() == 1
@@ -227,6 +231,92 @@ def test_tui_audio_starts_live_playback_and_records_repeatedly(tmp_path: Path) -
     session.close()
     assert transport.stop_calls == 1
     assert not playback.running
+
+
+def test_tui_audio_writes_opt_in_metadata_with_boundary_state(
+    tmp_path: Path,
+) -> None:
+    transport = CountingAudioTransport()
+    observed_at = datetime(2026, 7, 30, 23, 45, tzinfo=UTC)
+    session = TuiAudioSession(
+        AudioStream(transport),
+        RecordingPathPolicy(directory=tmp_path),
+        metadata=True,
+        scanner="SDS200",
+        now=lambda: observed_at,
+    )
+    session.update_radio_state(
+        RadioStateSnapshot(
+            system="County",
+            department="Fire",
+            site="North",
+            channel="Dispatch",
+            frequency="154.1900",
+        )
+    )
+
+    session.open_audio()
+    session.start()
+    transport.feed(bytes((0xFF, 0x80)))
+    session.update_radio_state(
+        RadioStateSnapshot(
+            system="County",
+            department="Fire",
+            site="North",
+            channel="Tac 1",
+            frequency="154.2800",
+            talkgroup_id="1201",
+        )
+    )
+    session.stop()
+
+    recording = session.recordings[0].path
+    sidecar = recording_metadata_path(recording)
+    payload = json.loads(sidecar.read_text(encoding="utf-8"))
+    assert session.last_metadata_path == sidecar
+    assert payload["source"] == {
+        "endpoint": "audio://scanner",
+        "scanner": "SDS200",
+    }
+    assert payload["boundaries"]["started"]["state"]["channel"] == "Dispatch"
+    assert payload["boundaries"]["stopped"]["state"] == {
+        "system": "County",
+        "department": "Fire",
+        "site": "North",
+        "channel": "Tac 1",
+        "frequency": "154.2800",
+        "talkgroup_id": "1201",
+    }
+    assert payload["statistics"]["samples"] == 2
+    assert session.completed_recordings == 1
+    session.close()
+
+
+def test_metadata_sidecar_collision_allocates_a_new_recording_name(
+    tmp_path: Path,
+) -> None:
+    observed_at = datetime(2026, 7, 30, 23, 45, tzinfo=UTC)
+    first = tmp_path / "sds200-20260730-234500.wav"
+    recording_metadata_path(first).write_text("{}\n", encoding="utf-8")
+    transport = CountingAudioTransport()
+    session = TuiAudioSession(
+        AudioStream(transport),
+        RecordingPathPolicy(directory=tmp_path),
+        metadata=True,
+        scanner="SDS200",
+        now=lambda: observed_at,
+    )
+
+    session.open_audio()
+    session.start()
+    transport.feed(bytes((0xFF,)))
+    session.stop()
+
+    assert session.recordings[0].path.name == "sds200-20260730-234500-2.wav"
+    assert session.last_metadata_path == (
+        tmp_path / "sds200-20260730-234500-2.wav.json"
+    )
+    session.close()
 
 
 def test_live_playback_toggle_keeps_prepared_sink_running(tmp_path: Path) -> None:

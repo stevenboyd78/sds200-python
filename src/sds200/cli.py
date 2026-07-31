@@ -528,6 +528,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Overwrite an existing explicit --audio-output file",
     )
     tui.add_argument(
+        "--audio-metadata",
+        action="store_true",
+        help="Write an adjacent JSON sidecar for each completed TUI recording",
+    )
+    tui.add_argument(
         "--audio-playback",
         action="store_true",
         help="Start live playback after the first connected live PSI update",
@@ -1594,10 +1599,19 @@ def _run_tui(args: argparse.Namespace) -> int:
         raise ValueError("--audio-force requires --audio-output")
     if args.audio_template is not None and args.audio_directory is None:
         raise ValueError("--audio-template requires --audio-directory")
+    if (
+        args.audio_metadata
+        and args.audio_output is None
+        and args.audio_directory is None
+    ):
+        raise ValueError(
+            "--audio-metadata requires --audio-output or --audio-directory"
+        )
     audio_requested = args.host is not None or any(
         (
             args.audio_output is not None,
             args.audio_directory is not None,
+            args.audio_metadata,
             args.audio_playback,
             args.audio_device is not None,
         )
@@ -1637,6 +1651,8 @@ def _run_tui(args: argparse.Namespace) -> int:
             device=args.audio_device,
             buffer_ms=args.audio_buffer_ms,
             history_limit=args.audio_history_limit,
+            metadata=args.audio_metadata,
+            scanner="SDS200",
         )
 
     with selected_radio(args) as radio:
