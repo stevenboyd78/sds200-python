@@ -1,0 +1,5 @@
+<ScannerInfo Mode="Weather Alert Hold" V_Screen="weather_alert">
+<WxMode Mode="Weather Alert" SAME="Front Range Counties" />
+<WxChannel Name="Synthetic Weather Channel 4" CH_No="4" Freq="162.475000MHz" Mod="FM" Hold="On" LVL="0" IFX="Off" />
+<Property VOL="8" SQL="2" Sig="4" Rssi="-64" Mute="Unmute" Rec="Off" />
+</ScannerInfo>

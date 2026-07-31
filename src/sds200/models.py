@@ -191,6 +191,13 @@ class ScannerInfo:
         return self._integer(self._attribute((kind,), "Index"))
 
     @property
+    def channel_number(self) -> int | None:
+        kind = self.channel_kind
+        if kind is None:
+            return None
+        return self._integer(self._attribute((kind,), "CH_No"))
+
+    @property
     def channel_hold(self) -> str | None:
         kind = self.channel_kind
         if kind is None:
@@ -245,6 +252,25 @@ class ScannerInfo:
             "SAD",
         )
         return value if value is not None and value.casefold() != "none" else None
+
+    @property
+    def weather_mode(self) -> str | None:
+        """Return the scanner-reported Weather Mode operating state."""
+
+        return self._attribute(("WxMode",), "Mode")
+
+    @property
+    def weather_same(self) -> str | None:
+        """Return the scanner-reported SAME selection when available."""
+
+        value = self._attribute(("WxMode",), "SAME")
+        return (
+            value
+            if value is not None
+            and value != ""
+            and value.casefold() != "none"
+            else None
+        )
 
     @property
     def service_type(self) -> str | None:

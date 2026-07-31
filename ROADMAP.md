@@ -27,10 +27,10 @@ and ideas that are not ready for scheduling are recorded in
   - Present search frequency, modulation, hold/hit state, signal, RSSI, and
     reported tone or digital-code details.
   - Support both `SrchFrequency` and `CcHitsChannel` scanner-state nodes.
-- **16.5.3 — Weather Mode — active**
+- **16.5.3 — Weather Mode — complete**
   - Present weather channel, frequency, scan/hold state, signal, and RSSI.
   - Capture alert and SAME details when the scanner reports them.
-- **16.5.4 — Tone Out Mode**
+- **16.5.4 — Tone Out Mode — active**
   - Present tone-out channel/profile, monitored frequency, tone values, and
     standby/detected/hold state when reported.
 - **16.5.5 — SDS200 hardware validation**
@@ -208,3 +208,6 @@ fixtures before renderer-specific implementation.
 - Milestone 16.5.2: mode-aware Quick Search and Close Call TUI panels with
   frequency or hit details, modulation, hold state, signal, RSSI, and detected
   `SAD` tone or digital-code reporting.
+- Milestone 16.5.3: mode-aware Weather panels with channel number, frequency,
+  modulation, monitor or alert state, hold, signal, RSSI, and scanner-reported
+  SAME selection.
