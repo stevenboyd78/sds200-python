@@ -49,6 +49,10 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 - Descriptive border titles for the standard and wide TUI panels.
 - Reproducible native SVG screenshots of the real Textual TUI populated with
   fictional demonstration scanner, recording, audio, and log data.
+- A renderer-neutral scanner-screen classifier for normal scanning, Quick
+  Search, Close Call, weather, Tone Out, and unknown screens while preserving
+  the scanner's raw `Mode` and `V_Screen` values, with synthetic GSI/PSI
+  fixtures and transition coverage.
 
 ### Changed
 

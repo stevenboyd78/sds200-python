@@ -1,0 +1,4 @@
+<ScannerInfo Mode="Tone-Out Standby" V_Screen="tone_out">
+<ToneOutChannel Name="Synthetic Tone Out" Freq="154.190000MHz" Mod="NFM" Hold="Off" />
+<Property VOL="8" SQL="2" Sig="1" Rssi="-104" Mute="Mute" Rec="Off" />
+</ScannerInfo>

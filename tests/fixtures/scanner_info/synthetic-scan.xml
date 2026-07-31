@@ -1,0 +1,6 @@
+<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+<System Name="Synthetic P25 System" />
+<Department Name="Synthetic Public Safety" />
+<TGID Name="Synthetic Dispatch" TGID="1201" />
+<Property VOL="8" SQL="2" Sig="3" Rssi="-80" Mute="Unmute" Rec="Off" />
+</ScannerInfo>

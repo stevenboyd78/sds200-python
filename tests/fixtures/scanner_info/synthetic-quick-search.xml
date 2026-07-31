@@ -1,0 +1,4 @@
+<ScannerInfo Mode="Quick Search Hold" V_Screen="quick_search">
+<SrchFrequency Name="Synthetic Quick Search" Freq="154.280000MHz" Mod="NFM" Hold="On" />
+<Property VOL="8" SQL="2" Sig="3" Rssi="-82" Mute="Unmute" Rec="Off" />
+</ScannerInfo>
