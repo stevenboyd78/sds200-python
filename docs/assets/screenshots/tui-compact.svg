@@ -1,0 +1,160 @@
+<svg class="rich-terminal" viewBox="0 0 982 635.5999999999999" xmlns="http://www.w3.org/2000/svg">
+    <!-- Generated with Rich https://www.textualize.io -->
+    <style>
+
+    @font-face {
+        font-family: "Fira Code";
+        src: local("FiraCode-Regular"),
+                url("https://cdnjs.cloudflare.com/ajax/libs/firacode/6.2.0/woff2/FiraCode-Regular.woff2") format("woff2"),
+                url("https://cdnjs.cloudflare.com/ajax/libs/firacode/6.2.0/woff/FiraCode-Regular.woff") format("woff");
+        font-style: normal;
+        font-weight: 400;
+    }
+    @font-face {
+        font-family: "Fira Code";
+        src: local("FiraCode-Bold"),
+                url("https://cdnjs.cloudflare.com/ajax/libs/firacode/6.2.0/woff2/FiraCode-Bold.woff2") format("woff2"),
+                url("https://cdnjs.cloudflare.com/ajax/libs/firacode/6.2.0/woff/FiraCode-Bold.woff") format("woff");
+        font-style: bold;
+        font-weight: 700;
+    }
+
+    .terminal-tui-compact-matrix {
+        font-family: Fira Code, monospace;
+        font-size: 20px;
+        line-height: 24.4px;
+        font-variant-east-asian: full-width;
+    }
+
+    .terminal-tui-compact-title {
+        font-size: 18px;
+        font-weight: bold;
+        font-family: arial;
+    }
+
+    .terminal-tui-compact-r1 { fill: #c5c8c6 }
+.terminal-tui-compact-r2 { fill: #e0e0e0 }
+.terminal-tui-compact-r3 { fill: #a0a3a6 }
+.terminal-tui-compact-r4 { fill: #c5c6c7 }
+.terminal-tui-compact-r5 { fill: #74777b }
+.terminal-tui-compact-r6 { fill: #5fd75f;font-weight: bold }
+.terminal-tui-compact-r7 { fill: #10151c }
+.terminal-tui-compact-r8 { fill: #f5f5f5 }
+.terminal-tui-compact-r9 { fill: #5fd7d7;font-weight: bold }
+.terminal-tui-compact-r10 { fill: #000000 }
+.terminal-tui-compact-r11 { fill: #ffa62b;font-weight: bold }
+.terminal-tui-compact-r12 { fill: #495259 }
+    </style>
+
+    <defs>
+    <clipPath id="terminal-tui-compact-clip-terminal">
+      <rect x="0" y="0" width="962.8" height="584.5999999999999" />
+    </clipPath>
+    <clipPath id="terminal-tui-compact-line-0">
+    <rect x="0" y="1.5" width="963.8" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-tui-compact-line-1">
+    <rect x="0" y="25.9" width="963.8" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-tui-compact-line-2">
+    <rect x="0" y="50.3" width="963.8" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-tui-compact-line-3">
+    <rect x="0" y="74.7" width="963.8" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-tui-compact-line-4">
+    <rect x="0" y="99.1" width="963.8" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-tui-compact-line-5">
+    <rect x="0" y="123.5" width="963.8" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-tui-compact-line-6">
+    <rect x="0" y="147.9" width="963.8" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-tui-compact-line-7">
+    <rect x="0" y="172.3" width="963.8" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-tui-compact-line-8">
+    <rect x="0" y="196.7" width="963.8" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-tui-compact-line-9">
+    <rect x="0" y="221.1" width="963.8" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-tui-compact-line-10">
+    <rect x="0" y="245.5" width="963.8" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-tui-compact-line-11">
+    <rect x="0" y="269.9" width="963.8" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-tui-compact-line-12">
+    <rect x="0" y="294.3" width="963.8" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-tui-compact-line-13">
+    <rect x="0" y="318.7" width="963.8" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-tui-compact-line-14">
+    <rect x="0" y="343.1" width="963.8" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-tui-compact-line-15">
+    <rect x="0" y="367.5" width="963.8" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-tui-compact-line-16">
+    <rect x="0" y="391.9" width="963.8" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-tui-compact-line-17">
+    <rect x="0" y="416.3" width="963.8" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-tui-compact-line-18">
+    <rect x="0" y="440.7" width="963.8" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-tui-compact-line-19">
+    <rect x="0" y="465.1" width="963.8" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-tui-compact-line-20">
+    <rect x="0" y="489.5" width="963.8" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-tui-compact-line-21">
+    <rect x="0" y="513.9" width="963.8" height="24.65"/>
+            </clipPath>
+<clipPath id="terminal-tui-compact-line-22">
+    <rect x="0" y="538.3" width="963.8" height="24.65"/>
+            </clipPath>
+    </defs>
+
+    <rect fill="#292929" stroke="rgba(255,255,255,0.35)" stroke-width="1" x="1" y="1" width="980" height="633.6" rx="8"/><text class="terminal-tui-compact-title" fill="#c5c8c6" text-anchor="middle" x="490" y="27">sdsctl&#160;TUI&#160;—&#160;Demonstration&#160;data</text>
+            <g transform="translate(26,22)">
+            <circle cx="0" cy="0" r="7" fill="#ff5f57"/>
+            <circle cx="22" cy="0" r="7" fill="#febc2e"/>
+            <circle cx="44" cy="0" r="7" fill="#28c840"/>
+            </g>
+
+    <g transform="translate(9, 41)" clip-path="url(#terminal-tui-compact-clip-terminal)">
+    <rect fill="#242f38" x="0" y="1.5" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#242f38" x="12.2" y="1.5" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#242f38" x="24.4" y="1.5" width="61" height="24.65" shape-rendering="crispEdges"/><rect fill="#242f38" x="85.4" y="1.5" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#242f38" x="97.6" y="1.5" width="170.8" height="24.65" shape-rendering="crispEdges"/><rect fill="#242f38" x="268.4" y="1.5" width="36.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#242f38" x="305" y="1.5" width="536.8" height="24.65" shape-rendering="crispEdges"/><rect fill="#2c363f" x="841.8" y="1.5" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#2c363f" x="854" y="1.5" width="97.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#2c363f" x="951.6" y="1.5" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="0" y="25.9" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="12.2" y="25.9" width="146.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="158.6" y="25.9" width="292.8" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="451.4" y="25.9" width="488" height="24.65" shape-rendering="crispEdges"/><rect fill="#003054" x="939.4" y="25.9" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="0" y="50.3" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="12.2" y="50.3" width="122" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="134.2" y="50.3" width="280.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="414.8" y="50.3" width="524.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#003054" x="939.4" y="50.3" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="0" y="74.7" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="12.2" y="74.7" width="97.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="109.8" y="74.7" width="183" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="292.8" y="74.7" width="646.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#003054" x="939.4" y="74.7" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="0" y="99.1" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="12.2" y="99.1" width="146.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="158.6" y="99.1" width="158.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="317.2" y="99.1" width="622.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#003054" x="939.4" y="99.1" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="0" y="123.5" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="12.2" y="123.5" width="73.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="85.4" y="123.5" width="207.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="292.8" y="123.5" width="646.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#003054" x="939.4" y="123.5" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="0" y="147.9" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="12.2" y="147.9" width="109.8" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="122" y="147.9" width="183" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="305" y="147.9" width="634.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#003054" x="939.4" y="147.9" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="0" y="172.3" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="12.2" y="172.3" width="134.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="146.4" y="172.3" width="158.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="305" y="172.3" width="634.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#003054" x="939.4" y="172.3" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="0" y="196.7" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="12.2" y="196.7" width="146.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="158.6" y="196.7" width="36.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="195.2" y="196.7" width="744.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#003054" x="939.4" y="196.7" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="0" y="221.1" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="12.2" y="221.1" width="109.8" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="122" y="221.1" width="97.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="219.6" y="221.1" width="719.8" height="24.65" shape-rendering="crispEdges"/><rect fill="#003054" x="939.4" y="221.1" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="0" y="245.5" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="12.2" y="245.5" width="122" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="134.2" y="245.5" width="109.8" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="244" y="245.5" width="695.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#003054" x="939.4" y="245.5" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="0" y="269.9" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="12.2" y="269.9" width="97.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="109.8" y="269.9" width="122" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="231.8" y="269.9" width="707.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#003054" x="939.4" y="269.9" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="0" y="294.3" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="12.2" y="294.3" width="73.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="85.4" y="294.3" width="48.8" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="134.2" y="294.3" width="805.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#003054" x="939.4" y="294.3" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="0" y="318.7" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="12.2" y="318.7" width="73.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="85.4" y="318.7" width="85.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="170.8" y="318.7" width="768.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#000000" x="939.4" y="318.7" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="0" y="343.1" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="12.2" y="343.1" width="134.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="146.4" y="343.1" width="36.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="183" y="343.1" width="756.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#000000" x="939.4" y="343.1" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="0" y="367.5" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="12.2" y="367.5" width="183" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="195.2" y="367.5" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="219.6" y="367.5" width="719.8" height="24.65" shape-rendering="crispEdges"/><rect fill="#000000" x="939.4" y="367.5" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="0" y="391.9" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="12.2" y="391.9" width="207.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="219.6" y="391.9" width="73.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="292.8" y="391.9" width="646.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#000000" x="939.4" y="391.9" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="0" y="416.3" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="12.2" y="416.3" width="195.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="207.4" y="416.3" width="85.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="292.8" y="416.3" width="646.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#000000" x="939.4" y="416.3" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="0" y="440.7" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="12.2" y="440.7" width="134.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="146.4" y="440.7" width="48.8" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="195.2" y="440.7" width="744.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#000000" x="939.4" y="440.7" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="0" y="465.1" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="12.2" y="465.1" width="109.8" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="122" y="465.1" width="134.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="256.2" y="465.1" width="683.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#000000" x="939.4" y="465.1" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="0" y="489.5" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="12.2" y="489.5" width="97.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="109.8" y="489.5" width="183" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="292.8" y="489.5" width="646.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#000000" x="939.4" y="489.5" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="0" y="513.9" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="12.2" y="513.9" width="231.8" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="244" y="513.9" width="61" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="305" y="513.9" width="634.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#000000" x="939.4" y="513.9" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="0" y="538.3" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="12.2" y="538.3" width="292.8" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="305" y="538.3" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#1b2430" x="317.2" y="538.3" width="622.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#000000" x="939.4" y="538.3" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#242f38" x="0" y="562.7" width="36.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#242f38" x="36.6" y="562.7" width="61" height="24.65" shape-rendering="crispEdges"/><rect fill="#242f38" x="97.6" y="562.7" width="36.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#242f38" x="134.2" y="562.7" width="73.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#242f38" x="207.4" y="562.7" width="48.8" height="24.65" shape-rendering="crispEdges"/><rect fill="#242f38" x="256.2" y="562.7" width="195.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#242f38" x="451.4" y="562.7" width="36.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#242f38" x="488" y="562.7" width="122" height="24.65" shape-rendering="crispEdges"/><rect fill="#242f38" x="610" y="562.7" width="36.6" height="24.65" shape-rendering="crispEdges"/><rect fill="#242f38" x="646.6" y="562.7" width="73.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#242f38" x="719.8" y="562.7" width="12.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#242f38" x="732" y="562.7" width="24.4" height="24.65" shape-rendering="crispEdges"/><rect fill="#242f38" x="756.4" y="562.7" width="195.2" height="24.65" shape-rendering="crispEdges"/><rect fill="#242f38" x="951.6" y="562.7" width="12.2" height="24.65" shape-rendering="crispEdges"/>
+    <g class="terminal-tui-compact-matrix">
+    <text class="terminal-tui-compact-r2" x="12.2" y="20" textLength="12.2" clip-path="url(#terminal-tui-compact-line-0)">⭘</text><text class="terminal-tui-compact-r2" x="97.6" y="20" textLength="170.8" clip-path="url(#terminal-tui-compact-line-0)">SDS200&#160;Scanner</text><text class="terminal-tui-compact-r3" x="268.4" y="20" textLength="36.6" clip-path="url(#terminal-tui-compact-line-0)">&#160;—&#160;</text><text class="terminal-tui-compact-r3" x="305" y="20" textLength="536.8" clip-path="url(#terminal-tui-compact-line-0)">demo://fictional-sds200&#160;|&#160;Version&#160;1.26.01&#160;(…</text><text class="terminal-tui-compact-r4" x="854" y="20" textLength="97.6" clip-path="url(#terminal-tui-compact-line-0)">23:15:00</text><text class="terminal-tui-compact-r1" x="963.8" y="20" textLength="12.2" clip-path="url(#terminal-tui-compact-line-0)">
+</text><text class="terminal-tui-compact-r5" x="12.2" y="44.4" textLength="146.4" clip-path="url(#terminal-tui-compact-line-1)">Connection:&#160;</text><text class="terminal-tui-compact-r6" x="158.6" y="44.4" textLength="292.8" clip-path="url(#terminal-tui-compact-line-1)">CONNECTED&#160;since&#160;23:15:00</text><text class="terminal-tui-compact-r1" x="963.8" y="44.4" textLength="12.2" clip-path="url(#terminal-tui-compact-line-1)">
+</text><text class="terminal-tui-compact-r5" x="12.2" y="68.8" textLength="122" clip-path="url(#terminal-tui-compact-line-2)">Endpoint:&#160;</text><text class="terminal-tui-compact-r8" x="134.2" y="68.8" textLength="280.6" clip-path="url(#terminal-tui-compact-line-2)">demo://fictional-sds200</text><text class="terminal-tui-compact-r1" x="963.8" y="68.8" textLength="12.2" clip-path="url(#terminal-tui-compact-line-2)">
+</text><text class="terminal-tui-compact-r5" x="12.2" y="93.2" textLength="97.6" clip-path="url(#terminal-tui-compact-line-3)">System:&#160;</text><text class="terminal-tui-compact-r8" x="109.8" y="93.2" textLength="183" clip-path="url(#terminal-tui-compact-line-3)">Demo&#160;County&#160;P25</text><text class="terminal-tui-compact-r1" x="963.8" y="93.2" textLength="12.2" clip-path="url(#terminal-tui-compact-line-3)">
+</text><text class="terminal-tui-compact-r5" x="12.2" y="117.6" textLength="146.4" clip-path="url(#terminal-tui-compact-line-4)">Department:&#160;</text><text class="terminal-tui-compact-r8" x="158.6" y="117.6" textLength="158.6" clip-path="url(#terminal-tui-compact-line-4)">Public&#160;Safety</text><text class="terminal-tui-compact-r1" x="963.8" y="117.6" textLength="12.2" clip-path="url(#terminal-tui-compact-line-4)">
+</text><text class="terminal-tui-compact-r5" x="12.2" y="142" textLength="73.2" clip-path="url(#terminal-tui-compact-line-5)">Site:&#160;</text><text class="terminal-tui-compact-r8" x="85.4" y="142" textLength="207.4" clip-path="url(#terminal-tui-compact-line-5)">Central&#160;Simulcast</text><text class="terminal-tui-compact-r1" x="963.8" y="142" textLength="12.2" clip-path="url(#terminal-tui-compact-line-5)">
+</text><text class="terminal-tui-compact-r5" x="12.2" y="166.4" textLength="109.8" clip-path="url(#terminal-tui-compact-line-6)">Channel:&#160;</text><text class="terminal-tui-compact-r8" x="122" y="166.4" textLength="183" clip-path="url(#terminal-tui-compact-line-6)">Fire&#160;Dispatch&#160;1</text><text class="terminal-tui-compact-r1" x="963.8" y="166.4" textLength="12.2" clip-path="url(#terminal-tui-compact-line-6)">
+</text><text class="terminal-tui-compact-r5" x="12.2" y="190.8" textLength="134.2" clip-path="url(#terminal-tui-compact-line-7)">Frequency:&#160;</text><text class="terminal-tui-compact-r8" x="146.4" y="190.8" textLength="158.6" clip-path="url(#terminal-tui-compact-line-7)">769.456250MHz</text><text class="terminal-tui-compact-r1" x="963.8" y="190.8" textLength="12.2" clip-path="url(#terminal-tui-compact-line-7)">
+</text><text class="terminal-tui-compact-r5" x="12.2" y="215.2" textLength="146.4" clip-path="url(#terminal-tui-compact-line-8)">Modulation:&#160;</text><text class="terminal-tui-compact-r8" x="158.6" y="215.2" textLength="36.6" clip-path="url(#terminal-tui-compact-line-8)">NFM</text><text class="terminal-tui-compact-r1" x="963.8" y="215.2" textLength="12.2" clip-path="url(#terminal-tui-compact-line-8)">
+</text><text class="terminal-tui-compact-r5" x="12.2" y="239.6" textLength="109.8" clip-path="url(#terminal-tui-compact-line-9)">Service:&#160;</text><text class="terminal-tui-compact-r8" x="122" y="239.6" textLength="97.6" clip-path="url(#terminal-tui-compact-line-9)">Dispatch</text><text class="terminal-tui-compact-r1" x="963.8" y="239.6" textLength="12.2" clip-path="url(#terminal-tui-compact-line-9)">
+</text><text class="terminal-tui-compact-r5" x="12.2" y="264" textLength="122" clip-path="url(#terminal-tui-compact-line-10)">Activity:&#160;</text><text class="terminal-tui-compact-r9" x="134.2" y="264" textLength="109.8" clip-path="url(#terminal-tui-compact-line-10)">RECEIVING</text><text class="terminal-tui-compact-r1" x="963.8" y="264" textLength="12.2" clip-path="url(#terminal-tui-compact-line-10)">
+</text><text class="terminal-tui-compact-r5" x="12.2" y="288.4" textLength="97.6" clip-path="url(#terminal-tui-compact-line-11)">Signal:&#160;</text><text class="terminal-tui-compact-r6" x="109.8" y="288.4" textLength="122" clip-path="url(#terminal-tui-compact-line-11)">STRONG&#160;(5)</text><text class="terminal-tui-compact-r1" x="963.8" y="288.4" textLength="12.2" clip-path="url(#terminal-tui-compact-line-11)">
+</text><text class="terminal-tui-compact-r5" x="12.2" y="312.8" textLength="73.2" clip-path="url(#terminal-tui-compact-line-12)">Hold:&#160;</text><text class="terminal-tui-compact-r8" x="85.4" y="312.8" textLength="48.8" clip-path="url(#terminal-tui-compact-line-12)">NONE</text><text class="terminal-tui-compact-r10" x="939.4" y="312.8" textLength="24.4" clip-path="url(#terminal-tui-compact-line-12)">▃▃</text><text class="terminal-tui-compact-r1" x="963.8" y="312.8" textLength="12.2" clip-path="url(#terminal-tui-compact-line-12)">
+</text><text class="terminal-tui-compact-r5" x="12.2" y="337.2" textLength="73.2" clip-path="url(#terminal-tui-compact-line-13)">Mute:&#160;</text><text class="terminal-tui-compact-r8" x="85.4" y="337.2" textLength="85.4" clip-path="url(#terminal-tui-compact-line-13)">UNMUTED</text><text class="terminal-tui-compact-r1" x="963.8" y="337.2" textLength="12.2" clip-path="url(#terminal-tui-compact-line-13)">
+</text><text class="terminal-tui-compact-r5" x="12.2" y="361.6" textLength="134.2" clip-path="url(#terminal-tui-compact-line-14)">Recording:&#160;</text><text class="terminal-tui-compact-r8" x="146.4" y="361.6" textLength="36.6" clip-path="url(#terminal-tui-compact-line-14)">OFF</text><text class="terminal-tui-compact-r1" x="963.8" y="361.6" textLength="12.2" clip-path="url(#terminal-tui-compact-line-14)">
+</text><text class="terminal-tui-compact-r5" x="12.2" y="386" textLength="183" clip-path="url(#terminal-tui-compact-line-15)">Live&#160;playback:&#160;</text><text class="terminal-tui-compact-r8" x="195.2" y="386" textLength="24.4" clip-path="url(#terminal-tui-compact-line-15)">ON</text><text class="terminal-tui-compact-r1" x="963.8" y="386" textLength="12.2" clip-path="url(#terminal-tui-compact-line-15)">
+</text><text class="terminal-tui-compact-r5" x="12.2" y="410.4" textLength="207.4" clip-path="url(#terminal-tui-compact-line-16)">Playback&#160;device:&#160;</text><text class="terminal-tui-compact-r8" x="219.6" y="410.4" textLength="73.2" clip-path="url(#terminal-tui-compact-line-16)">ACTIVE</text><text class="terminal-tui-compact-r1" x="963.8" y="410.4" textLength="12.2" clip-path="url(#terminal-tui-compact-line-16)">
+</text><text class="terminal-tui-compact-r5" x="12.2" y="434.8" textLength="195.2" clip-path="url(#terminal-tui-compact-line-17)">Saved&#160;playback:&#160;</text><text class="terminal-tui-compact-r8" x="207.4" y="434.8" textLength="85.4" clip-path="url(#terminal-tui-compact-line-17)">STOPPED</text><text class="terminal-tui-compact-r1" x="963.8" y="434.8" textLength="12.2" clip-path="url(#terminal-tui-compact-line-17)">
+</text><text class="terminal-tui-compact-r5" x="12.2" y="459.2" textLength="134.2" clip-path="url(#terminal-tui-compact-line-18)">Recording:&#160;</text><text class="terminal-tui-compact-r8" x="146.4" y="459.2" textLength="48.8" clip-path="url(#terminal-tui-compact-line-18)">IDLE</text><text class="terminal-tui-compact-r1" x="963.8" y="459.2" textLength="12.2" clip-path="url(#terminal-tui-compact-line-18)">
+</text><text class="terminal-tui-compact-r5" x="12.2" y="483.6" textLength="109.8" clip-path="url(#terminal-tui-compact-line-19)">Elapsed:&#160;</text><text class="terminal-tui-compact-r8" x="122" y="483.6" textLength="134.2" clip-path="url(#terminal-tui-compact-line-19)">0.0&#160;seconds</text><text class="terminal-tui-compact-r1" x="963.8" y="483.6" textLength="12.2" clip-path="url(#terminal-tui-compact-line-19)">
+</text><text class="terminal-tui-compact-r5" x="12.2" y="508" textLength="97.6" clip-path="url(#terminal-tui-compact-line-20)">Output:&#160;</text><text class="terminal-tui-compact-r8" x="109.8" y="508" textLength="183" clip-path="url(#terminal-tui-compact-line-20)">demo-recordings</text><text class="terminal-tui-compact-r1" x="963.8" y="508" textLength="12.2" clip-path="url(#terminal-tui-compact-line-20)">
+</text><text class="terminal-tui-compact-r5" x="12.2" y="532.4" textLength="231.8" clip-path="url(#terminal-tui-compact-line-21)">Packets&#160;/&#160;samples:&#160;</text><text class="terminal-tui-compact-r8" x="244" y="532.4" textLength="61" clip-path="url(#terminal-tui-compact-line-21)">0&#160;/&#160;0</text><text class="terminal-tui-compact-r1" x="963.8" y="532.4" textLength="12.2" clip-path="url(#terminal-tui-compact-line-21)">
+</text><text class="terminal-tui-compact-r5" x="12.2" y="556.8" textLength="292.8" clip-path="url(#terminal-tui-compact-line-22)">Completed&#160;this&#160;session:&#160;</text><text class="terminal-tui-compact-r8" x="305" y="556.8" textLength="12.2" clip-path="url(#terminal-tui-compact-line-22)">0</text><text class="terminal-tui-compact-r1" x="963.8" y="556.8" textLength="12.2" clip-path="url(#terminal-tui-compact-line-22)">
+</text><text class="terminal-tui-compact-r11" x="0" y="581.2" textLength="36.6" clip-path="url(#terminal-tui-compact-line-23)">&#160;q&#160;</text><text class="terminal-tui-compact-r2" x="36.6" y="581.2" textLength="61" clip-path="url(#terminal-tui-compact-line-23)">Quit&#160;</text><text class="terminal-tui-compact-r11" x="97.6" y="581.2" textLength="36.6" clip-path="url(#terminal-tui-compact-line-23)">&#160;t&#160;</text><text class="terminal-tui-compact-r2" x="134.2" y="581.2" textLength="73.2" clip-path="url(#terminal-tui-compact-line-23)">Theme&#160;</text><text class="terminal-tui-compact-r11" x="207.4" y="581.2" textLength="48.8" clip-path="url(#terminal-tui-compact-line-23)">&#160;^p&#160;</text><text class="terminal-tui-compact-r2" x="256.2" y="581.2" textLength="195.2" clip-path="url(#terminal-tui-compact-line-23)">Command&#160;Palette&#160;</text><text class="terminal-tui-compact-r11" x="451.4" y="581.2" textLength="36.6" clip-path="url(#terminal-tui-compact-line-23)">&#160;c&#160;</text><text class="terminal-tui-compact-r2" x="488" y="581.2" textLength="122" clip-path="url(#terminal-tui-compact-line-23)">Reconnect&#160;</text><text class="terminal-tui-compact-r11" x="610" y="581.2" textLength="36.6" clip-path="url(#terminal-tui-compact-line-23)">&#160;r&#160;</text><text class="terminal-tui-compact-r2" x="646.6" y="581.2" textLength="73.2" clip-path="url(#terminal-tui-compact-line-23)">Record</text><text class="terminal-tui-compact-r12" x="719.8" y="581.2" textLength="12.2" clip-path="url(#terminal-tui-compact-line-23)">▏</text><text class="terminal-tui-compact-r11" x="732" y="581.2" textLength="24.4" clip-path="url(#terminal-tui-compact-line-23)">^p</text><text class="terminal-tui-compact-r2" x="756.4" y="581.2" textLength="195.2" clip-path="url(#terminal-tui-compact-line-23)">&#160;Command&#160;Palette</text>
+    </g>
+    </g>
+</svg>

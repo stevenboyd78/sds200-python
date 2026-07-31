@@ -21,6 +21,14 @@ and live state updates.
 > This project is alpha software. The public API may change before version 1.0.
 > It is not affiliated with or endorsed by Uniden.
 
+## Interface preview
+
+![The sdsctl Textual TUI showing scanner state, audio controls, recording status, and operational logs populated with fictional demonstration data](docs/assets/screenshots/tui-overview.svg)
+
+*The current Textual TUI rendered by the real application with fictional
+demonstration data. No scanner, agency, channel, endpoint, or recording
+information in this image represents a real system.*
+
 ## Features
 
 - USB serial control for SDS100, SDS150, and SDS200 scanners

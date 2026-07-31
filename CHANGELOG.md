@@ -47,6 +47,8 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   toggles with `G`, retains records while hidden, and preserves optional file
   logging.
 - Descriptive border titles for the standard and wide TUI panels.
+- Reproducible native SVG screenshots of the real Textual TUI populated with
+  fictional demonstration scanner, recording, audio, and log data.
 
 ### Changed
 
