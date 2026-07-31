@@ -1,4 +1,5 @@
 <ScannerInfo Mode="Weather Scan" V_Screen="weather_scan">
-<WxChannel Name="Synthetic Weather Channel" Freq="162.550000MHz" Mod="FM" Hold="Off" />
+<WxMode Mode="Monitor Weather" />
+<WxChannel Name="Synthetic Weather Channel 7" CH_No="7" Freq="162.550000MHz" Mod="FM" Hold="Off" LVL="0" IFX="Off" />
 <Property VOL="8" SQL="2" Sig="5" Rssi="-58" Mute="Unmute" Rec="Off" />
 </ScannerInfo>

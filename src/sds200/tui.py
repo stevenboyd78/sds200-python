@@ -1367,6 +1367,9 @@ class ScannerTuiApp(App[None]):
         elif self._snapshot.screen_kind is ScannerScreenKind.CLOSE_CALL:
             system_widget.border_title = "Screen Mode"
             channel_widget.border_title = "Close Call"
+        elif self._snapshot.screen_kind is ScannerScreenKind.WEATHER:
+            system_widget.border_title = "Screen Mode"
+            channel_widget.border_title = "Weather"
         else:
             system_widget.border_title = "System / Site"
             channel_widget.border_title = "Channel"
@@ -1431,6 +1434,7 @@ class ScannerTuiApp(App[None]):
         if self._snapshot.screen_kind in {
             ScannerScreenKind.SEARCH,
             ScannerScreenKind.CLOSE_CALL,
+            ScannerScreenKind.WEATHER,
         }:
             return self._panel(
                 ("Mode", _display(self._snapshot.mode), ThemeRole.TEXT_PRIMARY),
@@ -1457,6 +1461,7 @@ class ScannerTuiApp(App[None]):
         if screen_kind not in {
             ScannerScreenKind.SEARCH,
             ScannerScreenKind.CLOSE_CALL,
+            ScannerScreenKind.WEATHER,
         }:
             return self._panel(
                 ("Channel", _display(self._snapshot.channel), ThemeRole.TEXT_PRIMARY),
@@ -1473,6 +1478,51 @@ class ScannerTuiApp(App[None]):
                 (
                     "Service",
                     _display(self._snapshot.service_type),
+                    ThemeRole.TEXT_PRIMARY,
+                ),
+            )
+
+        if screen_kind is ScannerScreenKind.WEATHER:
+            weather_channel = _display(self._snapshot.channel)
+            if self._snapshot.channel_number is not None:
+                prefix = f"WX {self._snapshot.channel_number}"
+                weather_channel = (
+                    prefix
+                    if weather_channel == "-"
+                    else f"{prefix}: {weather_channel}"
+                )
+
+            return self._panel(
+                ("Weather channel", weather_channel, ThemeRole.TEXT_PRIMARY),
+                (
+                    "Frequency",
+                    _display(self._snapshot.frequency),
+                    ThemeRole.TEXT_PRIMARY,
+                ),
+                (
+                    "Modulation",
+                    _display(self._snapshot.modulation),
+                    ThemeRole.TEXT_PRIMARY,
+                ),
+                (
+                    "Weather mode",
+                    _display(self._snapshot.weather_mode),
+                    roles.activity,
+                ),
+                (
+                    "Hold",
+                    (
+                        _state_label(self._snapshot.channel_hold)
+                        if self._snapshot.channel_hold
+                        else "-"
+                    ),
+                    roles.hold,
+                ),
+                ("Signal", _signal_display(presentation), roles.signal),
+                ("RSSI", _rssi_display(self._snapshot.rssi), ThemeRole.TEXT_PRIMARY),
+                (
+                    "SAME selection",
+                    _display(self._snapshot.weather_same),
                     ThemeRole.TEXT_PRIMARY,
                 ),
             )

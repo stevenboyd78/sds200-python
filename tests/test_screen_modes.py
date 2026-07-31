@@ -200,3 +200,89 @@ def test_search_to_close_call_transition_reports_sub_audio_change() -> None:
     assert change.previous.sub_audio_detected == "CTCSS 123.0Hz"
     assert change.current.sub_audio_detected == "NAC 293h"
     assert change.changed("sub_audio_detected")
+
+
+@pytest.mark.parametrize(
+    (
+        "fixture_name",
+        "channel_number",
+        "weather_mode",
+        "weather_same",
+    ),
+    [
+        (
+            "synthetic-weather.xml",
+            7,
+            "Monitor Weather",
+            None,
+        ),
+        (
+            "synthetic-weather-alert.xml",
+            4,
+            "Weather Alert",
+            "Front Range Counties",
+        ),
+    ],
+)
+def test_weather_fixture_preserves_protocol_details(
+    fixture_name: str,
+    channel_number: int,
+    weather_mode: str,
+    weather_same: str | None,
+) -> None:
+    info = _fixture(fixture_name)
+    snapshot = snapshot_from_scanner_info(info)
+
+    assert info.channel_number == channel_number
+    assert info.weather_mode == weather_mode
+    assert info.weather_same == weather_same
+
+    assert snapshot.channel_number == channel_number
+    assert snapshot.weather_mode == weather_mode
+    assert snapshot.weather_same == weather_same
+
+
+def test_weather_scan_to_alert_transition_reports_weather_changes() -> None:
+    state = RadioState()
+    state.update(_fixture("synthetic-weather.xml", "GSI"))
+
+    change = state.update(_fixture("synthetic-weather-alert.xml", "PSI"))
+
+    assert change is not None
+    assert change.previous.screen_kind is ScannerScreenKind.WEATHER
+    assert change.current.screen_kind is ScannerScreenKind.WEATHER
+    assert change.previous.weather_mode == "Monitor Weather"
+    assert change.current.weather_mode == "Weather Alert"
+    assert change.previous.weather_same is None
+    assert change.current.weather_same == "Front Range Counties"
+    assert change.changed("mode")
+    assert change.changed("screen")
+    assert change.changed("channel")
+    assert change.changed("channel_number")
+    assert change.changed("channel_hold")
+    assert change.changed("weather_mode")
+    assert change.changed("weather_same")
+
+
+@pytest.mark.parametrize(
+    ("reported", "expected"),
+    [
+        ("None", None),
+        ("Alert Only", "Alert Only"),
+    ],
+)
+def test_weather_same_normalization(
+    reported: str,
+    expected: str | None,
+) -> None:
+    xml = f"""
+<ScannerInfo Mode="Weather Alert" V_Screen="weather_alert">
+<WxMode Mode="Weather Alert" SAME="{reported}" />
+<WxChannel Name="Synthetic Weather Channel" CH_No="1" />
+</ScannerInfo>
+"""
+    info = ScannerInfoParser().parse("PSI", xml)
+    snapshot = snapshot_from_scanner_info(info)
+
+    assert info.weather_same == expected
+    assert snapshot.weather_same == expected

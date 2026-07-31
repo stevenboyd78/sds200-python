@@ -298,3 +298,62 @@ def test_tui_status_transitions_include_local_since_timestamps() -> None:
             assert "ERROR since 04:20:05" in status
 
     asyncio.run(exercise())
+
+
+def test_tui_renders_mode_aware_weather_details() -> None:
+    async def exercise() -> None:
+        cases = (
+            (
+                "synthetic-weather.xml",
+                (
+                    "Mode: Weather Scan",
+                    "V_Screen: weather_scan",
+                    "State node: WxChannel",
+                ),
+                (
+                    "Weather channel: WX 7: Synthetic Weather Channel 7",
+                    "Frequency: 162.550000MHz",
+                    "Modulation: FM",
+                    "Weather mode: Monitor Weather",
+                    "Hold: OFF",
+                    "Signal: STRONG (5)",
+                    "RSSI: -58",
+                    "SAME selection: -",
+                ),
+            ),
+            (
+                "synthetic-weather-alert.xml",
+                (
+                    "Mode: Weather Alert Hold",
+                    "V_Screen: weather_alert",
+                    "State node: WxChannel",
+                ),
+                (
+                    "Weather channel: WX 4: Synthetic Weather Channel 4",
+                    "Frequency: 162.475000MHz",
+                    "Modulation: FM",
+                    "Weather mode: Weather Alert",
+                    "Hold: ON",
+                    "Signal: STRONG (4)",
+                    "RSSI: -64",
+                    "SAME selection: Front Range Counties",
+                ),
+            ),
+        )
+
+        for fixture_name, system_values, channel_values in cases:
+            app = _fixture_app(fixture_name)
+            async with app.run_test(size=(80, 36)):
+                system_widget = app.query_one("#system", Static)
+                channel_widget = app.query_one("#channel", Static)
+                system = _plain(system_widget)
+                channel = _plain(channel_widget)
+
+                assert system_widget.border_title == "Screen Mode"
+                assert channel_widget.border_title == "Weather"
+                for value in system_values:
+                    assert value in system
+                for value in channel_values:
+                    assert value in channel
+
+    asyncio.run(exercise())

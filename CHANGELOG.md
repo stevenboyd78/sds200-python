@@ -56,6 +56,9 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 - Mode-aware Quick Search and Close Call TUI panels showing the reported state
   node, frequency or hit name, modulation, hold state, signal, RSSI, and
   detected tone or digital-code value from the scanner's `SAD` attribute.
+- Mode-aware Weather TUI panels showing the reported weather channel and number,
+  frequency, modulation, monitor or alert mode, hold state, signal, RSSI, and
+  SAME selection when supplied by the scanner.
 
 ### Changed
 
