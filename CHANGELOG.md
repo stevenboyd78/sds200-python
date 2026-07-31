@@ -37,6 +37,8 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 - A versioned recording-metadata model with scanner boundary state, audio and
   reliability statistics, deterministic JSON serialization, and collision-safe
   atomic sidecar writes.
+- Optional TUI recording sidecars enabled by `--audio-metadata`, including live
+  scanner state captured at successful recording start and stop boundaries.
 
 ### Changed
 

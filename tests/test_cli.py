@@ -66,6 +66,22 @@ def test_tui_psi_recovery_options_parse() -> None:
     assert args.psi_recovery_cooldown == 90.0
 
 
+def test_tui_audio_metadata_option_parses(tmp_path: Path) -> None:
+    args = cli.build_parser().parse_args(
+        [
+            "--host",
+            "192.168.0.251",
+            "tui",
+            "--audio-directory",
+            str(tmp_path),
+            "--audio-metadata",
+        ]
+    )
+
+    assert args.audio_directory == tmp_path
+    assert args.audio_metadata
+
+
 def test_sds100_battery_cli_uses_optional_gsi_property(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

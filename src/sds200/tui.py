@@ -336,6 +336,8 @@ class ScannerTuiApp(App[None]):
         self._tui_audio_session = (
             audio_session if isinstance(audio_session, TuiAudioSession) else None
         )
+        if self._tui_audio_session is not None:
+            self._tui_audio_session.update_radio_state(self._snapshot)
         self._audio_snapshot = (
             audio_session.snapshot() if audio_session is not None else None
         )
@@ -820,6 +822,8 @@ class ScannerTuiApp(App[None]):
         self._psi_recovery_started_at = None
         self._psi_recovery_in_progress = False
         self._snapshot = snapshot
+        if self._tui_audio_session is not None:
+            self._tui_audio_session.update_radio_state(snapshot)
         self._connected = connected
         self._degraded = degraded
         self._stale = False
@@ -1127,7 +1131,7 @@ class ScannerTuiApp(App[None]):
             self._audio_snapshot is not None
             and self._audio_snapshot.status is AudioSessionStatus.STOPPED
         ):
-            self._audio_message = "Recording completed"
+            self._audio_message = self._recording_completed_message()
         else:
             self._audio_message = f"Completed: {request.label}"
         self._refresh_view()
@@ -1159,8 +1163,14 @@ class ScannerTuiApp(App[None]):
         elif snapshot.status is AudioSessionStatus.STOPPING:
             self._audio_message = "Finalizing WAV recording"
         elif snapshot.status is AudioSessionStatus.STOPPED:
-            self._audio_message = "Recording completed"
+            self._audio_message = self._recording_completed_message()
         self._refresh_view()
+
+    def _recording_completed_message(self) -> str:
+        managed = self._tui_audio_session
+        if managed is not None and managed.last_metadata_path is not None:
+            return f"Recording and metadata completed: {managed.last_metadata_path.name}"
+        return "Recording completed"
 
     def _set_snapshot_volume(self, value: int) -> None:
         self._snapshot = replace(self._snapshot, volume=value)
