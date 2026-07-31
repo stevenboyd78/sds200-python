@@ -17,13 +17,40 @@ produce new information.
 
 ## Planned milestones
 
-### Milestone 16.5 — SDS150 hardware validation
+### Milestone 16.5 — TUI diagnostics and mode-aware screens
+
+- **16.5.0 — TUI log panel**
+  - Route package log records into a bounded, thread-safe in-app panel.
+  - Show the panel by default and allow it to be toggled without losing records.
+  - Preserve optional file logging and restore stderr logging after TUI shutdown.
+- **16.5.1 — Screen-mode foundation**
+  - Add a renderer-neutral scanner-screen classifier with an unknown-screen
+    fallback.
+  - Add fixture and transition coverage for mode-specific GSI/PSI state.
+- **16.5.2 — Quick Search and Close Call**
+  - Present search frequency, modulation, hold/hit state, signal, RSSI, and
+    reported tone or digital-code details.
+  - Support both `SrchFrequency` and `CcHitsChannel` scanner-state nodes.
+- **16.5.3 — Weather Mode**
+  - Present weather channel, frequency, scan/hold state, signal, and RSSI.
+  - Capture alert and SAME details when the scanner reports them.
+- **16.5.4 — Tone Out Mode**
+  - Present tone-out channel/profile, monitored frequency, tone values, and
+    standby/detected/hold state when reported.
+- **16.5.5 — SDS200 hardware validation**
+  - Capture representative physical SDS200 GSI/PSI XML for every supported
+    special screen mode.
+  - Validate live transitions between normal scanning, search/Close Call,
+    weather, and tone-out screens.
+  - Document tested firmware, observed fields, and known limitations.
+
+### Milestone 16.6 — SDS150 hardware validation
 
 - Validate model detection, battery/charge reporting, navigation, PSI state, and
   documented limits on physical SDS150 hardware.
 - Record tested firmware and transport evidence in the supported-models guide.
 
-### Milestone 16.6 — v0.16.0 release preparation
+### Milestone 16.7 — v0.16.0 release preparation
 
 - Select only completed and validated Milestone 16 work for release.
 - Run the full software, package, Raspberry Pi, audio, and shutdown checklists.
