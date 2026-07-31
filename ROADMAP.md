@@ -18,12 +18,12 @@ and ideas that are not ready for scheduling are recorded in
   - Show the panel by default and allow it to be toggled without losing records.
   - Preserve optional file logging and restore stderr logging after TUI shutdown.
   - Stop periodic polling before widget teardown and suppress late refreshes.
-- **16.5.1 — Screen-mode foundation — active**
+- **16.5.1 — Screen-mode foundation — complete**
   - Add a renderer-neutral scanner-screen classifier with an unknown-screen
     fallback.
   - Preserve the raw scanner `Mode` and `V_Screen` values.
   - Add fixture and transition coverage for mode-specific GSI/PSI state.
-- **16.5.2 — Quick Search and Close Call**
+- **16.5.2 — Quick Search and Close Call — active**
   - Present search frequency, modulation, hold/hit state, signal, RSSI, and
     reported tone or digital-code details.
   - Support both `SrchFrequency` and `CcHitsChannel` scanner-state nodes.
@@ -202,3 +202,6 @@ fixtures before renderer-specific implementation.
   optional TUI lifecycle integration.
 - Milestone 16.5.0: a bounded operational log panel, preserved file logging,
   descriptive panel titles, wide-layout corrections, and shutdown-safe polling.
+- Milestone 16.5.1: renderer-neutral scanner-screen classification, preserved raw
+  `Mode` and `V_Screen` values, an unknown-screen fallback, and synthetic GSI/PSI
+  fixture and transition coverage.

@@ -180,7 +180,13 @@ from .scanner import (
     infer_model_from_device_name,
     normalize_model_name,
 )
-from .state import RadioState, RadioStateSnapshot, StateChange
+from .state import (
+    RadioState,
+    RadioStateSnapshot,
+    ScannerScreenKind,
+    StateChange,
+    classify_scanner_screen,
+)
 from .theme import (
     DEFAULT_DARK_THEME,
     DEFAULT_LIGHT_THEME,
@@ -317,6 +323,7 @@ __all__ = [
     "ScannerModel",
     "ScannerNode",
     "ScannerPresentation",
+    "ScannerScreenKind",
     "SdpAudioDescription",
     "SessionCaptureWriter",
     "SerialTransport",
@@ -342,6 +349,7 @@ __all__ = [
     "ValueResponse",
     "capabilities_for_model",
     "classify_connection",
+    "classify_scanner_screen",
     "classify_signal",
     "create_broadcastify_sink",
     "decode_mulaw",

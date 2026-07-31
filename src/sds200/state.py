@@ -1,15 +1,66 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, fields
+from enum import StrEnum
 from threading import RLock
 
 from .models import ScannerInfo
 
 
+class ScannerScreenKind(StrEnum):
+    """Renderer-independent classification of the active scanner screen."""
+
+    SCANNING = "scanning"
+    SEARCH = "search"
+    CLOSE_CALL = "close_call"
+    WEATHER = "weather"
+    TONE_OUT = "tone_out"
+    UNKNOWN = "unknown"
+
+
+_SCREEN_KIND_BY_NODE: dict[str, ScannerScreenKind] = {
+    "CcHitsChannel": ScannerScreenKind.CLOSE_CALL,
+    "ToneOutChannel": ScannerScreenKind.TONE_OUT,
+    "WxChannel": ScannerScreenKind.WEATHER,
+    "SrchFrequency": ScannerScreenKind.SEARCH,
+}
+
+
+def classify_scanner_screen(info: ScannerInfo) -> ScannerScreenKind:
+    """Classify a scanner screen without changing raw scanner values."""
+
+    text = " ".join(
+        value.strip().replace("_", " ").replace("-", " ")
+        for value in (info.mode, info.screen)
+        if value is not None and value.strip()
+    ).casefold()
+    terms = frozenset(text.split())
+
+    if "close call" in text:
+        return ScannerScreenKind.CLOSE_CALL
+    if "tone out" in text:
+        return ScannerScreenKind.TONE_OUT
+    if "weather" in terms or "wx" in terms:
+        return ScannerScreenKind.WEATHER
+
+    for tag, kind in _SCREEN_KIND_BY_NODE.items():
+        if info.node(tag) is not None:
+            return kind
+
+    if "search" in terms:
+        return ScannerScreenKind.SEARCH
+    if "scan" in terms or "scanning" in terms:
+        return ScannerScreenKind.SCANNING
+    return ScannerScreenKind.UNKNOWN
+
+
 @dataclass(frozen=True, slots=True)
 class RadioStateSnapshot:
+    """Immutable scanner state with raw and classified screen information."""
+
     mode: str | None = None
     screen: str | None = None
+    screen_kind: ScannerScreenKind | None = None
     system: str | None = None
     department: str | None = None
     site: str | None = None
@@ -53,6 +104,7 @@ def snapshot_from_scanner_info(info: ScannerInfo) -> RadioStateSnapshot:
     return RadioStateSnapshot(
         mode=info.mode,
         screen=info.screen,
+        screen_kind=classify_scanner_screen(info),
         system=info.system,
         department=info.department,
         site=info.site,
