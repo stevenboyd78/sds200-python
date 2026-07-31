@@ -159,8 +159,9 @@ Launch the optional Textual interface:
 sdsctl tui
 ```
 
-Press `Q` to quit, `T` to switch semantic palettes, `C` to reconnect, and `?`
-for the full keyboard reference. The v0.15 TUI provides non-blocking scanner
+Press `Q` to quit, `T` to switch semantic palettes, `C` to reconnect, `G` to
+show or hide the operational log panel, and `?` for the full keyboard reference.
+The v0.15 TUI provides non-blocking scanner
 controls, automatic compact, standard, and wide layouts, operational recovery
 logging, and rate-limited stale-PSI recovery through USB, network, profile, and
 replay selectors. A sustained stale PSI stream is automatically reconnected

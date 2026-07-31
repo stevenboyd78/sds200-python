@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from logging.handlers import WatchedFileHandler
 from pathlib import Path
+from typing import TextIO
 
 LOGGER_NAME = "sds200"
 LOG_LEVELS: dict[str, int] = {
@@ -15,6 +16,10 @@ LOG_LEVELS: dict[str, int] = {
 LOG_LEVEL_NAMES: tuple[str, ...] = tuple(LOG_LEVELS)
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 LOG_DATE_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
+
+
+class PackageStderrHandler(logging.StreamHandler[TextIO]):
+    """Package stderr handler that may be redirected by the Textual TUI."""
 
 
 def resolve_log_level(verbose: int, level_name: str | None = None) -> int:
@@ -44,7 +49,7 @@ def configure_logging(
 
     level = resolve_log_level(verbose, level_name)
     formatter = logging.Formatter(LOG_FORMAT, datefmt=LOG_DATE_FORMAT)
-    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    handlers: list[logging.Handler] = [PackageStderrHandler()]
     if log_file is not None:
         handlers.append(
             WatchedFileHandler(

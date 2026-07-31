@@ -8,6 +8,7 @@ from textual.widgets import Static
 
 from sds200.theme import DEFAULT_DARK_THEME, DEFAULT_LIGHT_THEME
 from sds200.tui import ScannerIdentity, ScannerTuiApp
+from sds200.tui_logging import TuiLogBuffer
 from sds200.xml_protocol import ScannerInfoParser
 
 XML = """<?xml version="1.0" encoding="utf-8"?>
@@ -21,7 +22,7 @@ XML = """<?xml version="1.0" encoding="utf-8"?>
 </ScannerInfo>"""
 
 
-def _app() -> ScannerTuiApp:
+def _app(log_buffer: TuiLogBuffer | None = None) -> ScannerTuiApp:
     return ScannerTuiApp(
         ScannerIdentity(
             endpoint="udp://192.168.0.251:50536",
@@ -29,6 +30,7 @@ def _app() -> ScannerTuiApp:
             firmware="Version 1.26.01",
         ),
         ScannerInfoParser().parse("GSI", XML),
+        log_buffer=log_buffer,
         palette=DEFAULT_DARK_THEME,
     )
 
@@ -45,9 +47,7 @@ def test_tui_shell_renders_identity_and_semantic_snapshot() -> None:
         async with app.run_test(size=(80, 32)):
             assert "CONNECTED" in _plain(app.query_one("#connection", Static))
             assert "SDS200" in _plain(app.query_one("#identity", Static))
-            assert "Utah Communications Authority" in _plain(
-                app.query_one("#system", Static)
-            )
+            assert "Utah Communications Authority" in _plain(app.query_one("#system", Static))
             assert "Patch 65132" in _plain(app.query_one("#channel", Static))
             state = _plain(app.query_one("#state", Static))
             assert "RECEIVING" in state
@@ -57,6 +57,29 @@ def test_tui_shell_renders_identity_and_semantic_snapshot() -> None:
             audio = _plain(app.query_one("#audio", Static))
             assert "Live playback: UNAVAILABLE" in audio
             assert "Recording: UNAVAILABLE" in audio
+
+    asyncio.run(exercise())
+
+
+def test_tui_panels_have_descriptive_border_titles() -> None:
+    async def exercise() -> None:
+        app = _app()
+
+        async with app.run_test(size=(120, 40)):
+            expected = {
+                "#keys": "Keyboard Reference",
+                "#connection": "Connection",
+                "#identity": "Scanner",
+                "#system": "System / Site",
+                "#channel": "Channel",
+                "#state": "Scanner State",
+                "#audio": "Audio",
+                "#status": "Live PSI / Controls",
+                "#logs": "Operational Logs",
+            }
+
+            for selector, title in expected.items():
+                assert app.query_one(selector, Static).border_title == title
 
     asyncio.run(exercise())
 
@@ -80,14 +103,13 @@ def test_tui_bindings_include_clean_quit() -> None:
     assert ("c", "reconnect") in bindings
     assert ("ctrl+p", "command_palette") in bindings
     palette_binding = next(
-        binding
-        for binding in ScannerTuiApp.BINDINGS
-        if binding.action == "command_palette"
+        binding for binding in ScannerTuiApp.BINDINGS if binding.action == "command_palette"
     )
     assert palette_binding.description == "Command Palette"
     assert palette_binding.key_display == "^p"
     assert palette_binding.show
     assert ("question_mark", "toggle_key_help") in bindings
+    assert ("g", "toggle_logs") in bindings
     assert ("h", "hold_channel") in bindings
     assert ("s", "hold_system") in bindings
     assert ("d", "hold_department") in bindings
@@ -119,6 +141,7 @@ def test_tui_responsive_breakpoints_and_key_help() -> None:
             assert "Hold current site" in keys
             assert "Raise / lower squelch" in keys
             assert "Reconnect scanner" in keys
+            assert "Show or hide operational logs" in keys
             assert "Command Palette" in keys
 
             await pilot.press("question_mark")
@@ -133,6 +156,40 @@ def test_tui_responsive_breakpoints_and_key_help() -> None:
             assert wide.screen.has_class("-tall")
 
     asyncio.run(exercise())
+
+
+def test_tui_log_panel_is_visible_by_default_and_retains_hidden_records() -> None:
+    async def exercise() -> None:
+        buffer = TuiLogBuffer(limit=3)
+        buffer.append("2026-07-30 WARNING sds200.test: first warning")
+        app = _app(buffer)
+
+        async with app.run_test(size=(120, 40)) as pilot:
+            logs = app.query_one("#logs", Static)
+            assert app.logs_visible
+            assert "first warning" in _plain(logs)
+
+            await pilot.press("g")
+            await pilot.pause()
+            assert not app.logs_visible
+            assert app.screen.has_class("hide-logs")
+
+            status = app.query_one("#status", Static)
+            status_lines = _plain(status).splitlines()
+            assert "Detail:" in status_lines[-1]
+            assert status.size.height >= len(status_lines)
+
+            buffer.append("2026-07-30 ERROR sds200.test: hidden error")
+            app._poll_log_buffer()
+
+            await pilot.press("g")
+            await pilot.pause()
+            assert app.logs_visible
+            assert not app.screen.has_class("hide-logs")
+            assert "hidden error" in _plain(logs)
+
+    asyncio.run(exercise())
+
 
 def test_tui_status_transitions_include_local_since_timestamps() -> None:
     async def exercise() -> None:

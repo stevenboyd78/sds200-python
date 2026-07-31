@@ -3,7 +3,8 @@
 Version 0.13 introduced the optional full-screen Textual interface for SDS
 scanners, version 0.14 added integrated SDS200 network-audio recording, and
 Milestone 16.2 adds immediate live playback, repeatable recordings, and a saved
-recording library. Textual and PortAudio remain optional so the core installation
+recording library. Milestone 16.5.0 adds a bounded in-app operational log panel.
+Textual and PortAudio remain optional so the core installation
 stays lightweight.
 
 Install the optional interface from PyPI:
@@ -62,6 +63,7 @@ The interface shows:
 - semantic activity, signal, hold, mute, and recording state
 - live PSI, reconnect, diagnostic, and stale-data status
 - automatic PSI recovery attempt, success, and failure totals
+- a bounded newest-last operational log panel, visible by default
 - availability and severity derived from the shared presentation model, each with the local transition time
 
 Radio callbacks originate on control-transport threads. The adapter marshals every
@@ -81,6 +83,7 @@ Keyboard shortcuts:
 - `R`: start or stop an SDS200 network-audio WAV recording
 - `A`: toggle live scanner playback without stopping the RTSP/RTP stream
 - `L`: show or hide the newest compatible recordings
+- `G`: show or hide the operational log panel without discarding buffered records
 - `Up` / `Down`: select a saved recording
 - `Enter`: play the selected recording and temporarily suspend live playback
 - `Space`: pause or resume saved playback
@@ -106,6 +109,13 @@ severity labels include `since HH:MM:SS` using local time; the timestamp changes
 when the displayed state changes. Repeated unchanged PSI frames still refresh data
 freshness, preventing an active but stable channel from aging into a false stale state.
 Only an actual absence of valid PSI frames triggers automatic recovery.
+
+While the full-screen TUI is active, package log records are routed to the bounded
+in-app panel instead of stderr so they cannot corrupt the Textual display. The
+panel retains the newest 200 lines and displays the newest six; hiding it with `G`
+does not stop collection. An optional `--log-file` handler remains active and
+continues receiving every record allowed by the selected log level. Normal stderr
+logging is restored when the TUI exits.
 
 The deterministic `sds100-tui-controls.jsonl` replay is a strict, one-shot command
 script rather than a scanner simulator. For a manual control pass, start a fresh TUI
