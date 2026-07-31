@@ -76,6 +76,7 @@ class RadioStateSnapshot:
     channel_hold: str | None = None
     frequency: str | None = None
     modulation: str | None = None
+    sub_audio_detected: str | None = None
     service_type: str | None = None
     talkgroup_id: str | None = None
     unit_id: str | None = None
@@ -120,6 +121,7 @@ def snapshot_from_scanner_info(info: ScannerInfo) -> RadioStateSnapshot:
         channel_hold=info.channel_hold,
         frequency=info.frequency,
         modulation=info.modulation,
+        sub_audio_detected=info.sub_audio_detected,
         service_type=info.service_type,
         talkgroup_id=info.talkgroup_id,
         unit_id=info.unit_id,

@@ -157,3 +157,46 @@ def test_gsi_to_psi_screen_transition(
     assert change.changed("mode")
     assert change.changed("screen")
     assert change.changed("screen_kind")
+
+
+@pytest.mark.parametrize(
+    ("fixture_name", "expected"),
+    [
+        ("synthetic-quick-search.xml", "CTCSS 123.0Hz"),
+        ("synthetic-close-call.xml", "NAC 293h"),
+    ],
+)
+def test_special_screen_fixture_preserves_detected_sub_audio(
+    fixture_name: str,
+    expected: str,
+) -> None:
+    info = _fixture(fixture_name)
+    snapshot = snapshot_from_scanner_info(info)
+
+    assert info.sub_audio_detected == expected
+    assert snapshot.sub_audio_detected == expected
+
+
+def test_sub_audio_none_sentinel_is_normalized() -> None:
+    xml = """
+<ScannerInfo Mode="Quick Search" V_Screen="quick_search">
+<SrchFrequency Freq="154.280000MHz" SAD="None" />
+</ScannerInfo>
+"""
+    info = ScannerInfoParser().parse("PSI", xml)
+    snapshot = snapshot_from_scanner_info(info)
+
+    assert info.sub_audio_detected is None
+    assert snapshot.sub_audio_detected is None
+
+
+def test_search_to_close_call_transition_reports_sub_audio_change() -> None:
+    state = RadioState()
+    state.update(_fixture("synthetic-quick-search.xml", "GSI"))
+
+    change = state.update(_fixture("synthetic-close-call.xml", "PSI"))
+
+    assert change is not None
+    assert change.previous.sub_audio_detected == "CTCSS 123.0Hz"
+    assert change.current.sub_audio_detected == "NAC 293h"
+    assert change.changed("sub_audio_detected")

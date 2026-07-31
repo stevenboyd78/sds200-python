@@ -85,8 +85,11 @@ The interface shows:
 
 - connection endpoint and connected, degraded, or disconnected status with the local transition time
 - scanner model and firmware
-- system, department, and site
-- channel, frequency, modulation, and service type
+- system, department, and site during normal scanning screens
+- channel, frequency, modulation, and service type during normal scanning
+- mode-aware Quick Search and Close Call panels showing the raw screen mode,
+  source state node, search frequency or hit name, modulation, hold state,
+  signal, RSSI, and scanner-reported detected tone or digital code
 - semantic activity, signal, hold, mute, and recording state
 - live PSI, reconnect, diagnostic, and stale-data status
 - automatic PSI recovery attempt, success, and failure totals
@@ -101,6 +104,10 @@ state while making its disconnected or stale status explicit.
 The interface uses the same renderer-independent `ScannerPresentation`,
 `ThemeRole`, and light/dark palettes as the Rich CLI. Meaning remains visible in
 text labels rather than relying on color alone.
+
+Quick Search and Close Call coverage currently uses synthetic GSI/PSI fixtures
+shaped from the documented scanner protocol. Representative physical SDS200
+captures and live mode-transition validation remain deferred to Milestone 16.5.5.
 
 Keyboard shortcuts:
 

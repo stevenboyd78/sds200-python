@@ -53,6 +53,9 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   Search, Close Call, weather, Tone Out, and unknown screens while preserving
   the scanner's raw `Mode` and `V_Screen` values, with synthetic GSI/PSI
   fixtures and transition coverage.
+- Mode-aware Quick Search and Close Call TUI panels showing the reported state
+  node, frequency or hit name, modulation, hold state, signal, RSSI, and
+  detected tone or digital-code value from the scanner's `SAD` attribute.
 
 ### Changed
 
