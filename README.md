@@ -53,7 +53,8 @@ and live state updates.
 
 Network audio remains independent from scanner control, so playback and recording
 do not open or affect the USB serial or UDP control transport. See the
-[project roadmap](ROADMAP.md) for planned TUI and remote-streaming destinations.
+[project roadmap](ROADMAP.md) for ordered work and the
+[project vision](docs/project-vision.md) for broader deferred capabilities.
 
 ## Requirements
 
@@ -236,8 +237,8 @@ The scanner requires a nonstandard single RTP client port during RTSP `SETUP`.
 The built-in transport handles that negotiation, receives payload type 0 PCMU,
 decodes each accepted packet once, and fans the PCM out to independently buffered
 destinations. WAV disk writes and local sound-device callbacks cannot block RTP
-reception. The existing recording session continues to power the opt-in TUI audio
-controls until the planned TUI fanout milestone.
+reception. The same long-lived fanout session powers TUI playback, repeatable
+recording, and saved-recording controls without opening a second scanner stream.
 
 Each recording summary reports estimated packet loss, duplicates, late and
 malformed packets, and RTP timestamp discontinuities. A five-minute SDS200
@@ -521,6 +522,8 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting and
 - [Acknowledgments](ACKNOWLEDGMENTS.md)
 - [Contributing](CONTRIBUTING.md)
 - [Support](SUPPORT.md)
+- [Roadmap](ROADMAP.md)
+- [Project vision](docs/project-vision.md)
 - [Changelog](CHANGELOG.md)
 - [Release process](docs/releasing.md)
 
@@ -549,10 +552,14 @@ fault-injection coverage for audio startup, shutdown, repeated requests, and
 scanner reconnects. Failed PSI reconnects preserve their requested update interval
 so recovery continues after control traffic returns, while active SDS200 network
 audio remains uninterrupted. SDS100 and SDS200 control support is
-hardware-validated; SDS150 hardware validation remains in progress. API
-compatibility is not guaranteed until version 1.0.
+hardware-validated. SDS150 support is implemented and fixture-tested, but physical
+validation is deferred until representative hardware is available. It does not
+block unrelated releases. API compatibility is not guaranteed until version 1.0.
 
-See [CHANGELOG.md](CHANGELOG.md) for development history and planned changes.
+See [CHANGELOG.md](CHANGELOG.md) for development history,
+[ROADMAP.md](ROADMAP.md) for ordered work, and
+[the project vision](docs/project-vision.md) for deferred capabilities and
+architectural direction.
 
 ## Acknowledgments
 

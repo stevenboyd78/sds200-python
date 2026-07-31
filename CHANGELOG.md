@@ -13,6 +13,10 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 - Optional live playback through the local default or selected PortAudio output
   device, including queue, underflow, overflow, and dropped-audio counters.
 - A maintained project roadmap covering active, planned, and exploratory work.
+- A consolidated project-vision document preserving product direction,
+  architectural constraints, security boundaries, hardware-validation policy,
+  Favorites Workspace plans, daemon and integration ideas, and advanced protocol
+  research.
 - Version-controlled GitHub Wiki source with task-oriented home, installation,
   troubleshooting, navigation, and publishing guidance.
 - Repeatable TUI recordings with collision-safe local timestamp filenames, a
@@ -46,6 +50,12 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Changed
 
+- Reconciled the roadmap with completed Milestone 16 work, made screen-mode
+  foundation the active slice, moved v0.16.0 preparation to Milestone 16.6, and
+  deferred SDS150 physical validation until hardware is available.
+- Adopted `sdsctl` as the namespace for future configuration, services, state,
+  cache, daemon, API, and integration work while preserving existing Python package
+  compatibility.
 - `sdsctl audio` now supports playback-only, recording-only, or simultaneous
   playback and WAV recording from one SDS200 RTSP/RTP session.
 - PCM WAV writes used by the fanout pipeline now run on a dedicated worker instead
