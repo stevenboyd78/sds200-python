@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import asyncio
@@ -9,6 +8,7 @@ import wave
 from collections.abc import Callable
 from pathlib import Path
 
+import pytest
 from rich.text import Text
 from textual.widgets import Static
 
@@ -50,7 +50,7 @@ XML = (
     '<TGID Name="Example Dispatch" TGID="TGID:65132" SvcType="Interop" />\n'
     '<SiteFrequency Freq="769.431250MHz" />\n'
     '<Property VOL="10" SQL="2" Sig="5" Rssi="-86" Rec="Off" Mute="Unmute" />\n'
-    '</ScannerInfo>'
+    "</ScannerInfo>"
 )
 
 
@@ -82,9 +82,7 @@ async def _wait_for_status(
         if session.status is status:
             return
         await asyncio.sleep(0.01)
-    raise AssertionError(
-        f"Expected audio status {status.value}, received {session.status.value}"
-    )
+    raise AssertionError(f"Expected audio status {status.value}, received {session.status.value}")
 
 
 def test_tui_audio_binding_records_updates_and_stops(tmp_path: Path) -> None:
@@ -95,9 +93,7 @@ def test_tui_audio_binding_records_updates_and_stops(tmp_path: Path) -> None:
         session = AudioRecordingSession(AudioStream(transport), recorder)
         app = _app(session)
 
-        bindings = {
-            (binding.key, binding.action) for binding in ScannerTuiApp.BINDINGS
-        }
+        bindings = {(binding.key, binding.action) for binding in ScannerTuiApp.BINDINGS}
         assert ("r", "toggle_audio_recording") in bindings
 
         async with app.run_test(size=(100, 46)) as pilot:
@@ -179,16 +175,10 @@ def test_tui_managed_recording_uses_live_state_for_metadata(
             await pilot.press("r")
             await _wait_for_status(session, AudioSessionStatus.STOPPED)
             await pilot.pause()
-            assert "Recording and metadata completed" in _plain(
-                app.query_one("#audio", Static)
-            )
+            assert "Recording and metadata completed" in _plain(app.query_one("#audio", Static))
 
-        payload = json.loads(
-            recording_metadata_path(output).read_text(encoding="utf-8")
-        )
-        assert payload["boundaries"]["started"]["state"]["channel"] == (
-            "Example Dispatch"
-        )
+        payload = json.loads(recording_metadata_path(output).read_text(encoding="utf-8"))
+        assert payload["boundaries"]["started"]["state"]["channel"] == ("Example Dispatch")
         assert payload["boundaries"]["stopped"]["state"]["channel"] == "Tac 1"
 
     asyncio.run(exercise())
@@ -209,8 +199,27 @@ def test_tui_shutdown_finalizes_active_audio_recording(tmp_path: Path) -> None:
         assert session.status is AudioSessionStatus.STOPPED
         assert not recorder.open
         assert not app.audio_thread_alive
+        assert not app._poll_timers
 
     asyncio.run(exercise())
+
+
+def test_tui_audio_poll_skips_rendering_after_shutdown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = FakeAudioTransport()
+    recorder = PcmuWavRecorder(tmp_path / "shutdown-poll.wav")
+    session = AudioRecordingSession(AudioStream(transport), recorder)
+    app = _app(session)
+    app._audio_snapshot = None
+    app._shutdown_started.set()
+
+    def fail_refresh() -> None:
+        raise AssertionError("shutdown polling attempted to refresh removed widgets")
+
+    monkeypatch.setattr(app, "_refresh_view", fail_refresh)
+    app._poll_audio_state()
 
 
 def test_tui_rejects_repeated_record_requests_while_starting(

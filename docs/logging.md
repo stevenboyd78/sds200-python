@@ -17,8 +17,11 @@ The existing verbosity shortcuts remain available:
 - `-vv`: `DEBUG`
 - `--log-level`: explicit override of the verbosity-derived level
 
-`--log-file PATH` adds a persistent file handler while retaining stderr output.
-The parent directory is not created automatically. A missing directory or
+`--log-file PATH` adds a persistent file handler while retaining stderr output
+for non-TUI commands. During an active full-screen TUI session, package records are
+redirected from stderr to the bounded in-app log panel; the file handler continues
+unchanged, and stderr logging is restored when the TUI exits. The parent directory
+is not created automatically. A missing directory or
 insufficient permission produces a clear startup error instead of silently
 discarding diagnostics.
 
@@ -41,7 +44,9 @@ INFO sds200.tui: PSI stream recovered endpoint=udp://192.168.0.251:50536 outage_
 ```
 
 The TUI status panel reports automatic recovery attempts, successful recoveries,
-and failed attempts. Scanner control reconnects remain independent from the
+and failed attempts. The operational log panel is visible by default; press `G` to
+hide or restore it without discarding buffered records. Scanner control reconnects
+remain independent from the
 SDS200 RTSP/RTP audio session, so an active WAV recording continues during PSI
 recovery.
 

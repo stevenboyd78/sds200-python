@@ -67,6 +67,7 @@ from .tui_audio import (
     RecordingPathPolicy,
     TuiAudioSession,
 )
+from .tui_logging import TuiLogBuffer, capture_package_logs
 
 logger = logging.getLogger(__name__)
 
@@ -1583,7 +1584,11 @@ def _run_audio(args: argparse.Namespace) -> int:
     return 0
 
 
-def _run_tui(args: argparse.Namespace) -> int:
+def _run_tui(
+    args: argparse.Namespace,
+    *,
+    log_buffer: TuiLogBuffer | None = None,
+) -> int:
     try:
         from .tui import run_tui
     except ModuleNotFoundError as exc:
@@ -1670,8 +1675,19 @@ def _run_tui(args: argparse.Namespace) -> int:
             psi_recovery_cooldown=args.psi_recovery_cooldown,
             connected=radio.connected,
             palette=palette_for_name(args.theme),
+            log_buffer=log_buffer,
         )
     return 0
+
+
+def _run_tui_with_logging(args: argparse.Namespace) -> int:
+    log_buffer = TuiLogBuffer()
+    with capture_package_logs(log_buffer):
+        logger.info("sdsctl starting version=%s action=%s", __version__, args.action)
+        try:
+            return _run_tui(args, log_buffer=log_buffer)
+        finally:
+            logger.info("sdsctl stopped action=%s", args.action)
 
 
 def _run_discovery(args: argparse.Namespace) -> int:
@@ -1730,6 +1746,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: could not configure logging: {exc}", file=sys.stderr)
         return 2
 
+    if args.action == "tui":
+        try:
+            return _run_tui_with_logging(args)
+        except (SDS200Error, OSError, ValueError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+
     logger.info("sdsctl starting version=%s action=%s", __version__, args.action)
 
     try:
@@ -1748,9 +1771,6 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.action == "audio":
             return _run_audio(args)
-
-        if args.action == "tui":
-            return _run_tui(args)
 
         with selected_radio(args) as radio:
             if args.action == "info":

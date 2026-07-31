@@ -39,6 +39,10 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   atomic sidecar writes.
 - Optional TUI recording sidecars enabled by `--audio-metadata`, including live
   scanner state captured at successful recording start and stop boundaries.
+- A bounded, thread-safe TUI operational log panel that is visible by default,
+  toggles with `G`, retains records while hidden, and preserves optional file
+  logging.
+- Descriptive border titles for the standard and wide TUI panels.
 
 ### Changed
 
@@ -51,9 +55,15 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   interrupting scanner reception or an active WAV recording.
 - SDS200 host TUI sessions now expose live playback controls even without
   `--audio-playback`; the flag requests automatic startup after connected live PSI.
+- Full-screen TUI sessions now redirect package stderr logging into the in-app
+  panel and restore the original stderr handler after shutdown.
 
 ### Fixed
 
+- Prevented the final TUI status detail row from being clipped when the
+  operational log panel is hidden in a wide layout.
+- Stopped TUI polling timers before widget teardown and suppressed late rendering
+  callbacks after shutdown begins.
 - Deferred PortAudio startup until the first connected live PSI refresh, preventing
   playback initialization from leaving stale startup panels in wide terminals.
 - Live playback toggles now keep a prepared output device warm and muted until TUI
