@@ -62,6 +62,8 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 - Prevented the final TUI status detail row from being clipped when the
   operational log panel is hidden in a wide layout.
+- Stopped TUI polling timers before widget teardown and suppressed late rendering
+  callbacks after shutdown begins.
 - Deferred PortAudio startup until the first connected live PSI refresh, preventing
   playback initialization from leaving stale startup panels in wide terminals.
 - Live playback toggles now keep a prepared output device warm and muted until TUI

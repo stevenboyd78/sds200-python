@@ -13,6 +13,7 @@ from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import VerticalScroll
+from textual.timer import Timer
 from textual.widgets import Footer, Header, Static
 
 from .audio_session import (
@@ -423,6 +424,7 @@ class ScannerTuiApp(App[None]):
         self._unsubscribers: list[Unsubscribe] = []
         self._psi_stop = Event()
         self._shutdown_started = Event()
+        self._poll_timers: list[Timer] = []
         self._psi_thread: Thread | None = None
         self._control_worker = ControlWorker(self._on_control_completed)
         self._audio_worker = ControlWorker(
@@ -495,16 +497,16 @@ class ScannerTuiApp(App[None]):
     def on_mount(self) -> None:
         self._shutdown_started.clear()
         self._refresh_view()
-        self.set_interval(0.25, self._poll_log_buffer)
+        self._poll_timers.append(self.set_interval(0.25, self._poll_log_buffer))
         if self._radio is not None:
             self._control_worker.start()
             check_interval = min(max(self._stale_after / 4, 0.1), 1.0)
-            self.set_interval(check_interval, self.check_stale)
+            self._poll_timers.append(self.set_interval(check_interval, self.check_stale))
             self._start_live_updates()
         if self._audio_session is not None:
             self._audio_worker.start()
             self._audio_unsubscribe = self._audio_session.on_state(self._on_audio_state)
-            self.set_interval(0.25, self._poll_audio_state)
+            self._poll_timers.append(self.set_interval(0.25, self._poll_audio_state))
             if self._tui_audio_session is not None:
                 self._submit_audio(
                     ControlRequest(
@@ -515,6 +517,9 @@ class ScannerTuiApp(App[None]):
 
     def on_unmount(self) -> None:
         self._shutdown_started.set()
+        for timer in self._poll_timers:
+            timer.stop()
+        self._poll_timers.clear()
         self.stop_audio()
         self.stop_live_updates()
         self.stop_controls()
@@ -1030,6 +1035,8 @@ class ScannerTuiApp(App[None]):
         self._dispatch_from_radio(self._apply_audio_state, snapshot)
 
     def _poll_audio_state(self) -> None:
+        if self._shutdown_started.is_set():
+            return
         session = self._audio_session
         if session is None:
             return
@@ -1040,9 +1047,13 @@ class ScannerTuiApp(App[None]):
         self._refresh_view()
 
     def _poll_log_buffer(self) -> None:
+        if self._shutdown_started.is_set():
+            return
         self._refresh_log_panel()
 
     def _refresh_log_panel(self, *, force: bool = False) -> None:
+        if self._shutdown_started.is_set():
+            return
         snapshot = self._log_buffer.snapshot()
         if not force and snapshot.version == self._log_version:
             return
@@ -1314,6 +1325,8 @@ class ScannerTuiApp(App[None]):
         self._refresh_view()
 
     def _refresh_view(self) -> None:
+        if self._shutdown_started.is_set():
+            return
         presentation = present_radio_state(
             self._snapshot,
             connected=self._connected,
