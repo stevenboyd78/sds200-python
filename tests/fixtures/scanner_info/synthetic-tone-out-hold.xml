@@ -1,0 +1,4 @@
+<ScannerInfo Mode="Tone-Out" V_Screen="tone_out">
+<ToneOutChannel Name="Synthetic Tone Out 12" CH_No="12" Freq="153.830000MHz" Mod="NFM" Hold="On" LVL="0" IFX="Off" ToneA="879.0Hz" ToneB="0.0Hz" />
+<Property VOL="8" SQL="2" Sig="4" Rssi="-73" Mute="Unmute" Rec="Off" />
+</ScannerInfo>

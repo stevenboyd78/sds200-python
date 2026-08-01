@@ -93,6 +93,9 @@ The interface shows:
 - mode-aware Weather panels showing the raw screen mode, `WxChannel` state node,
   weather channel and number, frequency, modulation, monitor or alert mode,
   hold state, signal, RSSI, and scanner-reported SAME selection
+- mode-aware Tone Out panels showing the raw screen mode, `ToneOutChannel` state
+  node, profile and channel number, monitored frequency, modulation, Tone A and
+  Tone B values, hold state, signal, and RSSI
 - semantic activity, signal, hold, mute, and recording state
 - live PSI, reconnect, diagnostic, and stale-data status
 - automatic PSI recovery attempt, success, and failure totals
@@ -108,11 +111,12 @@ The interface uses the same renderer-independent `ScannerPresentation`,
 `ThemeRole`, and light/dark palettes as the Rich CLI. Meaning remains visible in
 text labels rather than relying on color alone.
 
-Quick Search, Close Call, and Weather coverage currently uses synthetic GSI/PSI
-fixtures shaped from the documented scanner protocol. The Weather fixtures cover
-both monitoring and alert states, including an optional SAME selection.
-Representative physical SDS200 captures and live mode-transition validation
-remain deferred to Milestone 16.5.5.
+Quick Search, Close Call, Weather, and Tone Out coverage currently uses
+synthetic GSI/PSI fixtures shaped from the documented scanner protocol. The
+Weather fixtures cover monitoring and alert states, including an optional SAME
+selection. The Tone Out fixtures cover profile, tone-value, and hold-state
+changes. Representative physical SDS200 captures and live mode-transition
+validation remain deferred to Milestone 16.5.5.
 
 Keyboard shortcuts:
 

@@ -286,3 +286,72 @@ def test_weather_same_normalization(
 
     assert info.weather_same == expected
     assert snapshot.weather_same == expected
+
+
+@pytest.mark.parametrize(
+    (
+        "fixture_name",
+        "channel_number",
+        "channel_hold",
+        "tone_a",
+        "tone_b",
+    ),
+    [
+        (
+            "synthetic-tone-out.xml",
+            3,
+            "Off",
+            "600.9Hz",
+            "1006.9Hz",
+        ),
+        (
+            "synthetic-tone-out-hold.xml",
+            12,
+            "On",
+            "879.0Hz",
+            "0.0Hz",
+        ),
+    ],
+)
+def test_tone_out_fixture_preserves_protocol_details(
+    fixture_name: str,
+    channel_number: int,
+    channel_hold: str,
+    tone_a: str,
+    tone_b: str,
+) -> None:
+    info = _fixture(fixture_name)
+    snapshot = snapshot_from_scanner_info(info)
+
+    assert info.channel_number == channel_number
+    assert info.channel_hold == channel_hold
+    assert info.tone_out_tone_a == tone_a
+    assert info.tone_out_tone_b == tone_b
+
+    assert snapshot.channel_number == channel_number
+    assert snapshot.channel_hold == channel_hold
+    assert snapshot.tone_out_tone_a == tone_a
+    assert snapshot.tone_out_tone_b == tone_b
+
+
+def test_tone_out_profile_transition_reports_tone_and_hold_changes() -> None:
+    state = RadioState()
+    state.update(_fixture("synthetic-tone-out.xml", "GSI"))
+
+    change = state.update(_fixture("synthetic-tone-out-hold.xml", "PSI"))
+
+    assert change is not None
+    assert change.previous.screen_kind is ScannerScreenKind.TONE_OUT
+    assert change.current.screen_kind is ScannerScreenKind.TONE_OUT
+    assert change.previous.channel_hold == "Off"
+    assert change.current.channel_hold == "On"
+    assert change.previous.tone_out_tone_a == "600.9Hz"
+    assert change.current.tone_out_tone_a == "879.0Hz"
+    assert change.previous.tone_out_tone_b == "1006.9Hz"
+    assert change.current.tone_out_tone_b == "0.0Hz"
+    assert change.changed("channel")
+    assert change.changed("channel_number")
+    assert change.changed("channel_hold")
+    assert change.changed("frequency")
+    assert change.changed("tone_out_tone_a")
+    assert change.changed("tone_out_tone_b")

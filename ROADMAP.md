@@ -30,10 +30,10 @@ and ideas that are not ready for scheduling are recorded in
 - **16.5.3 — Weather Mode — complete**
   - Present weather channel, frequency, scan/hold state, signal, and RSSI.
   - Capture alert and SAME details when the scanner reports them.
-- **16.5.4 — Tone Out Mode — active**
+- **16.5.4 — Tone Out Mode — complete**
   - Present tone-out channel/profile, monitored frequency, tone values, and
     standby/detected/hold state when reported.
-- **16.5.5 — SDS200 hardware validation**
+- **16.5.5 — SDS200 hardware validation — active**
   - Capture representative physical SDS200 GSI/PSI XML for every supported
     special screen mode.
   - Validate live transitions between normal scanning, search/Close Call,
@@ -211,3 +211,6 @@ fixtures before renderer-specific implementation.
 - Milestone 16.5.3: mode-aware Weather panels with channel number, frequency,
   modulation, monitor or alert state, hold, signal, RSSI, and scanner-reported
   SAME selection.
+- Milestone 16.5.4: mode-aware Tone Out panels with profile and channel number,
+  monitored frequency, modulation, Tone A and Tone B values, hold state, signal,
+  and RSSI.

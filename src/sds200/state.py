@@ -78,6 +78,8 @@ class RadioStateSnapshot:
     frequency: str | None = None
     modulation: str | None = None
     sub_audio_detected: str | None = None
+    tone_out_tone_a: str | None = None
+    tone_out_tone_b: str | None = None
     weather_mode: str | None = None
     weather_same: str | None = None
     service_type: str | None = None
@@ -126,6 +128,8 @@ def snapshot_from_scanner_info(info: ScannerInfo) -> RadioStateSnapshot:
         frequency=info.frequency,
         modulation=info.modulation,
         sub_audio_detected=info.sub_audio_detected,
+        tone_out_tone_a=info.tone_out_tone_a,
+        tone_out_tone_b=info.tone_out_tone_b,
         weather_mode=info.weather_mode,
         weather_same=info.weather_same,
         service_type=info.service_type,

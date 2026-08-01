@@ -357,3 +357,62 @@ def test_tui_renders_mode_aware_weather_details() -> None:
                     assert value in channel
 
     asyncio.run(exercise())
+
+
+def test_tui_renders_mode_aware_tone_out_details() -> None:
+    async def exercise() -> None:
+        cases = (
+            (
+                "synthetic-tone-out.xml",
+                (
+                    "Mode: Tone-Out",
+                    "V_Screen: tone_out",
+                    "State node: ToneOutChannel",
+                ),
+                (
+                    "Tone Out profile: FTO 3: Synthetic Tone Out 3",
+                    "Frequency: 154.190000MHz",
+                    "Modulation: NFM",
+                    "Tone A: 600.9Hz",
+                    "Tone B: 1006.9Hz",
+                    "Hold: OFF",
+                    "Signal: WEAK (1)",
+                    "RSSI: -104",
+                ),
+            ),
+            (
+                "synthetic-tone-out-hold.xml",
+                (
+                    "Mode: Tone-Out",
+                    "V_Screen: tone_out",
+                    "State node: ToneOutChannel",
+                ),
+                (
+                    "Tone Out profile: FTO 12: Synthetic Tone Out 12",
+                    "Frequency: 153.830000MHz",
+                    "Modulation: NFM",
+                    "Tone A: 879.0Hz",
+                    "Tone B: 0.0Hz",
+                    "Hold: ON",
+                    "Signal: STRONG (4)",
+                    "RSSI: -73",
+                ),
+            ),
+        )
+
+        for fixture_name, system_values, channel_values in cases:
+            app = _fixture_app(fixture_name)
+            async with app.run_test(size=(80, 36)):
+                system_widget = app.query_one("#system", Static)
+                channel_widget = app.query_one("#channel", Static)
+                system = _plain(system_widget)
+                channel = _plain(channel_widget)
+
+                assert system_widget.border_title == "Screen Mode"
+                assert channel_widget.border_title == "Tone Out"
+                for value in system_values:
+                    assert value in system
+                for value in channel_values:
+                    assert value in channel
+
+    asyncio.run(exercise())
