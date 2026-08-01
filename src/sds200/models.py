@@ -254,6 +254,18 @@ class ScannerInfo:
         return value if value is not None and value.casefold() != "none" else None
 
     @property
+    def tone_out_tone_a(self) -> str | None:
+        """Return the scanner-reported Tone Out A frequency."""
+
+        return self._attribute(("ToneOutChannel",), "ToneA")
+
+    @property
+    def tone_out_tone_b(self) -> str | None:
+        """Return the scanner-reported Tone Out B frequency."""
+
+        return self._attribute(("ToneOutChannel",), "ToneB")
+
+    @property
     def weather_mode(self) -> str | None:
         """Return the scanner-reported Weather Mode operating state."""
 

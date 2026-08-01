@@ -59,6 +59,9 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 - Mode-aware Weather TUI panels showing the reported weather channel and number,
   frequency, modulation, monitor or alert mode, hold state, signal, RSSI, and
   SAME selection when supplied by the scanner.
+- Mode-aware Tone Out TUI panels showing the reported profile and channel number,
+  monitored frequency, modulation, Tone A and Tone B values, hold state, signal,
+  and RSSI.
 
 ### Changed
 

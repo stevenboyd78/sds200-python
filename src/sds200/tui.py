@@ -1370,6 +1370,9 @@ class ScannerTuiApp(App[None]):
         elif self._snapshot.screen_kind is ScannerScreenKind.WEATHER:
             system_widget.border_title = "Screen Mode"
             channel_widget.border_title = "Weather"
+        elif self._snapshot.screen_kind is ScannerScreenKind.TONE_OUT:
+            system_widget.border_title = "Screen Mode"
+            channel_widget.border_title = "Tone Out"
         else:
             system_widget.border_title = "System / Site"
             channel_widget.border_title = "Channel"
@@ -1435,6 +1438,7 @@ class ScannerTuiApp(App[None]):
             ScannerScreenKind.SEARCH,
             ScannerScreenKind.CLOSE_CALL,
             ScannerScreenKind.WEATHER,
+            ScannerScreenKind.TONE_OUT,
         }:
             return self._panel(
                 ("Mode", _display(self._snapshot.mode), ThemeRole.TEXT_PRIMARY),
@@ -1462,6 +1466,7 @@ class ScannerTuiApp(App[None]):
             ScannerScreenKind.SEARCH,
             ScannerScreenKind.CLOSE_CALL,
             ScannerScreenKind.WEATHER,
+            ScannerScreenKind.TONE_OUT,
         }:
             return self._panel(
                 ("Channel", _display(self._snapshot.channel), ThemeRole.TEXT_PRIMARY),
@@ -1525,6 +1530,51 @@ class ScannerTuiApp(App[None]):
                     _display(self._snapshot.weather_same),
                     ThemeRole.TEXT_PRIMARY,
                 ),
+            )
+
+        if screen_kind is ScannerScreenKind.TONE_OUT:
+            tone_out_profile = _display(self._snapshot.channel)
+            if self._snapshot.channel_number is not None:
+                prefix = f"FTO {self._snapshot.channel_number}"
+                tone_out_profile = (
+                    prefix
+                    if tone_out_profile == "-"
+                    else f"{prefix}: {tone_out_profile}"
+                )
+
+            return self._panel(
+                ("Tone Out profile", tone_out_profile, ThemeRole.TEXT_PRIMARY),
+                (
+                    "Frequency",
+                    _display(self._snapshot.frequency),
+                    ThemeRole.TEXT_PRIMARY,
+                ),
+                (
+                    "Modulation",
+                    _display(self._snapshot.modulation),
+                    ThemeRole.TEXT_PRIMARY,
+                ),
+                (
+                    "Tone A",
+                    _display(self._snapshot.tone_out_tone_a),
+                    ThemeRole.TEXT_PRIMARY,
+                ),
+                (
+                    "Tone B",
+                    _display(self._snapshot.tone_out_tone_b),
+                    ThemeRole.TEXT_PRIMARY,
+                ),
+                (
+                    "Hold",
+                    (
+                        _state_label(self._snapshot.channel_hold)
+                        if self._snapshot.channel_hold
+                        else "-"
+                    ),
+                    roles.hold,
+                ),
+                ("Signal", _signal_display(presentation), roles.signal),
+                ("RSSI", _rssi_display(self._snapshot.rssi), ThemeRole.TEXT_PRIMARY),
             )
 
         rows: list[tuple[str, str, ThemeRole]] = []
