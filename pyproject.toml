@@ -40,7 +40,7 @@ classifiers = [
 dependencies = [
   "argcomplete>=3.6,<4",
   "pyserial>=3.5",
-  "rich>=13.9,<15",
+  "rich>=13.9,<16",
 ]
 
 [project.optional-dependencies]
