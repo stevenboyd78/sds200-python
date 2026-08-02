@@ -24,8 +24,12 @@ def _fixture(name: str, command: str = "PSI") -> ScannerInfo:
     [
         ("synthetic-scan.xml", ScannerScreenKind.SCANNING),
         ("synthetic-quick-search.xml", ScannerScreenKind.SEARCH),
+        ("synthetic-close-call-searching.xml", ScannerScreenKind.CLOSE_CALL),
         ("synthetic-close-call.xml", ScannerScreenKind.CLOSE_CALL),
+        ("synthetic-close-call-hold.xml", ScannerScreenKind.CLOSE_CALL),
+        ("synthetic-close-call-hits.xml", ScannerScreenKind.CLOSE_CALL),
         ("synthetic-weather.xml", ScannerScreenKind.WEATHER),
+        ("synthetic-weather-hold.xml", ScannerScreenKind.WEATHER),
         ("synthetic-tone-out.xml", ScannerScreenKind.TONE_OUT),
         ("synthetic-unknown.xml", ScannerScreenKind.UNKNOWN),
     ],
@@ -96,6 +100,42 @@ def test_generic_search_text_without_special_node() -> None:
     info = ScannerInfoParser().parse("PSI", xml)
 
     assert classify_scanner_screen(info) is ScannerScreenKind.SEARCH
+
+
+def test_close_call_searching_without_frequency_node_is_classified() -> None:
+    info = _fixture("synthetic-close-call-searching.xml")
+    snapshot = snapshot_from_scanner_info(info)
+
+    assert snapshot.screen_kind is ScannerScreenKind.CLOSE_CALL
+    assert snapshot.channel_kind is None
+    assert snapshot.frequency is None
+
+
+def test_transient_weather_menu_frame_retains_weather_classification() -> None:
+    xml = """
+<ScannerInfo Mode="Menu tree" V_Screen="wx_alert">
+<WxChannel Index="7" CH_No="7" Hold="On" />
+</ScannerInfo>
+"""
+    info = ScannerInfoParser().parse("PSI", xml)
+
+    assert classify_scanner_screen(info) is ScannerScreenKind.WEATHER
+
+
+def test_close_call_search_to_hold_transition_reports_hold_change() -> None:
+    state = RadioState()
+    state.update(_fixture("synthetic-close-call.xml", "GSI"))
+
+    change = state.update(_fixture("synthetic-close-call-hold.xml", "PSI"))
+
+    assert change is not None
+    assert change.previous.screen_kind is ScannerScreenKind.CLOSE_CALL
+    assert change.current.screen_kind is ScannerScreenKind.CLOSE_CALL
+    assert change.previous.channel_kind == "SrchFrequency"
+    assert change.current.channel_kind == "SrchFrequency"
+    assert change.previous.channel_hold == "Off"
+    assert change.current.channel_hold == "On"
+    assert change.changed("channel_hold")
 
 
 def test_empty_snapshot_has_no_reported_screen_kind() -> None:
@@ -206,6 +246,7 @@ def test_search_to_close_call_transition_reports_sub_audio_change() -> None:
     (
         "fixture_name",
         "channel_number",
+        "channel_index",
         "weather_mode",
         "weather_same",
     ),
@@ -213,12 +254,21 @@ def test_search_to_close_call_transition_reports_sub_audio_change() -> None:
         (
             "synthetic-weather.xml",
             7,
+            7,
+            "Monitor Weather",
+            None,
+        ),
+        (
+            "synthetic-weather-hold.xml",
+            7,
+            7,
             "Monitor Weather",
             None,
         ),
         (
             "synthetic-weather-alert.xml",
             4,
+            None,
             "Weather Alert",
             "Front Range Counties",
         ),
@@ -227,6 +277,7 @@ def test_search_to_close_call_transition_reports_sub_audio_change() -> None:
 def test_weather_fixture_preserves_protocol_details(
     fixture_name: str,
     channel_number: int,
+    channel_index: int | None,
     weather_mode: str,
     weather_same: str | None,
 ) -> None:
@@ -234,10 +285,12 @@ def test_weather_fixture_preserves_protocol_details(
     snapshot = snapshot_from_scanner_info(info)
 
     assert info.channel_number == channel_number
+    assert info.channel_index == channel_index
     assert info.weather_mode == weather_mode
     assert info.weather_same == weather_same
 
     assert snapshot.channel_number == channel_number
+    assert snapshot.channel_index == channel_index
     assert snapshot.weather_mode == weather_mode
     assert snapshot.weather_same == weather_same
 
@@ -292,6 +345,7 @@ def test_weather_same_normalization(
     (
         "fixture_name",
         "channel_number",
+        "channel_index",
         "channel_hold",
         "tone_a",
         "tone_b",
@@ -300,12 +354,14 @@ def test_weather_same_normalization(
         (
             "synthetic-tone-out.xml",
             3,
+            3,
             "Off",
             "600.9Hz",
             "1006.9Hz",
         ),
         (
             "synthetic-tone-out-hold.xml",
+            12,
             12,
             "On",
             "879.0Hz",
@@ -316,6 +372,7 @@ def test_weather_same_normalization(
 def test_tone_out_fixture_preserves_protocol_details(
     fixture_name: str,
     channel_number: int,
+    channel_index: int,
     channel_hold: str,
     tone_a: str,
     tone_b: str,
@@ -324,11 +381,13 @@ def test_tone_out_fixture_preserves_protocol_details(
     snapshot = snapshot_from_scanner_info(info)
 
     assert info.channel_number == channel_number
+    assert info.channel_index == channel_index
     assert info.channel_hold == channel_hold
     assert info.tone_out_tone_a == tone_a
     assert info.tone_out_tone_b == tone_b
 
     assert snapshot.channel_number == channel_number
+    assert snapshot.channel_index == channel_index
     assert snapshot.channel_hold == channel_hold
     assert snapshot.tone_out_tone_a == tone_a
     assert snapshot.tone_out_tone_b == tone_b

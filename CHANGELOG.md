@@ -62,6 +62,10 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 - Mode-aware Tone Out TUI panels showing the reported profile and channel number,
   monitored frequency, modulation, Tone A and Tone B values, hold state, signal,
   and RSSI.
+- Physical SDS200 firmware 1.26.01 UDP validation for normal scanning, Quick
+  Search, Close Call, Weather, and Tone Out GSI/PSI states and live transitions,
+  including hardware-aligned fixtures and documented unobserved protocol
+  variants.
 
 ### Changed
 

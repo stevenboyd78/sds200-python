@@ -1,4 +1,4 @@
 <ScannerInfo Mode="Quick Search Hold" V_Screen="quick_search">
-<SrchFrequency Avoid="Off" Freq="154.280000MHz" Mod="NFM" Hold="On" SAD="CTCSS 123.0Hz" RecSlot="None" TGID="None" U_Id="None" IFX="Off" />
+<SrchFrequency Avoid="Off" Freq="154.280000MHz" Mod="NFM" Hold="On" SAD="CTCSS 123.0Hz" RecSlot="Slot None" TGID="None" U_Id="None" IFX="Off" />
 <Property VOL="8" SQL="2" Sig="3" Rssi="-82" Mute="Unmute" Rec="Off" />
 </ScannerInfo>

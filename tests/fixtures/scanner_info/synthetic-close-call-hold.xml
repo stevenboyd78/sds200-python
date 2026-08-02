@@ -1,4 +1,4 @@
 <ScannerInfo Mode="Close Call Only" V_Screen="close_call">
-<SrchFrequency Avoid="Off" Freq="155.752500MHz" Mod="NFM" Hold="Off" SAD="NAC 293h" RecSlot="Slot None" TGID="None" U_Id="None" IFX="Off" />
+<SrchFrequency Avoid="Off" Freq="155.752500MHz" Mod="NFM" Hold="On" SAD="NAC 293h" RecSlot="Slot None" TGID="None" U_Id="None" IFX="Off" />
 <Property VOL="8" SQL="2" Sig="4" Rssi="-71" Mute="Unmute" Rec="Off" />
 </ScannerInfo>
