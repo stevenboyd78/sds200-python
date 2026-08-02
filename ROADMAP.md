@@ -11,41 +11,20 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 16.5 — TUI diagnostics and mode-aware screens
-
-- **16.5.0 — TUI log panel — complete**
-  - Route package log records into a bounded, thread-safe in-app panel.
-  - Show the panel by default and allow it to be toggled without losing records.
-  - Preserve optional file logging and restore stderr logging after TUI shutdown.
-  - Stop periodic polling before widget teardown and suppress late refreshes.
-- **16.5.1 — Screen-mode foundation — complete**
-  - Add a renderer-neutral scanner-screen classifier with an unknown-screen
-    fallback.
-  - Preserve the raw scanner `Mode` and `V_Screen` values.
-  - Add fixture and transition coverage for mode-specific GSI/PSI state.
-- **16.5.2 — Quick Search and Close Call — complete**
-  - Present search frequency, modulation, hold/hit state, signal, RSSI, and
-    reported tone or digital-code details.
-  - Support both `SrchFrequency` and `CcHitsChannel` scanner-state nodes.
-- **16.5.3 — Weather Mode — complete**
-  - Present weather channel, frequency, scan/hold state, signal, and RSSI.
-  - Capture alert and SAME details when the scanner reports them.
-- **16.5.4 — Tone Out Mode — complete**
-  - Present tone-out channel/profile, monitored frequency, tone values, and
-    standby/detected/hold state when reported.
-- **16.5.5 — SDS200 hardware validation — complete**
-  - Capture representative physical SDS200 GSI/PSI XML for every supported
-    special screen mode.
-  - Validate live transitions between normal scanning, search/Close Call,
-    weather, and tone-out screens.
-  - Document tested firmware, observed fields, and known limitations.
-
 ### Milestone 16.6 — v0.16.0 release preparation
 
-- Select only completed and validated Milestone 16 work for release.
-- Run the full software, package, Raspberry Pi, audio, and shutdown checklists.
-- Confirm documentation distinguishes fixture coverage from physical validation.
-- Publish a normal GitHub release and verify a clean PyPI installation.
+- **Release scope and validation — complete**
+  - Selected completed and validated Milestone 16 work for release.
+  - Passed the full software and package checks.
+  - Completed Linux, Raspberry Pi, audio, reconnect, recording, saved-playback,
+    and shutdown validation.
+  - Confirmed documentation distinguishes fixture coverage from physical
+    validation.
+- **Publication — pending**
+  - Merge the release-preparation change after CI and CodeQL pass.
+  - Tag `v0.16.0` from the validated `main` commit.
+  - Publish a normal GitHub release.
+  - Verify a clean PyPI installation.
 
 ## Deferred hardware validation
 

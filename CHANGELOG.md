@@ -6,6 +6,8 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-08-02
+
 ### Added
 
 - Transport-independent decoded-PCM fanout sessions with independently buffered
@@ -69,6 +71,7 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Changed
 
+- Package and CLI version advanced to `0.16.0`.
 - Reconciled the roadmap with completed Milestone 16 work, made screen-mode
   foundation the active slice, moved v0.16.0 preparation to Milestone 16.6, and
   deferred SDS150 physical validation until hardware is available.
@@ -469,7 +472,10 @@ First planned GitHub prerelease.
 - Added serial discovery, transport, packet framing, core responses, CLI tools,
   examples, tests, and CI.
 
-[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.15.0...v0.16.0
+[0.15.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.14.0...v0.15.0
+[0.14.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/stevenboyd78/sds200-python/compare/v0.11.0...v0.11.1
