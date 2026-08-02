@@ -210,7 +210,7 @@ class SDSScanner:
         host: str,
         *,
         remote_port: int = DEFAULT_UDP_PORT,
-        local_host: str = "",
+        local_host: str | None = None,
         local_port: int = 0,
         reconnect: bool = True,
         reconnect_policy: ReconnectPolicy | None = None,

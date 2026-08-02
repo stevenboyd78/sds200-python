@@ -13,7 +13,11 @@ from typing import Protocol
 
 from .exceptions import ScannerConnectionError
 from .reliability import ReconnectCounter, ReconnectPolicy
-from .socket_utils import LocalAddressResolver, resolve_local_ipv4_address
+from .socket_utils import (
+    LocalAddressResolver,
+    normalize_local_ipv4_bind_address,
+    resolve_local_ipv4_address,
+)
 from .transport import (
     ConnectionHandler,
     DiagnosticHandler,
@@ -310,7 +314,7 @@ class UdpTransport:
         host: str,
         *,
         remote_port: int = DEFAULT_UDP_PORT,
-        local_host: str = "",
+        local_host: str | None = None,
         local_port: int = 0,
         read_timeout: float = 0.2,
         reconnect: bool = True,
@@ -326,8 +330,10 @@ class UdpTransport:
             raise ValueError("Remote UDP port must be between 1 and 65535.")
         if not 0 <= local_port <= 65535:
             raise ValueError("Local UDP port must be between 0 and 65535.")
-        if local_host == "0.0.0.0":
-            raise ValueError("Local UDP address must not bind all network interfaces.")
+        normalized_local_host = normalize_local_ipv4_bind_address(
+            local_host,
+            description="Local UDP address",
+        )
         if read_timeout <= 0:
             raise ValueError("Read timeout must be greater than zero.")
         if reconnect_interval <= 0:
@@ -337,7 +343,7 @@ class UdpTransport:
 
         self.host = host
         self.remote_port = remote_port
-        self.local_host = local_host
+        self.local_host = normalized_local_host
         self.local_port = local_port
         self.read_timeout = read_timeout
         self.reconnect = reconnect
@@ -470,7 +476,7 @@ class UdpTransport:
         try:
             udp_socket = self._socket_factory(socket.AF_INET, socket.SOCK_DGRAM)
             udp_socket.settimeout(self.read_timeout)
-            if self.local_host:
+            if self.local_host is not None:
                 udp_socket.bind((self.local_host, self.local_port))
             elif self.local_port:
                 bind_host = self._local_address_resolver(self.host, self.remote_port)

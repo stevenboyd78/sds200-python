@@ -23,7 +23,11 @@ from .rtsp import (
     RtspClient,
     RtspProtocolError,
 )
-from .socket_utils import LocalAddressResolver, resolve_local_ipv4_address
+from .socket_utils import (
+    LocalAddressResolver,
+    normalize_local_ipv4_bind_address,
+    resolve_local_ipv4_address,
+)
 
 logger = logging.getLogger(__name__)
 MAX_RTP_DATAGRAM_SIZE = 65535
@@ -166,7 +170,7 @@ class NetworkAudioTransport:
         *,
         rtsp_port: int = DEFAULT_RTSP_PORT,
         path: str = DEFAULT_AUDIO_PATH,
-        local_host: str = "",
+        local_host: str | None = None,
         local_port: int = 0,
         read_timeout: float = 0.2,
         rtsp_timeout: float = 5.0,
@@ -185,8 +189,10 @@ class NetworkAudioTransport:
             raise ValueError("RTSP port must be between 1 and 65535.")
         if not 0 <= local_port <= 65535:
             raise ValueError("Local RTP port must be between 0 and 65535.")
-        if local_host == "0.0.0.0":
-            raise ValueError("Local RTP address must not bind all network interfaces.")
+        normalized_local_host = normalize_local_ipv4_bind_address(
+            local_host,
+            description="Local RTP address",
+        )
         if read_timeout <= 0:
             raise ValueError("Audio read timeout must be greater than zero.")
         if rtsp_timeout <= 0:
@@ -197,7 +203,7 @@ class NetworkAudioTransport:
         self.host = host
         self.rtsp_port = rtsp_port
         self.path = path
-        self.local_host = local_host
+        self.local_host = normalized_local_host
         self.local_port = local_port
         self.read_timeout = read_timeout
         self.rtsp_timeout = rtsp_timeout
@@ -254,10 +260,12 @@ class NetworkAudioTransport:
         try:
             rtp_socket = self._datagram_socket_factory(socket.AF_INET, socket.SOCK_DGRAM)
             rtp_socket.settimeout(self.read_timeout)
-            bind_host = self.local_host or self._local_address_resolver(
-                self.host,
-                self.rtsp_port,
-            )
+            bind_host = self.local_host
+            if bind_host is None:
+                bind_host = self._local_address_resolver(
+                    self.host,
+                    self.rtsp_port,
+                )
             rtp_socket.bind((bind_host, self.local_port))
             client_port = rtp_socket.getsockname()[1]
             if not 1 <= client_port <= 65535:

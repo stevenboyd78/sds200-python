@@ -89,6 +89,11 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Fixed
 
+- Network control and RTP audio transports now represent an unset local bind
+  address with `None`, reject legacy numeric aliases for `0.0.0.0`, and use
+  explicit resolver fallbacks so CodeQL can verify that wildcard binds are not
+  reachable.
+
 - Prevented the final TUI status detail row from being clipped when the
   operational log panel is hidden in a wide layout.
 - Stopped TUI polling timers before widget teardown and suppressed late rendering
