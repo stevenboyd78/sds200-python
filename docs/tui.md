@@ -1,9 +1,10 @@
 # Textual TUI
 
 Version 0.13 introduced the optional full-screen Textual interface for SDS
-scanners, version 0.14 added integrated SDS200 network-audio recording, and
-Milestone 16.2 adds immediate live playback, repeatable recordings, and a saved
-recording library. Milestone 16.5.0 adds a bounded in-app operational log panel.
+scanners, and version 0.14 added integrated SDS200 network-audio recording.
+Version 0.16 adds immediate live playback, repeatable recordings, a saved
+recording library, recording metadata sidecars, a bounded in-app operational log
+panel, and mode-aware Quick Search, Close Call, Weather, and Tone Out panels.
 Textual and PortAudio remain optional so the core installation
 stays lightweight.
 
