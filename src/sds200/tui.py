@@ -1586,7 +1586,7 @@ class ScannerTuiApp(App[None]):
                     ThemeRole.TEXT_PRIMARY,
                 )
             )
-        else:
+        elif self._snapshot.channel_kind == "CcHitsChannel":
             rows.extend(
                 (
                     (
@@ -1599,6 +1599,14 @@ class ScannerTuiApp(App[None]):
                         _display(self._snapshot.frequency),
                         ThemeRole.TEXT_PRIMARY,
                     ),
+                )
+            )
+        else:
+            rows.append(
+                (
+                    "Close Call frequency",
+                    _display(self._snapshot.frequency),
+                    ThemeRole.TEXT_PRIMARY,
                 )
             )
 

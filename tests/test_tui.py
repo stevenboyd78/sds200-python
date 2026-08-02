@@ -97,10 +97,40 @@ def test_tui_renders_mode_aware_quick_search_and_close_call_details() -> None:
                 ),
             ),
             (
+                "synthetic-close-call-searching.xml",
+                (
+                    "Mode: Close Call Only",
+                    "V_Screen: cc_searching",
+                    "State node: -",
+                ),
+                (
+                    "Close Call frequency: -",
+                    "Modulation: -",
+                    "Hold: -",
+                    "Detected tone / code: -",
+                ),
+            ),
+            (
                 "synthetic-close-call.xml",
                 (
-                    "Mode: Close Call Hits",
+                    "Mode: Close Call Only",
                     "V_Screen: close_call",
+                    "State node: SrchFrequency",
+                ),
+                (
+                    "Close Call frequency: 155.752500MHz",
+                    "Modulation: NFM",
+                    "Hold: OFF",
+                    "Signal: STRONG (4)",
+                    "RSSI: -71",
+                    "Detected tone / code: NAC 293h",
+                ),
+            ),
+            (
+                "synthetic-close-call-hits.xml",
+                (
+                    "Mode: Close Call",
+                    "V_Screen: cchits_with_scan",
                     "State node: CcHitsChannel",
                 ),
                 (
@@ -306,16 +336,34 @@ def test_tui_renders_mode_aware_weather_details() -> None:
             (
                 "synthetic-weather.xml",
                 (
-                    "Mode: Weather Scan",
-                    "V_Screen: weather_scan",
+                    "Mode: WX Scan",
+                    "V_Screen: wx_alert",
                     "State node: WxChannel",
                 ),
                 (
-                    "Weather channel: WX 7: Synthetic Weather Channel 7",
+                    "Weather channel: WX 7",
                     "Frequency: 162.550000MHz",
                     "Modulation: FM",
                     "Weather mode: Monitor Weather",
                     "Hold: OFF",
+                    "Signal: STRONG (5)",
+                    "RSSI: -58",
+                    "SAME selection: -",
+                ),
+            ),
+            (
+                "synthetic-weather-hold.xml",
+                (
+                    "Mode: WX Hold",
+                    "V_Screen: wx_alert",
+                    "State node: WxChannel",
+                ),
+                (
+                    "Weather channel: WX 7",
+                    "Frequency: 162.550000MHz",
+                    "Modulation: FM",
+                    "Weather mode: Monitor Weather",
+                    "Hold: ON",
                     "Signal: STRONG (5)",
                     "RSSI: -58",
                     "SAME selection: -",

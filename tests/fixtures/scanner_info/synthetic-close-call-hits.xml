@@ -1,0 +1,4 @@
+<ScannerInfo Mode="Close Call" V_Screen="cchits_with_scan">
+<CcHitsChannel Name="Synthetic Close Call Hit" Index="7" Avoid="Off" CH_No="3" Freq="155.752500MHz" Mod="NFM" Hold="Off" SAD="NAC 293h" LVL="0" IFX="Off" />
+<Property VOL="8" SQL="2" Sig="4" Rssi="-71" Mute="Unmute" Rec="Off" />
+</ScannerInfo>

@@ -111,12 +111,25 @@ The interface uses the same renderer-independent `ScannerPresentation`,
 `ThemeRole`, and light/dark palettes as the Rich CLI. Meaning remains visible in
 text labels rather than relying on color alone.
 
-Quick Search, Close Call, Weather, and Tone Out coverage currently uses
-synthetic GSI/PSI fixtures shaped from the documented scanner protocol. The
-Weather fixtures cover monitoring and alert states, including an optional SAME
-selection. The Tone Out fixtures cover profile, tone-value, and hold-state
-changes. Representative physical SDS200 captures and live mode-transition
-validation remain deferred to Milestone 16.5.5.
+Quick Search, Close Call, Weather, and Tone Out screens were physically
+validated on an SDS200 running firmware `1.26.01` over the UDP control
+transport. One continuous PSI session successfully transitioned through normal
+conventional and trunk scanning, Quick Search Hold, Close Call searching and
+Hold, Weather Scan and Hold, Tone Out standby and Hold, and back to normal
+scanning.
+
+The physical scanner reported Close Call Only frequency states through
+`SrchFrequency`; its `cc_searching` screen contained no frequency node. Weather
+Scan and Hold both used `V_Screen="wx_alert"` with `WxChannel`, while Tone Out
+used `ToneOutChannel` with profile, index, channel number, monitored frequency,
+Tone A, Tone B, and hold state. Temporary menu frames may retain a weather
+screen or node while mode navigation is in progress.
+
+Raw hardware captures remain outside the repository because they contain local
+scanner data. Sanitized synthetic fixtures preserve the observed structures.
+`CcHitsChannel`, SAME alert content, and an actual Tone Out detection were not
+observed during this validation and remain specification-backed synthetic
+coverage rather than claimed physical validation.
 
 Keyboard shortcuts:
 

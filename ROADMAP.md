@@ -33,7 +33,7 @@ and ideas that are not ready for scheduling are recorded in
 - **16.5.4 — Tone Out Mode — complete**
   - Present tone-out channel/profile, monitored frequency, tone values, and
     standby/detected/hold state when reported.
-- **16.5.5 — SDS200 hardware validation — active**
+- **16.5.5 — SDS200 hardware validation — complete**
   - Capture representative physical SDS200 GSI/PSI XML for every supported
     special screen mode.
   - Validate live transitions between normal scanning, search/Close Call,
@@ -214,3 +214,7 @@ fixtures before renderer-specific implementation.
 - Milestone 16.5.4: mode-aware Tone Out panels with profile and channel number,
   monitored frequency, modulation, Tone A and Tone B values, hold state, signal,
   and RSSI.
+- Milestone 16.5.5: physical SDS200 firmware 1.26.01 validation of normal,
+  Quick Search, Close Call, Weather, and Tone Out GSI/PSI states and live
+  transitions, with observed protocol differences and unvalidated limits
+  documented.
