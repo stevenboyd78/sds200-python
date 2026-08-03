@@ -1070,7 +1070,10 @@ class ScannerTuiApp(App[None]):
             lines.extend(visible)
         else:
             lines.append("No records at the current log level")
-        self.query_one("#logs", Static).update("\n".join(lines))
+        logs = self.query_one_optional("#logs", Static)
+        if logs is None:
+            return
+        logs.update("\n".join(lines))
 
     def _dispatch_from_radio(
         self,
@@ -1340,7 +1343,10 @@ class ScannerTuiApp(App[None]):
         roles = theme_roles_for(presentation)
         self._apply_theme_class()
 
-        self.query_one("#connection", Static).update(
+        connection = self.query_one_optional("#connection", Static)
+        if connection is None:
+            return
+        connection.update(
             self._panel(
                 (
                     "Connection",
