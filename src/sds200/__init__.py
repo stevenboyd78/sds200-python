@@ -171,6 +171,8 @@ from .remote_audio import (
     RemoteDestinationConfig,
     RemotePcmSink,
     RemotePcmSinkSnapshot,
+    RemotePcmSinkTransition,
+    RemoteSinkHealth,
     RemoteSinkState,
 )
 from .replay import (
@@ -350,6 +352,8 @@ __all__ = [
     "RemoteDestinationConfig",
     "RemotePcmSink",
     "RemotePcmSinkSnapshot",
+    "RemotePcmSinkTransition",
+    "RemoteSinkHealth",
     "RemoteSinkState",
     "ReplayMismatchError",
     "ReplayTransport",

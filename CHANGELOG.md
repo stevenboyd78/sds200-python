@@ -6,6 +6,13 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+### Added
+
+- Renderer-neutral `RemoteSinkHealth` classification, serializable
+  `RemotePcmSinkSnapshot` metrics, ordered `RemotePcmSinkTransition` events,
+  timezone-aware lifecycle timestamps, and isolated `on_transition()`
+  subscriptions for future CLI, TUI, daemon, and integration consumers.
+
 ## [0.17.0] - 2026-08-03
 
 ### Added

@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 from collections import deque
 from collections.abc import Callable, Mapping
+from datetime import UTC, datetime, timedelta
 from time import monotonic, sleep
 
 import pytest
@@ -15,6 +16,7 @@ from sds200.remote_audio import (
     RemoteAudioConnection,
     RemoteDestinationConfig,
     RemotePcmSink,
+    RemotePcmSinkTransition,
 )
 
 
@@ -266,17 +268,23 @@ def test_remote_sink_reports_retry_exhaustion_without_secret_leakage() -> None:
         factory,
         environ={"SDS200_FEED_PASSWORD": secret_value},
     )
+    transitions: list[RemotePcmSinkTransition] = []
+    sink.on_transition(transitions.append)
 
     sink.start()
     sink.submit_pcm(b"\x01\x00")
     wait_until(lambda: sink.snapshot().state == "failed")
 
     snapshot = sink.snapshot()
+    assert snapshot.health == "failed"
     assert snapshot.connection_attempts == 3
     assert snapshot.failures == 3
     assert snapshot.statistics.bytes_dropped == 2
     assert snapshot.last_error is not None
     assert secret_value not in snapshot.last_error
+    assert transitions[-1].state == "failed"
+    assert transitions[-1].health == "failed"
+    assert secret_value not in repr(transitions[-1])
 
     with pytest.raises(AudioOutputError) as error:
         sink.stop()
@@ -326,3 +334,278 @@ def test_remote_sink_shutdown_interrupts_backoff() -> None:
 
     assert not sink.running
     assert sink.snapshot().state == "stopped"
+
+
+def test_remote_sink_emits_health_transitions_with_deterministic_timestamps() -> None:
+    initial = datetime(2026, 8, 3, 10, 0, tzinfo=UTC)
+    timestamps = iter(initial + timedelta(seconds=index) for index in range(5))
+    connection = RecordingConnection()
+    sink = RemotePcmSink(
+        remote_config(),
+        SequenceFactory(connection),
+        now=lambda: next(timestamps),
+    )
+    transitions: list[RemotePcmSinkTransition] = []
+    unsubscribe = sink.on_transition(transitions.append)
+
+    sink.start()
+    assert transitions == []
+
+    pcm = b"\x01\x00"
+    sink.submit_pcm(pcm)
+    wait_until(lambda: connection.writes == [pcm])
+    wait_until(lambda: len(transitions) == 2)
+
+    sink.stop()
+    unsubscribe()
+
+    assert [transition.sequence for transition in transitions] == [1, 2, 3, 4]
+    assert [transition.state for transition in transitions] == [
+        "connecting",
+        "connected",
+        "stopping",
+        "stopped",
+    ]
+    assert [transition.health for transition in transitions] == [
+        "degraded",
+        "healthy",
+        "inactive",
+        "inactive",
+    ]
+    assert transitions[0].previous_state == "idle"
+    assert transitions[0].previous_health == "inactive"
+    assert transitions[1].observed_at == initial + timedelta(seconds=2)
+
+    snapshot = sink.snapshot()
+    assert snapshot.state == "stopped"
+    assert snapshot.health == "inactive"
+    assert snapshot.transition_sequence == 4
+    assert snapshot.state_changed_at == initial + timedelta(seconds=4)
+    assert snapshot.last_connected_at == initial + timedelta(seconds=2)
+    assert snapshot.last_failure_at is None
+
+    payload = snapshot.as_dict()
+    assert payload["state"] == "stopped"
+    assert payload["health"] == "inactive"
+    assert payload["transition_sequence"] == 4
+    assert payload["state_changed_at"] == (
+        initial + timedelta(seconds=4)
+    ).isoformat()
+    assert payload["last_connected_at"] == (
+        initial + timedelta(seconds=2)
+    ).isoformat()
+    assert payload["statistics"] == {
+        "bytes_submitted": len(pcm),
+        "bytes_written": len(pcm),
+        "bytes_dropped": 0,
+        "queued_bytes": 0,
+        "underflows": 0,
+        "overflows": 0,
+        "callback_statuses": 0,
+    }
+
+    transition_payload = transitions[1].as_dict()
+    assert transition_payload["previous_state"] == "connecting"
+    assert transition_payload["state"] == "connected"
+    assert transition_payload["health"] == "healthy"
+    assert transition_payload["snapshot"]["state"] == "connected"
+
+
+def test_remote_sink_health_tracks_failure_backoff_and_reconnect() -> None:
+    initial = datetime(2026, 8, 3, 11, 0, tzinfo=UTC)
+    timestamps = iter(initial + timedelta(seconds=index) for index in range(7))
+    connection = RecordingConnection()
+    sink = RemotePcmSink(
+        remote_config(),
+        SequenceFactory(OSError("offline"), connection),
+        now=lambda: next(timestamps),
+    )
+    transitions: list[RemotePcmSinkTransition] = []
+    sink.on_transition(transitions.append)
+
+    sink.start()
+    pcm = b"\x01\x00"
+    sink.submit_pcm(pcm)
+    wait_until(lambda: connection.writes == [pcm])
+
+    snapshot = sink.snapshot()
+    assert snapshot.state == "connected"
+    assert snapshot.health == "healthy"
+    assert snapshot.transition_sequence == 4
+    assert snapshot.last_failure_at == initial + timedelta(seconds=2)
+    assert snapshot.last_connected_at == initial + timedelta(seconds=4)
+    assert snapshot.failures == 1
+    assert snapshot.reconnects == 0
+    assert [transition.state for transition in transitions] == [
+        "connecting",
+        "backoff",
+        "connecting",
+        "connected",
+    ]
+    assert transitions[1].health == "degraded"
+    assert transitions[1].snapshot.last_failure_at == (
+        initial + timedelta(seconds=2)
+    )
+
+    sink.stop()
+    assert [transition.state for transition in transitions[-2:]] == [
+        "stopping",
+        "stopped",
+    ]
+
+
+def test_remote_sink_transition_listener_failure_is_isolated() -> None:
+    connection = RecordingConnection()
+    sink = RemotePcmSink(remote_config(), SequenceFactory(connection))
+    observed: list[RemotePcmSinkTransition] = []
+
+    def fail_listener(transition: RemotePcmSinkTransition) -> None:
+        del transition
+        raise RuntimeError("listener failed")
+
+    sink.on_transition(fail_listener)
+    sink.on_transition(observed.append)
+
+    sink.start()
+    pcm = b"\x01\x00"
+    sink.submit_pcm(pcm)
+    wait_until(lambda: connection.writes == [pcm])
+    wait_until(lambda: any(item.state == "connected" for item in observed))
+    sink.stop()
+
+    assert [transition.state for transition in observed] == [
+        "connecting",
+        "connected",
+        "stopping",
+        "stopped",
+    ]
+
+
+def test_remote_sink_rejects_naive_wall_clock() -> None:
+    with pytest.raises(ValueError, match="timezone-aware"):
+        RemotePcmSink(
+            remote_config(),
+            SequenceFactory(RecordingConnection()),
+            now=lambda: datetime(2026, 8, 3),
+        )
+
+
+def test_remote_sink_serializes_concurrent_stop_transitions() -> None:
+    connection = RecordingConnection()
+    factory = SequenceFactory(connection)
+    sink = RemotePcmSink(remote_config(), factory)
+    connecting_callback_entered = threading.Event()
+    release_connecting_callback = threading.Event()
+    observed: list[RemotePcmSinkTransition] = []
+    stop_errors: list[BaseException] = []
+
+    def block_connecting_callback(transition: RemotePcmSinkTransition) -> None:
+        if transition.state != "connecting":
+            return
+        connecting_callback_entered.set()
+        release_connecting_callback.wait(timeout=1.0)
+
+    sink.on_transition(block_connecting_callback)
+    sink.on_transition(observed.append)
+
+    sink.start()
+    sink.submit_pcm(b"\x01\x00")
+    assert connecting_callback_entered.wait(timeout=1.0)
+
+    def stop_sink() -> None:
+        try:
+            sink.stop()
+        except BaseException as error:
+            stop_errors.append(error)
+
+    stop_thread = threading.Thread(target=stop_sink)
+    stop_thread.start()
+    wait_until(lambda: sink.snapshot().state == "stopping")
+
+    release_connecting_callback.set()
+    stop_thread.join(timeout=1.0)
+
+    assert not stop_thread.is_alive()
+    assert stop_errors == []
+    assert factory.calls == 0
+    assert not connection.closed
+    assert connection.writes == []
+    assert [transition.sequence for transition in observed] == [1, 2, 3]
+    assert [transition.state for transition in observed] == [
+        "connecting",
+        "stopping",
+        "stopped",
+    ]
+    assert sink.snapshot().transition_sequence == 3
+
+
+def test_remote_sink_transition_subscription_can_be_removed() -> None:
+    connection = RecordingConnection()
+    sink = RemotePcmSink(remote_config(), SequenceFactory(connection))
+    observed: list[RemotePcmSinkTransition] = []
+    unsubscribe = sink.on_transition(observed.append)
+    unsubscribe()
+
+    sink.start()
+    pcm = b"\x01\x00"
+    sink.submit_pcm(pcm)
+    wait_until(lambda: connection.writes == [pcm])
+    sink.stop()
+
+    assert observed == []
+
+
+def test_remote_sink_transition_listener_can_stop_from_worker() -> None:
+    connection = RecordingConnection()
+    factory = SequenceFactory(connection)
+    sink = RemotePcmSink(remote_config(), factory)
+    observed: list[RemotePcmSinkTransition] = []
+
+    def stop_while_connecting(transition: RemotePcmSinkTransition) -> None:
+        if transition.state == "connecting":
+            sink.stop()
+
+    sink.on_transition(stop_while_connecting)
+    sink.on_transition(observed.append)
+
+    sink.start()
+    sink.submit_pcm(b"\x01\x00")
+    wait_until(lambda: sink.snapshot().state == "stopped")
+
+    assert factory.calls == 0
+    assert not connection.closed
+    assert not sink.running
+    assert [transition.sequence for transition in observed] == [1, 2, 3]
+    assert [transition.state for transition in observed] == [
+        "connecting",
+        "stopping",
+        "stopped",
+    ]
+
+
+def test_remote_sink_stopping_listener_can_repeat_stop() -> None:
+    connection = RecordingConnection()
+    sink = RemotePcmSink(remote_config(), SequenceFactory(connection))
+    observed: list[RemotePcmSinkTransition] = []
+
+    def repeat_stop(transition: RemotePcmSinkTransition) -> None:
+        if transition.state == "stopping":
+            sink.stop()
+
+    sink.on_transition(repeat_stop)
+    sink.on_transition(observed.append)
+
+    sink.start()
+    pcm = b"\x01\x00"
+    sink.submit_pcm(pcm)
+    wait_until(lambda: connection.writes == [pcm])
+    sink.stop()
+
+    assert connection.closed
+    assert not sink.running
+    assert [transition.state for transition in observed] == [
+        "connecting",
+        "connected",
+        "stopping",
+        "stopped",
+    ]
