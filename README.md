@@ -58,6 +58,8 @@ information in this image represents a real system.*
 - Optional renderer-neutral live stream metadata with newest-value buffering,
   duplicate suppression, rate limiting, and Broadcastify-compatible alpha-tag
   updates isolated from PSI and PCM delivery
+- Renderer-neutral audio encoder process lifecycle with immutable commands,
+  bounded shutdown, stderr diagnostics, and injectable process factories
 - Optional live playback through the local default or selected audio output device
 - Simultaneous local playback and streaming PCM WAV recording from one RTSP session
 - UDP XML fragment validation, statistics, and bounded retries

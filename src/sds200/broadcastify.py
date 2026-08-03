@@ -2,14 +2,12 @@ from __future__ import annotations
 
 import base64
 import socket
-import subprocess
 import threading
 from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
-from pathlib import Path
 from time import monotonic
-from typing import BinaryIO, Protocol, cast
+from typing import Protocol
 from urllib.parse import urlencode
 
 from .audio_recording import PCM_CHANNELS, PCM_SAMPLE_WIDTH, PCMU_SAMPLE_RATE
@@ -20,6 +18,11 @@ from .remote_audio import (
     RemoteAudioConnection,
     RemoteDestinationConfig,
     RemotePcmSink,
+)
+from .remote_audio_encoder import (
+    AudioEncoderConfig,
+    AudioEncoderProcessFactory,
+    ManagedAudioEncoder,
 )
 from .remote_audio_metadata import RemoteStreamMetadata
 from .remote_audio_metadata_publisher import (
@@ -50,26 +53,6 @@ class _SocketLike(Protocol):
     def close(self) -> None: ...
 
 
-class _EncoderProcess(Protocol):
-    @property
-    def stdin(self) -> BinaryIO: ...
-
-    @property
-    def stdout(self) -> BinaryIO: ...
-
-    @property
-    def stderr(self) -> BinaryIO: ...
-
-    def poll(self) -> int | None: ...
-
-    def wait(self, timeout: float | None = None) -> int: ...
-
-    def terminate(self) -> None: ...
-
-    def kill(self) -> None: ...
-
-
-_EncoderFactory = Callable[[tuple[str, ...]], _EncoderProcess]
 _SocketFactory = Callable[[tuple[str, int], float], _SocketLike]
 
 
@@ -203,6 +186,16 @@ class BroadcastifyConfig:
             "pipe:1",
         )
 
+    def encoder_config(self) -> AudioEncoderConfig:
+        """Build the reusable lifecycle configuration for fixed MP3 encoding."""
+
+        return AudioEncoderConfig(
+            name="Broadcastify FFmpeg encoder",
+            command=self.ffmpeg_command(),
+            stop_timeout=self.encoder_stop_timeout,
+            diagnostic_limit=_MAX_RESPONSE_BYTES,
+        )
+
 
 class BroadcastifyConnectionFactory:
     """Create Broadcastify Icecast connections for one immutable feed config."""
@@ -211,13 +204,11 @@ class BroadcastifyConnectionFactory:
         self,
         config: BroadcastifyConfig,
         *,
-        encoder_factory: _EncoderFactory | None = None,
+        encoder_factory: AudioEncoderProcessFactory | None = None,
         socket_factory: _SocketFactory | None = None,
     ) -> None:
         self.config = config
-        self._encoder_factory = (
-            _start_ffmpeg_encoder if encoder_factory is None else encoder_factory
-        )
+        self._encoder_factory = encoder_factory
         self._socket_factory = _open_socket if socket_factory is None else socket_factory
 
     def __call__(
@@ -389,44 +380,47 @@ class BroadcastifyMetadataPublication:
 
 
 class BroadcastifyConnection:
-    """One blocking FFmpeg-to-Icecast source connection used by RemotePcmSink."""
+    """One blocking encoded-audio Icecast connection used by RemotePcmSink."""
 
     def __init__(
         self,
         config: BroadcastifyConfig,
         password: str,
         *,
-        encoder_factory: _EncoderFactory | None = None,
+        encoder_factory: AudioEncoderProcessFactory | None = None,
         socket_factory: _SocketFactory | None = None,
     ) -> None:
         if not password:
             raise AudioOutputError("Broadcastify source password must not be empty.")
+
         self.config = config
         self._lock = threading.RLock()
         self._interrupted = False
         self._closing = False
         self._closed = False
         self._pump_error: BaseException | None = None
-        self._encoder_failure_reported = False
-        self._encoder_factory = (
-            _start_ffmpeg_encoder if encoder_factory is None else encoder_factory
-        )
-        selected_socket_factory = _open_socket if socket_factory is None else socket_factory
 
+        selected_socket_factory = (
+            _open_socket if socket_factory is None else socket_factory
+        )
         source_socket = selected_socket_factory(
             (config.server, config.port),
             config.connect_timeout,
         )
+
         try:
             source_socket.settimeout(config.socket_timeout)
             _authenticate_source(source_socket, config, password)
-            process = self._encoder_factory(config.ffmpeg_command())
+            encoder = ManagedAudioEncoder(
+                config.encoder_config(),
+                process_factory=encoder_factory,
+            )
         except Exception:
             _close_socket(source_socket)
             raise
 
         self._socket = source_socket
-        self._process = process
+        self._encoder = encoder
         self._pump_thread = threading.Thread(
             target=self._pump_encoded_audio,
             name=f"sds200-broadcastify-{config.name}",
@@ -439,99 +433,54 @@ class BroadcastifyConnection:
             raise ValueError("PCM data must contain complete 16-bit samples.")
         if not data:
             return
-        with self._lock:
-            self._raise_if_unusable_locked()
-            process = self._process
-            returncode = process.poll()
-            if returncode is not None:
-                self._encoder_failure_reported = True
-                raise AudioOutputError(
-                    "Broadcastify FFmpeg encoder exited unexpectedly "
-                    f"with status {returncode}."
-                )
-
-        try:
-            process.stdin.write(data)
-            process.stdin.flush()
-        except Exception as error:
-            with self._lock:
-                interrupted = self._interrupted or self._closing
-                if process.poll() is not None:
-                    self._encoder_failure_reported = True
-            if interrupted:
-                raise AudioOutputError("Broadcastify encoder input was interrupted.") from error
-            raise AudioOutputError(
-                f"Broadcastify encoder input failed: {type(error).__name__}: {error}"
-            ) from error
 
         with self._lock:
             self._raise_if_unusable_locked()
-            returncode = process.poll()
-            if returncode is not None:
-                self._encoder_failure_reported = True
-                raise AudioOutputError(
-                    "Broadcastify FFmpeg encoder exited unexpectedly "
-                    f"with status {returncode}."
-                )
+            encoder = self._encoder
+
+        encoder.write_pcm(data)
+
+        with self._lock:
+            self._raise_if_unusable_locked()
 
     def interrupt(self) -> None:
         with self._lock:
             if self._closed or self._interrupted:
                 return
             self._interrupted = True
-            process = self._process
+            encoder = self._encoder
             source_socket = self._socket
 
         _close_socket(source_socket)
-        _close_binary_stream(process.stdin)
-        if process.poll() is None:
-            with suppress(OSError):
-                process.terminate()
+        encoder.interrupt()
 
     def close(self) -> None:
         with self._lock:
             if self._closed:
                 return
             self._closing = True
-            interrupted = self._interrupted
-            encoder_failure_reported = self._encoder_failure_reported
-            process = self._process
+            encoder = self._encoder
             source_socket = self._socket
             pump_thread = self._pump_thread
 
-        deadline = monotonic() + self.config.encoder_stop_timeout
-        if not interrupted:
-            _close_binary_stream(process.stdin)
-
-        returncode: int | None = None
+        result = None
         cleanup_error: AudioOutputError | None = None
+        output_wait_count = 0
+
+        def wait_for_output(timeout: float) -> bool:
+            nonlocal output_wait_count
+            output_wait_count += 1
+            if output_wait_count > 1:
+                _close_socket(source_socket)
+            pump_thread.join(timeout=timeout)
+            return not pump_thread.is_alive()
+
         try:
-            returncode = _terminate_encoder(process, deadline)
+            result = encoder.finalize(output_waiter=wait_for_output)
         except AudioOutputError as error:
             cleanup_error = error
 
-        detail = ""
-        if (
-            cleanup_error is None
-            and not interrupted
-            and returncode is not None
-            and returncode != 0
-        ):
-            detail = _read_encoder_error(process.stderr)
-
-        if cleanup_error is None:
-            pump_thread.join(timeout=_remaining_timeout(deadline))
-        if pump_thread.is_alive():
-            _close_socket(source_socket)
-            if process.poll() is None:
-                with suppress(OSError):
-                    process.kill()
-            _close_binary_stream(process.stdout)
-            pump_thread.join(timeout=_remaining_timeout(deadline))
         pump_alive = pump_thread.is_alive()
-
-        _close_binary_stream(process.stdout)
-        _close_binary_stream(process.stderr)
         _close_socket(source_socket)
 
         with self._lock:
@@ -539,21 +488,30 @@ class BroadcastifyConnection:
             self._closing = False
 
         if pump_alive:
-            raise AudioOutputError("Broadcastify encoded-audio worker did not stop.")
+            raise AudioOutputError(
+                "Broadcastify encoded-audio worker did not stop."
+            )
         if cleanup_error is not None:
             raise cleanup_error
-        if interrupted:
+        assert result is not None
+        if result.interrupted:
             return
-        if returncode is not None and returncode != 0 and not encoder_failure_reported:
-            suffix = "" if not detail else f": {detail}"
+
+        if result.returncode != 0 and not result.exit_reported:
+            suffix = (
+                ""
+                if not result.diagnostic
+                else f": {result.diagnostic}"
+            )
             raise AudioOutputError(
-                f"Broadcastify FFmpeg encoder exited with status {returncode}{suffix}."
+                "Broadcastify FFmpeg encoder exited with status "
+                f"{result.returncode}{suffix}."
             )
 
     def _pump_encoded_audio(self) -> None:
         try:
             while True:
-                chunk = self._process.stdout.read(_PUMP_CHUNK_BYTES)
+                chunk = self._encoder.read_encoded(_PUMP_CHUNK_BYTES)
                 if not chunk:
                     return
                 self._socket.sendall(chunk)
@@ -573,7 +531,6 @@ class BroadcastifyConnection:
                 "Broadcastify Icecast stream failed: "
                 f"{type(error).__name__}: {error}"
             ) from error
-
 
 def create_broadcastify_metadata_publisher(
     config: BroadcastifyConfig,
@@ -603,7 +560,7 @@ def create_broadcastify_sink(
     config: BroadcastifyConfig,
     *,
     environ: Mapping[str, str] | None = None,
-    encoder_factory: _EncoderFactory | None = None,
+    encoder_factory: AudioEncoderProcessFactory | None = None,
     socket_factory: _SocketFactory | None = None,
 ) -> RemotePcmSink:
     """Create a worker-backed Broadcastify sink with injectable test seams."""
@@ -618,65 +575,6 @@ def create_broadcastify_sink(
         factory,
         environ=environ,
     )
-
-
-class _PopenEncoder:
-    def __init__(self, process: subprocess.Popen[bytes]) -> None:
-        stdin = process.stdin
-        stdout = process.stdout
-        stderr = process.stderr
-        if stdin is None or stdout is None or stderr is None:
-            process.kill()
-            raise AudioOutputError("FFmpeg did not expose all required pipe streams.")
-        self._process = process
-        self._stdin = cast(BinaryIO, stdin)
-        self._stdout = cast(BinaryIO, stdout)
-        self._stderr = cast(BinaryIO, stderr)
-
-    @property
-    def stdin(self) -> BinaryIO:
-        return self._stdin
-
-    @property
-    def stdout(self) -> BinaryIO:
-        return self._stdout
-
-    @property
-    def stderr(self) -> BinaryIO:
-        return self._stderr
-
-    def poll(self) -> int | None:
-        return self._process.poll()
-
-    def wait(self, timeout: float | None = None) -> int:
-        return self._process.wait(timeout=timeout)
-
-    def terminate(self) -> None:
-        self._process.terminate()
-
-    def kill(self) -> None:
-        self._process.kill()
-
-
-def _start_ffmpeg_encoder(command: tuple[str, ...]) -> _EncoderProcess:
-    try:
-        process: subprocess.Popen[bytes] = subprocess.Popen(
-            command,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            bufsize=0,
-        )
-    except FileNotFoundError as error:
-        executable = Path(command[0]).name
-        raise AudioOutputError(
-            f"FFmpeg executable {executable!r} was not found."
-        ) from error
-    except OSError as error:
-        raise AudioOutputError(
-            f"Unable to start the Broadcastify FFmpeg encoder: {error}"
-        ) from error
-    return _PopenEncoder(process)
 
 
 def _open_socket(address: tuple[str, int], timeout: float) -> _SocketLike:
@@ -778,42 +676,8 @@ def _read_response_headers(source_socket: _SocketLike) -> bytes:
     return bytes(response)
 
 
-def _terminate_encoder(process: _EncoderProcess, deadline: float) -> int:
-    try:
-        return process.wait(timeout=_cleanup_stage_timeout(deadline))
-    except subprocess.TimeoutExpired:
-        with suppress(OSError):
-            process.terminate()
-    try:
-        return process.wait(timeout=_cleanup_stage_timeout(deadline))
-    except subprocess.TimeoutExpired:
-        with suppress(OSError):
-            process.kill()
-        try:
-            return process.wait(timeout=_cleanup_stage_timeout(deadline))
-        except subprocess.TimeoutExpired as error:
-            raise AudioOutputError("Broadcastify FFmpeg encoder did not stop.") from error
-
-
-def _cleanup_stage_timeout(deadline: float) -> float:
-    return _remaining_timeout(deadline) / 2.0
-
-
 def _remaining_timeout(deadline: float) -> float:
     return max(0.0, deadline - monotonic())
-
-
-def _read_encoder_error(stream: BinaryIO) -> str:
-    try:
-        data = stream.read(_MAX_RESPONSE_BYTES)
-    except OSError:
-        return ""
-    return data.decode("utf-8", errors="replace").strip()
-
-
-def _close_binary_stream(stream: BinaryIO) -> None:
-    with suppress(OSError, ValueError):
-        stream.close()
 
 
 def _close_socket(source_socket: _SocketLike) -> None:

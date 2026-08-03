@@ -20,6 +20,10 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   `RemoteMetadataPublisher` metrics and retry isolation, and optional
   Broadcastify-compatible Icecast alpha-tag updates synchronized with live
   scanner state without blocking PSI or PCM delivery.
+- Public renderer-neutral audio encoder process contracts, immutable command and
+  lifecycle settings, reusable pipe-backed subprocess management, bounded
+  interruption and finalization, stderr diagnostics, and migration of the fixed
+  Broadcastify FFmpeg MP3 profile onto the shared lifecycle.
 
 ## [0.17.0] - 2026-08-03
 

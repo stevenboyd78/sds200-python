@@ -295,10 +295,7 @@ Future recording work includes:
 
 Future audio work includes:
 
-- destination health events and metrics;
-- stream metadata synchronized with PSI;
-- secret-backed destination profiles;
-- pluggable encoder processes;
+- per-subscriber audio health events and metrics for future daemon clients;
 - alternative local playback backends;
 - continued separation between control and audio failures.
 
