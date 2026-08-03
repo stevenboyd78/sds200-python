@@ -92,6 +92,41 @@ def test_confirmation_token_is_stable_and_bound_to_exact_plan(
     assert first != recording_retention_confirmation_token(changed)
 
 
+def test_confirmation_token_includes_complete_inventory_snapshot(
+    tmp_path: Path,
+) -> None:
+    _, plan = selected_plan(tmp_path)
+    original_entry = plan.inventory.entries[0]
+    changed_audio_modified_ns = original_entry.audio_modified_ns + 1
+    changed_entry = replace(
+        original_entry,
+        audio_modified_ns=changed_audio_modified_ns,
+        modified_ns=max(
+            changed_audio_modified_ns,
+            original_entry.metadata_modified_ns,
+        ),
+    )
+    changed_inventory = replace(
+        plan.inventory,
+        entries=(changed_entry,),
+    )
+    changed_decision = replace(
+        plan.decisions[0],
+        entry=changed_entry,
+    )
+    changed_plan = replace(
+        plan,
+        inventory=changed_inventory,
+        decisions=(changed_decision,),
+    )
+
+    assert plan.as_dict() == changed_plan.as_dict()
+    assert plan.inventory.as_dict() != changed_plan.inventory.as_dict()
+    assert recording_retention_confirmation_token(plan) != (
+        recording_retention_confirmation_token(changed_plan)
+    )
+
+
 def test_confirmation_mismatch_refuses_all_mutation(tmp_path: Path) -> None:
     audio, plan = selected_plan(tmp_path)
     sidecar = recording_metadata_path(audio)

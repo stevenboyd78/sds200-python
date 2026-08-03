@@ -50,6 +50,8 @@ class RecordingInventoryEntry:
     frames: int | None
     audio_size_bytes: int
     metadata_size_bytes: int
+    audio_modified_ns: int
+    metadata_modified_ns: int
     modified_ns: int
     issue: str | None = None
 
@@ -57,10 +59,19 @@ class RecordingInventoryEntry:
         for name, value in (
             ("audio_size_bytes", self.audio_size_bytes),
             ("metadata_size_bytes", self.metadata_size_bytes),
+            ("audio_modified_ns", self.audio_modified_ns),
+            ("metadata_modified_ns", self.metadata_modified_ns),
             ("modified_ns", self.modified_ns),
         ):
             if value < 0:
                 raise ValueError(f"Recording inventory {name} cannot be negative.")
+        if self.modified_ns != max(
+            self.audio_modified_ns,
+            self.metadata_modified_ns,
+        ):
+            raise ValueError(
+                "Recording inventory modified_ns must match the newest artifact."
+            )
         if self.duration_seconds is not None and self.duration_seconds < 0:
             raise ValueError(
                 "Recording inventory duration_seconds cannot be negative."
@@ -108,6 +119,8 @@ class RecordingInventoryEntry:
             "audio_size_bytes": self.audio_size_bytes,
             "metadata_size_bytes": self.metadata_size_bytes,
             "total_size_bytes": self.total_size_bytes,
+            "audio_modified_ns": self.audio_modified_ns,
+            "metadata_modified_ns": self.metadata_modified_ns,
             "modified_ns": self.modified_ns,
             "playable": self.playable,
             "requires_attention": self.requires_attention,
@@ -652,6 +665,8 @@ def scan_recording_inventory(root: str | Path) -> RecordingInventory:
                 frames=audio.frames,
                 audio_size_bytes=audio.size_bytes,
                 metadata_size_bytes=metadata.size_bytes,
+                audio_modified_ns=audio.modified_ns,
+                metadata_modified_ns=metadata.modified_ns,
                 modified_ns=max(audio.modified_ns, metadata.modified_ns),
                 issue=_join_issues(audio.issue, metadata.issue),
             )

@@ -193,8 +193,12 @@ def recording_retention_confirmation_token(
 ) -> str:
     """Return the exact confirmation token bound to a retention plan."""
 
+    confirmation_document = {
+        "plan": plan.as_dict(),
+        "inventory": plan.inventory.as_dict(),
+    }
     payload = json.dumps(
-        plan.as_dict(),
+        confirmation_document,
         ensure_ascii=False,
         separators=(",", ":"),
         sort_keys=True,
@@ -425,6 +429,8 @@ def _entry_signature(entry: RecordingInventoryEntry) -> tuple[object, ...]:
         entry.frames,
         entry.audio_size_bytes,
         entry.metadata_size_bytes,
+        entry.audio_modified_ns,
+        entry.metadata_modified_ns,
         entry.modified_ns,
     )
 
@@ -461,9 +467,26 @@ def _validate_unit(
     if problem is not None:
         return None, problem
 
+    if audio_stat.st_mtime_ns != entry.audio_modified_ns:
+        return None, _ValidationProblem(
+            RecordingRetentionExecutionReason.STALE_PLAN,
+            f"Recording audio modification time changed: "
+            f"{entry.relative_audio_path}",
+        )
+
+    observed_metadata_modified_ns = (
+        metadata_stat.st_mtime_ns if metadata_stat is not None else 0
+    )
+    if observed_metadata_modified_ns != entry.metadata_modified_ns:
+        return None, _ValidationProblem(
+            RecordingRetentionExecutionReason.STALE_PLAN,
+            f"Recording metadata modification time changed: "
+            f"{entry.relative_audio_path}",
+        )
+
     observed_modified_ns = max(
         audio_stat.st_mtime_ns,
-        metadata_stat.st_mtime_ns if metadata_stat is not None else 0,
+        observed_metadata_modified_ns,
     )
     if observed_modified_ns != entry.modified_ns:
         return None, _ValidationProblem(
