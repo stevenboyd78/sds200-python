@@ -12,6 +12,10 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   `RemotePcmSinkSnapshot` metrics, ordered `RemotePcmSinkTransition` events,
   timezone-aware lifecycle timestamps, and isolated `on_transition()`
   subscriptions for future CLI, TUI, daemon, and integration consumers.
+- Versioned `BroadcastifyDestinationProfile` and `RemoteAudioProfileStore`
+  APIs that retain environment-variable secret references, preserve adapter and
+  reconnect settings, and convert into validated configuration without storing
+  resolved credentials.
 
 ## [0.17.0] - 2026-08-03
 

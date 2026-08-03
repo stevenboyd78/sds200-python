@@ -11,29 +11,28 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 18.1 — Remote-audio health events and operational metrics
+### Milestone 18.2 — Saved remote-audio destination profiles
 
-- **Renderer-neutral health model — complete**
-  - Classify each remote destination as inactive, healthy, degraded, or failed
-    from its existing lifecycle state.
-  - Preserve immutable cumulative queue, throughput, connection, retry, and
-    failure metrics in serializable destination snapshots.
-  - Record ordered transition sequence numbers and timezone-aware state-change,
-    connection, and failure timestamps.
-- **State-transition events — complete**
-  - Emit immutable events only when the destination lifecycle state changes.
-  - Include previous and current state and health plus the resulting snapshot.
-  - Provide subscription and unsubscription through the existing isolated
-    `EventBus` callback pattern.
-  - Dispatch callbacks outside the sink condition lock, preserve event order
-    across concurrent shutdown, and support worker-callback stop requests.
+- **Renderer-neutral profile model — complete**
+  - Added an immutable typed Broadcastify destination profile.
+  - Stored only environment-variable secret references, never resolved credentials.
+  - Preserved adapter, buffering, timeout, FFmpeg, and reconnect-policy settings.
+  - Converted saved profiles into the existing validated `BroadcastifyConfig`.
+- **Versioned persistence — complete**
+  - Added a dedicated TOML store separate from scanner connection profiles.
+  - Used the current legacy configuration root until Milestone 19 introduces
+    layered `sdsctl` configuration and migration.
+  - Added deterministic ordering, atomic replacement, and precise validation
+    errors for malformed or unsupported documents.
+  - Refused unsupported versions, profile kinds, and fields before rewriting.
 - **Compatibility and validation — complete**
-  - Preserved existing retry, buffering, redaction, adapter, and shutdown behavior.
-  - Kept remote-audio failures isolated from scanner control and other audio sinks.
-  - Added deterministic clock-injected lifecycle, reconnect, retry exhaustion,
-    listener isolation, concurrency, reentrant shutdown, and serialization tests.
-  - Documented the renderer-neutral contract for future CLI, TUI, daemon, and
-    integration consumers.
+  - Kept resolved secrets out of files, representations, logs, and exceptions.
+  - Left CLI, TUI, daemon activation, and layered precedence outside this
+    milestone.
+  - Added round-trip, default, malformed-input, secret-safety, conversion,
+    reconnect-policy, strict-version, and unsupported-field tests.
+  - Documented the renderer-neutral contract and future configuration migration
+    boundary.
 
 ## Deferred hardware validation
 
@@ -60,8 +59,6 @@ assignment may change before implementation begins.
 
 ### Remaining Milestone 18 candidates — Remote-audio operations
 
-- Add saved destination profiles that reference secrets rather than embedding
-  credentials.
 - Synchronize optional stream metadata with live PSI state.
 - Support pluggable encoder processes for destinations that do not accept native
   8 kHz mono PCM or G.711 mu-law.
@@ -215,3 +212,6 @@ fixtures before renderer-specific implementation.
 - Milestone 17.5: v0.17.0 release preparation, full CI and CodeQL validation,
   trusted PyPI publication, GitHub release publication, and clean Python 3.14
   installation verification from public PyPI.
+- Milestone 18.1: renderer-neutral remote-destination health classification,
+  serializable operational snapshots, ordered lifecycle transition events,
+  timezone-aware timestamps, listener isolation, and shutdown-safe concurrency.

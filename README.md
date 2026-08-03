@@ -53,6 +53,8 @@ information in this image represents a real system.*
 - Discovery-based repair for stale USB paths and scanner IP addresses
 - Hardware-validated SDS200 network audio over RTSP/RTP
 - Native G.711 mu-law decoding with independently buffered PCM destinations
+- Versioned Broadcastify destination profiles with environment-backed secret
+  references and validated adapter conversion
 - Optional live playback through the local default or selected audio output device
 - Simultaneous local playback and streaming PCM WAV recording from one RTSP session
 - UDP XML fragment validation, statistics, and bounded retries
