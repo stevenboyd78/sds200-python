@@ -201,9 +201,13 @@ def wait_until(predicate: Callable[[], bool], *, timeout: float = 1.0) -> None:
 def test_broadcastify_config_builds_fixed_profile_and_remote_secret() -> None:
     feed = config()
     command = feed.ffmpeg_command()
+    encoder_config = feed.encoder_config()
     remote = feed.remote_destination()
 
     assert feed.endpoint == "http://audio1.broadcastify.com:80/abc123"
+    assert encoder_config.name == "Broadcastify FFmpeg encoder"
+    assert encoder_config.command == command
+    assert encoder_config.stop_timeout == feed.encoder_stop_timeout
     assert ("-ar", "8000") in tuple(zip(command, command[1:], strict=False))
     assert ("-ar", str(BROADCASTIFY_SAMPLE_RATE)) in tuple(
         zip(command, command[1:], strict=False)
@@ -308,6 +312,34 @@ def test_broadcastify_connection_surfaces_stream_disconnect() -> None:
 
     connection.interrupt()
     connection.close()
+
+
+def test_broadcastify_connection_reports_encoder_exit_diagnostic() -> None:
+    source_socket = FakeSocket()
+    encoder = FakeEncoder(
+        returncode=3,
+        error=b"invalid encoder configuration\n",
+    )
+    connection = BroadcastifyConnection(
+        config(),
+        "feed-password",
+        socket_factory=lambda address, timeout: source_socket,
+        encoder_factory=lambda command: encoder,
+    )
+
+    with pytest.raises(
+        AudioOutputError,
+        match=(
+            "Broadcastify FFmpeg encoder exited with status 3: "
+            "invalid encoder configuration"
+        ),
+    ):
+        connection.close()
+
+    assert source_socket.closed
+    assert encoder.stdin.closed
+    assert encoder.stdout.closed
+    assert encoder.stderr.closed
 
 
 def test_broadcastify_connection_interrupts_encoder_and_socket() -> None:
