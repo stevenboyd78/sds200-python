@@ -6,6 +6,11 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+### Added
+
+- Renderer-neutral `RecordingIdentity` derivation and portable filename-component
+  normalization for future recording organization policies.
+
 ## [0.16.1] - 2026-08-02
 
 ### Added

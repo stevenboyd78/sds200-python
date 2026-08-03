@@ -11,29 +11,39 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 17.0 — Recording organization and retention roadmap
+### Milestone 17.1 — Recording identity and safe filename components
 
-- **Released baseline — complete**
-  - Merged the v0.16.1 Linux-audio maintenance change after CI and CodeQL passed.
-  - Tagged and published `v0.16.1` as a normal GitHub release and on PyPI.
-  - Verified a clean Python 3.14 installation of
-    `sds200[tui,playback]==0.16.1` with no broken requirements.
-  - Verified the installed package's metadata, runtime version, CLI version, and
-    local PortAudio device inspection.
-- **Milestone decomposition — active**
-  - Milestone 17.1: safe recording identity and filename components derived from
-    immutable recording metadata.
+- **Milestone 17.0 roadmap kickoff — complete**
+  - Promoted recording organization and retention to active development.
+  - Decomposed Milestone 17 into identity, organization, inventory, and explicit
+    retention-execution slices.
+  - Preserved renderer neutrality, dry-run previews, no deletion by default, and
+    audio-and-sidecar unit handling as cross-cutting requirements.
+- **Recording identity foundation — complete**
+  - Added stable recording identity derived from immutable finalized metadata.
+  - Preferred start-boundary scanner state and used stop-boundary values only when
+    a start value is absent.
+  - Added deterministic portable filename and directory components.
+  - Kept identity independent of the recording's current filesystem path.
+- **Validation — complete**
+  - Passed Ruff and MyPy across 43 source files.
+  - Passed all 454 tests.
+  - Passed documentation checks across 28 Markdown files.
+  - Confirmed the existing metadata schema, recording paths, and sidecar naming
+    remain unchanged.
+- **Merge — pending**
+  - Merge the implementation after CI and CodeQL pass.
+- **Scope boundaries — preserved**
+  - Do not rename or move existing recordings.
+  - Do not change the recording metadata JSON schema.
+  - Do not add configurable directory organization until Milestone 17.2.
+  - Do not add inventory or retention execution behavior in this slice.
+- **Next slices — planned**
   - Milestone 17.2: configurable recording organization by scanner, date, system,
     department, site, or channel.
   - Milestone 17.3: recording inventory, retention planning, and reporting.
   - Milestone 17.4: explicit retention execution with previews and deterministic
     audio-and-sidecar handling.
-- **Cross-cutting safety constraints — required**
-  - Keep organization and retention services renderer-neutral.
-  - Treat each recording's audio file and metadata sidecar as one managed unit.
-  - Do not delete recordings by default.
-  - Require an explicit policy and dry-run preview before destructive retention
-    actions.
 
 ## Deferred hardware validation
 

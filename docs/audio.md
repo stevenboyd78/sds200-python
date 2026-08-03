@@ -157,6 +157,38 @@ metadata = RecordingMetadata.from_snapshots(
 sidecar_path = write_recording_metadata(metadata)
 ```
 
+## Recording identity components
+
+Milestone 17.1 adds renderer-neutral `RecordingIdentity` derivation without
+changing current recording paths. Identity values come from immutable finalized
+metadata rather than a live mutable scanner state. Start-boundary state is
+preferred, and an absent start value is filled from the stop boundary.
+
+`safe_recording_component()` applies Unicode compatibility normalization,
+collapses whitespace and punctuation to one hyphen, protects reserved portable
+names, supplies an explicit fallback, and enforces a component length limit.
+The identity excludes the current recording path so moving an audio-and-sidecar
+pair does not change its scanner-derived organization values.
+
+```python
+from sds200 import RecordingIdentity
+
+identity = RecordingIdentity.from_metadata(metadata)
+components = identity.filename_components()
+
+print(components["date"])
+print(components["scanner"])
+print(components["system"])
+print(components["department"])
+print(components["site"])
+print(components["channel"])
+```
+
+The component map also includes `timestamp`, `endpoint`, `mode`, `frequency`,
+`modulation`, `service_type`, `talkgroup_id`, and `unit_id`. Milestone 17.2 will
+consume these values through configurable path policies; Milestone 17.1 does not
+rename or move recordings.
+
 ## Reliability statistics
 
 `NetworkAudioTransport.statistics` returns an immutable session snapshot with
