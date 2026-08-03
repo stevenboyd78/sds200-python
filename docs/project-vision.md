@@ -74,6 +74,12 @@ device, encoder, or network operations must not block RTP reception.
 A future daemon should own long-lived scanner, PSI, audio, recording, and remote
 destination sessions.
 
+The SDS200 accepts only one network-audio client at a time. The daemon should own
+that single RTSP/RTP session, decode accepted audio once, and expose independent
+bounded PCM or PCMU subscriptions to CLI, TUI, web, recording, streaming, and
+automation clients. A slow or failed subscriber must not block RTP reception or
+another subscriber.
+
 CLI, TUI, web, and automation clients should be able to consume the daemon API
 instead of opening duplicate scanner connections. Standalone operation may remain
 available where practical.

@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections import deque
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from importlib import import_module
 from typing import Protocol, Self, cast, runtime_checkable
@@ -271,7 +271,13 @@ class _RawOutputStream(Protocol):
     def close(self) -> object: ...
 
 
+class _SoundDeviceDefaults(Protocol):
+    device: object
+
+
 class _SoundDeviceModule(Protocol):
+    default: _SoundDeviceDefaults
+
     def RawOutputStream(
         self,
         *,
@@ -281,6 +287,197 @@ class _SoundDeviceModule(Protocol):
         device: str | int | None,
         callback: Callable[[object, int, object, object], None],
     ) -> _RawOutputStream: ...
+
+    def get_portaudio_version(self) -> tuple[int, str]: ...
+
+    def query_hostapis(self) -> object: ...
+
+    def query_devices(self) -> object: ...
+
+
+@dataclass(frozen=True, slots=True)
+class AudioHostApiInfo:
+    """One local PortAudio host API."""
+
+    index: int
+    name: str
+    default_output_device: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class AudioOutputDeviceInfo:
+    """One local output-capable audio device."""
+
+    index: int
+    name: str
+    host_api_index: int
+    host_api_name: str
+    max_output_channels: int
+    default_samplerate: float
+    default: bool
+
+
+@dataclass(frozen=True, slots=True)
+class AudioBackendInfo:
+    """Immutable local-audio backend and output-device inventory."""
+
+    backend: str
+    version: str
+    default_output_device: int | None
+    host_apis: tuple[AudioHostApiInfo, ...]
+    output_devices: tuple[AudioOutputDeviceInfo, ...]
+
+
+def _load_sounddevice(
+    module_loader: Callable[[str], object] = import_module,
+) -> _SoundDeviceModule:
+    try:
+        return cast(_SoundDeviceModule, module_loader("sounddevice"))
+    except ModuleNotFoundError as error:
+        raise AudioOutputError(
+            "Live playback support is not installed; install it with: "
+            'python -m pip install "sds200[playback]"'
+        ) from error
+    except OSError as error:
+        detail = str(error)
+        if "portaudio" in detail.casefold():
+            raise AudioOutputError(
+                "PortAudio is required for local playback but its shared library "
+                "was not found. On Debian or Raspberry Pi OS, install it with: "
+                "sudo apt install libportaudio2"
+            ) from error
+        raise AudioOutputError(
+            f"Could not load local audio playback support: {detail}"
+        ) from error
+
+
+def _mapping_entries(value: object, *, label: str) -> tuple[Mapping[str, object], ...]:
+    if isinstance(value, (str, bytes)) or not isinstance(value, Iterable):
+        raise AudioOutputError(f"{label} returned an unexpected value")
+    entries: list[Mapping[str, object]] = []
+    for entry in value:
+        if not isinstance(entry, Mapping):
+            raise AudioOutputError(f"{label} returned an unexpected entry")
+        entries.append(cast(Mapping[str, object], entry))
+    return tuple(entries)
+
+
+def _required_text(value: object, *, label: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise AudioOutputError(f"{label} is missing")
+    return value
+
+
+def _required_integer(value: object, *, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise AudioOutputError(f"{label} is not an integer")
+    return value
+
+
+def _optional_device_index(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
+def _default_output_device(value: object) -> int | None:
+    try:
+        output = cast(Sequence[object], value)[1]
+    except (IndexError, TypeError):
+        return _optional_device_index(value)
+    return _optional_device_index(output)
+
+
+def _required_number(value: object, *, label: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise AudioOutputError(f"{label} is not numeric")
+    return float(value)
+
+
+def inspect_audio_backend(
+    *,
+    module_loader: Callable[[str], object] = import_module,
+) -> AudioBackendInfo:
+    """Return PortAudio host APIs and output devices without opening a stream."""
+
+    module = _load_sounddevice(module_loader)
+    try:
+        _, version = module.get_portaudio_version()
+        host_entries = _mapping_entries(
+            module.query_hostapis(),
+            label="PortAudio host API query",
+        )
+        device_entries = _mapping_entries(
+            module.query_devices(),
+            label="PortAudio device query",
+        )
+        default_output = _default_output_device(module.default.device)
+
+        host_apis: list[AudioHostApiInfo] = []
+        host_names: dict[int, str] = {}
+        for index, entry in enumerate(host_entries):
+            name = _required_text(
+                entry.get("name"),
+                label=f"PortAudio host API {index} name",
+            )
+            host_names[index] = name
+            host_apis.append(
+                AudioHostApiInfo(
+                    index=index,
+                    name=name,
+                    default_output_device=_optional_device_index(
+                        entry.get("default_output_device")
+                    ),
+                )
+            )
+
+        output_devices: list[AudioOutputDeviceInfo] = []
+        for fallback_index, entry in enumerate(device_entries):
+            max_output_channels = _required_integer(
+                entry.get("max_output_channels"),
+                label=f"PortAudio device {fallback_index} output channels",
+            )
+            if max_output_channels <= 0:
+                continue
+            index = _required_integer(
+                entry.get("index", fallback_index),
+                label=f"PortAudio device {fallback_index} index",
+            )
+            host_api_index = _required_integer(
+                entry.get("hostapi"),
+                label=f"PortAudio device {index} host API",
+            )
+            output_devices.append(
+                AudioOutputDeviceInfo(
+                    index=index,
+                    name=_required_text(
+                        entry.get("name"),
+                        label=f"PortAudio device {index} name",
+                    ),
+                    host_api_index=host_api_index,
+                    host_api_name=host_names.get(host_api_index, "unknown"),
+                    max_output_channels=max_output_channels,
+                    default_samplerate=_required_number(
+                        entry.get("default_samplerate"),
+                        label=f"PortAudio device {index} default sample rate",
+                    ),
+                    default=index == default_output,
+                )
+            )
+    except AudioOutputError:
+        raise
+    except Exception as error:
+        raise AudioOutputError(
+            f"Could not inspect local audio devices: {error}"
+        ) from error
+
+    return AudioBackendInfo(
+        backend="PortAudio",
+        version=version,
+        default_output_device=default_output,
+        host_apis=tuple(host_apis),
+        output_devices=tuple(output_devices),
+    )
 
 
 class SoundDevicePlaybackSink:
@@ -344,13 +541,7 @@ class SoundDevicePlaybackSink:
         with self._lock:
             if self._stream is not None:
                 return
-        try:
-            module = cast(_SoundDeviceModule, self._module_loader("sounddevice"))
-        except ModuleNotFoundError as error:
-            raise AudioOutputError(
-                "Live playback support is not installed; install it with: "
-                'python -m pip install "sds200[playback]"'
-            ) from error
+        module = _load_sounddevice(self._module_loader)
 
         stream: _RawOutputStream | None = None
         try:

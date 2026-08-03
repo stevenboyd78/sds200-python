@@ -8,6 +8,11 @@ import pytest
 
 from sds200 import cli
 from sds200.audio import AudioChunk, AudioChunkHandler
+from sds200.audio_sinks import (
+    AudioBackendInfo,
+    AudioHostApiInfo,
+    AudioOutputDeviceInfo,
+)
 from sds200.network_audio import NetworkAudioStatistics
 
 
@@ -144,6 +149,47 @@ def test_audio_cli_refuses_to_overwrite_existing_file(
     assert not transport.started
     assert output.read_bytes() == b"keep"
     assert "File exists" in capsys.readouterr().err
+
+
+def test_audio_devices_cli_lists_backend_and_outputs(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    backend = AudioBackendInfo(
+        backend="PortAudio",
+        version="PortAudio V19.7.0",
+        default_output_device=2,
+        host_apis=(
+            AudioHostApiInfo(
+                index=0,
+                name="ALSA",
+                default_output_device=2,
+            ),
+        ),
+        output_devices=(
+            AudioOutputDeviceInfo(
+                index=2,
+                name="HDMI",
+                host_api_index=0,
+                host_api_name="ALSA",
+                max_output_channels=2,
+                default_samplerate=48000.0,
+                default=True,
+            ),
+        ),
+    )
+    monkeypatch.setattr(cli, "inspect_audio_backend", lambda: backend)
+
+    assert cli.main(["audio-devices"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "Backend: PortAudio",
+        "Version: PortAudio V19.7.0",
+        "Default output: 2: HDMI [ALSA]",
+        "Host APIs:",
+        "  0: ALSA (default output: 2)",
+        "Output devices:",
+        "  2: HDMI [ALSA] channels=2 default-rate=48000 Hz (default)",
+    ]
 
 
 def test_audio_parser_accepts_playback_without_output() -> None:

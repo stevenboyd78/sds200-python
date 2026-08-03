@@ -20,6 +20,7 @@ from .audio_sinks import (
     PcmSink,
     PcmWavSink,
     SoundDevicePlaybackSink,
+    inspect_audio_backend,
 )
 from .commands import NAVIGATION_TARGETS
 from .completion import (
@@ -588,6 +589,10 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser(
         "capabilities",
         help="Show model limits, validation status, and supported control features",
+    )
+    subparsers.add_parser(
+        "audio-devices",
+        help="List local PortAudio host APIs and output devices",
     )
 
     audio = subparsers.add_parser(
@@ -1486,6 +1491,52 @@ def _run_asterisk_moh(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_audio_devices() -> int:
+    backend = inspect_audio_backend()
+    print(f"Backend: {backend.backend}")
+    print(f"Version: {backend.version}")
+
+    default = next(
+        (device for device in backend.output_devices if device.default),
+        None,
+    )
+    if default is None:
+        print("Default output: unavailable")
+    else:
+        print(
+            f"Default output: {default.index}: {default.name} "
+            f"[{default.host_api_name}]"
+        )
+
+    print("Host APIs:")
+    if backend.host_apis:
+        for host_api in backend.host_apis:
+            default_index = (
+                str(host_api.default_output_device)
+                if host_api.default_output_device is not None
+                else "none"
+            )
+            print(
+                f"  {host_api.index}: {host_api.name} "
+                f"(default output: {default_index})"
+            )
+    else:
+        print("  none")
+
+    print("Output devices:")
+    if backend.output_devices:
+        for device in backend.output_devices:
+            marker = " (default)" if device.default else ""
+            print(
+                f"  {device.index}: {device.name} [{device.host_api_name}] "
+                f"channels={device.max_output_channels} "
+                f"default-rate={device.default_samplerate:g} Hz{marker}"
+            )
+    else:
+        print("  none")
+    return 0
+
+
 def _run_audio(args: argparse.Namespace) -> int:
     if args.host is None:
         raise ValueError("audio requires an explicit SDS200 --host")
@@ -1765,6 +1816,9 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.action == "discover":
             return _run_discovery(args)
+
+        if args.action == "audio-devices":
+            return _run_audio_devices()
 
         if args.action == "asterisk-moh":
             return _run_asterisk_moh(args)
