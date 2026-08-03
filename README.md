@@ -55,6 +55,9 @@ information in this image represents a real system.*
 - Native G.711 mu-law decoding with independently buffered PCM destinations
 - Versioned Broadcastify destination profiles with environment-backed secret
   references and validated adapter conversion
+- Optional renderer-neutral live stream metadata with newest-value buffering,
+  duplicate suppression, rate limiting, and Broadcastify-compatible alpha-tag
+  updates isolated from PSI and PCM delivery
 - Optional live playback through the local default or selected audio output device
 - Simultaneous local playback and streaming PCM WAV recording from one RTSP session
 - UDP XML fragment validation, statistics, and bounded retries

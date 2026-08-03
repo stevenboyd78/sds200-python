@@ -13,30 +13,34 @@ and ideas that are not ready for scheduling are recorded in
 
 ### Milestone 18.3 — Remote-audio stream metadata synchronization
 
-- **Renderer-neutral metadata model — planned**
-  - Derive immutable stream metadata from `RadioStateSnapshot`.
-  - Provide deterministic title formatting for active channels and explicit
-    scanning, idle, or unavailable states.
-  - Normalize whitespace, reject control characters, and bound rendered metadata
-    length without modifying the scanner state model.
-  - Keep derivation independent from Broadcastify, Icecast, CLI, TUI, and daemon
+- **Renderer-neutral metadata model — complete**
+  - Added immutable `RemoteStreamMetadata` derivation from
+    `RadioStateSnapshot`.
+  - Added deterministic active-channel titles and explicit scanning, idle,
+    stale, and unavailable titles.
+  - Normalized whitespace, rejected control characters, removed duplicate title
+    components, and bounded rendered titles without changing scanner state.
+  - Kept derivation independent from Broadcastify, Icecast, CLI, TUI, and daemon
     consumers.
-- **Isolated metadata publisher — planned**
-  - Add a worker-backed newest-value queue so PSI callbacks perform no network I/O.
-  - Suppress duplicate titles and support a configurable minimum update interval.
-  - Own connection creation, authentication, response parsing, retries, and
-    bounded shutdown independently from PCM delivery.
-  - Preserve immutable submission, publication, suppression, failure, and
-    last-error metrics.
-- **Broadcastify and compatibility validation — planned**
-  - Publish short-lived authenticated Icecast metadata updates without touching
-    the active PCM source connection or `RemotePcmSink`.
-  - Resolve secret references only on the publisher worker and redact failures.
-  - Keep metadata failures isolated from scanner control, PSI processing, audio
+- **Isolated metadata publisher — complete**
+  - Added a worker-backed newest-value queue so PSI callbacks perform no network
+    I/O.
+  - Added duplicate suppression and a configurable minimum update interval.
+  - Isolated secret resolution, publication attempts, retry backoff, and bounded
+    shutdown from PCM delivery.
+  - Added immutable submission, publication, suppression, replacement, failure,
+    retry, timestamp, pending-title, and last-error metrics.
+- **Broadcastify and compatibility validation — complete**
+  - Added short-lived authenticated Icecast metadata updates without touching the
+    active PCM source connection or `RemotePcmSink`.
+  - Resolved source-password references only on the publisher worker and redacted
+    resolved values from failures and snapshots.
+  - Kept metadata failures isolated from scanner control, PSI processing, audio
     streaming, recording, and other sinks.
-  - Add deterministic formatting, duplicate, rate-limit, retry, shutdown,
-    redaction, malformed-response, and listener-isolation tests.
-  - Document the production-service smoke-test boundary and leave CLI, TUI, and
+  - Added deterministic formatting, newest-value, duplicate, rate-limit, retry,
+    recovery, shutdown, redaction, malformed-response, endpoint, and
+    connect-interruption tests.
+  - Documented the pending production-service smoke test and left CLI, TUI, and
     daemon activation outside this milestone.
 
 ## Deferred hardware validation
@@ -222,3 +226,7 @@ fixtures before renderer-specific implementation.
 - Milestone 18.2: immutable saved Broadcastify destination profiles, dedicated
   versioned TOML persistence, environment-variable secret references, strict
   schema validation, deterministic atomic writes, and validated adapter conversion.
+- Milestone 18.3: renderer-neutral live stream metadata, deterministic bounded
+  titles, newest-value worker publication, duplicate suppression, rate limiting,
+  retry and redaction metrics, and a Broadcastify-compatible Icecast metadata
+  adapter isolated from PCM delivery.

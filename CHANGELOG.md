@@ -16,6 +16,10 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   APIs that retain environment-variable secret references, preserve adapter and
   reconnect settings, and convert into validated configuration without storing
   resolved credentials.
+- Renderer-neutral `RemoteStreamMetadata`, worker-backed
+  `RemoteMetadataPublisher` metrics and retry isolation, and optional
+  Broadcastify-compatible Icecast alpha-tag updates synchronized with live
+  scanner state without blocking PSI or PCM delivery.
 
 ## [0.17.0] - 2026-08-03
 
