@@ -123,6 +123,14 @@ from .profiles import (
 )
 from .radio import SDS200, SDSScanner
 from .recording_identity import RecordingIdentity, safe_recording_component
+from .recording_inventory import (
+    RecordingAudioStatus,
+    RecordingInventory,
+    RecordingInventoryEntry,
+    RecordingInventorySummary,
+    RecordingMetadataStatus,
+    scan_recording_inventory,
+)
 from .recording_metadata import (
     RECORDING_METADATA_SCHEMA,
     RECORDING_METADATA_VERSION,
@@ -294,9 +302,14 @@ __all__ = [
     "RECORDING_METADATA_SCHEMA",
     "RECORDING_METADATA_VERSION",
     "RECORDING_ORGANIZATION_COMPONENTS",
+    "RecordingAudioStatus",
     "RecordingIdentity",
+    "RecordingInventory",
+    "RecordingInventoryEntry",
+    "RecordingInventorySummary",
     "RecordingOrganizationPolicy",
     "RecordingMetadata",
+    "RecordingMetadataStatus",
     "RecordingSource",
     "RecordingState",
     "RecordingTransport",
@@ -375,6 +388,7 @@ __all__ = [
     "profile_from_discovery",
     "recording_metadata_path",
     "repair_profile",
+    "scan_recording_inventory",
     "safe_recording_component",
     "theme_roles_for",
     "write_capture",

@@ -214,6 +214,36 @@ PSI change does not rename or move the active or finalized WAV. Collision suffix
 remain in the selected directory, and an adjacent metadata sidecar participates in
 allocation so the WAV and `<recording>.wav.json` remain together.
 
+## Recording inventory
+
+Milestone 17.3 adds a renderer-neutral, read-only inventory for a recording root.
+`scan_recording_inventory()` recursively treats each WAV file and adjacent
+`<recording>.wav.json` sidecar as one managed unit. It reports compatible,
+incompatible, unreadable, and missing audio together with valid, missing,
+unreadable, invalid, mismatched, and orphaned metadata.
+
+```python
+from pathlib import Path
+
+from sds200 import scan_recording_inventory
+
+inventory = scan_recording_inventory(Path("~/scanner-recordings"))
+print(inventory.summary.as_dict())
+
+for entry in inventory.entries:
+    print(entry.relative_audio_path, entry.audio_status, entry.metadata_status)
+```
+
+Inventory order is deterministic by relative path. Compatible WAV duration, file
+and sidecar sizes, metadata-derived UTC start time, aggregate byte totals, and
+attention counts are available without changing the filesystem. Directory
+symlinks are not traversed, and managed file symlinks that resolve outside the
+configured root are reported as unreadable rather than dereferenced.
+
+This foundation does not move, rename, overwrite, or delete artifacts. Retention
+policy and non-destructive planning remain separate Milestone 17.3 work, while
+filesystem execution remains deferred to Milestone 17.4.
+
 ## Reliability statistics
 
 `NetworkAudioTransport.statistics` returns an immutable session snapshot with
