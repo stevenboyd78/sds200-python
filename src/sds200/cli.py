@@ -54,6 +54,7 @@ from .profiles import (
     repair_profile,
 )
 from .radio import SDSScanner
+from .recording_organization import RecordingOrganizationPolicy
 from .reliability import ReconnectPolicy
 from .rich_cli import (
     COLOR_MODES,
@@ -131,6 +132,13 @@ def _audio_device(value: str) -> str | int:
         return int(value)
     except ValueError:
         return value
+
+
+def _recording_organization(value: str) -> RecordingOrganizationPolicy:
+    try:
+        return RecordingOrganizationPolicy.from_csv(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(str(error)) from error
 
 
 def _scanner_model(value: str) -> ScannerModel:
@@ -523,6 +531,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--audio-template",
         metavar="TEMPLATE",
         help="Recording filename template using {timestamp} (requires --audio-directory)",
+    )
+    tui.add_argument(
+        "--audio-organize-by",
+        type=_recording_organization,
+        metavar="COMPONENTS",
+        help=(
+            "Comma-separated recording directories from scanner,date,system,"
+            "department,site,channel (requires --audio-directory)"
+        ),
     )
     tui.add_argument(
         "--audio-force",
@@ -1655,6 +1672,8 @@ def _run_tui(
         raise ValueError("--audio-force requires --audio-output")
     if args.audio_template is not None and args.audio_directory is None:
         raise ValueError("--audio-template requires --audio-directory")
+    if args.audio_organize_by is not None and args.audio_directory is None:
+        raise ValueError("--audio-organize-by requires --audio-directory")
     if (
         args.audio_metadata
         and args.audio_output is None
@@ -1667,6 +1686,7 @@ def _run_tui(
         (
             args.audio_output is not None,
             args.audio_directory is not None,
+            args.audio_organize_by is not None,
             args.audio_metadata,
             args.audio_playback,
             args.audio_device is not None,
@@ -1702,6 +1722,9 @@ def _run_tui(
                 ),
                 template=args.audio_template or DEFAULT_RECORDING_TEMPLATE,
                 overwrite=args.audio_force,
+                organization=(
+                    args.audio_organize_by or RecordingOrganizationPolicy()
+                ),
             ),
             live_playback=args.audio_playback,
             device=args.audio_device,

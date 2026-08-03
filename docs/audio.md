@@ -189,6 +189,31 @@ The component map also includes `timestamp`, `endpoint`, `mode`, `frequency`,
 consume these values through configurable path policies; Milestone 17.1 does not
 rename or move recordings.
 
+## Recording organization
+
+Milestone 17.2 lets repeatable TUI recordings use ordered directories derived at
+recording start. Supply a comma-separated list with `--audio-organize-by`; the
+supported components are `scanner`, `date`, `system`, `department`, `site`, and
+`channel`:
+
+```bash
+sdsctl --host 192.168.0.251 tui \
+  --audio-directory ~/scanner-recordings \
+  --audio-organize-by scanner,date,system,department,site,channel \
+  --audio-metadata
+```
+
+Organization is opt-in. Without `--audio-organize-by`, the existing flat local
+`--audio-directory` behavior and timestamp filenames remain unchanged. Each
+configured value is normalized with `safe_recording_component()`; unavailable
+start-boundary values become `unknown`. The `date` component uses the identity's
+UTC start date.
+
+The path is selected once from the recording start time and scanner state. A later
+PSI change does not rename or move the active or finalized WAV. Collision suffixes
+remain in the selected directory, and an adjacent metadata sidecar participates in
+allocation so the WAV and `<recording>.wav.json` remain together.
+
 ## Reliability statistics
 
 `NetworkAudioTransport.statistics` returns an immutable session snapshot with

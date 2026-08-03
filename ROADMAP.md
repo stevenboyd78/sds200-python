@@ -11,36 +11,38 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 17.1 — Recording identity and safe filename components
+### Milestone 17.2 — Configurable recording organization
 
-- **Milestone 17.0 roadmap kickoff — complete**
-  - Promoted recording organization and retention to active development.
-  - Decomposed Milestone 17 into identity, organization, inventory, and explicit
-    retention-execution slices.
-  - Preserved renderer neutrality, dry-run previews, no deletion by default, and
-    audio-and-sidecar unit handling as cross-cutting requirements.
-- **Recording identity foundation — complete**
-  - Added stable recording identity derived from immutable finalized metadata.
-  - Preferred start-boundary scanner state and used stop-boundary values only when
-    a start value is absent.
-  - Added deterministic portable filename and directory components.
-  - Kept identity independent of the recording's current filesystem path.
+- **Milestone 17.1 recording identity — complete**
+  - Merged the recording-identity foundation after CI and CodeQL passed.
+  - Added immutable start-preferred recording identity with stop-boundary fallback.
+  - Added deterministic portable path components independent of the current
+    recording path.
+  - Preserved the metadata schema, current recording paths, and sidecar naming.
+- **Organization policy foundation — complete**
+  - Added a renderer-neutral policy for ordered scanner, date, system, department,
+    site, and channel path components.
+  - Rendered safe relative paths from immutable start-boundary recording identity.
+  - Preserved current timestamp filenames when no organization policy is
+    configured.
+  - Integrated organization with newly created recordings without moving existing
+    recordings.
+  - Added recursive discovery of recordings stored in organized directories.
 - **Validation — complete**
-  - Passed Ruff and MyPy across 43 source files.
-  - Passed all 454 tests.
+  - Passed Ruff and MyPy across 44 source files.
+  - Passed all 468 tests.
   - Passed documentation checks across 28 Markdown files.
-  - Confirmed the existing metadata schema, recording paths, and sidecar naming
-    remain unchanged.
+  - Confirmed collision-safe allocation and adjacent metadata-sidecar handling in
+    organized directories.
 - **Merge — pending**
   - Merge the implementation after CI and CodeQL pass.
-- **Scope boundaries — preserved**
-  - Do not rename or move existing recordings.
-  - Do not change the recording metadata JSON schema.
-  - Do not add configurable directory organization until Milestone 17.2.
-  - Do not add inventory or retention execution behavior in this slice.
+- **Safety boundaries — preserved**
+  - Reject absolute paths, traversal, empty policy fields, and unsupported
+    components.
+  - Preserve collision-safe filename allocation.
+  - Keep each WAV file and adjacent metadata sidecar in the same directory.
+  - Do not add inventory, retention, or deletion behavior in this slice.
 - **Next slices — planned**
-  - Milestone 17.2: configurable recording organization by scanner, date, system,
-    department, site, or channel.
   - Milestone 17.3: recording inventory, retention planning, and reporting.
   - Milestone 17.4: explicit retention execution with previews and deterministic
     audio-and-sidecar handling.
