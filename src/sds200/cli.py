@@ -7,6 +7,7 @@ import logging
 import sys
 from collections.abc import Callable
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from time import sleep
 from typing import BinaryIO, Protocol, cast
@@ -54,7 +55,18 @@ from .profiles import (
     repair_profile,
 )
 from .radio import SDSScanner
+from .recording_inventory import scan_recording_inventory
 from .recording_organization import RecordingOrganizationPolicy
+from .recording_retention import (
+    RecordingRetentionPlan,
+    RecordingRetentionPolicy,
+    plan_recording_retention,
+)
+from .recording_retention_execution import (
+    RecordingRetentionExecutionResult,
+    execute_recording_retention,
+    recording_retention_confirmation_token,
+)
 from .reliability import ReconnectPolicy
 from .rich_cli import (
     COLOR_MODES,
@@ -111,6 +123,19 @@ def _non_negative_float(value: str) -> float:
     if parsed < 0:
         raise argparse.ArgumentTypeError("value must not be negative")
     return parsed
+
+
+def _timezone_aware_datetime(value: str) -> datetime:
+    normalized = f"{value[:-1]}+00:00" if value.endswith(("Z", "z")) else value
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            "value must be an ISO 8601 date and time"
+        ) from error
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise argparse.ArgumentTypeError("value must include a UTC offset")
+    return parsed.astimezone(UTC)
 
 
 def _remote_port(value: str) -> int:
@@ -677,6 +702,65 @@ def build_parser() -> argparse.ArgumentParser:
         default=15.0,
         metavar="SECONDS",
         help="RTSP GET_PARAMETER interval (default: 15.0)",
+    )
+
+    recordings = subparsers.add_parser(
+        "recordings",
+        help="Inspect and safely manage local recording files",
+    )
+    recording_commands = recordings.add_subparsers(
+        dest="recordings_action",
+        required=True,
+    )
+    retention = recording_commands.add_parser(
+        "retention",
+        help="Preview or explicitly execute a recording-retention policy",
+    )
+    retention.add_argument(
+        "root",
+        type=Path,
+        metavar="DIRECTORY",
+        help="Recording inventory root",
+    )
+    retention.add_argument(
+        "--maximum-age-days",
+        type=_positive_float,
+        metavar="DAYS",
+        help="Select eligible recordings older than this many days",
+    )
+    retention.add_argument(
+        "--maximum-units",
+        type=_non_negative_integer,
+        metavar="COUNT",
+        help="Retain at most this many managed recording units",
+    )
+    retention.add_argument(
+        "--maximum-total-bytes",
+        type=_non_negative_integer,
+        metavar="BYTES",
+        help="Retain at most this many managed bytes",
+    )
+    retention.add_argument(
+        "--planned-at",
+        type=_timezone_aware_datetime,
+        metavar="TIMESTAMP",
+        help=(
+            "Fixed timezone-aware ISO 8601 planning boundary; required when "
+            "executing an age policy"
+        ),
+    )
+    retention.add_argument(
+        "--json",
+        action="store_true",
+        help="Print stable JSON output",
+    )
+    retention.add_argument(
+        "--execute",
+        metavar="CONFIRMATION",
+        help=(
+            "Execute the exact plan only when this value matches its displayed "
+            "confirmation token"
+        ),
     )
 
     asterisk_moh = subparsers.add_parser(
@@ -1764,6 +1848,211 @@ def _run_tui_with_logging(args: argparse.Namespace) -> int:
             logger.info("sdsctl stopped action=%s", args.action)
 
 
+def _recording_retention_policy(
+    args: argparse.Namespace,
+) -> RecordingRetentionPolicy:
+    maximum_age = (
+        timedelta(days=args.maximum_age_days)
+        if args.maximum_age_days is not None
+        else None
+    )
+    return RecordingRetentionPolicy(
+        maximum_age=maximum_age,
+        maximum_units=args.maximum_units,
+        maximum_total_bytes=args.maximum_total_bytes,
+    )
+
+
+def _recording_retention_plan_payload(
+    plan: RecordingRetentionPlan,
+    confirmation_token: str,
+) -> dict[str, object]:
+    return {
+        "mode": "preview",
+        "confirmation_token": confirmation_token,
+        "plan": plan.as_dict(),
+    }
+
+
+def _print_recording_retention_plan(
+    plan: RecordingRetentionPlan,
+    confirmation_token: str,
+) -> None:
+    summary = plan.summary
+    policy = plan.policy
+    print("Recording retention preview")
+    print(f"Root:                 {plan.inventory.root}")
+    print(f"Planned at:           {plan.now.isoformat() if plan.now else '-'}")
+    print(
+        "Maximum age:          "
+        + (
+            f"{policy.maximum_age.total_seconds() / 86400:g} days"
+            if policy.maximum_age is not None
+            else "-"
+        )
+    )
+    print(
+        "Maximum units:        "
+        + (
+            str(policy.maximum_units)
+            if policy.maximum_units is not None
+            else "-"
+        )
+    )
+    print(
+        "Maximum total bytes:  "
+        + (
+            str(policy.maximum_total_bytes)
+            if policy.maximum_total_bytes is not None
+            else "-"
+        )
+    )
+    print(f"Managed units:        {summary.managed_units}")
+    print(f"Managed bytes:        {summary.managed_bytes}")
+    print(f"Selected units:       {summary.selected_units}")
+    print(f"Selected bytes:       {summary.selected_bytes}")
+    print(f"Retained units:       {summary.retained_units}")
+    print(f"Protected units:      {summary.protected_units}")
+    print(f"Projected units:      {summary.projected_units}")
+    print(f"Projected bytes:      {summary.projected_bytes}")
+    print(
+        "All limits satisfied: "
+        + ("yes" if summary.all_limits_satisfied else "no")
+    )
+    print(f"Confirmation token:   {confirmation_token}")
+    print("Decisions:")
+    for decision in plan.decisions:
+        reasons = ",".join(reason.value for reason in decision.reasons)
+        print(
+            f"  {decision.disposition.value:7s} "
+            f"{decision.total_size_bytes:12d} "
+            f"{decision.entry.relative_audio_path} "
+            f"[{reasons}]"
+        )
+
+
+def _recording_retention_execution_payload(
+    plan: RecordingRetentionPlan,
+    result: RecordingRetentionExecutionResult,
+) -> dict[str, object]:
+    return {
+        "mode": "execution",
+        "plan": plan.as_dict(),
+        "execution": result.as_dict(),
+    }
+
+
+def _print_recording_retention_execution(
+    result: RecordingRetentionExecutionResult,
+) -> None:
+    summary = result.summary
+    print()
+    print("Recording retention execution")
+    print(f"Attempted units:      {summary.attempted_units}")
+    print(f"Completed units:      {summary.completed_units}")
+    print(f"Skipped units:        {summary.skipped_units}")
+    print(f"Failed units:         {summary.failed_units}")
+    print(f"Audio files deleted:  {summary.audio_files_deleted}")
+    print(f"Sidecars deleted:     {summary.metadata_files_deleted}")
+    print(f"Deleted bytes:        {summary.deleted_bytes}")
+    print(f"All completed:        {'yes' if summary.all_completed else 'no'}")
+    print("Results:")
+    for entry in result.entries:
+        message = f" — {entry.message}" if entry.message else ""
+        print(
+            f"  {entry.status.value:9s} "
+            f"{entry.deleted_bytes:12d} "
+            f"{entry.entry.relative_audio_path} "
+            f"[{entry.reason.value}]{message}"
+        )
+
+
+def _reject_recording_connection_options(args: argparse.Namespace) -> None:
+    if any(
+        value is not None
+        for value in (
+            args.model,
+            args.port,
+            args.host,
+            args.replay,
+            args.profile,
+            args.connection_preference,
+        )
+    ):
+        raise ValueError("Connection selectors are not used with recordings.")
+    if args.udp_port is not None or args.bind_address or args.bind_port:
+        raise ValueError("Network socket options are not used with recordings.")
+
+
+def _run_recordings(args: argparse.Namespace) -> int:
+    _reject_recording_connection_options(args)
+    if args.recordings_action != "retention":
+        raise ValueError(f"Unsupported recordings action: {args.recordings_action}")
+
+    policy = _recording_retention_policy(args)
+    if args.planned_at is not None and policy.maximum_age is None:
+        raise ValueError("--planned-at requires --maximum-age-days.")
+    if (
+        args.execute is not None
+        and policy.maximum_age is not None
+        and args.planned_at is None
+    ):
+        raise ValueError(
+            "--planned-at is required with --execute when "
+            "--maximum-age-days is used."
+        )
+
+    planned_at = args.planned_at
+    if policy.maximum_age is not None and planned_at is None:
+        planned_at = datetime.now(UTC)
+
+    inventory = scan_recording_inventory(args.root)
+    plan = plan_recording_retention(
+        inventory,
+        policy,
+        now=planned_at,
+    )
+    confirmation_token = recording_retention_confirmation_token(plan)
+
+    if args.execute is None:
+        if args.json:
+            print(
+                json.dumps(
+                    _recording_retention_plan_payload(
+                        plan,
+                        confirmation_token,
+                    ),
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+        else:
+            _print_recording_retention_plan(plan, confirmation_token)
+        return 0 if plan.summary.all_limits_satisfied else 1
+
+    result = execute_recording_retention(
+        plan,
+        confirmation=args.execute,
+    )
+    if args.json:
+        print(
+            json.dumps(
+                _recording_retention_execution_payload(plan, result),
+                indent=2,
+                sort_keys=True,
+            )
+        )
+    else:
+        _print_recording_retention_plan(plan, confirmation_token)
+        _print_recording_retention_execution(result)
+
+    return (
+        0
+        if plan.summary.all_limits_satisfied and result.summary.all_completed
+        else 1
+    )
+
+
 def _run_discovery(args: argparse.Namespace) -> int:
     if (
         args.port is not None
@@ -1848,6 +2137,9 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.action == "audio":
             return _run_audio(args)
+
+        if args.action == "recordings":
+            return _run_recordings(args)
 
         with selected_radio(args) as radio:
             if args.action == "info":

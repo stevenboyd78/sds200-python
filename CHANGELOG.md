@@ -19,6 +19,9 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 - Explicit plan-bound retention execution with stale-state revalidation,
   path-and-symlink refusal, deterministic WAV-plus-sidecar deletion, and immutable
   partial-failure reporting.
+- Local `sdsctl recordings retention` previews with stable JSON, exact plan-bound
+  execution tokens, fixed age-policy planning boundaries, and meaningful exit
+  statuses for unsatisfied limits or incomplete execution.
 
 ## [0.16.1] - 2026-08-02
 

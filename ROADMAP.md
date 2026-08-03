@@ -21,21 +21,21 @@ and ideas that are not ready for scheduling are recorded in
     retention planning.
   - Preserved malformed, unsafe, orphaned, and unknown-time artifacts for explicit
     review.
-- **Retention execution foundation — active**
-  - Add a renderer-neutral executor that consumes an existing retention plan
+- **Retention execution foundation — complete**
+  - Added a renderer-neutral executor that consumes an existing retention plan
     without selecting additional candidates.
-  - Require an explicit confirmation boundary before any filesystem mutation.
-  - Revalidate every selected managed unit against its inventory root and recorded
-    state immediately before execution.
-  - Handle each WAV file and adjacent metadata sidecar deterministically as one
+  - Bound every mutation to an exact explicit confirmation token.
+  - Revalidated selected units against their inventory root and recorded state.
+  - Handled each WAV file and adjacent metadata sidecar deterministically as one
     managed unit.
-  - Return immutable attempted, completed, skipped, and failed execution results.
-- **CLI preview and confirmation workflow — planned**
-  - Expose inventory and retention-plan previews before execution.
-  - Provide stable human-readable and JSON reports.
-  - Require an explicit destructive command and confirmation value.
-  - Clearly report unsatisfied limits, protected units, stale plans, and partial
-    failures.
+  - Returned immutable attempted, completed, skipped, and failed execution results.
+- **CLI preview and confirmation workflow — complete**
+  - Added local inventory and retention-plan previews without scanner hardware.
+  - Added stable human-readable and JSON reports.
+  - Required an explicit `--execute` value matching the exact displayed plan token.
+  - Preserved fixed planning boundaries across age-policy preview and execution.
+  - Reported unsatisfied limits, protected units, stale plans, and partial failures
+    through output and process status.
 - **Safety boundaries — required**
   - Never delete by default or execute from an implicit policy.
   - Execute only `select` decisions from the exact confirmed plan.
@@ -44,10 +44,13 @@ and ideas that are not ready for scheduling are recorded in
     entries that changed after inventory.
   - Do not remove directories or recursively delete unknown contents.
   - Preserve deterministic results when one managed unit cannot be completed.
-- **Validation — planned**
-  - Cover confirmation, stale-plan, path-safety, symlink, partial-failure, and
-    WAV-plus-sidecar behavior without requiring scanner hardware.
-  - Keep normal CI filesystem tests isolated beneath temporary directories.
+- **Validation — complete**
+  - Covered confirmation, inventory-bound tokens, stale plans, path safety,
+    symlinks, partial failures, and WAV-plus-sidecar behavior without scanner
+    hardware.
+  - Added CLI preview, JSON, fixed-age-boundary, exact-token execution, protected
+    artifact, and changed-artifact regression coverage.
+  - Kept normal CI filesystem tests isolated beneath temporary directories.
 
 ## Deferred hardware validation
 

@@ -326,9 +326,51 @@ valid managed units and require no metadata deletion. Directories and unknown
 contents are never removed recursively.
 
 The executor returns immutable completed, skipped, and failed unit reports.
-Confirmation-token presentation and interactive or command-line confirmation
-remain separate interface work; callers must not treat token generation alone as
-user consent.
+Confirmation-token presentation remains separate from consent; callers must not
+treat token generation alone as user approval.
+
+### CLI retention preview and execution
+
+`sdsctl recordings retention` exposes the same inventory, planning, and execution
+services without opening a scanner connection. At least one limit is required.
+The default operation is preview-only:
+
+```bash
+sdsctl recordings retention ~/scanner-recordings \
+  --maximum-age-days 30 \
+  --maximum-units 500 \
+  --maximum-total-bytes 21474836480
+```
+
+The preview prints every decision, projected totals, whether all requested limits
+can be satisfied safely, and an exact `delete:<sha256>` confirmation token. Add
+`--json` for a stable document containing the complete serialized plan and token.
+
+Execution requires both the destructive `--execute` option and the exact token
+from an unchanged preview:
+
+```bash
+sdsctl recordings retention ~/scanner-recordings \
+  --maximum-units 500 \
+  --execute 'delete:<exact-token-from-preview>'
+```
+
+Age policies also include the planning timestamp in the confirmed plan. Repeat
+the preview's `Planned at` value with `--planned-at` during execution so the exact
+plan can be reconstructed:
+
+```bash
+sdsctl recordings retention ~/scanner-recordings \
+  --maximum-age-days 30 \
+  --planned-at '2026-08-03T08:00:00+00:00' \
+  --execute 'delete:<exact-token-from-preview>'
+```
+
+A mismatched token exits with an error before mutation. Preview exits with status
+1 when protected units prevent the requested limits from being satisfied.
+Execution exits with status 1 when limits remain unsatisfied or any selected unit
+is skipped or fails. Retained, protected, stale, unsafe, and unrelated artifacts
+are never added to the execution set.
 
 ## Reliability statistics
 
