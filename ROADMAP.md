@@ -11,50 +11,43 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 17.3 — Recording inventory and retention planning
+### Milestone 17.4 — Explicit retention execution
 
-- **Milestone 17.2 recording organization — complete**
-  - Merged configurable recording organization after CI and CodeQL passed.
-  - Added safe ordered scanner, date, system, department, site, and channel
-    directories derived from immutable start-boundary identity.
-  - Preserved flat timestamp recording behavior when organization is not enabled.
-  - Added recursive TUI discovery for recordings stored in organized directories.
-  - Preserved collision-safe allocation and adjacent metadata-sidecar handling.
-- **Recording inventory foundation — complete**
-  - Added a renderer-neutral recursive inventory of recording artifacts.
-  - Represented each WAV file and adjacent metadata sidecar as one managed unit.
-  - Reported file sizes, recording timestamps, durations, frames, metadata
-    availability, and aggregate totals.
-  - Classified compatible, incompatible, unreadable, missing, orphaned, invalid,
-    and mismatched artifacts without mutating them.
-  - Added deterministic relative-path ordering and protection against managed-file
-    symlinks escaping the configured root.
-- **Retention planning and reporting — complete**
-  - Added explicit age, managed-unit, and aggregate-byte limits separately from
-    filesystem execution.
-  - Selected eligible managed units deterministically from oldest to newest.
-  - Protected unreadable, missing, unsafe-metadata, and unknown-time units from
-    automatic selection.
-  - Reported explained decisions, projected totals, and limits that protected
-    units prevent the plan from satisfying.
-  - Kept execution and deletion deferred to Milestone 17.4.
-- **Validation — complete**
-  - Passed Ruff and MyPy across 46 source files.
-  - Passed all 498 tests.
-  - Passed documentation checks across 28 Markdown files.
-  - Confirmed inventory scanning and retention planning are deterministic,
-    renderer-neutral, and read-only.
-- **Merge — pending**
-  - Merge the implementation after CI and CodeQL pass.
-- **Safety boundaries — preserved**
-  - Do not move, rename, overwrite, or delete recordings.
-  - Do not follow inventory paths outside the configured recording root.
-  - Treat a WAV file and its adjacent metadata sidecar as one managed unit.
-  - Preserve malformed and unknown artifacts for reporting rather than silently
-    discarding them.
-- **Next slice — planned**
-  - Milestone 17.4: explicit retention execution with previews and deterministic
-    audio-and-sidecar handling.
+- **Milestone 17.3 inventory and retention planning — complete**
+  - Merged PR #44 after all CI and CodeQL checks passed.
+  - Added renderer-neutral recursive recording inventory and artifact
+    classification.
+  - Added deterministic non-destructive age, managed-unit, and aggregate-byte
+    retention planning.
+  - Preserved malformed, unsafe, orphaned, and unknown-time artifacts for explicit
+    review.
+- **Retention execution foundation — active**
+  - Add a renderer-neutral executor that consumes an existing retention plan
+    without selecting additional candidates.
+  - Require an explicit confirmation boundary before any filesystem mutation.
+  - Revalidate every selected managed unit against its inventory root and recorded
+    state immediately before execution.
+  - Handle each WAV file and adjacent metadata sidecar deterministically as one
+    managed unit.
+  - Return immutable attempted, completed, skipped, and failed execution results.
+- **CLI preview and confirmation workflow — planned**
+  - Expose inventory and retention-plan previews before execution.
+  - Provide stable human-readable and JSON reports.
+  - Require an explicit destructive command and confirmation value.
+  - Clearly report unsatisfied limits, protected units, stale plans, and partial
+    failures.
+- **Safety boundaries — required**
+  - Never delete by default or execute from an implicit policy.
+  - Execute only `select` decisions from the exact confirmed plan.
+  - Never delete retained or protected entries.
+  - Refuse path escapes, symlinked managed artifacts, unexpected file types, and
+    entries that changed after inventory.
+  - Do not remove directories or recursively delete unknown contents.
+  - Preserve deterministic results when one managed unit cannot be completed.
+- **Validation — planned**
+  - Cover confirmation, stale-plan, path-safety, symlink, partial-failure, and
+    WAV-plus-sidecar behavior without requiring scanner hardware.
+  - Keep normal CI filesystem tests isolated beneath temporary directories.
 
 ## Deferred hardware validation
 
