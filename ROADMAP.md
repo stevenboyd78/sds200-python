@@ -16,11 +16,12 @@ and ideas that are not ready for scheduling are recorded in
 - **Release bookkeeping — complete**
   - Set the package and public runtime version to `0.17.0`.
   - Finalized the changelog and completed-milestone roadmap entries.
-- **Acceptance validation — planned**
-  - Run full static, test, documentation, distribution, and clean-install checks.
-  - Smoke-test retention preview, JSON output, refusal, and confirmed execution
-    against disposable recording files.
-- **Publication — planned**
+- **Acceptance validation — complete**
+  - Passed full static, test, documentation, distribution, and clean-install checks.
+  - Built and inspected the wheel and source distribution and passed `twine check`.
+  - Smoke-tested retention preview, JSON output, wrong-token refusal, and confirmed
+    WAV-plus-sidecar execution from a clean Python 3.14 wheel installation.
+- **Publication — active**
   - Merge the release-preparation pull request after CI and CodeQL pass.
   - Publish the `v0.17.0` GitHub tag, release, and PyPI artifacts.
   - Verify a clean Python 3.14 installation from PyPI.
