@@ -289,8 +289,88 @@ Protected units continue to count toward projected unit and byte totals, so the
 plan explicitly reports limits it cannot satisfy safely.
 
 A selected WAV and its adjacent sidecar remain one managed unit. Planning performs
-no move, rename, overwrite, or deletion. Filesystem execution and destructive
-confirmation remain deferred to Milestone 17.4.
+no move, rename, overwrite, or deletion.
+
+## Recording retention execution
+
+Milestone 17.4 adds a renderer-neutral execution foundation that consumes one
+existing retention plan. Execution requires the exact confirmation token derived
+from that plan; a token from another policy, inventory, timestamp, or decision set
+is rejected before filesystem mutation:
+
+```python
+from sds200 import (
+    execute_recording_retention,
+    recording_retention_confirmation_token,
+)
+
+confirmation = recording_retention_confirmation_token(plan)
+result = execute_recording_retention(
+    plan,
+    confirmation=confirmation,
+)
+print(result.summary.as_dict())
+```
+
+Only decisions already marked `select` are considered. Retained and protected
+entries are never added implicitly. Before each selected unit is changed, the
+executor verifies the resolved inventory root, adjacent sidecar path, regular-file
+types, absence of symlinks, captured sizes and modification state, and a fresh
+inventory view. A stale or unsafe unit is skipped while later selected units
+continue deterministically.
+
+When metadata is present and valid, its sidecar is deleted before the WAV. A
+sidecar failure preserves the WAV. A later WAV failure is reported as a partial
+failure with the exact deleted-byte and file counts. Missing sidecars remain
+valid managed units and require no metadata deletion. Directories and unknown
+contents are never removed recursively.
+
+The executor returns immutable completed, skipped, and failed unit reports.
+Confirmation-token presentation remains separate from consent; callers must not
+treat token generation alone as user approval.
+
+### CLI retention preview and execution
+
+`sdsctl recordings retention` exposes the same inventory, planning, and execution
+services without opening a scanner connection. At least one limit is required.
+The default operation is preview-only:
+
+```bash
+sdsctl recordings retention ~/scanner-recordings \
+  --maximum-age-days 30 \
+  --maximum-units 500 \
+  --maximum-total-bytes 21474836480
+```
+
+The preview prints every decision, projected totals, whether all requested limits
+can be satisfied safely, and an exact `delete:<sha256>` confirmation token. Add
+`--json` for a stable document containing the complete serialized plan and token.
+
+Execution requires both the destructive `--execute` option and the exact token
+from an unchanged preview:
+
+```bash
+sdsctl recordings retention ~/scanner-recordings \
+  --maximum-units 500 \
+  --execute 'delete:<exact-token-from-preview>'
+```
+
+Age policies also include the planning timestamp in the confirmed plan. Repeat
+the preview's `Planned at` value with `--planned-at` during execution so the exact
+plan can be reconstructed:
+
+```bash
+sdsctl recordings retention ~/scanner-recordings \
+  --maximum-age-days 30 \
+  --planned-at '2026-08-03T08:00:00+00:00' \
+  --execute 'delete:<exact-token-from-preview>'
+```
+
+A mismatched token exits with an error before mutation. Preview exits with status
+1 when protected units prevent the requested limits from being satisfied.
+Execution exits with status 1 when limits remain unsatisfied or any selected unit
+is skipped or fails. Retained, protected, stale, unsafe, and unrelated artifacts
+are never added to the execution set.
 
 ## Reliability statistics
 

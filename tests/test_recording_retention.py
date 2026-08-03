@@ -41,6 +41,8 @@ def inventory_entry(
         frames=8000 if audio_status is not RecordingAudioStatus.MISSING else None,
         audio_size_bytes=size_bytes,
         metadata_size_bytes=0,
+        audio_modified_ns=1,
+        metadata_modified_ns=0,
         modified_ns=1,
     )
 
