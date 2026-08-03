@@ -436,6 +436,52 @@ thread-safe `interrupt()` operation so shutdown can unblock an in-flight
 Broadcastify adapter below is the first production implementation; command-line
 configuration is not available yet.
 
+## Saved remote-audio destination profiles
+
+Milestone 18.2 adds the immutable `BroadcastifyDestinationProfile` model and a
+dedicated `RemoteAudioProfileStore`. Remote-audio destinations are kept separate
+from scanner connection profiles in the versioned file
+`${XDG_CONFIG_HOME:-~/.config}/sds200/remote-audio-profiles.toml`.
+
+A minimal document contains adapter identity, endpoint fields, and the name of
+the environment variable that supplies the source password:
+
+```toml
+version = 1
+
+[destinations."county-feed"]
+kind = "broadcastify"
+server = "audio1.broadcastify.com"
+mount = "/replace-with-technicals-mount"
+password_env = "SDS200_BROADCASTIFY_PASSWORD"
+port = 80
+stream_name = "County Public Safety"
+```
+
+The profile never contains the resolved password. Calling
+`to_broadcastify_config()` creates the existing validated `BroadcastifyConfig`
+with an `EnvironmentSecret` reference while preserving port, metadata, FFmpeg,
+buffering, timeout, and reconnect-policy settings:
+
+```python
+from sds200 import RemoteAudioProfileStore, create_broadcastify_sink
+
+profile = RemoteAudioProfileStore().get("county-feed")
+broadcastify_sink = create_broadcastify_sink(
+    profile.to_broadcastify_config()
+)
+```
+
+Profiles are returned in deterministic name order. Writes use a temporary file
+followed by atomic replacement. Unsupported document versions, top-level fields,
+destination kinds, and profile fields are rejected before any rewrite, so newer
+or otherwise unknown configuration is not silently discarded.
+
+The current location remains under the legacy `sds200` configuration root.
+Milestone 19 will define layered system and user configuration, precedence, and
+safe migration into the `sdsctl` namespace. CLI, TUI, and daemon activation of
+saved remote-audio profiles are not part of Milestone 18.2.
+
 ## Broadcastify feed adapter
 
 Milestone 16.3.1 adds a Broadcastify-compatible Icecast source connection on top

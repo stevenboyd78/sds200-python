@@ -13,26 +13,25 @@ and ideas that are not ready for scheduling are recorded in
 
 ### Milestone 18.2 — Saved remote-audio destination profiles
 
-- **Renderer-neutral profile model — planned**
-  - Add an immutable typed Broadcastify destination profile.
-  - Store only environment-variable secret references, never resolved credentials.
-  - Preserve adapter, buffering, timeout, FFmpeg, and reconnect-policy settings.
-  - Convert saved profiles into the existing validated `BroadcastifyConfig`.
-- **Versioned persistence — planned**
-  - Add a dedicated TOML store separate from scanner connection profiles.
-  - Use the current legacy configuration root until Milestone 19 introduces
+- **Renderer-neutral profile model — complete**
+  - Added an immutable typed Broadcastify destination profile.
+  - Stored only environment-variable secret references, never resolved credentials.
+  - Preserved adapter, buffering, timeout, FFmpeg, and reconnect-policy settings.
+  - Converted saved profiles into the existing validated `BroadcastifyConfig`.
+- **Versioned persistence — complete**
+  - Added a dedicated TOML store separate from scanner connection profiles.
+  - Used the current legacy configuration root until Milestone 19 introduces
     layered `sdsctl` configuration and migration.
-  - Provide deterministic ordering, atomic replacement, and precise validation
+  - Added deterministic ordering, atomic replacement, and precise validation
     errors for malformed or unsupported documents.
-  - Preserve unknown future profile kinds by refusing unsupported input rather
-    than silently rewriting it.
-- **Compatibility and validation — planned**
-  - Keep resolved secrets out of files, representations, logs, and exceptions.
-  - Leave CLI, TUI, daemon activation, and layered precedence outside this
+  - Refused unsupported versions, profile kinds, and fields before rewriting.
+- **Compatibility and validation — complete**
+  - Kept resolved secrets out of files, representations, logs, and exceptions.
+  - Left CLI, TUI, daemon activation, and layered precedence outside this
     milestone.
-  - Add round-trip, legacy/default, malformed-input, secret-safety, conversion,
-    and reconnect-policy tests.
-  - Document the renderer-neutral contract and future configuration migration
+  - Added round-trip, default, malformed-input, secret-safety, conversion,
+    reconnect-policy, strict-version, and unsupported-field tests.
+  - Documented the renderer-neutral contract and future configuration migration
     boundary.
 
 ## Deferred hardware validation
