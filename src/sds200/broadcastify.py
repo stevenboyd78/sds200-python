@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from time import monotonic
 from typing import BinaryIO, Protocol, cast
+from urllib.parse import urlencode
 
 from .audio_recording import PCM_CHANNELS, PCM_SAMPLE_WIDTH, PCMU_SAMPLE_RATE
 from .exceptions import AudioOutputError
@@ -20,11 +21,18 @@ from .remote_audio import (
     RemoteDestinationConfig,
     RemotePcmSink,
 )
+from .remote_audio_metadata import RemoteStreamMetadata
+from .remote_audio_metadata_publisher import (
+    RemoteMetadataPublication,
+    RemoteMetadataPublisher,
+    RemoteMetadataPublisherConfig,
+)
 
 BROADCASTIFY_SAMPLE_RATE = 22_050
 BROADCASTIFY_MONO_BITRATE_KBPS = 16
 BROADCASTIFY_ALLOWED_PORTS = frozenset({80, 8000, 8080, 8500})
 BROADCASTIFY_PASSWORD_SECRET = "password"
+BROADCASTIFY_METADATA_PATH = "/admin/metadata"
 
 _MAX_RESPONSE_BYTES = 8192
 _PUMP_CHUNK_BYTES = 4096
@@ -116,6 +124,38 @@ class BroadcastifyConfig:
     def endpoint(self) -> str:
         return f"http://{self.server}:{self.port}{self.mount}"
 
+    @property
+    def metadata_endpoint(self) -> str:
+        query = urlencode(
+            {
+                "mount": self.mount,
+                "mode": "updinfo",
+            }
+        )
+        return (
+            f"http://{self.server}:{self.port}"
+            f"{BROADCASTIFY_METADATA_PATH}?{query}"
+        )
+
+    def remote_metadata_destination(
+        self,
+        *,
+        minimum_update_interval: float = 0.0,
+        stop_timeout: float | None = None,
+    ) -> RemoteMetadataPublisherConfig:
+        """Build service-neutral configuration for metadata publication."""
+
+        return RemoteMetadataPublisherConfig(
+            name=self.name,
+            endpoint=self.metadata_endpoint,
+            secrets={BROADCASTIFY_PASSWORD_SECRET: self.password},
+            minimum_update_interval=minimum_update_interval,
+            stop_timeout=(
+                self.stop_timeout if stop_timeout is None else stop_timeout
+            ),
+            reconnect_policy=self.reconnect_policy,
+        )
+
     def remote_destination(self) -> RemoteDestinationConfig:
         return RemoteDestinationConfig(
             name=self.name,
@@ -198,6 +238,154 @@ class BroadcastifyConnectionFactory:
             encoder_factory=self._encoder_factory,
             socket_factory=self._socket_factory,
         )
+
+
+class BroadcastifyMetadataPublicationFactory:
+    """Create one short-lived authenticated Icecast metadata update."""
+
+    def __init__(
+        self,
+        config: BroadcastifyConfig,
+        *,
+        socket_factory: _SocketFactory | None = None,
+    ) -> None:
+        self.config = config
+        self._socket_factory = (
+            _open_socket if socket_factory is None else socket_factory
+        )
+
+    def __call__(
+        self,
+        config: RemoteMetadataPublisherConfig,
+        secrets: Mapping[str, str],
+        metadata: RemoteStreamMetadata,
+    ) -> RemoteMetadataPublication:
+        if config.endpoint != self.config.metadata_endpoint:
+            raise AudioOutputError(
+                "Broadcastify metadata factory received an unexpected endpoint."
+            )
+        password = secrets.get(BROADCASTIFY_PASSWORD_SECRET)
+        if not password:
+            raise AudioOutputError(
+                "Broadcastify source password was not resolved for metadata."
+            )
+        return BroadcastifyMetadataPublication(
+            self.config,
+            password,
+            metadata,
+            socket_factory=self._socket_factory,
+        )
+
+
+class BroadcastifyMetadataPublication:
+    """One interruptible Broadcastify-compatible Icecast metadata request."""
+
+    def __init__(
+        self,
+        config: BroadcastifyConfig,
+        password: str,
+        metadata: RemoteStreamMetadata,
+        *,
+        socket_factory: _SocketFactory | None = None,
+    ) -> None:
+        if not password:
+            raise AudioOutputError(
+                "Broadcastify metadata password must not be empty."
+            )
+        if not isinstance(metadata, RemoteStreamMetadata):
+            raise TypeError(
+                "Broadcastify metadata publication requires "
+                "RemoteStreamMetadata."
+            )
+
+        self.config = config
+        self.metadata = metadata
+        self._password = password
+        self._socket_factory = (
+            _open_socket if socket_factory is None else socket_factory
+        )
+        self._lock = threading.RLock()
+        self._socket: _SocketLike | None = None
+        self._interrupted = False
+        self._closed = False
+
+    def publish(self) -> None:
+        with self._lock:
+            if self._closed:
+                raise AudioOutputError(
+                    "Broadcastify metadata publication is closed."
+                )
+            if self._interrupted:
+                raise AudioOutputError(
+                    "Broadcastify metadata publication was interrupted."
+                )
+
+        source_socket = self._socket_factory(
+            (self.config.server, self.config.port),
+            self.config.connect_timeout,
+        )
+        with self._lock:
+            closed = self._closed
+            interrupted = self._interrupted
+            if not closed and not interrupted:
+                self._socket = source_socket
+
+        if closed or interrupted:
+            _close_socket(source_socket)
+            raise AudioOutputError(
+                "Broadcastify metadata publication was interrupted."
+            )
+
+        try:
+            source_socket.settimeout(self.config.socket_timeout)
+            source_socket.sendall(
+                _metadata_request(
+                    self.config,
+                    self._password,
+                    self.metadata.render_title(),
+                )
+            )
+            response = _read_response_headers(source_socket)
+            _validate_metadata_response(response)
+        except Exception as error:
+            with self._lock:
+                interrupted = self._interrupted
+            if interrupted:
+                raise AudioOutputError(
+                    "Broadcastify metadata publication was interrupted."
+                ) from error
+            if isinstance(error, AudioOutputError):
+                raise
+            raise AudioOutputError(
+                "Broadcastify metadata request failed: "
+                f"{type(error).__name__}: {error}"
+            ) from error
+        finally:
+            with self._lock:
+                if self._socket is source_socket:
+                    self._socket = None
+            _close_socket(source_socket)
+
+    def interrupt(self) -> None:
+        with self._lock:
+            if self._closed or self._interrupted:
+                return
+            self._interrupted = True
+            source_socket = self._socket
+
+        if source_socket is not None:
+            _close_socket(source_socket)
+
+    def close(self) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            source_socket = self._socket
+            self._socket = None
+
+        if source_socket is not None:
+            _close_socket(source_socket)
 
 
 class BroadcastifyConnection:
@@ -387,6 +575,30 @@ class BroadcastifyConnection:
             ) from error
 
 
+def create_broadcastify_metadata_publisher(
+    config: BroadcastifyConfig,
+    *,
+    environ: Mapping[str, str] | None = None,
+    minimum_update_interval: float = 0.0,
+    stop_timeout: float | None = None,
+    socket_factory: _SocketFactory | None = None,
+) -> RemoteMetadataPublisher:
+    """Create an isolated worker-backed Broadcastify metadata publisher."""
+
+    factory = BroadcastifyMetadataPublicationFactory(
+        config,
+        socket_factory=socket_factory,
+    )
+    return RemoteMetadataPublisher(
+        config.remote_metadata_destination(
+            minimum_update_interval=minimum_update_interval,
+            stop_timeout=stop_timeout,
+        ),
+        factory,
+        environ=environ,
+    )
+
+
 def create_broadcastify_sink(
     config: BroadcastifyConfig,
     *,
@@ -469,6 +681,51 @@ def _start_ffmpeg_encoder(command: tuple[str, ...]) -> _EncoderProcess:
 
 def _open_socket(address: tuple[str, int], timeout: float) -> _SocketLike:
     return socket.create_connection(address, timeout=timeout)
+
+
+def _metadata_request(
+    config: BroadcastifyConfig,
+    password: str,
+    title: str,
+) -> bytes:
+    credentials = base64.b64encode(
+        f"source:{password}".encode()
+    ).decode("ascii")
+    query = urlencode(
+        {
+            "mount": config.mount,
+            "mode": "updinfo",
+            "song": title,
+        }
+    )
+    request_lines = (
+        f"GET {BROADCASTIFY_METADATA_PATH}?{query} HTTP/1.0",
+        f"Host: {config.server}:{config.port}",
+        f"Authorization: Basic {credentials}",
+        "User-Agent: sds200-python",
+        "Connection: close",
+        "",
+        "",
+    )
+    return "\r\n".join(request_lines).encode("utf-8")
+
+
+def _validate_metadata_response(response: bytes) -> None:
+    first_line = response.splitlines()[0].decode(
+        "iso-8859-1",
+        errors="replace",
+    )
+    parts = first_line.split(maxsplit=2)
+    if len(parts) < 2 or not parts[1].isdigit():
+        raise AudioOutputError(
+            "Broadcastify returned an invalid Icecast metadata response."
+        )
+    status = int(parts[1])
+    if not 200 <= status < 300:
+        raise AudioOutputError(
+            "Broadcastify rejected the Icecast metadata update "
+            f"with status {status}."
+        )
 
 
 def _authenticate_source(

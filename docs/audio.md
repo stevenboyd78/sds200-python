@@ -464,11 +464,19 @@ with an `EnvironmentSecret` reference while preserving port, metadata, FFmpeg,
 buffering, timeout, and reconnect-policy settings:
 
 ```python
-from sds200 import RemoteAudioProfileStore, create_broadcastify_sink
+from sds200 import (
+    RemoteAudioProfileStore,
+    create_broadcastify_metadata_publisher,
+    create_broadcastify_sink,
+)
 
 profile = RemoteAudioProfileStore().get("county-feed")
-broadcastify_sink = create_broadcastify_sink(
-    profile.to_broadcastify_config()
+config = profile.to_broadcastify_config()
+
+broadcastify_sink = create_broadcastify_sink(config)
+metadata_publisher = create_broadcastify_metadata_publisher(
+    config,
+    minimum_update_interval=2.0,
 )
 ```
 
@@ -494,7 +502,8 @@ An approved Broadcastify feed supplies its receiver server, port, mount, and sou
 password on the feed owner's **Technicals** tab. Supported live-audio ports are 80,
 8000, 8080, and 8500. The adapter sends static Icecast source metadata including
 the stream name, scanner genre, public flag, bitrate, sample rate, and mono channel
-count. Dynamic alpha-tag updates synchronized with PSI state are not enabled yet.
+count. Milestone 18.3 also provides optional dynamic alpha-tag updates synchronized
+with live scanner state through an explicit Python API.
 
 Install an FFmpeg build with the `libmp3lame` encoder and make the executable
 available on `PATH`. Keep the source password outside application arguments and
@@ -532,6 +541,59 @@ reconnect backoff, and shutdown remain outside the scanner RTP callback. The
 adapter's `interrupt()` path closes the Icecast socket and terminates FFmpeg so a
 blocked network or encoder operation cannot hold up application shutdown.
 
+## Broadcastify live stream metadata
+
+`RemoteStreamMetadata` derives immutable renderer-neutral metadata from one
+`RadioStateSnapshot`. Active reception uses system, department, and channel or
+frequency components. Scanning, idle, stale, and unavailable states receive
+explicit titles. Values are whitespace-normalized, control characters are
+rejected, duplicate title components are removed case-insensitively, and rendered
+titles are bounded.
+
+`create_broadcastify_metadata_publisher()` creates a worker independent from the
+PCM sink. `submit_radio_state()` performs only derivation and newest-value
+enqueueing, so it can be subscribed directly to `radio.on_state()`. Exact
+duplicate titles are suppressed. When updates arrive faster than publication,
+only the newest pending value is retained. An optional minimum update interval
+limits successful publications without blocking scanner callbacks.
+
+```python
+from sds200 import create_broadcastify_metadata_publisher
+
+metadata_publisher = create_broadcastify_metadata_publisher(
+    feed,
+    minimum_update_interval=2.0,
+)
+
+metadata_publisher.start()
+unsubscribe = radio.on_state(metadata_publisher.submit_radio_state)
+
+try:
+    radio.wait()
+finally:
+    unsubscribe()
+    metadata_publisher.stop()
+```
+
+Each attempt resolves the existing environment-backed source-password reference
+on the publisher worker and sends a short-lived authenticated Icecast
+`/admin/metadata` request containing the configured mount, `mode=updinfo`, and
+the rendered `song` title. The request follows the
+[Icecast admin metadata interface][icecast-admin-metadata] and does not use,
+reconnect, or interrupt the active audio source socket.
+
+`RemoteMetadataPublisherSnapshot` exposes submission, publication, duplicate,
+superseded-value, attempt, failure, retry, timestamp, pending-title,
+published-title, and redacted last-error state. Publication failures use the
+configured reconnect policy and remain isolated from scanner control, PSI
+processing, recording, and PCM delivery.
+
+The request and concurrency contracts have deterministic test coverage.
+Acceptance of dynamic metadata by the assigned production Broadcastify service
+still requires a service-account smoke test. Existing production validation
+covers source authorization, routing, encoding, and audio delivery, but not the
+new `/admin/metadata` request.
+
 Broadcastify currently documents plain Icecast source ports rather than TLS source
 endpoints. The source authorization header is therefore transported over an
 unencrypted TCP connection. Use only the server and port assigned by Broadcastify,
@@ -543,6 +605,7 @@ and [Barix Icecast source setup][broadcastify-barix] for the service-side profil
 
 [broadcastify-alternative]: https://support.broadcastify.com/hc/en-us/articles/204740015-Alternative-Broadcasting-Software-and-Clients
 [broadcastify-barix]: https://support.broadcastify.com/hc/en-us/articles/22099461024539-Barix-Instreamer-Setup-for-Broadcastify
+[icecast-admin-metadata]: https://icecast.org/docs/icecast-latest/admin_interface/
 
 ## Asterisk Music-on-Hold bridge
 
