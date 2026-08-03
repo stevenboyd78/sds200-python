@@ -11,28 +11,33 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 18.2 — Saved remote-audio destination profiles
+### Milestone 18.3 — Remote-audio stream metadata synchronization
 
-- **Renderer-neutral profile model — complete**
-  - Added an immutable typed Broadcastify destination profile.
-  - Stored only environment-variable secret references, never resolved credentials.
-  - Preserved adapter, buffering, timeout, FFmpeg, and reconnect-policy settings.
-  - Converted saved profiles into the existing validated `BroadcastifyConfig`.
-- **Versioned persistence — complete**
-  - Added a dedicated TOML store separate from scanner connection profiles.
-  - Used the current legacy configuration root until Milestone 19 introduces
-    layered `sdsctl` configuration and migration.
-  - Added deterministic ordering, atomic replacement, and precise validation
-    errors for malformed or unsupported documents.
-  - Refused unsupported versions, profile kinds, and fields before rewriting.
-- **Compatibility and validation — complete**
-  - Kept resolved secrets out of files, representations, logs, and exceptions.
-  - Left CLI, TUI, daemon activation, and layered precedence outside this
-    milestone.
-  - Added round-trip, default, malformed-input, secret-safety, conversion,
-    reconnect-policy, strict-version, and unsupported-field tests.
-  - Documented the renderer-neutral contract and future configuration migration
-    boundary.
+- **Renderer-neutral metadata model — planned**
+  - Derive immutable stream metadata from `RadioStateSnapshot`.
+  - Provide deterministic title formatting for active channels and explicit
+    scanning, idle, or unavailable states.
+  - Normalize whitespace, reject control characters, and bound rendered metadata
+    length without modifying the scanner state model.
+  - Keep derivation independent from Broadcastify, Icecast, CLI, TUI, and daemon
+    consumers.
+- **Isolated metadata publisher — planned**
+  - Add a worker-backed newest-value queue so PSI callbacks perform no network I/O.
+  - Suppress duplicate titles and support a configurable minimum update interval.
+  - Own connection creation, authentication, response parsing, retries, and
+    bounded shutdown independently from PCM delivery.
+  - Preserve immutable submission, publication, suppression, failure, and
+    last-error metrics.
+- **Broadcastify and compatibility validation — planned**
+  - Publish short-lived authenticated Icecast metadata updates without touching
+    the active PCM source connection or `RemotePcmSink`.
+  - Resolve secret references only on the publisher worker and redact failures.
+  - Keep metadata failures isolated from scanner control, PSI processing, audio
+    streaming, recording, and other sinks.
+  - Add deterministic formatting, duplicate, rate-limit, retry, shutdown,
+    redaction, malformed-response, and listener-isolation tests.
+  - Document the production-service smoke-test boundary and leave CLI, TUI, and
+    daemon activation outside this milestone.
 
 ## Deferred hardware validation
 
@@ -59,7 +64,6 @@ assignment may change before implementation begins.
 
 ### Remaining Milestone 18 candidates — Remote-audio operations
 
-- Synchronize optional stream metadata with live PSI state.
 - Support pluggable encoder processes for destinations that do not accept native
   8 kHz mono PCM or G.711 mu-law.
 - Add pluggable local playback adapters for PortAudio, PipeWire, PulseAudio, and
@@ -215,3 +219,6 @@ fixtures before renderer-specific implementation.
 - Milestone 18.1: renderer-neutral remote-destination health classification,
   serializable operational snapshots, ordered lifecycle transition events,
   timezone-aware timestamps, listener isolation, and shutdown-safe concurrency.
+- Milestone 18.2: immutable saved Broadcastify destination profiles, dedicated
+  versioned TOML persistence, environment-variable secret references, strict
+  schema validation, deterministic atomic writes, and validated adapter conversion.
