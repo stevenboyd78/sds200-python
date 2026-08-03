@@ -11,37 +11,29 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 16.7 — v0.16.1 Linux audio support
+### Milestone 17.0 — Recording organization and retention roadmap
 
-- **v0.16.0 publication — complete**
-  - Merged the release-preparation change after CI and CodeQL passed.
-  - Tagged `v0.16.0` from the validated `main` commit.
-  - Published the normal GitHub release and PyPI distributions.
-  - Verified a clean Python 3.14 installation of `sds200[tui,playback]==0.16.0`
-    with no broken requirements.
-- **Linux playback maintenance — complete**
-  - Documented the PortAudio runtime required by `sounddevice` on Debian and
-    Raspberry Pi OS.
-  - Added an actionable `libportaudio2` installation diagnostic when the shared
-    library is missing.
-  - Added local PortAudio host-API, default-output, and output-device inspection
-    without requiring scanner hardware.
-  - Preserved deferred output-device opening and scanner-control isolation.
-- **Validation — complete**
-  - Passed Ruff, MyPy across 42 source files, 444 tests, and documentation checks
-    across 28 Markdown files.
-  - Built the `0.16.1` source and wheel distributions and passed Twine checks.
-  - Validated default and explicit-device playback on Raspberry Pi OS through
-    PortAudio and ALSA.
-  - Confirmed clean live audio with no RTP loss, duplicates, late packets,
-    malformed packets, source mismatches, timestamp discontinuities, playback
-    drops, overflows, or callback-status errors.
-  - Advanced package and CLI metadata to `0.16.1`.
-- **Publication — pending**
-  - Merge the maintenance change after CI and CodeQL pass.
-  - Tag `v0.16.1` from the validated `main` commit.
-  - Publish the GitHub release and PyPI distributions.
-  - Verify a clean PyPI installation of `sds200[tui,playback]==0.16.1`.
+- **Released baseline — complete**
+  - Merged the v0.16.1 Linux-audio maintenance change after CI and CodeQL passed.
+  - Tagged and published `v0.16.1` as a normal GitHub release and on PyPI.
+  - Verified a clean Python 3.14 installation of
+    `sds200[tui,playback]==0.16.1` with no broken requirements.
+  - Verified the installed package's metadata, runtime version, CLI version, and
+    local PortAudio device inspection.
+- **Milestone decomposition — active**
+  - Milestone 17.1: safe recording identity and filename components derived from
+    immutable recording metadata.
+  - Milestone 17.2: configurable recording organization by scanner, date, system,
+    department, site, or channel.
+  - Milestone 17.3: recording inventory, retention planning, and reporting.
+  - Milestone 17.4: explicit retention execution with previews and deterministic
+    audio-and-sidecar handling.
+- **Cross-cutting safety constraints — required**
+  - Keep organization and retention services renderer-neutral.
+  - Treat each recording's audio file and metadata sidecar as one managed unit.
+  - Do not delete recordings by default.
+  - Require an explicit policy and dry-run preview before destructive retention
+    actions.
 
 ## Deferred hardware validation
 
@@ -65,16 +57,6 @@ fixture-tested, not hardware-validated.
 
 These milestone groups preserve intended future work. Their numbering and release
 assignment may change before implementation begins.
-
-### Milestone 17 — Recording organization and retention
-
-- Add safe filename components derived from scanner state.
-- Organize recordings by configurable scanner, date, system, department, site, or
-  channel components.
-- Add retention planning and reporting helpers.
-- Do not delete recordings by default.
-- Require explicit policy and preview before destructive retention actions.
-- Preserve recording sidecars and audio files as one managed unit.
 
 ### Milestone 18 — Remote-audio operations
 
@@ -222,3 +204,7 @@ fixtures before renderer-specific implementation.
   documented.
 - Milestone 16.6: v0.16.0 release preparation, full CI and CodeQL validation,
   GitHub and PyPI publication, and clean Python 3.14 installation verification.
+- Milestone 16.7: Linux PortAudio runtime diagnostics, local host-API and
+  output-device inspection, Raspberry Pi default and explicit-device playback
+  validation, v0.16.1 GitHub and PyPI publication, and clean Python 3.14 PyPI
+  installation verification.
