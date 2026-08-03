@@ -175,6 +175,13 @@ from .remote_audio import (
     RemoteSinkHealth,
     RemoteSinkState,
 )
+from .remote_audio_profiles import (
+    REMOTE_AUDIO_PROFILE_VERSION,
+    BroadcastifyDestinationProfile,
+    RemoteAudioProfileKind,
+    RemoteAudioProfileStore,
+    default_remote_audio_profile_path,
+)
 from .replay import (
     CaptureEvent,
     CaptureSession,
@@ -258,6 +265,7 @@ __all__ = [
     "BROADCASTIFY_MONO_BITRATE_KBPS",
     "BROADCASTIFY_SAMPLE_RATE",
     "BroadcastifyConfig",
+    "BroadcastifyDestinationProfile",
     "BroadcastifyConnection",
     "BroadcastifyConnectionFactory",
     "PCM_CHANNELS",
@@ -347,7 +355,10 @@ __all__ = [
     "RecordingState",
     "RecordingTransport",
     "ReconnectPolicy",
+    "REMOTE_AUDIO_PROFILE_VERSION",
     "RemoteAudioConnection",
+    "RemoteAudioProfileKind",
+    "RemoteAudioProfileStore",
     "RemoteConnectionFactory",
     "RemoteDestinationConfig",
     "RemotePcmSink",
@@ -408,6 +419,7 @@ __all__ = [
     "classify_scanner_screen",
     "classify_signal",
     "create_broadcastify_sink",
+    "default_remote_audio_profile_path",
     "decode_mulaw",
     "decode_mulaw_sample",
     "discover_network_scanners",
