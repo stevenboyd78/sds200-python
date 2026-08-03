@@ -13,25 +13,26 @@ and ideas that are not ready for scheduling are recorded in
 
 ### Milestone 18.1 — Remote-audio health events and operational metrics
 
-- **Renderer-neutral health model — planned**
+- **Renderer-neutral health model — complete**
   - Classify each remote destination as inactive, healthy, degraded, or failed
     from its existing lifecycle state.
   - Preserve immutable cumulative queue, throughput, connection, retry, and
-    failure metrics in destination snapshots.
-  - Add transition sequence numbers and timezone-aware lifecycle timestamps.
-- **State-transition events — planned**
+    failure metrics in serializable destination snapshots.
+  - Record ordered transition sequence numbers and timezone-aware state-change,
+    connection, and failure timestamps.
+- **State-transition events — complete**
   - Emit immutable events only when the destination lifecycle state changes.
   - Include previous and current state and health plus the resulting snapshot.
   - Provide subscription and unsubscription through the existing isolated
     `EventBus` callback pattern.
-  - Dispatch callbacks outside the sink condition lock and prevent listener
-    failures from interrupting the remote worker.
-- **Compatibility and validation — planned**
-  - Preserve existing retry, buffering, redaction, adapter, and shutdown behavior.
-  - Keep remote-audio failures isolated from scanner control and other audio sinks.
-  - Add deterministic clock-injected lifecycle, reconnect, failure, listener, and
-    serialization tests.
-  - Document the renderer-neutral contract for future CLI, TUI, daemon, and
+  - Dispatch callbacks outside the sink condition lock, preserve event order
+    across concurrent shutdown, and support worker-callback stop requests.
+- **Compatibility and validation — complete**
+  - Preserved existing retry, buffering, redaction, adapter, and shutdown behavior.
+  - Kept remote-audio failures isolated from scanner control and other audio sinks.
+  - Added deterministic clock-injected lifecycle, reconnect, retry exhaustion,
+    listener isolation, concurrency, reentrant shutdown, and serialization tests.
+  - Documented the renderer-neutral contract for future CLI, TUI, daemon, and
     integration consumers.
 
 ## Deferred hardware validation

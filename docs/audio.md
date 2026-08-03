@@ -409,14 +409,32 @@ only when the worker opens an adapter connection. Resolved values are excluded f
 configuration representations, snapshots, and log messages; connection exceptions
 are redacted before they are retained or reported.
 
-`RemotePcmSinkSnapshot` reports immutable queue, throughput, connection-attempt,
-reconnect, failure, retry, and last-error state. Service adapters receive the
-configuration and resolved secret mapping through an injected
-`RemoteConnectionFactory`. Adapter connections provide a prompt, thread-safe
-`interrupt()` operation so shutdown can unblock an in-flight `write_pcm()` before
-the worker finalizes the connection with `close()`. The Broadcastify adapter below
-is the first production implementation; command-line configuration is not
-available yet.
+`RemotePcmSinkSnapshot` reports immutable queue, throughput,
+connection-attempt, reconnect, failure, retry, and last-error state. Milestone 18.1
+adds a renderer-neutral `health` classification, ordered transition sequence,
+timezone-aware state-change timestamp, and the most recent successful-connection
+and failure timestamps. `as_dict()` provides a stable serialization boundary with
+ISO-formatted timestamps and the complete `PcmSinkStatistics` counter set.
+
+`RemotePcmSink.on_transition()` subscribes to immutable
+`RemotePcmSinkTransition` events. Events are emitted only when the lifecycle state
+changes and include the previous and current state and health plus the resulting
+snapshot. Lifecycle states map to health as follows: `connected` is healthy;
+`connecting` and `backoff` are degraded; `failed` is failed; and `idle`,
+`stopping`, and `stopped` are inactive.
+
+Transition callbacks use the existing `EventBus` failure isolation, run outside
+the sink condition lock, and retain sequence order when worker and shutdown
+threads race. A callback may request sink shutdown without joining the worker from
+itself. Listener failures therefore do not interrupt remote delivery, scanner
+control, or other audio destinations.
+
+Service adapters receive the configuration and resolved secret mapping through an
+injected `RemoteConnectionFactory`. Adapter connections provide a prompt,
+thread-safe `interrupt()` operation so shutdown can unblock an in-flight
+`write_pcm()` before the worker finalizes the connection with `close()`. The
+Broadcastify adapter below is the first production implementation; command-line
+configuration is not available yet.
 
 ## Broadcastify feed adapter
 

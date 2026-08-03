@@ -8,9 +8,10 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Added
 
-- Renderer-neutral per-destination remote-audio health classification, immutable
-  state-transition events, transition timestamps, and expanded operational
-  snapshots for future CLI, TUI, daemon, and integration consumers.
+- Renderer-neutral `RemoteSinkHealth` classification, serializable
+  `RemotePcmSinkSnapshot` metrics, ordered `RemotePcmSinkTransition` events,
+  timezone-aware lifecycle timestamps, and isolated `on_transition()`
+  subscriptions for future CLI, TUI, daemon, and integration consumers.
 
 ## [0.17.0] - 2026-08-03
 
