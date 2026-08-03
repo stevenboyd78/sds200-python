@@ -453,7 +453,7 @@ version = 1
 kind = "broadcastify"
 server = "audio1.broadcastify.com"
 mount = "/replace-with-technicals-mount"
-password_env = "SDS200_BROADCASTIFY_PASSWORD"
+environment_variable = "SDS200_BROADCASTIFY_PASSWORD"
 port = 80
 stream_name = "County Public Safety"
 ```

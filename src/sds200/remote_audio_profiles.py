@@ -34,7 +34,7 @@ class BroadcastifyDestinationProfile:
     name: str
     server: str
     mount: str
-    password_env: str
+    environment_variable: str
     port: int = 80
     stream_name: str = "SDS200 scanner feed"
     genre: str = "Scanner"
@@ -78,7 +78,7 @@ class BroadcastifyDestinationProfile:
             name=self.name,
             server=self.server,
             mount=self.mount,
-            password=EnvironmentSecret(self.password_env),
+            password=EnvironmentSecret(self.environment_variable),
             port=self.port,
             stream_name=self.stream_name,
             genre=self.genre,
@@ -189,7 +189,7 @@ class RemoteAudioProfileStore:
             "kind",
             "server",
             "mount",
-            "password_env",
+            "environment_variable",
             "port",
             "stream_name",
             "genre",
@@ -236,7 +236,7 @@ class RemoteAudioProfileStore:
             name=name,
             server=_string_field(name, raw, "server"),
             mount=_string_field(name, raw, "mount"),
-            password_env=_string_field(name, raw, "password_env"),
+            environment_variable=_string_field(name, raw, "environment_variable"),
             port=_int_field(name, raw, "port", 80),
             stream_name=_string_field(
                 name,
@@ -294,7 +294,10 @@ class RemoteAudioProfileStore:
             lines.append('kind = "broadcastify"')
             lines.append(f"server = {json.dumps(profile.server)}")
             lines.append(f"mount = {json.dumps(profile.mount)}")
-            lines.append(f"password_env = {json.dumps(profile.password_env)}")
+            lines.append(
+                "environment_variable = "
+                f"{json.dumps(profile.environment_variable)}"
+            )
             lines.append(f"port = {profile.port}")
             lines.append(f"stream_name = {json.dumps(profile.stream_name)}")
             lines.append(f"genre = {json.dumps(profile.genre)}")

@@ -22,7 +22,7 @@ def minimal_profile(
         "name": name,
         "server": "audio1.broadcastify.com",
         "mount": "/abc123",
-        "password_env": "SDS200_BROADCASTIFY_PASSWORD",
+        "environment_variable": "SDS200_BROADCASTIFY_PASSWORD",
     }
     values.update(overrides)
     return BroadcastifyDestinationProfile(**values)
@@ -167,7 +167,7 @@ def test_remote_audio_profile_store_loads_minimal_document_with_defaults(
         'kind = "broadcastify"\n'
         'server = "audio1.broadcastify.com"\n'
         'mount = "/abc123"\n'
-        'password_env = "SDS200_BROADCASTIFY_PASSWORD"\n',
+        'environment_variable = "SDS200_BROADCASTIFY_PASSWORD"\n',
         encoding="utf-8",
     )
 
@@ -236,7 +236,7 @@ def test_remote_audio_profile_store_rejects_unknown_supported_kind_field(
         'kind = "broadcastify"\n'
         'server = "audio1.broadcastify.com"\n'
         'mount = "/abc123"\n'
-        'password_env = "SDS200_BROADCASTIFY_PASSWORD"\n'
+        'environment_variable = "SDS200_BROADCASTIFY_PASSWORD"\n'
         'future_option = true\n',
         encoding="utf-8",
     )
@@ -270,7 +270,7 @@ def test_remote_audio_profile_store_rejects_invalid_field_types(
         'kind = "broadcastify"\n'
         'server = "audio1.broadcastify.com"\n'
         'mount = "/abc123"\n'
-        'password_env = "SDS200_BROADCASTIFY_PASSWORD"\n'
+        'environment_variable = "SDS200_BROADCASTIFY_PASSWORD"\n'
         f"{field} = {value}\n",
         encoding="utf-8",
     )
@@ -281,7 +281,7 @@ def test_remote_audio_profile_store_rejects_invalid_field_types(
 
 def test_broadcastify_destination_profile_rejects_invalid_secret_reference() -> None:
     with pytest.raises(ProfileError, match="environment-variable name"):
-        minimal_profile(password_env=" padded ")
+        minimal_profile(environment_variable=" padded ")
 
 
 def test_broadcastify_destination_profile_rejects_invalid_reconnect_policy() -> None:
