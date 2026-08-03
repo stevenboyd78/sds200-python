@@ -175,6 +175,11 @@ from .remote_audio import (
     RemoteSinkHealth,
     RemoteSinkState,
 )
+from .remote_audio_metadata import (
+    DEFAULT_REMOTE_STREAM_TITLE_MAX_LENGTH,
+    RemoteStreamMetadata,
+    remote_stream_metadata_from_state,
+)
 from .remote_audio_profiles import (
     REMOTE_AUDIO_PROFILE_VERSION,
     BroadcastifyDestinationProfile,
@@ -285,6 +290,7 @@ __all__ = [
     "DEFAULT_DARK_THEME",
     "DEFAULT_DISCOVERY_WORKERS",
     "DEFAULT_LIGHT_THEME",
+    "DEFAULT_REMOTE_STREAM_TITLE_MAX_LENGTH",
     "DEFAULT_RTSP_PORT",
     "DEFAULT_SDS_PATTERN",
     "DEFAULT_SDS200_PATTERN",
@@ -366,6 +372,7 @@ __all__ = [
     "RemotePcmSinkTransition",
     "RemoteSinkHealth",
     "RemoteSinkState",
+    "RemoteStreamMetadata",
     "ReplayMismatchError",
     "ReplayTransport",
     "RtpPacket",
@@ -437,6 +444,7 @@ __all__ = [
     "profile_from_discovery",
     "recording_metadata_path",
     "recording_retention_confirmation_token",
+    "remote_stream_metadata_from_state",
     "repair_profile",
     "scan_recording_inventory",
     "safe_recording_component",
