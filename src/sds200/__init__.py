@@ -180,6 +180,14 @@ from .remote_audio_metadata import (
     RemoteStreamMetadata,
     remote_stream_metadata_from_state,
 )
+from .remote_audio_metadata_publisher import (
+    RemoteMetadataPublication,
+    RemoteMetadataPublicationFactory,
+    RemoteMetadataPublisher,
+    RemoteMetadataPublisherConfig,
+    RemoteMetadataPublisherSnapshot,
+    RemoteMetadataPublisherState,
+)
 from .remote_audio_profiles import (
     REMOTE_AUDIO_PROFILE_VERSION,
     BroadcastifyDestinationProfile,
@@ -365,6 +373,12 @@ __all__ = [
     "RemoteAudioConnection",
     "RemoteAudioProfileKind",
     "RemoteAudioProfileStore",
+    "RemoteMetadataPublication",
+    "RemoteMetadataPublicationFactory",
+    "RemoteMetadataPublisher",
+    "RemoteMetadataPublisherConfig",
+    "RemoteMetadataPublisherSnapshot",
+    "RemoteMetadataPublisherState",
     "RemoteConnectionFactory",
     "RemoteDestinationConfig",
     "RemotePcmSink",
