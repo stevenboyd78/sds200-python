@@ -153,6 +153,16 @@ from .recording_retention import (
     RecordingRetentionSummary,
     plan_recording_retention,
 )
+from .recording_retention_execution import (
+    RecordingRetentionConfirmationError,
+    RecordingRetentionExecutionEntry,
+    RecordingRetentionExecutionReason,
+    RecordingRetentionExecutionResult,
+    RecordingRetentionExecutionStatus,
+    RecordingRetentionExecutionSummary,
+    execute_recording_retention,
+    recording_retention_confirmation_token,
+)
 from .reliability import HealthHistory, HealthThresholds, ReconnectPolicy
 from .remote_audio import (
     EnvironmentSecret,
@@ -319,8 +329,14 @@ __all__ = [
     "RecordingOrganizationPolicy",
     "RecordingMetadata",
     "RecordingMetadataStatus",
+    "RecordingRetentionConfirmationError",
     "RecordingRetentionDecision",
     "RecordingRetentionDisposition",
+    "RecordingRetentionExecutionEntry",
+    "RecordingRetentionExecutionReason",
+    "RecordingRetentionExecutionResult",
+    "RecordingRetentionExecutionStatus",
+    "RecordingRetentionExecutionSummary",
     "RecordingRetentionPlan",
     "RecordingRetentionPolicy",
     "RecordingRetentionReason",
@@ -392,6 +408,7 @@ __all__ = [
     "decode_mulaw_sample",
     "discover_network_scanners",
     "discover_scanners",
+    "execute_recording_retention",
     "infer_model_from_device_name",
     "load_capture",
     "local_ipv4_networks",
@@ -403,6 +420,7 @@ __all__ = [
     "present_scanner_info",
     "profile_from_discovery",
     "recording_metadata_path",
+    "recording_retention_confirmation_token",
     "repair_profile",
     "scan_recording_inventory",
     "safe_recording_component",

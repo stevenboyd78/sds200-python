@@ -289,8 +289,46 @@ Protected units continue to count toward projected unit and byte totals, so the
 plan explicitly reports limits it cannot satisfy safely.
 
 A selected WAV and its adjacent sidecar remain one managed unit. Planning performs
-no move, rename, overwrite, or deletion. Filesystem execution and destructive
-confirmation remain deferred to Milestone 17.4.
+no move, rename, overwrite, or deletion.
+
+## Recording retention execution
+
+Milestone 17.4 adds a renderer-neutral execution foundation that consumes one
+existing retention plan. Execution requires the exact confirmation token derived
+from that plan; a token from another policy, inventory, timestamp, or decision set
+is rejected before filesystem mutation:
+
+```python
+from sds200 import (
+    execute_recording_retention,
+    recording_retention_confirmation_token,
+)
+
+confirmation = recording_retention_confirmation_token(plan)
+result = execute_recording_retention(
+    plan,
+    confirmation=confirmation,
+)
+print(result.summary.as_dict())
+```
+
+Only decisions already marked `select` are considered. Retained and protected
+entries are never added implicitly. Before each selected unit is changed, the
+executor verifies the resolved inventory root, adjacent sidecar path, regular-file
+types, absence of symlinks, captured sizes and modification state, and a fresh
+inventory view. A stale or unsafe unit is skipped while later selected units
+continue deterministically.
+
+When metadata is present and valid, its sidecar is deleted before the WAV. A
+sidecar failure preserves the WAV. A later WAV failure is reported as a partial
+failure with the exact deleted-byte and file counts. Missing sidecars remain
+valid managed units and require no metadata deletion. Directories and unknown
+contents are never removed recursively.
+
+The executor returns immutable completed, skipped, and failed unit reports.
+Confirmation-token presentation and interactive or command-line confirmation
+remain separate interface work; callers must not treat token generation alone as
+user consent.
 
 ## Reliability statistics
 
