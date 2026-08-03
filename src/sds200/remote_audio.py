@@ -6,6 +6,7 @@ import threading
 from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from types import MappingProxyType
 from typing import Literal, Protocol, runtime_checkable
 from urllib.parse import urlsplit
@@ -16,6 +17,7 @@ from .audio_recording import (
     PCMU_SAMPLE_RATE,
 )
 from .audio_sinks import PcmSinkStatistics
+from .events import EventBus
 from .exceptions import AudioOutputError
 from .reliability import ReconnectPolicy
 
@@ -32,6 +34,51 @@ RemoteSinkState = Literal[
     "stopping",
     "stopped",
 ]
+
+RemoteSinkHealth = Literal[
+    "inactive",
+    "healthy",
+    "degraded",
+    "failed",
+]
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _require_aware_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(
+            "Remote audio wall clock must return a timezone-aware datetime."
+        )
+    return value
+
+
+def _health_for_state(state: RemoteSinkState) -> RemoteSinkHealth:
+    if state == "connected":
+        return "healthy"
+    if state in {"connecting", "backoff"}:
+        return "degraded"
+    if state == "failed":
+        return "failed"
+    return "inactive"
+
+
+def _statistics_as_dict(statistics: PcmSinkStatistics) -> dict[str, int]:
+    return {
+        "bytes_submitted": statistics.bytes_submitted,
+        "bytes_written": statistics.bytes_written,
+        "bytes_dropped": statistics.bytes_dropped,
+        "queued_bytes": statistics.queued_bytes,
+        "underflows": statistics.underflows,
+        "overflows": statistics.overflows,
+        "callback_statuses": statistics.callback_statuses,
+    }
+
+
+def _isoformat(value: datetime | None) -> str | None:
+    return value.isoformat() if value is not None else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,6 +173,7 @@ class RemotePcmSinkSnapshot:
     name: str
     endpoint: str
     state: RemoteSinkState
+    health: RemoteSinkHealth
     running: bool
     connected: bool
     statistics: PcmSinkStatistics
@@ -135,7 +183,57 @@ class RemotePcmSinkSnapshot:
     failures: int
     retry_attempt: int
     next_retry_delay: float | None
+    transition_sequence: int
+    state_changed_at: datetime
+    last_connected_at: datetime | None
+    last_failure_at: datetime | None
     last_error: str | None
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "name": self.name,
+            "endpoint": self.endpoint,
+            "state": self.state,
+            "health": self.health,
+            "running": self.running,
+            "connected": self.connected,
+            "statistics": _statistics_as_dict(self.statistics),
+            "connection_attempts": self.connection_attempts,
+            "successful_connections": self.successful_connections,
+            "reconnects": self.reconnects,
+            "failures": self.failures,
+            "retry_attempt": self.retry_attempt,
+            "next_retry_delay": self.next_retry_delay,
+            "transition_sequence": self.transition_sequence,
+            "state_changed_at": self.state_changed_at.isoformat(),
+            "last_connected_at": _isoformat(self.last_connected_at),
+            "last_failure_at": _isoformat(self.last_failure_at),
+            "last_error": self.last_error,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class RemotePcmSinkTransition:
+    """One immutable remote-destination lifecycle state change."""
+
+    sequence: int
+    observed_at: datetime
+    previous_state: RemoteSinkState
+    state: RemoteSinkState
+    previous_health: RemoteSinkHealth
+    health: RemoteSinkHealth
+    snapshot: RemotePcmSinkSnapshot
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "sequence": self.sequence,
+            "observed_at": self.observed_at.isoformat(),
+            "previous_state": self.previous_state,
+            "state": self.state,
+            "previous_health": self.previous_health,
+            "health": self.health,
+            "snapshot": self.snapshot.as_dict(),
+        }
 
 
 class RemotePcmSink:
@@ -147,16 +245,22 @@ class RemotePcmSink:
         connection_factory: RemoteConnectionFactory,
         *,
         environ: Mapping[str, str] | None = None,
+        now: Callable[[], datetime] = _utc_now,
     ) -> None:
         self.config = config
         self._connection_factory = connection_factory
         self._environ = environ
+        self.events = EventBus()
+        self._now = now
+        initial_state_at = _require_aware_datetime(now())
         capacity = max(
             PCM_SAMPLE_WIDTH,
             int(_PCM_BYTES_PER_SECOND * config.buffer_seconds),
         )
         self._capacity_bytes = capacity - capacity % PCM_SAMPLE_WIDTH
         self._condition = threading.Condition(threading.RLock())
+        self._pending_transitions: deque[RemotePcmSinkTransition] = deque()
+        self._emitting_transitions = False
         self._queue: deque[bytes] = deque()
         self._queued_bytes = 0
         self._thread: threading.Thread | None = None
@@ -165,7 +269,12 @@ class RemotePcmSink:
         self._started = False
         self._stopping = False
         self._stopped = False
+        self._worker_finishes_stop = False
         self._state: RemoteSinkState = "idle"
+        self._transition_sequence = 0
+        self._state_changed_at = initial_state_at
+        self._last_connected_at: datetime | None = None
+        self._last_failure_at: datetime | None = None
         self._terminal_error: str | None = None
         self._bytes_submitted = 0
         self._bytes_written = 0
@@ -194,25 +303,17 @@ class RemotePcmSink:
         with self._condition:
             return self._statistics_locked()
 
+    def on_transition(
+        self,
+        callback: Callable[[RemotePcmSinkTransition], None],
+    ) -> Callable[[], None]:
+        """Subscribe to immutable lifecycle state changes."""
+
+        return self.events.subscribe("transition", callback)
+
     def snapshot(self) -> RemotePcmSinkSnapshot:
         with self._condition:
-            thread = self._thread
-            running = thread is not None and thread.is_alive() and not self._stopped
-            return RemotePcmSinkSnapshot(
-                name=self.name,
-                endpoint=self.config.endpoint,
-                state=self._state,
-                running=running,
-                connected=self._state == "connected",
-                statistics=self._statistics_locked(),
-                connection_attempts=self._connection_attempts,
-                successful_connections=self._successful_connections,
-                reconnects=self._reconnects,
-                failures=self._failures,
-                retry_attempt=self._retry_attempt,
-                next_retry_delay=self._next_retry_delay,
-                last_error=self._last_error,
-            )
+            return self._snapshot_locked()
 
     def start(self) -> None:
         with self._condition:
@@ -266,27 +367,33 @@ class RemotePcmSink:
             self._condition.notify_all()
 
     def stop(self) -> None:
+        transition: RemotePcmSinkTransition | None = None
         with self._condition:
             if not self._started or self._stopped:
+                return
+            if self._stopping and self._state == "stopping":
                 return
             if not self._stopping:
                 self._stopping = True
                 if self._state != "failed":
-                    self._state = "stopping"
+                    transition = self._transition_locked("stopping")
                 self._drop_queued_locked()
             thread = self._thread
             connection = self._active_connection
             secret_values = self._active_secret_values
             self._condition.notify_all()
 
+        self._emit_transition(transition)
         interrupt_error: str | None = None
         if connection is not None:
             try:
                 connection.interrupt()
             except Exception as error:
                 interrupt_error = _redact_error(error, secret_values)
+                observed_at = _require_aware_datetime(self._now())
                 with self._condition:
                     self._failures += 1
+                    self._last_failure_at = observed_at
                     self._last_error = interrupt_error
                 logger.warning(
                     "remote audio connection interrupt failed "
@@ -295,6 +402,13 @@ class RemotePcmSink:
                     self.config.endpoint,
                     interrupt_error,
                 )
+
+        if thread is threading.current_thread():
+            with self._condition:
+                self._worker_finishes_stop = True
+                if interrupt_error is not None and self._terminal_error is None:
+                    self._terminal_error = interrupt_error
+            return
 
         if thread is not None:
             thread.join(timeout=self.config.stop_timeout)
@@ -306,9 +420,10 @@ class RemotePcmSink:
         with self._condition:
             self._thread = None
             self._stopped = True
-            self._state = "stopped"
+            transition = self._transition_locked("stopped")
             terminal_error = self._terminal_error or interrupt_error
 
+        self._emit_transition(transition)
         logger.info(
             "remote audio sink stopped name=%s endpoint=%s",
             self.config.name,
@@ -335,10 +450,15 @@ class RemotePcmSink:
 
                 if connection is None:
                     with self._condition:
-                        self._state = "connecting"
                         self._connection_attempts += 1
                         attempt_number = self._connection_attempts
                         self._next_retry_delay = None
+                        transition = self._transition_locked("connecting")
+                    self._emit_transition(transition)
+
+                    with self._condition:
+                        if self._stopping:
+                            return
 
                     resolved_secrets: Mapping[str, str] = MappingProxyType({})
                     try:
@@ -358,6 +478,8 @@ class RemotePcmSink:
                     connection = candidate
                     active_secret_values = tuple(resolved_secrets.values())
                     with self._condition:
+                        if self._stopping:
+                            return
                         had_successful_connection = self._successful_connections > 0
                         self._successful_connections += 1
                         if had_successful_connection:
@@ -366,7 +488,8 @@ class RemotePcmSink:
                         self._active_secret_values = active_secret_values
                         self._retry_attempt = 0
                         self._next_retry_delay = None
-                        self._state = "connected"
+                        transition = self._transition_locked("connected")
+                    self._emit_transition(transition)
                     logger.info(
                         "remote audio connected name=%s endpoint=%s attempt=%d",
                         self.config.name,
@@ -417,8 +540,14 @@ class RemotePcmSink:
                     active_secret_values,
                     terminal=True,
                 )
+            final_transition: RemotePcmSinkTransition | None = None
             with self._condition:
+                if self._worker_finishes_stop:
+                    self._thread = None
+                    self._stopped = True
+                    final_transition = self._transition_locked("stopped")
                 self._condition.notify_all()
+            self._emit_transition(final_transition)
 
     def _wait_after_failure(
         self,
@@ -426,33 +555,49 @@ class RemotePcmSink:
         secret_values: tuple[str, ...],
     ) -> bool:
         safe_error = _redact_error(error, secret_values)
+        observed_at = _require_aware_datetime(self._now())
+        exhausted = False
+        delay: float | None = None
         with self._condition:
             self._failures += 1
+            self._last_failure_at = observed_at
             self._last_error = safe_error
             retry_attempt = self._retry_attempt + 1
             self._retry_attempt = retry_attempt
             policy = self.config.reconnect_policy
             if not policy.allows(retry_attempt):
+                exhausted = True
                 self._terminal_error = safe_error
-                self._state = "failed"
                 self._stopping = True
                 self._next_retry_delay = None
                 self._drop_queued_locked()
-                self._condition.notify_all()
-                logger.error(
-                    "remote audio destination exhausted retries name=%s endpoint=%s "
-                    "attempt=%d error=%s",
-                    self.config.name,
-                    self.config.endpoint,
-                    retry_attempt,
-                    safe_error,
+                transition = self._transition_locked(
+                    "failed",
+                    observed_at=observed_at,
                 )
-                return False
-            delay = policy.delay_for(retry_attempt)
-            self._state = "backoff"
-            self._next_retry_delay = delay
-            self._condition.notify_all()
+                self._condition.notify_all()
+            else:
+                delay = policy.delay_for(retry_attempt)
+                self._next_retry_delay = delay
+                transition = self._transition_locked(
+                    "backoff",
+                    observed_at=observed_at,
+                )
+                self._condition.notify_all()
 
+        self._emit_transition(transition)
+        if exhausted:
+            logger.error(
+                "remote audio destination exhausted retries name=%s endpoint=%s "
+                "attempt=%d error=%s",
+                self.config.name,
+                self.config.endpoint,
+                retry_attempt,
+                safe_error,
+            )
+            return False
+
+        assert delay is not None
         logger.warning(
             "remote audio destination retry scheduled name=%s endpoint=%s "
             "attempt=%d delay=%.3f error=%s",
@@ -480,8 +625,10 @@ class RemotePcmSink:
             connection.close()
         except Exception as error:
             safe_error = _redact_error(error, secret_values)
+            observed_at = _require_aware_datetime(self._now())
             with self._condition:
                 self._failures += 1
+                self._last_failure_at = observed_at
                 self._last_error = safe_error
                 if terminal and self._terminal_error is None:
                     self._terminal_error = safe_error
@@ -491,6 +638,87 @@ class RemotePcmSink:
                 self.config.endpoint,
                 safe_error,
             )
+
+    def _transition_locked(
+        self,
+        state: RemoteSinkState,
+        *,
+        observed_at: datetime | None = None,
+    ) -> RemotePcmSinkTransition | None:
+        if state == self._state:
+            return None
+
+        timestamp = _require_aware_datetime(
+            self._now() if observed_at is None else observed_at
+        )
+        previous_state = self._state
+        previous_health = _health_for_state(previous_state)
+        self._state = state
+        self._transition_sequence += 1
+        self._state_changed_at = timestamp
+        if state == "connected":
+            self._last_connected_at = timestamp
+
+        snapshot = self._snapshot_locked()
+        transition = RemotePcmSinkTransition(
+            sequence=self._transition_sequence,
+            observed_at=timestamp,
+            previous_state=previous_state,
+            state=state,
+            previous_health=previous_health,
+            health=snapshot.health,
+            snapshot=snapshot,
+        )
+        self._pending_transitions.append(transition)
+        return transition
+
+    def _emit_transition(
+        self,
+        transition: RemotePcmSinkTransition | None,
+    ) -> None:
+        del transition
+        with self._condition:
+            if self._emitting_transitions:
+                return
+            self._emitting_transitions = True
+
+        while True:
+            with self._condition:
+                if not self._pending_transitions:
+                    self._emitting_transitions = False
+                    return
+                pending = self._pending_transitions.popleft()
+
+            try:
+                self.events.emit("transition", pending)
+            except BaseException:
+                with self._condition:
+                    self._emitting_transitions = False
+                raise
+
+    def _snapshot_locked(self) -> RemotePcmSinkSnapshot:
+        thread = self._thread
+        running = thread is not None and thread.is_alive() and not self._stopped
+        return RemotePcmSinkSnapshot(
+            name=self.name,
+            endpoint=self.config.endpoint,
+            state=self._state,
+            health=_health_for_state(self._state),
+            running=running,
+            connected=self._state == "connected",
+            statistics=self._statistics_locked(),
+            connection_attempts=self._connection_attempts,
+            successful_connections=self._successful_connections,
+            reconnects=self._reconnects,
+            failures=self._failures,
+            retry_attempt=self._retry_attempt,
+            next_retry_delay=self._next_retry_delay,
+            transition_sequence=self._transition_sequence,
+            state_changed_at=self._state_changed_at,
+            last_connected_at=self._last_connected_at,
+            last_failure_at=self._last_failure_at,
+            last_error=self._last_error,
+        )
 
     def _statistics_locked(self) -> PcmSinkStatistics:
         return PcmSinkStatistics(
