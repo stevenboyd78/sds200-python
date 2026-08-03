@@ -8,19 +8,26 @@ import threading
 from collections.abc import Callable
 from time import monotonic, sleep
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
 from sds200.broadcastify import (
+    BROADCASTIFY_METADATA_PATH,
     BROADCASTIFY_MONO_BITRATE_KBPS,
     BROADCASTIFY_PASSWORD_SECRET,
     BROADCASTIFY_SAMPLE_RATE,
     BroadcastifyConfig,
     BroadcastifyConnection,
+    BroadcastifyMetadataPublication,
+    BroadcastifyMetadataPublicationFactory,
+    create_broadcastify_metadata_publisher,
     create_broadcastify_sink,
 )
 from sds200.exceptions import AudioOutputError
+from sds200.presentation import ActivityStatus, AvailabilityStatus
 from sds200.remote_audio import EnvironmentSecret
+from sds200.remote_audio_metadata import RemoteStreamMetadata
 
 
 class FakeSocket:
@@ -400,3 +407,195 @@ def _capture_error(
         action()
     except BaseException as error:
         errors.append(error)
+
+
+def stream_metadata(title: str = "County | Fire | Dispatch") -> RemoteStreamMetadata:
+    return RemoteStreamMetadata(
+        activity=ActivityStatus.RECEIVING,
+        availability=AvailabilityStatus.AVAILABLE,
+        channel=title,
+    )
+
+
+def test_broadcastify_config_builds_remote_metadata_destination() -> None:
+    feed = config()
+    destination = feed.remote_metadata_destination(
+        minimum_update_interval=2.5,
+    )
+
+    assert feed.metadata_endpoint == (
+        "http://audio1.broadcastify.com:80/admin/metadata"
+        "?mount=%2Fabc123&mode=updinfo"
+    )
+    assert destination.endpoint == feed.metadata_endpoint
+    assert destination.secrets == {
+        BROADCASTIFY_PASSWORD_SECRET: EnvironmentSecret(
+            "SDS200_BROADCASTIFY_PASSWORD"
+        )
+    }
+    assert destination.minimum_update_interval == 2.5
+    assert destination.stop_timeout == feed.stop_timeout
+    assert destination.reconnect_policy == feed.reconnect_policy
+
+
+def test_broadcastify_metadata_publication_sends_encoded_update() -> None:
+    feed = config()
+    source_socket = FakeSocket()
+    publication = BroadcastifyMetadataPublication(
+        feed,
+        "feed-password",
+        stream_metadata("County | Fire & EMS"),
+        socket_factory=lambda address, timeout: source_socket,
+    )
+
+    publication.publish()
+    publication.close()
+    publication.close()
+
+    request = source_socket.sent[0].decode("utf-8")
+    request_line = request.splitlines()[0]
+    method, target, protocol = request_line.split()
+    parsed = urlsplit(target)
+    query = parse_qs(parsed.query)
+
+    expected_credentials = base64.b64encode(
+        b"source:feed-password"
+    ).decode("ascii")
+    assert method == "GET"
+    assert protocol == "HTTP/1.0"
+    assert parsed.path == BROADCASTIFY_METADATA_PATH
+    assert query == {
+        "mount": ["/abc123"],
+        "mode": ["updinfo"],
+        "song": ["County | Fire & EMS"],
+    }
+    assert "Host: audio1.broadcastify.com:80\r\n" in request
+    assert f"Authorization: Basic {expected_credentials}\r\n" in request
+    assert "feed-password" not in request
+    assert "User-Agent: sds200-python\r\n" in request
+    assert "Connection: close\r\n" in request
+    assert source_socket.closed
+
+
+def test_broadcastify_metadata_publication_rejects_error_response() -> None:
+    source_socket = FakeSocket(b"HTTP/1.0 401 Unauthorized\r\n\r\n")
+    publication = BroadcastifyMetadataPublication(
+        config(),
+        "feed-password",
+        stream_metadata(),
+        socket_factory=lambda address, timeout: source_socket,
+    )
+
+    with pytest.raises(AudioOutputError, match="status 401"):
+        publication.publish()
+
+    assert source_socket.closed
+
+
+def test_broadcastify_metadata_publication_rejects_malformed_response() -> None:
+    source_socket = FakeSocket(b"not-http\r\n\r\n")
+    publication = BroadcastifyMetadataPublication(
+        config(),
+        "feed-password",
+        stream_metadata(),
+        socket_factory=lambda address, timeout: source_socket,
+    )
+
+    with pytest.raises(AudioOutputError, match="invalid Icecast metadata"):
+        publication.publish()
+
+    assert source_socket.closed
+
+
+def test_broadcastify_metadata_factory_validates_endpoint_and_secret() -> None:
+    feed = config()
+    factory = BroadcastifyMetadataPublicationFactory(feed)
+    destination = feed.remote_metadata_destination()
+    metadata = stream_metadata()
+
+    with pytest.raises(AudioOutputError, match="unexpected endpoint"):
+        factory(
+            type(destination)(
+                name=destination.name,
+                endpoint="https://example.invalid/admin/metadata",
+                secrets=destination.secrets,
+            ),
+            {BROADCASTIFY_PASSWORD_SECRET: "feed-password"},
+            metadata,
+        )
+
+    with pytest.raises(AudioOutputError, match="unexpected endpoint"):
+        factory(
+            config(mount="/other").remote_metadata_destination(),
+            {BROADCASTIFY_PASSWORD_SECRET: "feed-password"},
+            metadata,
+        )
+
+    with pytest.raises(AudioOutputError, match="was not resolved"):
+        factory(destination, {}, metadata)
+
+
+def test_broadcastify_metadata_publication_interrupts_during_connect() -> None:
+    source_socket = FakeSocket()
+    connect_started = threading.Event()
+    release_connect = threading.Event()
+
+    def socket_factory(
+        address: tuple[str, int],
+        timeout: float,
+    ) -> FakeSocket:
+        del address, timeout
+        connect_started.set()
+        assert release_connect.wait(timeout=1.0)
+        return source_socket
+
+    publication = BroadcastifyMetadataPublication(
+        config(),
+        "feed-password",
+        stream_metadata(),
+        socket_factory=socket_factory,
+    )
+    errors: list[BaseException] = []
+    worker = threading.Thread(
+        target=lambda: _capture_error(errors, publication.publish)
+    )
+
+    worker.start()
+    assert connect_started.wait(timeout=1.0)
+    publication.interrupt()
+    release_connect.set()
+    worker.join(timeout=1.0)
+    publication.close()
+
+    assert not worker.is_alive()
+    assert len(errors) == 1
+    assert isinstance(errors[0], AudioOutputError)
+    assert "interrupted" in str(errors[0])
+    assert source_socket.closed
+    assert source_socket.sent == []
+
+
+def test_create_broadcastify_metadata_publisher_uses_worker() -> None:
+    source_socket = FakeSocket()
+    publisher = create_broadcastify_metadata_publisher(
+        config(),
+        environ={
+            "SDS200_BROADCASTIFY_PASSWORD": "feed-password",
+        },
+        socket_factory=lambda address, timeout: source_socket,
+    )
+
+    publisher.start()
+    publisher.submit(stream_metadata("Dispatch"))
+    wait_until(lambda: publisher.snapshot().publications == 1)
+
+    snapshot = publisher.snapshot()
+    assert snapshot.last_published_title == "Dispatch"
+    assert snapshot.failures == 0
+
+    publisher.stop()
+
+    request = source_socket.sent[0].decode("utf-8")
+    target = request.splitlines()[0].split()[1]
+    assert parse_qs(urlsplit(target).query)["song"] == ["Dispatch"]
+    assert source_socket.closed
