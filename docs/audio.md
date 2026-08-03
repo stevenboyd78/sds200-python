@@ -490,6 +490,33 @@ Milestone 19 will define layered system and user configuration, precedence, and
 safe migration into the `sdsctl` namespace. CLI, TUI, and daemon activation of
 saved remote-audio profiles are not part of Milestone 18.2.
 
+## Reusable remote-audio encoder lifecycle
+
+Milestone 18.4 adds public renderer-neutral contracts for pipe-backed audio encoder
+processes. `AudioEncoderConfig` stores an immutable process name, command,
+shutdown timeout, and bounded diagnostic limit without retaining destination
+credentials or transport configuration.
+
+`ManagedAudioEncoder` owns process startup, required pipe validation,
+full-write checking for PCM input, encoded-byte reads, early-exit reporting,
+interruption, stderr draining, and deterministic finalization. Its diagnostic
+worker continuously drains stderr
+so a verbose encoder cannot block while its error pipe fills, while retaining no
+more than the configured limit. Shutdown closes encoder input, waits within the
+configured deadline, escalates through terminate and kill when needed, and closes
+all process streams. Interruption and finalization are idempotent, and immutable
+snapshots and results expose lifecycle state without renderer-specific behavior.
+
+Broadcastify now creates this reusable lifecycle from its existing fixed
+`ffmpeg_command()`. `BroadcastifyConnection` continues to own Icecast
+authentication, encoded-byte delivery, socket failures, and retry integration.
+Injectable `AudioEncoderProcessFactory` implementations preserve
+hardware-independent testing without adding alternative commands to saved
+profiles or user-facing configuration.
+
+Alternative encoder commands, new destination adapters, saved-profile schema
+changes, and CLI, TUI, or daemon activation remain outside Milestone 18.4.
+
 ## Broadcastify feed adapter
 
 Milestone 16.3.1 adds a Broadcastify-compatible Icecast source connection on top

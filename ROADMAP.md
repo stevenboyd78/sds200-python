@@ -11,33 +11,9 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 18.4 — Pluggable remote-audio encoder processes
-
-- **Renderer-neutral encoder contract — planned**
-  - Define public typed contracts for encoder process creation, PCM input,
-    encoded output, process state, interruption, and bounded finalization.
-  - Represent immutable process commands and lifecycle settings without embedding
-    destination credentials or service-specific transport behavior.
-  - Keep encoder ownership independent from Broadcastify, Icecast sockets,
-    `RemotePcmSink`, CLI, TUI, and daemon consumers.
-- **Reusable subprocess lifecycle — planned**
-  - Extract subprocess startup, pipe validation, input writes, output reads,
-    exit-status reporting, stderr diagnostics, terminate/kill escalation, and
-    stream cleanup from the Broadcastify adapter.
-  - Make interruption idempotent and ensure blocked pipe operations can be
-    released during shutdown.
-  - Preserve deterministic ownership and bounded cleanup when startup, encoding,
-    destination delivery, or shutdown fails.
-- **Broadcastify migration and compatibility — planned**
-  - Rebuild the existing fixed FFmpeg MP3 profile on the reusable encoder layer
-    without changing its command, wire format, authentication, or retry behavior.
-  - Keep encoded-byte delivery and Icecast socket failures owned by
-    `BroadcastifyConnection`.
-  - Preserve injectable process factories for hardware-independent tests.
-  - Add startup, missing-executable, broken-pipe, early-exit, stderr, interruption,
-    terminate/kill, bounded-shutdown, and compatibility tests.
-  - Leave alternative encoder commands, new destination adapters, saved-profile
-    schema changes, and CLI, TUI, or daemon activation outside this milestone.
+No implementation milestone is currently active. Milestone 18.4 is complete; the
+remaining work below stays in candidate order until the next milestone is
+selected.
 
 ## Deferred hardware validation
 
@@ -224,3 +200,8 @@ fixtures before renderer-specific implementation.
   titles, newest-value worker publication, duplicate suppression, rate limiting,
   retry and redaction metrics, and a Broadcastify-compatible Icecast metadata
   adapter isolated from PCM delivery.
+- Milestone 18.4: public renderer-neutral encoder process contracts, immutable
+  command and lifecycle configuration, reusable pipe-backed subprocess ownership,
+  bounded interruption and terminate/kill finalization, continuously drained
+  diagnostics, and Broadcastify migration without changing its fixed FFmpeg MP3
+  profile or Icecast transport behavior.
