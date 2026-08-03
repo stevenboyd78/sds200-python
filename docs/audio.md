@@ -240,9 +240,57 @@ attention counts are available without changing the filesystem. Directory
 symlinks are not traversed, and managed file symlinks that resolve outside the
 configured root are reported as unreadable rather than dereferenced.
 
-This foundation does not move, rename, overwrite, or delete artifacts. Retention
-policy and non-destructive planning remain separate Milestone 17.3 work, while
-filesystem execution remains deferred to Milestone 17.4.
+This foundation does not move, rename, overwrite, or delete artifacts.
+
+## Recording retention planning
+
+Milestone 17.3 also provides deterministic, non-destructive retention previews.
+`RecordingRetentionPolicy` supports optional maximum age, managed-unit, and
+aggregate-byte limits. `plan_recording_retention()` requires an explicit
+timezone-aware planning boundary for age policies and never calls the system clock
+or changes the filesystem:
+
+```python
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+from sds200 import (
+    RecordingRetentionPolicy,
+    plan_recording_retention,
+    scan_recording_inventory,
+)
+
+inventory = scan_recording_inventory(Path("~/scanner-recordings"))
+policy = RecordingRetentionPolicy(
+    maximum_age=timedelta(days=30),
+    maximum_units=500,
+    maximum_total_bytes=20 * 1024**3,
+)
+plan = plan_recording_retention(
+    inventory,
+    policy,
+    now=datetime.now(UTC),
+)
+
+print(plan.summary.as_dict())
+for decision in plan.decisions:
+    print(
+        decision.entry.relative_audio_path,
+        decision.disposition,
+        decision.reasons,
+    )
+```
+
+Eligible units are evaluated oldest-first using their UTC recording timestamp and
+relative path as deterministic tie-breakers. Compatible and incompatible WAV files
+with valid or missing metadata may be selected. Unreadable or missing audio,
+unsafe sidecars, and units without a reliable timestamp are protected and reported.
+Protected units continue to count toward projected unit and byte totals, so the
+plan explicitly reports limits it cannot satisfy safely.
+
+A selected WAV and its adjacent sidecar remain one managed unit. Planning performs
+no move, rename, overwrite, or deletion. Filesystem execution and destructive
+confirmation remain deferred to Milestone 17.4.
 
 ## Reliability statistics
 

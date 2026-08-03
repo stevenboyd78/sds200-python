@@ -29,17 +29,24 @@ and ideas that are not ready for scheduling are recorded in
     and mismatched artifacts without mutating them.
   - Added deterministic relative-path ordering and protection against managed-file
     symlinks escaping the configured root.
+- **Retention planning and reporting — complete**
+  - Added explicit age, managed-unit, and aggregate-byte limits separately from
+    filesystem execution.
+  - Selected eligible managed units deterministically from oldest to newest.
+  - Protected unreadable, missing, unsafe-metadata, and unknown-time units from
+    automatic selection.
+  - Reported explained decisions, projected totals, and limits that protected
+    units prevent the plan from satisfying.
+  - Kept execution and deletion deferred to Milestone 17.4.
 - **Validation — complete**
-  - Passed Ruff and MyPy across 45 source files.
-  - Passed all 477 tests.
+  - Passed Ruff and MyPy across 46 source files.
+  - Passed all 498 tests.
   - Passed documentation checks across 28 Markdown files.
-  - Confirmed inventory scanning is recursive, deterministic, and read-only.
-- **Retention planning and reporting — active**
-  - Define explicit retention policies separately from filesystem execution.
-  - Produce deterministic non-destructive plans and summaries.
-  - Explain why each managed recording would be retained or selected.
-  - Keep execution and deletion deferred to Milestone 17.4.
-- **Safety boundaries — required**
+  - Confirmed inventory scanning and retention planning are deterministic,
+    renderer-neutral, and read-only.
+- **Merge — pending**
+  - Merge the implementation after CI and CodeQL pass.
+- **Safety boundaries — preserved**
   - Do not move, rename, overwrite, or delete recordings.
   - Do not follow inventory paths outside the configured recording root.
   - Treat a WAV file and its adjacent metadata sidecar as one managed unit.
