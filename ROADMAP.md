@@ -11,20 +11,28 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 17.5 — v0.17.0 release
+### Milestone 18.1 — Remote-audio health events and operational metrics
 
-- **Release bookkeeping — complete**
-  - Set the package and public runtime version to `0.17.0`.
-  - Finalized the changelog and completed-milestone roadmap entries.
-- **Acceptance validation — complete**
-  - Passed full static, test, documentation, distribution, and clean-install checks.
-  - Built and inspected the wheel and source distribution and passed `twine check`.
-  - Smoke-tested retention preview, JSON output, wrong-token refusal, and confirmed
-    WAV-plus-sidecar execution from a clean Python 3.14 wheel installation.
-- **Publication — active**
-  - Merge the release-preparation pull request after CI and CodeQL pass.
-  - Publish the `v0.17.0` GitHub tag, release, and PyPI artifacts.
-  - Verify a clean Python 3.14 installation from PyPI.
+- **Renderer-neutral health model — planned**
+  - Classify each remote destination as inactive, healthy, degraded, or failed
+    from its existing lifecycle state.
+  - Preserve immutable cumulative queue, throughput, connection, retry, and
+    failure metrics in destination snapshots.
+  - Add transition sequence numbers and timezone-aware lifecycle timestamps.
+- **State-transition events — planned**
+  - Emit immutable events only when the destination lifecycle state changes.
+  - Include previous and current state and health plus the resulting snapshot.
+  - Provide subscription and unsubscription through the existing isolated
+    `EventBus` callback pattern.
+  - Dispatch callbacks outside the sink condition lock and prevent listener
+    failures from interrupting the remote worker.
+- **Compatibility and validation — planned**
+  - Preserve existing retry, buffering, redaction, adapter, and shutdown behavior.
+  - Keep remote-audio failures isolated from scanner control and other audio sinks.
+  - Add deterministic clock-injected lifecycle, reconnect, failure, listener, and
+    serialization tests.
+  - Document the renderer-neutral contract for future CLI, TUI, daemon, and
+    integration consumers.
 
 ## Deferred hardware validation
 
@@ -49,9 +57,8 @@ fixture-tested, not hardware-validated.
 These milestone groups preserve intended future work. Their numbering and release
 assignment may change before implementation begins.
 
-### Milestone 18 — Remote-audio operations
+### Remaining Milestone 18 candidates — Remote-audio operations
 
-- Add per-destination health events and operational metrics.
 - Add saved destination profiles that reference secrets rather than embedding
   credentials.
 - Synchronize optional stream metadata with live PSI state.
@@ -204,3 +211,6 @@ fixtures before renderer-specific implementation.
   deterministic retention planning, explicit inventory-bound execution, local CLI
   preview and confirmation workflows, and stale-state and filesystem safety
   validation.
+- Milestone 17.5: v0.17.0 release preparation, full CI and CodeQL validation,
+  trusted PyPI publication, GitHub release publication, and clean Python 3.14
+  installation verification from public PyPI.
