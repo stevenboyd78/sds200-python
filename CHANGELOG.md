@@ -12,6 +12,9 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   `RemotePcmSinkSnapshot` metrics, ordered `RemotePcmSinkTransition` events,
   timezone-aware lifecycle timestamps, and isolated `on_transition()`
   subscriptions for future CLI, TUI, daemon, and integration consumers.
+- Versioned, renderer-neutral saved Broadcastify destination profiles that retain
+  environment-variable secret references and convert into validated adapter
+  configuration without storing resolved credentials.
 
 ## [0.17.0] - 2026-08-03
 
