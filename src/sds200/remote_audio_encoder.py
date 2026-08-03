@@ -221,7 +221,7 @@ class ManagedAudioEncoder:
             )
 
         with self._condition:
-            self._raise_if_unusable_locked()
+            self._raise_if_output_unusable_locked()
             process = self._process
 
         try:
@@ -255,7 +255,13 @@ class ManagedAudioEncoder:
             with suppress(OSError):
                 process.terminate()
 
-    def finalize(self) -> AudioEncoderResult:
+    def finalize(
+        self,
+        *,
+        output_waiter: Callable[[float], bool] | None = None,
+    ) -> AudioEncoderResult:
+        """Finalize the process while allowing an output consumer to drain."""
+
         with self._condition:
             while self._finalizing and not self._finalized:
                 self._condition.wait()
@@ -279,6 +285,8 @@ class ManagedAudioEncoder:
 
         returncode = process.poll()
         cleanup_error: AudioOutputError | None = None
+        output_wait_error: AudioOutputError | None = None
+        output_stopped = True
         deadline = monotonic() + self.config.stop_timeout
 
         try:
@@ -294,7 +302,32 @@ class ManagedAudioEncoder:
                 returncode = polled
         finally:
             _close_binary_stream(process.stdin)
+
+            if output_waiter is not None:
+                try:
+                    output_stopped = output_waiter(
+                        _cleanup_stage_timeout(deadline)
+                    )
+                except Exception as error:
+                    output_stopped = False
+                    output_wait_error = AudioOutputError(
+                        f"{self.config.name} output wait failed: "
+                        f"{type(error).__name__}: {error}"
+                    )
+
             _close_binary_stream(process.stdout)
+
+            if output_waiter is not None and not output_stopped:
+                try:
+                    output_stopped = output_waiter(
+                        _remaining_timeout(deadline)
+                    )
+                except Exception as error:
+                    if output_wait_error is None:
+                        output_wait_error = AudioOutputError(
+                            f"{self.config.name} output wait failed: "
+                            f"{type(error).__name__}: {error}"
+                        )
 
             if process.poll() is None:
                 _close_binary_stream(process.stderr)
@@ -332,6 +365,12 @@ class ManagedAudioEncoder:
                 cleanup_error = AudioOutputError(
                     f"{self.config.name} diagnostic worker did not stop."
                 )
+            if output_wait_error is not None and cleanup_error is None:
+                cleanup_error = output_wait_error
+            if not output_stopped and cleanup_error is None:
+                cleanup_error = AudioOutputError(
+                    f"{self.config.name} output consumer did not stop."
+                )
 
             result = AudioEncoderResult(
                 returncode=returncode,
@@ -368,6 +407,12 @@ class ManagedAudioEncoder:
                     self._diagnostic.extend(chunk[:remaining])
         except (OSError, ValueError):
             return
+
+    def _raise_if_output_unusable_locked(self) -> None:
+        if self._finalized:
+            raise AudioOutputError(f"{self.config.name} is closed.")
+        if self._interrupted:
+            raise AudioOutputError(f"{self.config.name} is stopping.")
 
     def _raise_if_unusable_locked(self) -> None:
         if self._finalized:

@@ -459,26 +459,26 @@ class BroadcastifyConnection:
             if self._closed:
                 return
             self._closing = True
-            interrupted = self._interrupted
             encoder = self._encoder
             source_socket = self._socket
             pump_thread = self._pump_thread
 
-        deadline = monotonic() + self.config.encoder_stop_timeout
         result = None
         cleanup_error: AudioOutputError | None = None
+        output_wait_count = 0
+
+        def wait_for_output(timeout: float) -> bool:
+            nonlocal output_wait_count
+            output_wait_count += 1
+            if output_wait_count > 1:
+                _close_socket(source_socket)
+            pump_thread.join(timeout=timeout)
+            return not pump_thread.is_alive()
 
         try:
-            result = encoder.finalize()
+            result = encoder.finalize(output_waiter=wait_for_output)
         except AudioOutputError as error:
             cleanup_error = error
-
-        if cleanup_error is None:
-            pump_thread.join(timeout=_remaining_timeout(deadline))
-
-        if pump_thread.is_alive():
-            _close_socket(source_socket)
-            pump_thread.join(timeout=_remaining_timeout(deadline))
 
         pump_alive = pump_thread.is_alive()
         _close_socket(source_socket)
@@ -493,10 +493,10 @@ class BroadcastifyConnection:
             )
         if cleanup_error is not None:
             raise cleanup_error
-        if interrupted:
+        assert result is not None
+        if result.interrupted:
             return
 
-        assert result is not None
         if result.returncode != 0 and not result.exit_reported:
             suffix = (
                 ""

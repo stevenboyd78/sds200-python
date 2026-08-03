@@ -160,6 +160,13 @@ class FakeEncoder:
         self.stdout.close()
 
 
+class FinalOutputEncoder(FakeEncoder):
+    def wait(self, timeout: float | None = None) -> int:
+        self.stdout.emit(b"final-mp3-a")
+        self.stdout.emit(b"final-mp3-b")
+        return super().wait(timeout=timeout)
+
+
 class StubbornEncoder(FakeEncoder):
     def wait(self, timeout: float | None = None) -> int:
         delay = 0.0 if timeout is None else timeout
@@ -271,6 +278,24 @@ def test_broadcastify_connection_authenticates_and_streams_encoded_bytes() -> No
     assert source_socket.closed
     assert encoder.stdin.closed
     assert encoder.returncode == 0
+
+
+def test_broadcastify_connection_drains_final_encoder_output() -> None:
+    source_socket = FakeSocket()
+    encoder = FinalOutputEncoder()
+    connection = BroadcastifyConnection(
+        config(),
+        "feed-password",
+        socket_factory=lambda address, timeout: source_socket,
+        encoder_factory=lambda command: encoder,
+    )
+
+    connection.close()
+
+    assert source_socket.sent[-2:] == [
+        b"final-mp3-a",
+        b"final-mp3-b",
+    ]
 
 
 def test_broadcastify_connection_rejects_unauthorized_source() -> None:

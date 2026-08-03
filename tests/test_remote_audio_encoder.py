@@ -191,6 +191,26 @@ def test_managed_encoder_writes_reads_and_finalizes_idempotently() -> None:
     assert encoder.close() is result
 
 
+def test_managed_encoder_allows_output_drain_during_finalize() -> None:
+    process = FakeProcess(output=b"final-encoded-audio")
+    encoder = ManagedAudioEncoder(
+        encoder_config(),
+        process_factory=process_factory(process),
+    )
+    drained: list[bytes] = []
+
+    def wait_for_output(timeout: float) -> bool:
+        assert timeout >= 0.0
+        drained.append(encoder.read_encoded(4096))
+        return True
+
+    result = encoder.finalize(output_waiter=wait_for_output)
+
+    assert result.returncode == 0
+    assert drained == [b"final-encoded-audio"]
+    assert process.stdout.closed
+
+
 def test_managed_encoder_reports_early_exit_before_input() -> None:
     process = FakeProcess(returncode=7)
     process.returncode = 7
