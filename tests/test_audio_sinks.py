@@ -14,6 +14,7 @@ from sds200.audio_sinks import (
     PcmSinkStatistics,
     PcmWavSink,
     SoundDevicePlaybackSink,
+    inspect_audio_backend,
 )
 from sds200.exceptions import AudioOutputError
 
@@ -90,8 +91,18 @@ class FakeRawOutputStream:
         self.closed = True
 
 
+class FakeInputOutputPair:
+    def __getitem__(self, index: int) -> int:
+        return (0, 2)[index]
+
+
+class FakeSoundDeviceDefaults:
+    device = FakeInputOutputPair()
+
+
 class FakeSoundDeviceModule:
     def __init__(self) -> None:
+        self.default = FakeSoundDeviceDefaults()
         self.stream: FakeRawOutputStream | None = None
         self.arguments: dict[str, object] = {}
 
@@ -101,6 +112,51 @@ class FakeSoundDeviceModule:
         assert callable(callback)
         self.stream = FakeRawOutputStream(callback)
         return self.stream
+
+    def get_portaudio_version(self) -> tuple[int, str]:
+        return (1246720, "PortAudio V19.7.0")
+
+    def query_hostapis(self) -> tuple[dict[str, object], ...]:
+        return (
+            {
+                "name": "ALSA",
+                "default_input_device": 0,
+                "default_output_device": 2,
+            },
+            {
+                "name": "JACK Audio Connection Kit",
+                "default_input_device": -1,
+                "default_output_device": -1,
+            },
+        )
+
+    def query_devices(self) -> tuple[dict[str, object], ...]:
+        return (
+            {
+                "name": "Input only",
+                "index": 0,
+                "hostapi": 0,
+                "max_input_channels": 1,
+                "max_output_channels": 0,
+                "default_samplerate": 48000.0,
+            },
+            {
+                "name": "HDMI",
+                "index": 2,
+                "hostapi": 0,
+                "max_input_channels": 0,
+                "max_output_channels": 2,
+                "default_samplerate": 48000.0,
+            },
+            {
+                "name": "USB Audio",
+                "index": 4,
+                "hostapi": 1,
+                "max_input_channels": 0,
+                "max_output_channels": 2,
+                "default_samplerate": 44100.0,
+            },
+        )
 
 
 def test_audio_fanout_decodes_once_for_multiple_sinks() -> None:
@@ -178,6 +234,35 @@ def test_sounddevice_playback_reports_missing_optional_dependency() -> None:
     sink = SoundDevicePlaybackSink(module_loader=missing)
     with pytest.raises(AudioOutputError, match=r"sds200\[playback\]"):
         sink.start()
+
+
+def test_sounddevice_playback_reports_missing_portaudio_runtime() -> None:
+    def missing_portaudio(name: str) -> object:
+        del name
+        raise OSError("PortAudio library not found")
+
+    sink = SoundDevicePlaybackSink(module_loader=missing_portaudio)
+    with pytest.raises(AudioOutputError, match=r"sudo apt install libportaudio2"):
+        sink.start()
+
+
+def test_audio_backend_inspection_reports_output_devices() -> None:
+    module = FakeSoundDeviceModule()
+
+    backend = inspect_audio_backend(module_loader=lambda name: module)
+
+    assert backend.backend == "PortAudio"
+    assert backend.version == "PortAudio V19.7.0"
+    assert backend.default_output_device == 2
+    assert [host_api.name for host_api in backend.host_apis] == [
+        "ALSA",
+        "JACK Audio Connection Kit",
+    ]
+    assert [device.index for device in backend.output_devices] == [2, 4]
+    assert backend.output_devices[0].default
+    assert backend.output_devices[0].host_api_name == "ALSA"
+    assert not backend.output_devices[1].default
+    assert backend.output_devices[1].host_api_name == "JACK Audio Connection Kit"
 
 
 def test_pcm_wav_sink_drains_buffer_before_close(tmp_path: Path) -> None:

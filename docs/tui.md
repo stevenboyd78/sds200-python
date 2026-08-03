@@ -213,6 +213,16 @@ Install both optional feature sets for that workflow:
 python -m pip install "sds200[tui,playback]"
 ```
 
+On Debian or Raspberry Pi OS, also install the PortAudio runtime:
+
+```bash
+sudo apt update
+sudo apt install libportaudio2
+```
+
+Use `sdsctl audio-devices` to inspect the default output, PortAudio host APIs, and
+output-capable devices before launching the TUI.
+
 Press `A` to start live playback manually, even when `--audio-playback` was not
 provided. The output device opens only when playback first starts and remains
 prepared while playback is muted, avoiding repeated PortAudio initialization.

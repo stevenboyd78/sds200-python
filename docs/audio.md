@@ -36,6 +36,26 @@ Install the optional local-playback backend:
 python -m pip install "sds200[playback]"
 ```
 
+The Python extra installs `sounddevice`, but Linux also needs the PortAudio shared
+library. On Debian or Raspberry Pi OS:
+
+```bash
+sudo apt update
+sudo apt install libportaudio2
+```
+
+Inspect the active PortAudio version, host APIs, default output, and available
+output-capable devices without opening a scanner connection:
+
+```bash
+sdsctl audio-devices
+```
+
+PortAudio may expose Linux audio through ALSA, PipeWire or PulseAudio
+compatibility, or JACK, depending on the operating-system configuration and
+PortAudio build. Direct PipeWire, PulseAudio, and ALSA sinks remain planned
+backends rather than claims of current native support.
+
 Listen through the operating system's default output device:
 
 ```bash

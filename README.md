@@ -100,6 +100,24 @@ Install optional local audio playback support:
 python -m pip install "sds200[playback]"
 ```
 
+On Linux, the Python extra requires the operating system's PortAudio runtime.
+Install it on Debian or Raspberry Pi OS before starting playback:
+
+```bash
+sudo apt update
+sudo apt install libportaudio2
+```
+
+Inspect the PortAudio build, host APIs, default output, and output-capable devices:
+
+```bash
+sdsctl audio-devices
+```
+
+Depending on the operating-system audio stack and PortAudio build, Linux devices
+may be exposed through ALSA, PipeWire compatibility, PulseAudio compatibility, or
+JACK. Direct PipeWire, PulseAudio, and ALSA playback adapters are planned work.
+
 Install the TUI with live and saved-recording playback:
 
 ```bash

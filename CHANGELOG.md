@@ -6,6 +6,27 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-08-02
+
+### Added
+
+- `sdsctl audio-devices` reporting the local PortAudio version, host APIs, default
+  output, and output-capable devices without opening a scanner connection.
+
+### Fixed
+
+- Missing Linux PortAudio runtimes now produce an actionable Debian and Raspberry
+  Pi OS `sudo apt install libportaudio2` diagnostic instead of the raw
+  `PortAudio library not found` import failure.
+
+### Changed
+
+- Documented the Linux system dependency behind the optional `sounddevice`
+  playback extra and clarified how PortAudio may be exposed through ALSA,
+  PipeWire or PulseAudio compatibility, or JACK.
+- Recorded direct PipeWire, PulseAudio, and ALSA adapters as planned Milestone 18
+  work and daemon-owned single-session audio fanout as planned Milestone 19 work.
+
 ## [0.16.0] - 2026-08-02
 
 ### Added
@@ -472,7 +493,8 @@ First planned GitHub prerelease.
 - Added serial discovery, transport, packet framing, core responses, CLI tools,
   examples, tests, and CI.
 
-[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.16.1...HEAD
+[0.16.1]: https://github.com/stevenboyd78/sds200-python/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.13.0...v0.14.0

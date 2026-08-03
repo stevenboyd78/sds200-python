@@ -11,20 +11,37 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 16.6 — v0.16.0 release preparation
+### Milestone 16.7 — v0.16.1 Linux audio support
 
-- **Release scope and validation — complete**
-  - Selected completed and validated Milestone 16 work for release.
-  - Passed the full software and package checks.
-  - Completed Linux, Raspberry Pi, audio, reconnect, recording, saved-playback,
-    and shutdown validation.
-  - Confirmed documentation distinguishes fixture coverage from physical
-    validation.
+- **v0.16.0 publication — complete**
+  - Merged the release-preparation change after CI and CodeQL passed.
+  - Tagged `v0.16.0` from the validated `main` commit.
+  - Published the normal GitHub release and PyPI distributions.
+  - Verified a clean Python 3.14 installation of `sds200[tui,playback]==0.16.0`
+    with no broken requirements.
+- **Linux playback maintenance — complete**
+  - Documented the PortAudio runtime required by `sounddevice` on Debian and
+    Raspberry Pi OS.
+  - Added an actionable `libportaudio2` installation diagnostic when the shared
+    library is missing.
+  - Added local PortAudio host-API, default-output, and output-device inspection
+    without requiring scanner hardware.
+  - Preserved deferred output-device opening and scanner-control isolation.
+- **Validation — complete**
+  - Passed Ruff, MyPy across 42 source files, 444 tests, and documentation checks
+    across 28 Markdown files.
+  - Built the `0.16.1` source and wheel distributions and passed Twine checks.
+  - Validated default and explicit-device playback on Raspberry Pi OS through
+    PortAudio and ALSA.
+  - Confirmed clean live audio with no RTP loss, duplicates, late packets,
+    malformed packets, source mismatches, timestamp discontinuities, playback
+    drops, overflows, or callback-status errors.
+  - Advanced package and CLI metadata to `0.16.1`.
 - **Publication — pending**
-  - Merge the release-preparation change after CI and CodeQL pass.
-  - Tag `v0.16.0` from the validated `main` commit.
-  - Publish a normal GitHub release.
-  - Verify a clean PyPI installation.
+  - Merge the maintenance change after CI and CodeQL pass.
+  - Tag `v0.16.1` from the validated `main` commit.
+  - Publish the GitHub release and PyPI distributions.
+  - Verify a clean PyPI installation of `sds200[tui,playback]==0.16.1`.
 
 ## Deferred hardware validation
 
@@ -67,7 +84,9 @@ assignment may change before implementation begins.
 - Synchronize optional stream metadata with live PSI state.
 - Support pluggable encoder processes for destinations that do not accept native
   8 kHz mono PCM or G.711 mu-law.
-- Evaluate local playback backends for systems where PortAudio is unavailable.
+- Add pluggable local playback adapters for PortAudio, PipeWire, PulseAudio, and
+  ALSA while preserving bounded nonblocking sink behavior.
+- Add per-subscriber health events and metrics for future daemon audio clients.
 - Preserve the rule that audio failures never interrupt scanner control.
 
 ### Milestone 19 — Layered configuration, daemon, and local API
@@ -80,9 +99,13 @@ assignment may change before implementation begins.
 - Use `~/.local/state/sdsctl/` for persistent user state.
 - Use `~/.cache/sdsctl/` for disposable cached data.
 - Detect legacy `sds200` configuration and provide a safe migration path.
-- Add a long-running daemon that owns scanner, PSI, audio, recording, and remote
-  destination sessions.
+- Add a long-running daemon that owns scanner, PSI, the SDS200's single
+  RTSP/RTP audio session, recording, and remote destination sessions.
+- Add bounded PCM and PCMU subscriptions so multiple local clients share one
+  scanner audio connection.
 - Add a local API and event stream suitable for CLI, TUI, web, and integrations.
+- Allow CLI and TUI clients to use daemon-owned sessions while retaining an
+  explicit standalone fallback.
 - Keep the existing Python import package compatible until a separate migration
   plan justifies a rename.
 
@@ -197,3 +220,5 @@ fixtures before renderer-specific implementation.
   Quick Search, Close Call, Weather, and Tone Out GSI/PSI states and live
   transitions, with observed protocol differences and unvalidated limits
   documented.
+- Milestone 16.6: v0.16.0 release preparation, full CI and CodeQL validation,
+  GitHub and PyPI publication, and clean Python 3.14 installation verification.
