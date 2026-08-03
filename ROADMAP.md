@@ -11,37 +11,33 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 18.3 — Remote-audio stream metadata synchronization
+### Milestone 18.4 — Pluggable remote-audio encoder processes
 
-- **Renderer-neutral metadata model — complete**
-  - Added immutable `RemoteStreamMetadata` derivation from
-    `RadioStateSnapshot`.
-  - Added deterministic active-channel titles and explicit scanning, idle,
-    stale, and unavailable titles.
-  - Normalized whitespace, rejected control characters, removed duplicate title
-    components, and bounded rendered titles without changing scanner state.
-  - Kept derivation independent from Broadcastify, Icecast, CLI, TUI, and daemon
-    consumers.
-- **Isolated metadata publisher — complete**
-  - Added a worker-backed newest-value queue so PSI callbacks perform no network
-    I/O.
-  - Added duplicate suppression and a configurable minimum update interval.
-  - Isolated secret resolution, publication attempts, retry backoff, and bounded
-    shutdown from PCM delivery.
-  - Added immutable submission, publication, suppression, replacement, failure,
-    retry, timestamp, pending-title, and last-error metrics.
-- **Broadcastify and compatibility validation — complete**
-  - Added short-lived authenticated Icecast metadata updates without touching the
-    active PCM source connection or `RemotePcmSink`.
-  - Resolved source-password references only on the publisher worker and redacted
-    resolved values from failures and snapshots.
-  - Kept metadata failures isolated from scanner control, PSI processing, audio
-    streaming, recording, and other sinks.
-  - Added deterministic formatting, newest-value, duplicate, rate-limit, retry,
-    recovery, shutdown, redaction, malformed-response, endpoint, and
-    connect-interruption tests.
-  - Documented the pending production-service smoke test and left CLI, TUI, and
-    daemon activation outside this milestone.
+- **Renderer-neutral encoder contract — planned**
+  - Define public typed contracts for encoder process creation, PCM input,
+    encoded output, process state, interruption, and bounded finalization.
+  - Represent immutable process commands and lifecycle settings without embedding
+    destination credentials or service-specific transport behavior.
+  - Keep encoder ownership independent from Broadcastify, Icecast sockets,
+    `RemotePcmSink`, CLI, TUI, and daemon consumers.
+- **Reusable subprocess lifecycle — planned**
+  - Extract subprocess startup, pipe validation, input writes, output reads,
+    exit-status reporting, stderr diagnostics, terminate/kill escalation, and
+    stream cleanup from the Broadcastify adapter.
+  - Make interruption idempotent and ensure blocked pipe operations can be
+    released during shutdown.
+  - Preserve deterministic ownership and bounded cleanup when startup, encoding,
+    destination delivery, or shutdown fails.
+- **Broadcastify migration and compatibility — planned**
+  - Rebuild the existing fixed FFmpeg MP3 profile on the reusable encoder layer
+    without changing its command, wire format, authentication, or retry behavior.
+  - Keep encoded-byte delivery and Icecast socket failures owned by
+    `BroadcastifyConnection`.
+  - Preserve injectable process factories for hardware-independent tests.
+  - Add startup, missing-executable, broken-pipe, early-exit, stderr, interruption,
+    terminate/kill, bounded-shutdown, and compatibility tests.
+  - Leave alternative encoder commands, new destination adapters, saved-profile
+    schema changes, and CLI, TUI, or daemon activation outside this milestone.
 
 ## Deferred hardware validation
 
@@ -68,8 +64,6 @@ assignment may change before implementation begins.
 
 ### Remaining Milestone 18 candidates — Remote-audio operations
 
-- Support pluggable encoder processes for destinations that do not accept native
-  8 kHz mono PCM or G.711 mu-law.
 - Add pluggable local playback adapters for PortAudio, PipeWire, PulseAudio, and
   ALSA while preserving bounded nonblocking sink behavior.
 - Add per-subscriber health events and metrics for future daemon audio clients.
