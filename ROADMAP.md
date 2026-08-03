@@ -11,46 +11,19 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 17.4 — Explicit retention execution
+### Milestone 17.5 — v0.17.0 release
 
-- **Milestone 17.3 inventory and retention planning — complete**
-  - Merged PR #44 after all CI and CodeQL checks passed.
-  - Added renderer-neutral recursive recording inventory and artifact
-    classification.
-  - Added deterministic non-destructive age, managed-unit, and aggregate-byte
-    retention planning.
-  - Preserved malformed, unsafe, orphaned, and unknown-time artifacts for explicit
-    review.
-- **Retention execution foundation — complete**
-  - Added a renderer-neutral executor that consumes an existing retention plan
-    without selecting additional candidates.
-  - Bound every mutation to an exact explicit confirmation token.
-  - Revalidated selected units against their inventory root and recorded state.
-  - Handled each WAV file and adjacent metadata sidecar deterministically as one
-    managed unit.
-  - Returned immutable attempted, completed, skipped, and failed execution results.
-- **CLI preview and confirmation workflow — complete**
-  - Added local inventory and retention-plan previews without scanner hardware.
-  - Added stable human-readable and JSON reports.
-  - Required an explicit `--execute` value matching the exact displayed plan token.
-  - Preserved fixed planning boundaries across age-policy preview and execution.
-  - Reported unsatisfied limits, protected units, stale plans, and partial failures
-    through output and process status.
-- **Safety boundaries — required**
-  - Never delete by default or execute from an implicit policy.
-  - Execute only `select` decisions from the exact confirmed plan.
-  - Never delete retained or protected entries.
-  - Refuse path escapes, symlinked managed artifacts, unexpected file types, and
-    entries that changed after inventory.
-  - Do not remove directories or recursively delete unknown contents.
-  - Preserve deterministic results when one managed unit cannot be completed.
-- **Validation — complete**
-  - Covered confirmation, inventory-bound tokens, stale plans, path safety,
-    symlinks, partial failures, and WAV-plus-sidecar behavior without scanner
-    hardware.
-  - Added CLI preview, JSON, fixed-age-boundary, exact-token execution, protected
-    artifact, and changed-artifact regression coverage.
-  - Kept normal CI filesystem tests isolated beneath temporary directories.
+- **Release bookkeeping — complete**
+  - Set the package and public runtime version to `0.17.0`.
+  - Finalized the changelog and completed-milestone roadmap entries.
+- **Acceptance validation — planned**
+  - Run full static, test, documentation, distribution, and clean-install checks.
+  - Smoke-test retention preview, JSON output, refusal, and confirmed execution
+    against disposable recording files.
+- **Publication — planned**
+  - Merge the release-preparation pull request after CI and CodeQL pass.
+  - Publish the `v0.17.0` GitHub tag, release, and PyPI artifacts.
+  - Verify a clean Python 3.14 installation from PyPI.
 
 ## Deferred hardware validation
 
@@ -70,7 +43,7 @@ When hardware becomes available:
 Until then, documentation must describe SDS150 support as implemented or
 fixture-tested, not hardware-validated.
 
-## Post-v0.16 milestone candidates
+## Future milestone candidates
 
 These milestone groups preserve intended future work. Their numbering and release
 assignment may change before implementation begins.
@@ -225,3 +198,8 @@ fixtures before renderer-specific implementation.
   output-device inspection, Raspberry Pi default and explicit-device playback
   validation, v0.16.1 GitHub and PyPI publication, and clean Python 3.14 PyPI
   installation verification.
+- Milestones 17.1–17.4: renderer-neutral recording identities, configurable
+  recording organization, recursive inventory and artifact classification,
+  deterministic retention planning, explicit inventory-bound execution, local CLI
+  preview and confirmation workflows, and stale-state and filesystem safety
+  validation.

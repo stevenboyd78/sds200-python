@@ -185,9 +185,9 @@ print(components["channel"])
 ```
 
 The component map also includes `timestamp`, `endpoint`, `mode`, `frequency`,
-`modulation`, `service_type`, `talkgroup_id`, and `unit_id`. Milestone 17.2 will
-consume these values through configurable path policies; Milestone 17.1 does not
-rename or move recordings.
+`modulation`, `service_type`, `talkgroup_id`, and `unit_id`. Milestone 17.2
+consumes these values through configurable path policies; identity derivation
+itself does not rename or move recordings.
 
 ## Recording organization
 
