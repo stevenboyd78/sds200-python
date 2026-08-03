@@ -12,6 +12,10 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   normalization for future recording organization policies.
 - Configurable TUI recording directories organized by ordered scanner, date,
   system, department, site, or channel identity components.
+- Renderer-neutral, read-only recording inventory with WAV and metadata-sidecar
+  classification, deterministic ordering, issue reporting, and aggregate totals.
+- Deterministic non-destructive recording-retention previews with age, managed-unit,
+  and aggregate-byte limits plus protected-artifact reporting.
 
 ## [0.16.1] - 2026-08-02
 

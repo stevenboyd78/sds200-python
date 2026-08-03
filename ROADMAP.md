@@ -11,39 +11,48 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 17.2 — Configurable recording organization
+### Milestone 17.3 — Recording inventory and retention planning
 
-- **Milestone 17.1 recording identity — complete**
-  - Merged the recording-identity foundation after CI and CodeQL passed.
-  - Added immutable start-preferred recording identity with stop-boundary fallback.
-  - Added deterministic portable path components independent of the current
-    recording path.
-  - Preserved the metadata schema, current recording paths, and sidecar naming.
-- **Organization policy foundation — complete**
-  - Added a renderer-neutral policy for ordered scanner, date, system, department,
-    site, and channel path components.
-  - Rendered safe relative paths from immutable start-boundary recording identity.
-  - Preserved current timestamp filenames when no organization policy is
-    configured.
-  - Integrated organization with newly created recordings without moving existing
-    recordings.
-  - Added recursive discovery of recordings stored in organized directories.
+- **Milestone 17.2 recording organization — complete**
+  - Merged configurable recording organization after CI and CodeQL passed.
+  - Added safe ordered scanner, date, system, department, site, and channel
+    directories derived from immutable start-boundary identity.
+  - Preserved flat timestamp recording behavior when organization is not enabled.
+  - Added recursive TUI discovery for recordings stored in organized directories.
+  - Preserved collision-safe allocation and adjacent metadata-sidecar handling.
+- **Recording inventory foundation — complete**
+  - Added a renderer-neutral recursive inventory of recording artifacts.
+  - Represented each WAV file and adjacent metadata sidecar as one managed unit.
+  - Reported file sizes, recording timestamps, durations, frames, metadata
+    availability, and aggregate totals.
+  - Classified compatible, incompatible, unreadable, missing, orphaned, invalid,
+    and mismatched artifacts without mutating them.
+  - Added deterministic relative-path ordering and protection against managed-file
+    symlinks escaping the configured root.
+- **Retention planning and reporting — complete**
+  - Added explicit age, managed-unit, and aggregate-byte limits separately from
+    filesystem execution.
+  - Selected eligible managed units deterministically from oldest to newest.
+  - Protected unreadable, missing, unsafe-metadata, and unknown-time units from
+    automatic selection.
+  - Reported explained decisions, projected totals, and limits that protected
+    units prevent the plan from satisfying.
+  - Kept execution and deletion deferred to Milestone 17.4.
 - **Validation — complete**
-  - Passed Ruff and MyPy across 44 source files.
-  - Passed all 468 tests.
+  - Passed Ruff and MyPy across 46 source files.
+  - Passed all 498 tests.
   - Passed documentation checks across 28 Markdown files.
-  - Confirmed collision-safe allocation and adjacent metadata-sidecar handling in
-    organized directories.
+  - Confirmed inventory scanning and retention planning are deterministic,
+    renderer-neutral, and read-only.
 - **Merge — pending**
   - Merge the implementation after CI and CodeQL pass.
 - **Safety boundaries — preserved**
-  - Reject absolute paths, traversal, empty policy fields, and unsupported
-    components.
-  - Preserve collision-safe filename allocation.
-  - Keep each WAV file and adjacent metadata sidecar in the same directory.
-  - Do not add inventory, retention, or deletion behavior in this slice.
-- **Next slices — planned**
-  - Milestone 17.3: recording inventory, retention planning, and reporting.
+  - Do not move, rename, overwrite, or delete recordings.
+  - Do not follow inventory paths outside the configured recording root.
+  - Treat a WAV file and its adjacent metadata sidecar as one managed unit.
+  - Preserve malformed and unknown artifacts for reporting rather than silently
+    discarding them.
+- **Next slice — planned**
   - Milestone 17.4: explicit retention execution with previews and deterministic
     audio-and-sidecar handling.
 

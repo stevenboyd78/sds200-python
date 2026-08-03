@@ -123,6 +123,14 @@ from .profiles import (
 )
 from .radio import SDS200, SDSScanner
 from .recording_identity import RecordingIdentity, safe_recording_component
+from .recording_inventory import (
+    RecordingAudioStatus,
+    RecordingInventory,
+    RecordingInventoryEntry,
+    RecordingInventorySummary,
+    RecordingMetadataStatus,
+    scan_recording_inventory,
+)
 from .recording_metadata import (
     RECORDING_METADATA_SCHEMA,
     RECORDING_METADATA_VERSION,
@@ -135,6 +143,15 @@ from .recording_metadata import (
 from .recording_organization import (
     RECORDING_ORGANIZATION_COMPONENTS,
     RecordingOrganizationPolicy,
+)
+from .recording_retention import (
+    RecordingRetentionDecision,
+    RecordingRetentionDisposition,
+    RecordingRetentionPlan,
+    RecordingRetentionPolicy,
+    RecordingRetentionReason,
+    RecordingRetentionSummary,
+    plan_recording_retention,
 )
 from .reliability import HealthHistory, HealthThresholds, ReconnectPolicy
 from .remote_audio import (
@@ -294,9 +311,20 @@ __all__ = [
     "RECORDING_METADATA_SCHEMA",
     "RECORDING_METADATA_VERSION",
     "RECORDING_ORGANIZATION_COMPONENTS",
+    "RecordingAudioStatus",
     "RecordingIdentity",
+    "RecordingInventory",
+    "RecordingInventoryEntry",
+    "RecordingInventorySummary",
     "RecordingOrganizationPolicy",
     "RecordingMetadata",
+    "RecordingMetadataStatus",
+    "RecordingRetentionDecision",
+    "RecordingRetentionDisposition",
+    "RecordingRetentionPlan",
+    "RecordingRetentionPolicy",
+    "RecordingRetentionReason",
+    "RecordingRetentionSummary",
     "RecordingSource",
     "RecordingState",
     "RecordingTransport",
@@ -370,11 +398,13 @@ __all__ = [
     "normalize_model_name",
     "parse_rtp_transport",
     "parse_sdp_audio",
+    "plan_recording_retention",
     "present_radio_state",
     "present_scanner_info",
     "profile_from_discovery",
     "recording_metadata_path",
     "repair_profile",
+    "scan_recording_inventory",
     "safe_recording_component",
     "theme_roles_for",
     "write_capture",
