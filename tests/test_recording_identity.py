@@ -12,6 +12,7 @@ from sds200.recording_metadata import (
     RecordingSource,
     RecordingState,
 )
+from sds200.state import RadioStateSnapshot
 
 
 @pytest.mark.parametrize(
@@ -99,6 +100,30 @@ def test_recording_identity_prefers_started_state_and_fills_missing_values(
     assert components["department"] == "Fire-EMS"
     assert components["channel"] == "Dispatch-1"
     assert components["unit_id"] == "unknown"
+
+
+def test_recording_identity_from_start_boundary_is_immutable() -> None:
+    observed_at = datetime(2026, 8, 3, 5, 30, tzinfo=UTC)
+    state = RadioStateSnapshot(
+        system="County",
+        department="Fire",
+        channel="Dispatch",
+    )
+
+    identity = RecordingIdentity.from_start_boundary(
+        started_at=observed_at,
+        endpoint="  scanner  ",
+        scanner="  SDS200  ",
+        state=state,
+    )
+
+    assert identity.started_at == observed_at
+    assert identity.stopped_at == observed_at
+    assert identity.endpoint == "scanner"
+    assert identity.scanner == "SDS200"
+    assert identity.system == "County"
+    assert identity.department == "Fire"
+    assert identity.channel == "Dispatch"
 
 
 def test_recording_identity_does_not_depend_on_recording_path(tmp_path: Path) -> None:

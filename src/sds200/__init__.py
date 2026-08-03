@@ -132,6 +132,10 @@ from .recording_metadata import (
     recording_metadata_path,
     write_recording_metadata,
 )
+from .recording_organization import (
+    RECORDING_ORGANIZATION_COMPONENTS,
+    RecordingOrganizationPolicy,
+)
 from .reliability import HealthHistory, HealthThresholds, ReconnectPolicy
 from .remote_audio import (
     EnvironmentSecret,
@@ -289,7 +293,9 @@ __all__ = [
     "RadioStateSnapshot",
     "RECORDING_METADATA_SCHEMA",
     "RECORDING_METADATA_VERSION",
+    "RECORDING_ORGANIZATION_COMPONENTS",
     "RecordingIdentity",
+    "RecordingOrganizationPolicy",
     "RecordingMetadata",
     "RecordingSource",
     "RecordingState",

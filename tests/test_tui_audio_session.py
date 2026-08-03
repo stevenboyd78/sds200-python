@@ -13,6 +13,7 @@ from sds200.audio import AudioChunk, AudioChunkHandler, AudioStream
 from sds200.audio_session import AudioSessionStatus
 from sds200.audio_sinks import PcmSinkStatistics
 from sds200.recording_metadata import recording_metadata_path
+from sds200.recording_organization import RecordingOrganizationPolicy
 from sds200.state import RadioStateSnapshot
 from sds200.tui_audio import (
     PcmSinkRouter,
@@ -231,6 +232,110 @@ def test_tui_audio_starts_live_playback_and_records_repeatedly(tmp_path: Path) -
     session.close()
     assert transport.stop_calls == 1
     assert not playback.running
+
+
+def test_tui_audio_organizes_new_recording_from_start_boundary(
+    tmp_path: Path,
+) -> None:
+    transport = CountingAudioTransport()
+    observed_at = datetime(2026, 8, 3, 5, 30, tzinfo=UTC)
+    session = TuiAudioSession(
+        AudioStream(transport),
+        RecordingPathPolicy(
+            directory=tmp_path,
+            organization=RecordingOrganizationPolicy.from_csv(
+                "scanner,date,system,department,site,channel"
+            ),
+        ),
+        metadata=True,
+        scanner="SDS/200",
+        now=lambda: observed_at,
+    )
+    session.update_radio_state(
+        RadioStateSnapshot(
+            system="County / Public Safety",
+            department="Fire & EMS",
+            site="North",
+            channel="Dispatch: 1",
+        )
+    )
+
+    session.open_audio()
+    session.start()
+    transport.feed(bytes((0xFF, 0x80)))
+    session.update_radio_state(
+        RadioStateSnapshot(
+            system="Changed",
+            department="Changed",
+            site="South",
+            channel="Tac 2",
+        )
+    )
+    session.stop()
+
+    expected = (
+        tmp_path
+        / "SDS-200"
+        / "2026-08-03"
+        / "County-Public-Safety"
+        / "Fire-EMS"
+        / "North"
+        / "Dispatch-1"
+        / "sds200-20260803-053000.wav"
+    )
+    assert session.recordings[0].path == expected
+    assert session.last_metadata_path == recording_metadata_path(expected)
+    assert expected.exists()
+    assert recording_metadata_path(expected).exists()
+    session.close()
+
+
+def test_organized_collision_and_sidecar_remain_adjacent(tmp_path: Path) -> None:
+    observed_at = datetime(2026, 8, 3, 5, 30, tzinfo=UTC)
+    directory = tmp_path / "SDS200" / "2026-08-03" / "Dispatch"
+    directory.mkdir(parents=True)
+    first = directory / "sds200-20260803-053000.wav"
+    recording_metadata_path(first).write_text("{}\n", encoding="utf-8")
+
+    transport = CountingAudioTransport()
+    session = TuiAudioSession(
+        AudioStream(transport),
+        RecordingPathPolicy(
+            directory=tmp_path,
+            organization=RecordingOrganizationPolicy.from_csv(
+                "scanner,date,channel"
+            ),
+        ),
+        metadata=True,
+        scanner="SDS200",
+        now=lambda: observed_at,
+    )
+    session.update_radio_state(RadioStateSnapshot(channel="Dispatch"))
+
+    session.open_audio()
+    session.start()
+    transport.feed(bytes((0xFF,)))
+    session.stop()
+
+    expected = directory / "sds200-20260803-053000-2.wav"
+    assert session.recordings[0].path == expected
+    assert session.last_metadata_path == recording_metadata_path(expected)
+    session.close()
+
+
+def test_recording_library_discovers_nested_wav_files(tmp_path: Path) -> None:
+    nested = tmp_path / "SDS200" / "2026-08-03"
+    nested.mkdir(parents=True)
+    recording = nested / "dispatch.wav"
+    with wave.open(str(recording), "wb") as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(8000)
+        output.writeframes(bytes((0, 0)))
+
+    policy = RecordingPathPolicy(directory=tmp_path)
+
+    assert policy.library_paths() == (recording,)
 
 
 def test_tui_audio_writes_opt_in_metadata_with_boundary_state(

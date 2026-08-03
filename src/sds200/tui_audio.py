@@ -5,7 +5,7 @@ import threading
 import wave
 from collections.abc import Callable
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
@@ -35,11 +35,13 @@ from .audio_sinks import (
     SoundDevicePlaybackSink,
 )
 from .events import EventBus
+from .recording_identity import RecordingIdentity
 from .recording_metadata import (
     RecordingMetadata,
     recording_metadata_path,
     write_recording_metadata,
 )
+from .recording_organization import RecordingOrganizationPolicy
 from .state import RadioStateSnapshot
 
 logger = logging.getLogger(__name__)
@@ -74,16 +76,21 @@ class RecordingEntry:
 
 @dataclass(frozen=True, slots=True)
 class RecordingPathPolicy:
-    """Resolve explicit or collision-safe timestamped TUI recording paths."""
+    """Resolve explicit or collision-safe organized TUI recording paths."""
 
     output: Path | None = None
     directory: Path | None = None
     template: str = DEFAULT_RECORDING_TEMPLATE
     overwrite: bool = False
+    organization: RecordingOrganizationPolicy = field(
+        default_factory=RecordingOrganizationPolicy
+    )
 
     def __post_init__(self) -> None:
         if self.output is not None and self.directory is not None:
             raise ValueError("Audio output and audio directory are mutually exclusive")
+        if self.organization.enabled and self.directory is None:
+            raise ValueError("Audio organization requires an audio directory")
         if not self.template.strip():
             raise ValueError("Audio filename template must not be empty")
         try:
@@ -136,6 +143,7 @@ class RecordingPathPolicy:
         *,
         explicit_used: bool,
         metadata: bool = False,
+        identity: RecordingIdentity | None = None,
     ) -> Path:
         def available(candidate: Path) -> bool:
             return not candidate.exists() and (
@@ -157,6 +165,12 @@ class RecordingPathPolicy:
             raise RuntimeError("TUI audio recording is not configured")
 
         directory = self.directory.expanduser()
+        if self.organization.enabled:
+            if identity is None:
+                raise RuntimeError(
+                    "Recording organization requires a start-boundary identity"
+                )
+            directory = directory / self.organization.relative_directory(identity)
         directory.mkdir(parents=True, exist_ok=True)
         timestamp = now.strftime("%Y%m%d-%H%M%S")
         name = self.template.format(timestamp=timestamp)
@@ -176,7 +190,7 @@ class RecordingPathPolicy:
             directory = self.directory.expanduser()
             if not directory.exists():
                 return ()
-            return tuple(directory.glob("*.wav"))
+            return tuple(directory.rglob("*.wav"))
         if self.output is not None:
             output = self.output.expanduser()
             return (output,) if output.exists() else ()
@@ -522,6 +536,7 @@ class TuiAudioSession:
                     "Start the TUI with --audio-directory or --audio-output "
                     "to enable recording"
                 )
+            started_at = self._now()
             with self._state_lock:
                 if self._status in {
                     AudioSessionStatus.STARTING,
@@ -540,16 +555,28 @@ class TuiAudioSession:
                 self._recording_started_snapshot = None
                 self._recording_started_state = None
                 self._last_metadata_path = None
+                started_state = self._radio_state
             self._emit_state()
 
+            identity = (
+                RecordingIdentity.from_start_boundary(
+                    started_at=started_at,
+                    endpoint=self.stream.endpoint,
+                    scanner=self._scanner,
+                    state=started_state,
+                )
+                if self.path_policy.organization.enabled
+                else None
+            )
             path: Path | None = None
             recorder: PcmuWavRecorder | None = None
             sink: PcmWavSink | None = None
             try:
                 path = self.path_policy.next_path(
-                    self._now(),
+                    started_at,
                     explicit_used=self._explicit_used,
                     metadata=self._metadata_enabled,
+                    identity=identity,
                 )
                 recorder = PcmuWavRecorder(
                     path,
@@ -577,9 +604,8 @@ class TuiAudioSession:
                 self._recorder = recorder
                 self._output_path = path
                 self._started_clock = self._clock()
-                self._started_at = self._now()
+                self._started_at = started_at
                 self._status = AudioSessionStatus.RECORDING
-                started_state = self._radio_state
                 if self.path_policy.output is not None:
                     self._explicit_used = True
             started_snapshot = self.snapshot()

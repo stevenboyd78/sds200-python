@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Final
 
 from .recording_metadata import RecordingMetadata
+from .state import RadioStateSnapshot
 
 DEFAULT_RECORDING_COMPONENT = "unknown"
 MAX_RECORDING_COMPONENT_LENGTH = 80
@@ -126,6 +127,35 @@ class RecordingIdentity:
         ):
             if value is not None and not value.strip():
                 raise ValueError(f"Recording identity {name} must not be empty when provided.")
+
+    @classmethod
+    def from_start_boundary(
+        cls,
+        *,
+        started_at: datetime,
+        endpoint: str,
+        scanner: str | None = None,
+        state: RadioStateSnapshot | None = None,
+    ) -> RecordingIdentity:
+        """Build immutable path-planning identity from one start boundary."""
+
+        observed = state or RadioStateSnapshot()
+        return cls(
+            started_at=started_at,
+            stopped_at=started_at,
+            endpoint=endpoint.strip(),
+            scanner=_clean_optional(scanner),
+            mode=_clean_optional(observed.mode),
+            system=_clean_optional(observed.system),
+            department=_clean_optional(observed.department),
+            site=_clean_optional(observed.site),
+            channel=_clean_optional(observed.channel),
+            frequency=_clean_optional(observed.frequency),
+            modulation=_clean_optional(observed.modulation),
+            service_type=_clean_optional(observed.service_type),
+            talkgroup_id=_clean_optional(observed.talkgroup_id),
+            unit_id=_clean_optional(observed.unit_id),
+        )
 
     @classmethod
     def from_metadata(cls, metadata: RecordingMetadata) -> RecordingIdentity:

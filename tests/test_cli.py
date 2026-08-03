@@ -82,6 +82,27 @@ def test_tui_audio_metadata_option_parses(tmp_path: Path) -> None:
     assert args.audio_metadata
 
 
+def test_tui_audio_organization_option_parses(tmp_path: Path) -> None:
+    args = cli.build_parser().parse_args(
+        [
+            "--host",
+            "192.168.0.251",
+            "tui",
+            "--audio-directory",
+            str(tmp_path),
+            "--audio-organize-by",
+            "scanner,date,system,channel",
+        ]
+    )
+
+    assert args.audio_organize_by.components == (
+        "scanner",
+        "date",
+        "system",
+        "channel",
+    )
+
+
 def test_sds100_battery_cli_uses_optional_gsi_property(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

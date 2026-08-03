@@ -234,8 +234,16 @@ and the first live PSI update has been displayed. Select a different output with
 Press `R` to start and stop recordings. Directory mode generates local-time names
 such as `sds200-20260729-025501.wav`; collisions add `-2`, `-3`, and later suffixes.
 Use `--audio-template` to replace the basename while retaining the required
-`{timestamp}` field. The legacy `--audio-output FILE` mode remains protected and
-one-shot; `--audio-force` applies only to that explicit file.
+`{timestamp}` field.
+
+Add `--audio-organize-by` with an ordered comma-separated subset of `scanner`,
+`date`, `system`, `department`, `site`, and `channel` to place new recordings in
+safe nested directories. Organization uses one immutable start-boundary snapshot;
+a later scanner-state change does not move the recording. Missing values become
+`unknown`, collision suffixes remain in the selected directory, and metadata
+sidecars stay adjacent. Existing recordings are not moved. The legacy
+`--audio-output FILE` mode remains protected and one-shot; `--audio-force` applies
+only to that explicit file.
 
 Press `L` to show up to `--audio-history-limit` compatible 8 kHz mono signed 16-bit
 PCM WAV files, newest first. Each row includes its filesystem timestamp, duration,

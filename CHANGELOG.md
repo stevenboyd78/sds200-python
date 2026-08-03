@@ -10,6 +10,8 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 - Renderer-neutral `RecordingIdentity` derivation and portable filename-component
   normalization for future recording organization policies.
+- Configurable TUI recording directories organized by ordered scanner, date,
+  system, department, site, or channel identity components.
 
 ## [0.16.1] - 2026-08-02
 

@@ -82,6 +82,53 @@ def test_tui_cli_builds_optional_audio_session(
     assert session.stream.transport is audio_transport
 
 
+def test_tui_cli_builds_organized_audio_session(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    radio = FakeTuiRadio()
+    audio_transport = FakeAudioTransport()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(cli, "selected_radio", lambda args: radio)
+    monkeypatch.setattr(
+        cli,
+        "NetworkAudioTransport",
+        lambda *args, **kwargs: audio_transport,
+    )
+    monkeypatch.setattr(tui, "run_tui", lambda **kwargs: captured.update(kwargs))
+
+    result = cli.main(
+        [
+            "--host",
+            "192.0.2.25",
+            "tui",
+            "--audio-directory",
+            str(tmp_path),
+            "--audio-organize-by",
+            "scanner,date,channel",
+        ]
+    )
+
+    assert result == 0
+    session = captured["audio_session"]
+    assert isinstance(session, TuiAudioSession)
+    assert session.path_policy.organization.components == (
+        "scanner",
+        "date",
+        "channel",
+    )
+
+
+def test_tui_audio_organization_requires_directory(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    result = cli.main(["tui", "--audio-organize-by", "scanner,date"])
+
+    assert result == 2
+    assert "--audio-organize-by requires --audio-directory" in capsys.readouterr().err
+
+
 def test_tui_audio_requires_explicit_network_host(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
