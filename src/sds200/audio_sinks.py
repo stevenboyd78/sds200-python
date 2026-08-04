@@ -4,6 +4,7 @@ import logging
 import threading
 from collections import deque
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from importlib import import_module
 from typing import Protocol, Self, cast, runtime_checkable
@@ -212,6 +213,134 @@ class AudioFanoutSession:
                 sink.submit_pcm(pcm)
             except Exception:
                 logger.exception("Audio sink rejected PCM sink=%s", sink.name)
+
+class PcmSinkRouter:
+    """Dynamically attach nonblocking PCM sinks behind one fanout destination."""
+
+    def __init__(self, *, name: str = "pcm-sink-router") -> None:
+        if not name or name.strip() != name:
+            raise ValueError("PCM sink router name must not be empty or padded")
+        self._name = name
+        self._lifecycle_lock = threading.RLock()
+        self._submit_lock = threading.Lock()
+        self._state_lock = threading.RLock()
+        self._sinks: list[PcmSink] = []
+        self._running = False
+        self._bytes_submitted = 0
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def running(self) -> bool:
+        with self._state_lock:
+            return self._running
+
+    @property
+    def statistics(self) -> PcmSinkStatistics:
+        with self._state_lock:
+            sinks = tuple(self._sinks)
+            submitted = self._bytes_submitted
+        statistics = tuple(sink.statistics for sink in sinks)
+        return PcmSinkStatistics(
+            bytes_submitted=submitted,
+            bytes_written=sum(item.bytes_written for item in statistics),
+            bytes_dropped=sum(item.bytes_dropped for item in statistics),
+            queued_bytes=sum(item.queued_bytes for item in statistics),
+            underflows=sum(item.underflows for item in statistics),
+            overflows=sum(item.overflows for item in statistics),
+            callback_statuses=sum(item.callback_statuses for item in statistics),
+        )
+
+    def start(self) -> None:
+        with self._lifecycle_lock:
+            with self._state_lock:
+                if self._running:
+                    return
+                sinks = tuple(self._sinks)
+
+            started: list[PcmSink] = []
+            try:
+                for sink in sinks:
+                    sink.start()
+                    started.append(sink)
+            except BaseException:
+                for sink in reversed(started):
+                    with suppress(Exception):
+                        sink.stop()
+                raise
+
+            with self._state_lock:
+                self._running = True
+
+    def attach(self, sink: PcmSink) -> None:
+        with self._lifecycle_lock:
+            with self._state_lock:
+                if sink in self._sinks:
+                    return
+                running = self._running
+
+            if running:
+                sink.start()
+
+            with self._state_lock:
+                self._sinks.append(sink)
+
+    def detach(self, sink: PcmSink, *, stop: bool = True) -> None:
+        with self._lifecycle_lock:
+            with self._state_lock:
+                if sink not in self._sinks:
+                    return
+                self._sinks.remove(sink)
+
+            # Wait for a callback that already captured this sink to finish.
+            with self._submit_lock:
+                pass
+
+            if stop:
+                sink.stop()
+
+    def submit_pcm(self, data: bytes) -> None:
+        with self._submit_lock:
+            with self._state_lock:
+                if not self._running:
+                    return
+                sinks = tuple(self._sinks)
+                self._bytes_submitted += len(data)
+
+            for sink in sinks:
+                try:
+                    sink.submit_pcm(data)
+                except Exception:
+                    logger.exception(
+                        "PCM sink router subscriber rejected PCM sink=%s",
+                        sink.name,
+                    )
+
+    def stop(self) -> None:
+        with self._lifecycle_lock:
+            with self._state_lock:
+                if not self._running:
+                    return
+                self._running = False
+                sinks = tuple(reversed(self._sinks))
+                self._sinks.clear()
+
+            # Do not stop sinks while an in-flight callback is submitting PCM.
+            with self._submit_lock:
+                pass
+
+            failure: BaseException | None = None
+            for sink in sinks:
+                try:
+                    sink.stop()
+                except BaseException as error:
+                    if failure is None:
+                        failure = error
+
+            if failure is not None:
+                raise failure
 
 
 class _PcmBuffer:

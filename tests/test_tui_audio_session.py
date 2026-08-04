@@ -11,12 +11,11 @@ import pytest
 
 from sds200.audio import AudioChunk, AudioChunkHandler, AudioStream
 from sds200.audio_session import AudioSessionStatus
-from sds200.audio_sinks import PcmSinkStatistics
+from sds200.audio_sinks import PcmSinkRouter, PcmSinkStatistics
 from sds200.recording_metadata import recording_metadata_path
 from sds200.recording_organization import RecordingOrganizationPolicy
 from sds200.state import RadioStateSnapshot
 from sds200.tui_audio import (
-    PcmSinkRouter,
     RecordingPathPolicy,
     SavedPlaybackStatus,
     TuiAudioSession,
