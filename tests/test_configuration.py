@@ -407,3 +407,302 @@ def test_configuration_layer_and_provenance_are_immutable() -> None:
 
     with pytest.raises(TypeError):
         resolved.origins["theme"] = resolved.origin_for("theme")  # type: ignore[index]
+
+
+def test_missing_configuration_sources_preserve_defaults_without_writes(
+    tmp_path: Path,
+) -> None:
+    from sds200 import (
+        ApplicationConfiguration,
+        load_application_configuration,
+        resolve_configuration_paths,
+    )
+
+    paths = resolve_configuration_paths(
+        environ={},
+        home=tmp_path / "home",
+        system_config_dir=tmp_path / "etc" / "sdsctl",
+    )
+
+    resolved = load_application_configuration(paths=paths, environ={})
+
+    assert resolved.configuration == ApplicationConfiguration()
+    assert paths.system_config_file.exists() is False
+    assert paths.user_config_file.exists() is False
+
+
+def test_load_application_configuration_uses_all_sources(
+    tmp_path: Path,
+) -> None:
+    from sds200 import (
+        load_application_configuration,
+        resolve_configuration_paths,
+    )
+
+    paths = resolve_configuration_paths(
+        environ={},
+        home=tmp_path / "home",
+        system_config_dir=tmp_path / "etc" / "sdsctl",
+    )
+    paths.system_config_dir.mkdir(parents=True)
+    paths.user_config_dir.mkdir(parents=True)
+    paths.system_config_file.write_text(
+        "version = 1\n\n"
+        "[application]\n"
+        "max_xml_retries = 4\n"
+        "reconnect_attempts = 3\n"
+        'theme = "light"\n',
+        encoding="utf-8",
+    )
+    paths.user_config_file.write_text(
+        "version = 1\n\n"
+        "[application]\n"
+        "health_history_limit = 250\n"
+        'theme = "dark"\n',
+        encoding="utf-8",
+    )
+
+    resolved = load_application_configuration(
+        paths=paths,
+        environ={
+            "SDSCTL_THEME": "light",
+            "SDSCTL_LOG_LEVEL": "debug",
+        },
+        command_line_values={
+            "theme": "dark",
+            "reconnect_attempts": 0,
+        },
+    )
+
+    config = resolved.configuration
+    assert config.max_xml_retries == 4
+    assert config.health_history_limit == 250
+    assert config.log_level == "DEBUG"
+    assert config.theme == "dark"
+    assert config.reconnect_policy.max_attempts is None
+    assert resolved.origin_for("max_xml_retries").location == str(
+        paths.system_config_file
+    )
+    assert resolved.origin_for("health_history_limit").location == str(
+        paths.user_config_file
+    )
+    assert resolved.origin_for("log_level").location == "environment"
+    assert resolved.origin_for("theme").location == "command line"
+
+
+def test_environment_configuration_parses_supported_types(
+    tmp_path: Path,
+) -> None:
+    from sds200 import (
+        load_environment_configuration,
+        resolve_application_configuration,
+    )
+
+    layer = load_environment_configuration(
+        {
+            "SDSCTL_MAX_XML_RETRIES": "4",
+            "SDSCTL_RECONNECT_ATTEMPTS": "6",
+            "SDSCTL_RECONNECT_INITIAL_DELAY": "0.5",
+            "SDSCTL_RECONNECT_MULTIPLIER": "1.5",
+            "SDSCTL_RECONNECT_MAX_DELAY": "12",
+            "SDSCTL_HEALTH_HISTORY_LIMIT": "250",
+            "SDSCTL_COLOR": "always",
+            "SDSCTL_THEME": "light",
+            "SDSCTL_LOG_LEVEL": "info",
+            "SDSCTL_LOG_FILE": str(tmp_path / "sdsctl.log"),
+            "UNRELATED_SETTING": "ignored",
+        }
+    )
+
+    assert layer is not None
+    resolved = resolve_application_configuration((layer,))
+    config = resolved.configuration
+
+    assert config.max_xml_retries == 4
+    assert config.reconnect_attempts == 6
+    assert config.reconnect_initial_delay == 0.5
+    assert config.reconnect_multiplier == 1.5
+    assert config.reconnect_max_delay == 12.0
+    assert config.health_history_limit == 250
+    assert config.color == "always"
+    assert config.theme == "light"
+    assert config.log_level == "INFO"
+    assert config.log_file == tmp_path / "sdsctl.log"
+
+
+def test_environment_configuration_returns_none_when_absent() -> None:
+    from sds200 import load_environment_configuration
+
+    assert load_environment_configuration({}) is None
+    assert load_environment_configuration({"UNRELATED": "value"}) is None
+
+
+@pytest.mark.parametrize(
+    ("variable", "value", "expected"),
+    [
+        (
+            "SDSCTL_MAX_XML_RETRIES",
+            "not-an-integer-secret",
+            "expected an integer",
+        ),
+        (
+            "SDSCTL_RECONNECT_INITIAL_DELAY",
+            "not-a-number-secret",
+            "expected a number",
+        ),
+        (
+            "SDSCTL_LOG_FILE",
+            "   ",
+            "path must not be empty",
+        ),
+    ],
+)
+def test_environment_configuration_errors_name_variable_without_value(
+    variable: str,
+    value: str,
+    expected: str,
+) -> None:
+    from sds200 import ConfigurationError, load_environment_configuration
+
+    with pytest.raises(ConfigurationError) as exc_info:
+        load_environment_configuration({variable: value})
+
+    message = str(exc_info.value)
+    assert variable in message
+    assert expected in message
+    assert value not in message
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        "",
+        "version = 2\n",
+        "version = true\n",
+        "version = 1.0\n",
+    ],
+)
+def test_configuration_file_rejects_unsupported_version(
+    tmp_path: Path,
+    document: str,
+) -> None:
+    from sds200 import ConfigurationError, load_configuration_file
+
+    path = tmp_path / "config.toml"
+    path.write_text(document, encoding="utf-8")
+
+    with pytest.raises(ConfigurationError, match="version must be 1"):
+        load_configuration_file(path, source="user")
+
+
+def test_configuration_file_rejects_malformed_toml(tmp_path: Path) -> None:
+    from sds200 import ConfigurationError, load_configuration_file
+
+    path = tmp_path / "config.toml"
+    path.write_text("version = [", encoding="utf-8")
+
+    with pytest.raises(
+        ConfigurationError,
+        match=r"Could not read system configuration file .*config\.toml",
+    ):
+        load_configuration_file(path, source="system")
+
+
+def test_configuration_file_rejects_unknown_top_level_field(
+    tmp_path: Path,
+) -> None:
+    from sds200 import ConfigurationError, load_configuration_file
+
+    path = tmp_path / "config.toml"
+    path.write_text(
+        "version = 1\nfuture = true\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ConfigurationError,
+        match="unsupported top-level field",
+    ):
+        load_configuration_file(path, source="user")
+
+
+def test_configuration_file_requires_application_table(tmp_path: Path) -> None:
+    from sds200 import ConfigurationError, load_configuration_file
+
+    path = tmp_path / "config.toml"
+    path.write_text(
+        'version = 1\napplication = "invalid"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError, match=r"\[application\] table"):
+        load_configuration_file(path, source="system")
+
+
+def test_unknown_file_field_diagnostic_does_not_include_value(
+    tmp_path: Path,
+) -> None:
+    from sds200 import (
+        ConfigurationError,
+        load_application_configuration,
+        resolve_configuration_paths,
+    )
+
+    secret = "resolved-production-password"
+    paths = resolve_configuration_paths(
+        environ={},
+        home=tmp_path / "home",
+        system_config_dir=tmp_path / "etc" / "sdsctl",
+    )
+    paths.user_config_dir.mkdir(parents=True)
+    paths.user_config_file.write_text(
+        "version = 1\n\n"
+        "[application]\n"
+        f'password = "{secret}"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError) as exc_info:
+        load_application_configuration(paths=paths, environ={})
+
+    message = str(exc_info.value)
+    assert "password" in message
+    assert str(paths.user_config_file) in message
+    assert secret not in message
+
+
+def test_nonfinite_configuration_number_is_rejected_with_source(
+    tmp_path: Path,
+) -> None:
+    from sds200 import (
+        ConfigurationError,
+        load_application_configuration,
+        resolve_configuration_paths,
+    )
+
+    paths = resolve_configuration_paths(
+        environ={},
+        home=tmp_path / "home",
+        system_config_dir=tmp_path / "etc" / "sdsctl",
+    )
+    paths.system_config_dir.mkdir(parents=True)
+    paths.system_config_file.write_text(
+        "version = 1\n\n"
+        "[application]\n"
+        "reconnect_multiplier = nan\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ConfigurationError,
+        match=r"Invalid system configuration at .*config\.toml: "
+        r"Reconnect multiplier must be finite",
+    ):
+        load_application_configuration(paths=paths, environ={})
+
+
+def test_configuration_layer_rejects_non_string_field_names() -> None:
+    from sds200 import ConfigurationLayer
+
+    with pytest.raises(TypeError, match="field names must be strings"):
+        ConfigurationLayer("user", {1: "invalid"})  # type: ignore[dict-item]

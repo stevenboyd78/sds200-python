@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+import tomllib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from math import isfinite
 from pathlib import Path
 from types import MappingProxyType
 from typing import Literal, TypeAlias
@@ -12,6 +14,7 @@ from .logging_config import LOG_LEVEL_NAMES
 from .reliability import ReconnectPolicy
 
 APPLICATION_CONFIG_FILENAME = "config.toml"
+APPLICATION_CONFIGURATION_VERSION = 1
 CONFIG_DIRECTORY_NAME = "sdsctl"
 CONNECTION_PROFILE_FILENAME = "profiles.toml"
 DEFAULT_SYSTEM_CONFIG_DIR = Path("/etc/sdsctl")
@@ -25,6 +28,7 @@ ConfigurationSource: TypeAlias = Literal[
     "environment",
     "command-line",
 ]
+FileConfigurationSource: TypeAlias = Literal["system", "user"]
 ColorMode: TypeAlias = Literal["auto", "always", "never"]
 ThemeName: TypeAlias = Literal["dark", "light"]
 
@@ -46,6 +50,18 @@ APPLICATION_CONFIGURATION_FIELDS: tuple[str, ...] = (
     "theme",
     "log_level",
     "log_file",
+)
+ENVIRONMENT_CONFIGURATION_VARIABLES: tuple[tuple[str, str], ...] = (
+    ("max_xml_retries", "SDSCTL_MAX_XML_RETRIES"),
+    ("reconnect_attempts", "SDSCTL_RECONNECT_ATTEMPTS"),
+    ("reconnect_initial_delay", "SDSCTL_RECONNECT_INITIAL_DELAY"),
+    ("reconnect_multiplier", "SDSCTL_RECONNECT_MULTIPLIER"),
+    ("reconnect_max_delay", "SDSCTL_RECONNECT_MAX_DELAY"),
+    ("health_history_limit", "SDSCTL_HEALTH_HISTORY_LIMIT"),
+    ("color", "SDSCTL_COLOR"),
+    ("theme", "SDSCTL_THEME"),
+    ("log_level", "SDSCTL_LOG_LEVEL"),
+    ("log_file", "SDSCTL_LOG_FILE"),
 )
 _COLOR_MODES: tuple[ColorMode, ...] = ("auto", "always", "never")
 _THEME_NAMES: tuple[ThemeName, ...] = ("dark", "light")
@@ -184,6 +200,8 @@ class ApplicationConfiguration:
         if self.log_file is not None:
             if not isinstance(self.log_file, (str, Path)):
                 raise TypeError("Log file must be a path or None.")
+            if isinstance(self.log_file, str) and not self.log_file.strip():
+                raise ValueError("Log file path must not be empty.")
             object.__setattr__(self, "log_file", Path(self.log_file))
 
     @property
@@ -223,10 +241,13 @@ class ConfigurationLayer:
             )
         if self.source not in CONFIGURATION_SOURCE_PRECEDENCE:
             raise ValueError(f"Unsupported configuration source: {self.source!r}")
+        copied = dict(self.values)
+        if any(not isinstance(field, str) for field in copied):
+            raise TypeError("Configuration layer field names must be strings.")
         object.__setattr__(
             self,
             "values",
-            MappingProxyType(dict(self.values)),
+            MappingProxyType(copied),
         )
 
 
@@ -392,6 +413,175 @@ def resolve_application_configuration(
     return ResolvedApplicationConfiguration(configuration, origins)
 
 
+
+def load_configuration_file(
+    path: str | Path,
+    *,
+    source: FileConfigurationSource,
+) -> ConfigurationLayer | None:
+    """Load one optional versioned application configuration document."""
+
+    if source not in {"system", "user"}:
+        raise ValueError(f"Unsupported file configuration source: {source!r}")
+
+    config_path = Path(path)
+    if not config_path.exists():
+        return None
+
+    try:
+        document = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise ConfigurationError(
+            f"Could not read {source} configuration file {config_path}: {exc}"
+        ) from exc
+
+    unexpected_top_level = sorted(
+        str(field)
+        for field in document
+        if field not in {"version", "application"}
+    )
+    if unexpected_top_level:
+        fields = ", ".join(repr(field) for field in unexpected_top_level)
+        raise ConfigurationError(
+            f"{source.capitalize()} configuration file {config_path} has "
+            f"unsupported top-level field(s): {fields}."
+        )
+
+    version = document.get("version")
+    if (
+        isinstance(version, bool)
+        or not isinstance(version, int)
+        or version != APPLICATION_CONFIGURATION_VERSION
+    ):
+        raise ConfigurationError(
+            f"{source.capitalize()} configuration file {config_path} version "
+            f"must be {APPLICATION_CONFIGURATION_VERSION}; found {version!r}."
+        )
+
+    raw_application = document.get("application", {})
+    if not isinstance(raw_application, Mapping):
+        raise ConfigurationError(
+            f"{source.capitalize()} configuration file {config_path} must "
+            "contain an [application] table."
+        )
+
+    return ConfigurationLayer(
+        source,
+        dict(raw_application),
+        str(config_path),
+    )
+
+
+def load_environment_configuration(
+    environ: Mapping[str, str] | None = None,
+) -> ConfigurationLayer | None:
+    """Load only explicitly present supported SDSCTL environment overrides."""
+
+    source = os.environ if environ is None else environ
+    values: dict[str, object] = {}
+
+    for field, variable in ENVIRONMENT_CONFIGURATION_VARIABLES:
+        if variable not in source:
+            continue
+        values[field] = _parse_environment_value(
+            field,
+            variable,
+            source[variable],
+        )
+
+    if not values:
+        return None
+    return ConfigurationLayer("environment", values, "environment")
+
+
+def load_application_configuration(
+    *,
+    paths: ConfigurationPaths | None = None,
+    environ: Mapping[str, str] | None = None,
+    command_line_values: Mapping[str, object] | None = None,
+    defaults: ApplicationConfiguration | None = None,
+) -> ResolvedApplicationConfiguration:
+    """Load and resolve defaults, files, environment, and explicit CLI values."""
+
+    environment = os.environ if environ is None else environ
+    resolved_paths = paths or resolve_configuration_paths(environ=environment)
+    layers: list[ConfigurationLayer] = []
+
+    file_sources: tuple[tuple[FileConfigurationSource, Path], ...] = (
+        ("system", resolved_paths.system_config_file),
+        ("user", resolved_paths.user_config_file),
+    )
+    for source, path in file_sources:
+        layer = load_configuration_file(path, source=source)
+        if layer is not None:
+            layers.append(layer)
+
+    environment_layer = load_environment_configuration(environment)
+    if environment_layer is not None:
+        layers.append(environment_layer)
+
+    if command_line_values:
+        layers.append(
+            ConfigurationLayer(
+                "command-line",
+                command_line_values,
+                "command line",
+            )
+        )
+
+    return resolve_application_configuration(
+        layers,
+        defaults=defaults,
+    )
+
+
+def _parse_environment_value(
+    field: str,
+    variable: str,
+    raw_value: str,
+) -> object:
+    integer_fields = {
+        "max_xml_retries",
+        "reconnect_attempts",
+        "health_history_limit",
+    }
+    number_fields = {
+        "reconnect_initial_delay",
+        "reconnect_multiplier",
+        "reconnect_max_delay",
+    }
+
+    if field in integer_fields:
+        try:
+            return int(raw_value.strip(), 10)
+        except ValueError:
+            raise ConfigurationError(
+                f"Invalid environment configuration in {variable}: "
+                "expected an integer."
+            ) from None
+
+    if field in number_fields:
+        try:
+            return float(raw_value.strip())
+        except ValueError:
+            raise ConfigurationError(
+                f"Invalid environment configuration in {variable}: "
+                "expected a number."
+            ) from None
+
+    if field == "log_file":
+        if not raw_value.strip():
+            raise ConfigurationError(
+                f"Invalid environment configuration in {variable}: "
+                "path must not be empty."
+            )
+        return Path(raw_value)
+
+    if field in {"color", "theme", "log_level"}:
+        return raw_value
+
+    raise AssertionError(f"Unsupported environment configuration field: {field}")
+
 def _xdg_home(
     environ: Mapping[str, str],
     *,
@@ -427,6 +617,8 @@ def _require_number(
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise TypeError(f"{label} must be a number.")
     normalized = float(value)
+    if not isfinite(normalized):
+        raise ValueError(f"{label} must be finite.")
     invalid = (
         normalized < minimum
         if minimum_inclusive
