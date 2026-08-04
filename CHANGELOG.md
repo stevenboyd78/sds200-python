@@ -25,6 +25,9 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 - Foreground `sdsctl daemon` construction of one scanner, PSI, RTSP/RTP audio,
   decoded-PCM router, and `DaemonRuntime` from an explicit SDS200 host or
   network-capable saved profile.
+- Physical SDS200 validation of foreground startup, live PSI and RTSP/RTP
+  reception, controlled `SIGINT` and systemd-style `SIGTERM` shutdown,
+  reverse-order cleanup, and successful process exit.
 
 ### Changed
 

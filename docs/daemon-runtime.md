@@ -195,6 +195,18 @@ with runtime:
 Application code is responsible for constructing concrete destinations and
 deciding how long the runtime remains active.
 
+## Physical SDS200 validation
+
+Validated on 2026-08-04 with a physical SDS200 network endpoint:
+
+- foreground startup opened scanner control, completed the initial PSI response,
+  and started the RTSP/RTP decoded-PCM fanout;
+- `Ctrl+C` produced a controlled `SIGINT` shutdown with reverse-order cleanup and
+  exit status 0;
+- an externally delivered `SIGTERM`, matching the documented systemd contract,
+  produced reverse-order cleanup and exit status 0; and
+- both runs received live scanner audio before shutdown.
+
 ## Follow-on work
 
 Later Milestone 19 work may:
