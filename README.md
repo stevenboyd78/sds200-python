@@ -202,12 +202,13 @@ sdsctl tui
 
 Press `Q` to quit, `T` to switch semantic palettes, `C` to reconnect, `G` to
 show or hide the operational log panel, and `?` for the full keyboard reference.
-The v0.16 TUI provides non-blocking scanner controls, responsive compact,
-standard, and wide layouts, live and saved SDS200 audio playback, repeatable
-recordings, mode-aware special-screen panels, operational logging, and
-rate-limited stale-PSI recovery through USB, network, profile, and replay
-selectors. A sustained stale PSI stream is automatically reconnected
-without stopping active network audio; see the [Textual TUI guide](docs/tui.md).
+The TUI provides non-blocking scanner controls, responsive compact, standard,
+and wide layouts, dense short-screen audio and PSI summaries, live and saved
+SDS200 audio playback, repeatable recordings, mode-aware special-screen panels,
+operational logging, and rate-limited stale-PSI recovery through USB, network,
+profile, and replay selectors. A sustained stale PSI stream is automatically
+reconnected without stopping active network audio; see the
+[Textual TUI guide](docs/tui.md).
 
 With an explicit SDS200 network host, opt in to WAV recording and use `R` to start
 or stop the one-shot recording session:

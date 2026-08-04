@@ -32,8 +32,9 @@ supports selection, playback, pause, resume, and return to live audio.
 
 ![Compact sdsctl TUI rendered at a small terminal size](assets/screenshots/tui-compact.svg)
 
-The compact layout removes decorative borders and reduces panel spacing for small
-terminals and Raspberry Pi displays.
+The compact layout removes decorative borders and unused spacing, replaces the
+full footer with essential controls, and keeps concise audio and PSI health
+summaries visible on short terminals and Raspberry Pi displays.
 
 Install the optional interface from PyPI:
 
@@ -183,17 +184,26 @@ order. Quit and restart the replay to reset its command cursor after any deviati
 
 The interface adapts automatically to terminal dimensions; no compact-mode flag is
 required. Terminals narrower than 80 columns remove decorative borders and spacing.
-At fewer than 32 rows, the dedicated identity panel is hidden while the model remains
-in the title and the endpoint and firmware remain in the header subtitle. The main
-content stays vertically scrollable, so no scanner state is discarded.
+At fewer than 32 rows, the dedicated identity panel is hidden, panel borders and
+vertical gaps are removed, and the full Textual footer is replaced by a one-line
+essential-controls footer. The model remains in the title, while the endpoint and
+firmware remain in the header subtitle.
+
+Short layouts use four-line audio and PSI health summaries. They retain playback,
+recording, elapsed-session, packet-loss, availability, severity, stream-recovery,
+volume, squelch, and current-status information without forcing the status panel
+below the initial viewport. Opening the recording library still shows its detailed
+entries, and the main content remains vertically scrollable.
 
 At 120 columns or wider, panels switch to a two-column dashboard. An 80 by 24
-terminal is the recommended Raspberry Pi starting size, while a 64 by 20 terminal is
-supported as the compact regression-test target. Press `?` when the compact footer
-only shows the essential quit, theme, and key-reference actions.
+terminal is the recommended Raspberry Pi starting size. The deterministic suite
+also covers 64 by 20 compact and 90 by 28 Raspberry Pi-like terminals. The compact
+footer exposes `Q` quit, `A` audio, `R` record, `C` reconnect, `G` logs, and `?`
+keyboard help.
 
-The same responsive classes are exercised in headless Textual tests at compact and
-wide terminal sizes.
+Headless Textual tests exercise compact, Raspberry Pi-like, standard, and wide
+terminal sizes, including a live resize from the short summary view back to the
+full detailed layout.
 
 ## Network audio playback, recording, and library
 

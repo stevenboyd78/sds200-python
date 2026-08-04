@@ -28,7 +28,8 @@ application:
 
 - `screenshots/tui-overview.svg` — wide operational view with an active recording;
 - `screenshots/tui-recordings.svg` — recording-library view;
-- `screenshots/tui-compact.svg` — compact terminal layout.
+- `screenshots/tui-compact.svg` — 24-row compact layout with concise audio,
+  PSI health, and essential-control summaries.
 
 All scanner names, departments, sites, channels, frequencies, endpoints, logs,
 recordings, and timestamps shown in these images are fictional demonstration

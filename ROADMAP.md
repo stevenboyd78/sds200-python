@@ -13,25 +13,24 @@ and ideas that are not ready for scheduling are recorded in
 
 ### Milestone 19.2 — Compact Raspberry Pi TUI layout
 
-- **Constrained-screen composition — planned**
-  - Optimize the Textual interface for Raspberry Pi displays and other terminals
-    with limited vertical space, including the 800 by 480 reference display.
-  - Activate compact presentation from both width and height constraints instead
-    of requiring a terminal narrower than 80 columns.
-  - Preserve the existing standard and wide layouts for larger terminals.
-- **Space-efficient operational view — planned**
-  - Reduce decorative borders, padding, fixed minimum heights, empty rows, and
-    footer crowding without discarding scanner state or controls.
-  - Prioritize connection, system, channel, activity, signal, audio, recording,
-    PSI, and health summaries in the immediately visible viewport.
-  - Keep detailed audio, status, logs, recordings, and keyboard help accessible
-    through existing controls and scrolling.
-- **Regression and physical validation — planned**
-  - Add deterministic responsive-layout coverage at Raspberry Pi-like terminal
-    dimensions alongside the existing compact, standard, and wide cases.
-  - Regenerate the real Textual SVG screenshots after the layout stabilizes.
-  - Validate readability, controls, scrolling, audio, recording, and live PSI on
-    the physical Raspberry Pi display.
+- **Constrained-screen composition — complete**
+  - Short terminals now activate a dense presentation independently of width,
+    including the 800 by 480 reference display.
+  - Standard and wide terminals retain their existing larger-screen composition.
+- **Space-efficient operational view — complete**
+  - Short layouts remove decorative borders, padding, fixed minimum-height gaps,
+    and the full Textual footer.
+  - Four-line audio and PSI health summaries keep connection, system, channel,
+    activity, signal, playback, recording, stream, and level state visible.
+  - Detailed audio, status, logs, recordings, and keyboard help remain available
+    through tall layouts, existing controls, and scrolling.
+- **Regression and physical validation — in progress**
+  - Deterministic coverage now includes compact, Raspberry Pi-like, standard,
+    wide, and live terminal-resize cases.
+  - The native compact Textual SVG screenshot has been regenerated and verified
+    for deterministic output.
+  - Physical Raspberry Pi validation remains for readability, controls,
+    scrolling, audio, recording, and live PSI.
 
 ## Deferred hardware validation
 
