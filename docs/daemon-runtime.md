@@ -5,9 +5,61 @@ foundation. It coordinates one scanner control session, continuous PSI, one
 SDS200 RTSP/RTP audio session, one decoded-PCM fanout, and dynamic PCM
 destinations.
 
-`DaemonRuntime` is an in-process Python lifecycle component. It is not yet a
-background service, socket server, local API, event-stream transport, or CLI/TUI
-daemon mode.
+Milestone 19.4 adds `DaemonSignalController`, `DaemonProcess`, and the foreground
+`sdsctl daemon` command. The process host owns signal installation, waits for a
+shutdown request, stops the runtime deterministically, and restores the previous
+signal handlers before returning.
+
+This foundation is not a socket server, local API, event-stream transport, or
+CLI/TUI daemon-client mode. It does not fork or create a pidfile.
+
+## Foreground process contract
+
+Start the process with an explicit SDS200 network host:
+
+```bash
+sdsctl --log-level INFO --host 192.168.0.251 daemon
+```
+
+A saved network or fallback profile is also accepted:
+
+```bash
+sdsctl --log-level INFO --profile home daemon
+```
+
+The command constructs exactly one `DaemonRuntime`, one `PcmSinkRouter`, and one
+`NetworkAudioTransport`. The router begins without destinations because local
+APIs, client subscriptions, playback, recording, and remote-profile activation
+remain follow-on work.
+
+The audio endpoint must come from either `--host` or a network-capable SDS200
+profile. A fallback profile may select serial control at runtime, but its saved
+network host still supplies the RTSP/RTP audio endpoint. Serial-only profiles,
+bare serial selection, replay captures, and non-SDS200 network-audio selections
+are rejected.
+
+The command runs in the foreground. It does not daemonize itself, fork, create a
+pidfile, change privileges, install a service unit, or request socket activation.
+
+### Signals and exit behavior
+
+`DaemonSignalController` installs handlers only for `SIGINT` and `SIGTERM`.
+Those handlers record the signal and set a thread-safe stop event; runtime
+teardown occurs in normal process flow rather than inside the signal handler.
+
+Previous signal handlers are restored after the process loop exits. Partial
+signal-installation failures roll back handlers that were already replaced.
+Restoration attempts continue after an individual restoration failure.
+
+A controlled `SIGINT` or `SIGTERM` shutdown returns success after the runtime
+stops. Startup, configuration, transport, or shutdown failures produce the
+normal `sdsctl` error path. When process work and cleanup both fail, the primary
+process failure remains authoritative and the cleanup failure is logged by type
+without exposing its message.
+
+`SIGHUP` is deliberately outside this graceful-shutdown contract so a future
+milestone can define reload behavior. Service managers should use `SIGTERM` for
+orderly termination.
 
 ## Ownership graph
 
@@ -143,15 +195,27 @@ with runtime:
 Application code is responsible for constructing concrete destinations and
 deciding how long the runtime remains active.
 
+## Physical SDS200 validation
+
+Validated on 2026-08-04 with a physical SDS200 network endpoint:
+
+- foreground startup opened scanner control, completed the initial PSI response,
+  and started the RTSP/RTP decoded-PCM fanout;
+- `Ctrl+C` produced a controlled `SIGINT` shutdown with reverse-order cleanup and
+  exit status 0;
+- an externally delivered `SIGTERM`, matching the documented systemd contract,
+  produced reverse-order cleanup and exit status 0; and
+- both runs received live scanner audio before shutdown.
+
 ## Follow-on work
 
 Later Milestone 19 work may:
 
-- host this runtime in a signal-aware long-running local process;
 - add bounded PCMU subscriptions for local clients;
-- expose snapshots and transitions through a local API and event stream; and
+- expose snapshots and transitions through a local API and event stream;
+- activate configured playback, recording, and remote destinations; and
 - allow CLI and TUI clients to select daemon-owned sessions while preserving an
   explicit standalone mode.
 
-Those process, transport, authentication, and client-selection contracts are not
-part of Milestone 19.3.
+Those transport, authentication, destination-activation, and client-selection
+contracts are not part of Milestone 19.4.

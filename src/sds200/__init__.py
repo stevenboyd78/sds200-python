@@ -96,6 +96,11 @@ from .configuration import (
     resolve_application_configuration,
     resolve_configuration_paths,
 )
+from .daemon_process import (
+    DaemonProcess,
+    DaemonProcessResult,
+    DaemonSignalController,
+)
 from .daemon_runtime import (
     DaemonRuntime,
     DaemonRuntimeSnapshot,
@@ -396,10 +401,13 @@ __all__ = [
     "DEFAULT_AUDIO_PATH",
     "DEFAULT_DARK_THEME",
     "DEFAULT_DISCOVERY_WORKERS",
+    "DaemonProcess",
+    "DaemonProcessResult",
     "DaemonRuntime",
     "DaemonRuntimeSnapshot",
     "DaemonRuntimeState",
     "DaemonRuntimeTransition",
+    "DaemonSignalController",
     "DEFAULT_LIGHT_THEME",
     "DEFAULT_REMOTE_STREAM_TITLE_MAX_LENGTH",
     "DEFAULT_RTSP_PORT",
