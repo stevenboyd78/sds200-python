@@ -1,0 +1,182 @@
+from __future__ import annotations
+
+import logging
+import signal
+import threading
+from dataclasses import dataclass
+from types import FrameType
+from typing import Any, Protocol, Self, cast
+
+logger = logging.getLogger(__name__)
+
+
+class _DaemonRuntimeLike(Protocol):
+    def start(self) -> None: ...
+
+    def stop(self) -> None: ...
+
+
+class _DaemonSignalControllerLike(Protocol):
+    @property
+    def last_signal(self) -> int | None: ...
+
+    def wait(self, timeout: float | None = None) -> bool: ...
+
+    def __enter__(self) -> Self: ...
+
+    def __exit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception: BaseException | None,
+        traceback: object,
+    ) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class DaemonProcessResult:
+    """Immutable result from one foreground daemon-process run."""
+
+    last_signal: int | None
+
+
+class DaemonSignalController:
+    """Translate SIGINT and SIGTERM into one foreground-process stop event."""
+
+    def __init__(self) -> None:
+        self._event = threading.Event()
+        self._previous: dict[int, object] = {}
+        self._active = False
+        self._last_signal: int | None = None
+
+    @property
+    def last_signal(self) -> int | None:
+        return self._last_signal
+
+    def request_stop(self) -> None:
+        self._event.set()
+
+    def wait(self, timeout: float | None = None) -> bool:
+        return self._event.wait(timeout)
+
+    def __enter__(self) -> DaemonSignalController:
+        if self._active:
+            raise RuntimeError("Daemon signal controller is already active.")
+
+        self._event.clear()
+        self._last_signal = None
+        installed: list[int] = []
+
+        try:
+            for signum in _daemon_stop_signals():
+                self._previous[signum] = signal.getsignal(signum)
+                signal.signal(signum, self._handle)
+                installed.append(signum)
+        except BaseException as installation_error:
+            rollback_failures: list[BaseException] = []
+            for signum in reversed(installed):
+                try:
+                    signal.signal(
+                        signum,
+                        cast(Any, self._previous[signum]),
+                    )
+                except BaseException as rollback_error:
+                    rollback_failures.append(rollback_error)
+            self._previous.clear()
+
+            if rollback_failures:
+                logger.error(
+                    "daemon signal rollback failed installation_error=%s "
+                    "rollback_error=%s",
+                    installation_error.__class__.__name__,
+                    rollback_failures[0].__class__.__name__,
+                )
+            raise
+
+        self._active = True
+        return self
+
+    def __exit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception: BaseException | None,
+        traceback: object,
+    ) -> None:
+        del exception_type, traceback
+
+        restoration_failures: list[BaseException] = []
+        for signum, previous in self._previous.items():
+            try:
+                signal.signal(signum, cast(Any, previous))
+            except BaseException as restoration_error:
+                restoration_failures.append(restoration_error)
+
+        self._previous.clear()
+        self._active = False
+
+        if not restoration_failures:
+            return
+
+        if exception is not None:
+            logger.error(
+                "daemon signal restoration failed process_error=%s "
+                "restoration_error=%s",
+                exception.__class__.__name__,
+                restoration_failures[0].__class__.__name__,
+            )
+            return
+
+        raise restoration_failures[0]
+
+    def _handle(self, signum: int, frame: FrameType | None) -> None:
+        del frame
+        self._last_signal = signum
+        self._event.set()
+
+
+class DaemonProcess:
+    """Host one daemon runtime in the foreground until shutdown is requested."""
+
+    def __init__(
+        self,
+        runtime: _DaemonRuntimeLike,
+        *,
+        signals: _DaemonSignalControllerLike | None = None,
+        poll_interval: float = 0.1,
+    ) -> None:
+        if poll_interval <= 0:
+            raise ValueError("Daemon process poll interval must be greater than zero.")
+
+        self.runtime = runtime
+        self.signals = signals or DaemonSignalController()
+        self.poll_interval = poll_interval
+
+    def run(self) -> DaemonProcessResult:
+        with self.signals:
+            try:
+                self.runtime.start()
+                while not self.signals.wait(self.poll_interval):
+                    pass
+            except BaseException as process_error:
+                try:
+                    self.runtime.stop()
+                except BaseException as cleanup_error:
+                    logger.error(
+                        "daemon runtime cleanup failed process_error=%s "
+                        "cleanup_error=%s",
+                        process_error.__class__.__name__,
+                        cleanup_error.__class__.__name__,
+                    )
+                raise
+            else:
+                self.runtime.stop()
+
+        return DaemonProcessResult(last_signal=self.signals.last_signal)
+
+
+def _daemon_stop_signals() -> tuple[int, ...]:
+    signals: list[int] = []
+    for name in ("SIGINT", "SIGTERM"):
+        value = getattr(signal, name, None)
+        if isinstance(value, int) and value not in signals:
+            signals.append(value)
+    return tuple(signals)
