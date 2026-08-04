@@ -3,6 +3,7 @@ from __future__ import annotations
 import struct
 import wave
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -13,7 +14,9 @@ from sds200.audio_sinks import (
     AudioFanoutSession,
     BufferedPlaybackSink,
     LocalPlaybackAdapter,
+    PcmSinkRouter,
     PcmSinkStatistics,
+    PcmSubscriberTransition,
     PcmWavSink,
     SoundDevicePlaybackSink,
     inspect_audio_backend,
@@ -365,3 +368,219 @@ def test_pcm_wav_sink_drains_buffer_before_close(tmp_path: Path) -> None:
         assert recording.getframerate() == PCMU_SAMPLE_RATE
         assert recording.getnframes() == 4
         assert struct.unpack("<4h", recording.readframes(4)) == (0, 1, -1, 2)
+
+
+
+class HealthTestSink:
+    def __init__(
+        self,
+        name: str,
+        *,
+        fail_start: bool = False,
+        partial_start: bool = False,
+        fail_submit: bool = False,
+        fail_stop: bool = False,
+    ) -> None:
+        self._name = name
+        self._running = False
+        self.fail_start = fail_start
+        self.partial_start = partial_start
+        self.fail_submit = fail_submit
+        self.fail_stop = fail_stop
+        self.received: list[bytes] = []
+        self.stop_calls = 0
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def running(self) -> bool:
+        return self._running
+
+    @property
+    def statistics(self) -> PcmSinkStatistics:
+        total = sum(map(len, self.received))
+        return PcmSinkStatistics(
+            bytes_submitted=total,
+            bytes_written=total,
+        )
+
+    def start(self) -> None:
+        if self.fail_start:
+            if self.partial_start:
+                self._running = True
+            raise RuntimeError("secret startup detail")
+        self._running = True
+
+    def submit_pcm(self, data: bytes) -> None:
+        if self.fail_submit:
+            raise RuntimeError("secret submission detail")
+        self.received.append(data)
+
+    def stop(self) -> None:
+        self.stop_calls += 1
+        self._running = False
+        if self.fail_stop:
+            raise RuntimeError("secret shutdown detail")
+
+
+def test_pcm_router_startup_failure_does_not_abort_other_subscribers() -> None:
+    router = PcmSinkRouter()
+    failing = HealthTestSink(
+        "failing",
+        fail_start=True,
+        partial_start=True,
+    )
+    healthy = HealthTestSink("healthy")
+
+    router.attach(failing)
+    router.attach(healthy)
+    router.start()
+
+    assert router.running
+    assert healthy.running
+    assert not failing.running
+    assert failing.stop_calls == 1
+
+    failing_snapshot = router.subscriber_snapshot(failing)
+    healthy_snapshot = router.subscriber_snapshot(healthy)
+    assert failing_snapshot is not None
+    assert healthy_snapshot is not None
+    assert failing_snapshot.state == "failed"
+    assert failing_snapshot.health == "failed"
+    assert not failing_snapshot.attached
+    assert failing_snapshot.start_attempts == 1
+    assert failing_snapshot.start_failures == 1
+    assert failing_snapshot.failures == 1
+    assert failing_snapshot.last_error == "RuntimeError"
+    assert "secret" not in failing_snapshot.as_dict()["last_error"]
+    assert healthy_snapshot.state == "active"
+    assert healthy_snapshot.health == "healthy"
+
+    router.stop()
+    assert healthy.stop_calls == 1
+
+
+def test_pcm_router_tracks_submit_health_and_isolates_listeners() -> None:
+    initial = datetime(2026, 8, 3, 22, 30, tzinfo=UTC)
+    current = initial
+
+    def now() -> datetime:
+        nonlocal current
+        value = current
+        current += timedelta(seconds=1)
+        return value
+
+    router = PcmSinkRouter(now=now)
+    failing = HealthTestSink("failing", fail_submit=True)
+    healthy = HealthTestSink("healthy")
+    observed: list[PcmSubscriberTransition] = []
+
+    def fail_listener(transition: PcmSubscriberTransition) -> None:
+        del transition
+        raise RuntimeError("listener failed")
+
+    router.on_transition(fail_listener)
+    router.on_transition(observed.append)
+    router.attach(failing)
+    router.attach(healthy)
+    router.start()
+
+    pcm = b"\x01\x00"
+    router.submit_pcm(pcm)
+
+    assert healthy.received == [pcm]
+    failing_snapshot = router.subscriber_snapshot(failing)
+    healthy_snapshot = router.subscriber_snapshot(healthy)
+    assert failing_snapshot is not None
+    assert healthy_snapshot is not None
+    assert failing_snapshot.state == "failed"
+    assert failing_snapshot.submit_failures == 1
+    assert failing_snapshot.submissions == 1
+    assert failing_snapshot.successful_submissions == 0
+    assert failing_snapshot.last_failure_at is not None
+    assert failing_snapshot.last_error == "RuntimeError"
+    assert healthy_snapshot.state == "active"
+    assert healthy_snapshot.submissions == 1
+    assert healthy_snapshot.successful_submissions == 1
+    assert healthy_snapshot.submit_failures == 0
+
+    sequences = [transition.sequence for transition in observed]
+    assert sequences == sorted(sequences)
+    assert len(sequences) == len(set(sequences))
+    assert observed[-1].state == "failed"
+    assert observed[-1].health == "failed"
+    assert observed[-1].snapshot.name == "failing"
+
+    payload = router.snapshot().as_dict()
+    assert payload["running"] is True
+    assert payload["transition_sequence"] == sequences[-1]
+    assert len(payload["subscribers"]) == 2
+
+    router.stop()
+
+    stopped_snapshot = router.subscriber_snapshot(failing)
+    assert stopped_snapshot is not None
+    assert stopped_snapshot.state == "detached"
+    assert stopped_snapshot.last_error == "RuntimeError"
+    assert stopped_snapshot.submit_failures == 1
+
+
+def test_pcm_router_shutdown_failure_isolated_and_recorded() -> None:
+    router = PcmSinkRouter()
+    failing = HealthTestSink("failing", fail_stop=True)
+    healthy = HealthTestSink("healthy")
+
+    router.attach(failing)
+    router.attach(healthy)
+    router.start()
+    router.stop()
+
+    assert not router.running
+    assert healthy.stop_calls == 1
+    assert failing.stop_calls == 1
+
+    failing_snapshot = router.subscriber_snapshot(failing)
+    healthy_snapshot = router.subscriber_snapshot(healthy)
+    assert failing_snapshot is not None
+    assert healthy_snapshot is not None
+    assert failing_snapshot.state == "failed"
+    assert failing_snapshot.health == "failed"
+    assert not failing_snapshot.attached
+    assert failing_snapshot.stop_failures == 1
+    assert failing_snapshot.failures == 1
+    assert failing_snapshot.last_error == "RuntimeError"
+    assert healthy_snapshot.state == "detached"
+    assert healthy_snapshot.health == "inactive"
+    assert not healthy_snapshot.attached
+
+
+def test_pcm_router_dynamic_start_failure_reaches_requesting_caller() -> None:
+    router = PcmSinkRouter()
+    healthy = HealthTestSink("healthy")
+    failing = HealthTestSink(
+        "failing",
+        fail_start=True,
+        partial_start=True,
+    )
+
+    router.attach(healthy)
+    router.start()
+
+    with pytest.raises(RuntimeError, match="secret startup detail"):
+        router.attach(failing)
+
+    assert router.running
+    assert healthy.running
+    router.submit_pcm(b"\x01\x00")
+    assert healthy.received == [b"\x01\x00"]
+
+    snapshot = router.subscriber_snapshot(failing)
+    assert snapshot is not None
+    assert snapshot.state == "failed"
+    assert not snapshot.attached
+    assert not failing.running
+    assert failing.stop_calls == 1
+
+    router.stop()

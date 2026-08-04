@@ -4,10 +4,10 @@ import logging
 import threading
 from collections import deque
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from contextlib import suppress
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from importlib import import_module
-from typing import Protocol, Self, cast, runtime_checkable
+from typing import Literal, Protocol, Self, cast, runtime_checkable
 
 from .audio import AudioChunk, AudioStream
 from .audio_recording import (
@@ -17,6 +17,7 @@ from .audio_recording import (
     PcmuWavRecorder,
     decode_mulaw,
 )
+from .events import EventBus
 from .exceptions import AudioOutputError
 
 logger = logging.getLogger(__name__)
@@ -214,19 +215,227 @@ class AudioFanoutSession:
             except Exception:
                 logger.exception("Audio sink rejected PCM sink=%s", sink.name)
 
-class PcmSinkRouter:
-    """Dynamically attach nonblocking PCM sinks behind one fanout destination."""
+PcmSubscriberState = Literal[
+    "detached",
+    "attached",
+    "starting",
+    "active",
+    "stopping",
+    "failed",
+]
 
-    def __init__(self, *, name: str = "pcm-sink-router") -> None:
+PcmSubscriberHealth = Literal[
+    "inactive",
+    "healthy",
+    "degraded",
+    "failed",
+]
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _require_aware_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(
+            "PCM subscriber wall clock must return a timezone-aware datetime."
+        )
+    return value
+
+
+def _subscriber_health(state: PcmSubscriberState) -> PcmSubscriberHealth:
+    if state == "active":
+        return "healthy"
+    if state in {"starting", "stopping"}:
+        return "degraded"
+    if state == "failed":
+        return "failed"
+    return "inactive"
+
+
+def _statistics_as_dict(
+    statistics: PcmSinkStatistics,
+) -> dict[str, int]:
+    return {
+        "bytes_submitted": statistics.bytes_submitted,
+        "bytes_written": statistics.bytes_written,
+        "bytes_dropped": statistics.bytes_dropped,
+        "queued_bytes": statistics.queued_bytes,
+        "underflows": statistics.underflows,
+        "overflows": statistics.overflows,
+        "callback_statuses": statistics.callback_statuses,
+    }
+
+
+def _safe_sink_running(sink: PcmSink) -> bool:
+    try:
+        return sink.running
+    except Exception:
+        return False
+
+
+def _safe_sink_statistics(sink: PcmSink) -> PcmSinkStatistics:
+    try:
+        return sink.statistics
+    except Exception:
+        return PcmSinkStatistics()
+
+
+def _redacted_error_type(error: BaseException) -> str:
+    return error.__class__.__name__
+
+
+@dataclass(frozen=True, slots=True)
+class PcmSubscriberSnapshot:
+    """Immutable health and metrics for one router subscriber."""
+
+    subscriber_id: str
+    name: str
+    state: PcmSubscriberState
+    health: PcmSubscriberHealth
+    attached: bool
+    running: bool
+    statistics: PcmSinkStatistics
+    start_attempts: int
+    submissions: int
+    successful_submissions: int
+    failures: int
+    start_failures: int
+    submit_failures: int
+    stop_failures: int
+    transition_sequence: int
+    state_changed_at: datetime
+    last_started_at: datetime | None
+    last_failure_at: datetime | None
+    last_error: str | None
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "subscriber_id": self.subscriber_id,
+            "name": self.name,
+            "state": self.state,
+            "health": self.health,
+            "attached": self.attached,
+            "running": self.running,
+            "statistics": _statistics_as_dict(self.statistics),
+            "start_attempts": self.start_attempts,
+            "submissions": self.submissions,
+            "successful_submissions": self.successful_submissions,
+            "failures": self.failures,
+            "start_failures": self.start_failures,
+            "submit_failures": self.submit_failures,
+            "stop_failures": self.stop_failures,
+            "transition_sequence": self.transition_sequence,
+            "state_changed_at": self.state_changed_at.isoformat(),
+            "last_started_at": (
+                self.last_started_at.isoformat()
+                if self.last_started_at is not None
+                else None
+            ),
+            "last_failure_at": (
+                self.last_failure_at.isoformat()
+                if self.last_failure_at is not None
+                else None
+            ),
+            "last_error": self.last_error,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class PcmSubscriberTransition:
+    """One ordered immutable subscriber lifecycle state change."""
+
+    sequence: int
+    observed_at: datetime
+    previous_state: PcmSubscriberState
+    state: PcmSubscriberState
+    previous_health: PcmSubscriberHealth
+    health: PcmSubscriberHealth
+    snapshot: PcmSubscriberSnapshot
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "sequence": self.sequence,
+            "observed_at": self.observed_at.isoformat(),
+            "previous_state": self.previous_state,
+            "state": self.state,
+            "previous_health": self.previous_health,
+            "health": self.health,
+            "snapshot": self.snapshot.as_dict(),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class PcmSinkRouterSnapshot:
+    """Immutable state for one dynamic PCM subscriber router."""
+
+    name: str
+    running: bool
+    statistics: PcmSinkStatistics
+    subscribers: tuple[PcmSubscriberSnapshot, ...]
+    transition_sequence: int
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "name": self.name,
+            "running": self.running,
+            "statistics": _statistics_as_dict(self.statistics),
+            "subscribers": [
+                subscriber.as_dict()
+                for subscriber in self.subscribers
+            ],
+            "transition_sequence": self.transition_sequence,
+        }
+
+
+@dataclass(slots=True)
+class _PcmSubscriberRecord:
+    sink: PcmSink
+    subscriber_id: str
+    name: str
+    state: PcmSubscriberState
+    attached: bool
+    start_attempts: int
+    submissions: int
+    successful_submissions: int
+    failures: int
+    start_failures: int
+    submit_failures: int
+    stop_failures: int
+    transition_sequence: int
+    state_changed_at: datetime
+    last_started_at: datetime | None
+    last_failure_at: datetime | None
+    last_error: str | None
+
+
+class PcmSinkRouter:
+    """Route PCM to dynamic subscribers with isolated health accounting."""
+
+    def __init__(
+        self,
+        *,
+        name: str = "pcm-sink-router",
+        now: Callable[[], datetime] = _utc_now,
+    ) -> None:
         if not name or name.strip() != name:
             raise ValueError("PCM sink router name must not be empty or padded")
+        _require_aware_datetime(now())
+
         self._name = name
+        self._now = now
         self._lifecycle_lock = threading.RLock()
         self._submit_lock = threading.Lock()
         self._state_lock = threading.RLock()
-        self._sinks: list[PcmSink] = []
+        self._records: list[_PcmSubscriberRecord] = []
         self._running = False
         self._bytes_submitted = 0
+        self._next_subscriber_id = 1
+        self._transition_sequence = 0
+        self._pending_transitions: deque[PcmSubscriberTransition] = deque()
+        self._emitting_transitions = False
+        self.events = EventBus()
 
     @property
     def name(self) -> str:
@@ -240,83 +449,159 @@ class PcmSinkRouter:
     @property
     def statistics(self) -> PcmSinkStatistics:
         with self._state_lock:
-            sinks = tuple(self._sinks)
-            submitted = self._bytes_submitted
-        statistics = tuple(sink.statistics for sink in sinks)
-        return PcmSinkStatistics(
-            bytes_submitted=submitted,
-            bytes_written=sum(item.bytes_written for item in statistics),
-            bytes_dropped=sum(item.bytes_dropped for item in statistics),
-            queued_bytes=sum(item.queued_bytes for item in statistics),
-            underflows=sum(item.underflows for item in statistics),
-            overflows=sum(item.overflows for item in statistics),
-            callback_statuses=sum(item.callback_statuses for item in statistics),
-        )
+            return self._statistics_locked()
+
+    def on_transition(
+        self,
+        callback: Callable[[PcmSubscriberTransition], None],
+    ) -> Callable[[], None]:
+        """Subscribe to ordered immutable subscriber state changes."""
+
+        return self.events.subscribe("transition", callback)
+
+    def snapshot(self) -> PcmSinkRouterSnapshot:
+        with self._state_lock:
+            return PcmSinkRouterSnapshot(
+                name=self.name,
+                running=self._running,
+                statistics=self._statistics_locked(),
+                subscribers=tuple(
+                    self._snapshot_record_locked(record)
+                    for record in self._records
+                ),
+                transition_sequence=self._transition_sequence,
+            )
+
+    def subscriber_snapshot(
+        self,
+        sink: PcmSink,
+    ) -> PcmSubscriberSnapshot | None:
+        with self._state_lock:
+            record = self._find_record_locked(sink)
+            if record is None:
+                return None
+            return self._snapshot_record_locked(record)
 
     def start(self) -> None:
         with self._lifecycle_lock:
             with self._state_lock:
                 if self._running:
                     return
-                sinks = tuple(self._sinks)
-
-            started: list[PcmSink] = []
-            try:
-                for sink in sinks:
-                    sink.start()
-                    started.append(sink)
-            except BaseException:
-                for sink in reversed(started):
-                    with suppress(Exception):
-                        sink.stop()
-                raise
-
-            with self._state_lock:
                 self._running = True
+                records = tuple(
+                    record for record in self._records if record.attached
+                )
+
+            for record in records:
+                self._start_subscriber(record)
+
+        self._emit_pending_transitions()
 
     def attach(self, sink: PcmSink) -> None:
         with self._lifecycle_lock:
             with self._state_lock:
-                if sink in self._sinks:
+                record = self._find_record_locked(sink)
+                if record is None:
+                    timestamp = _require_aware_datetime(self._now())
+                    record = _PcmSubscriberRecord(
+                        sink=sink,
+                        subscriber_id=(
+                            f"{sink.name}:{self._next_subscriber_id}"
+                        ),
+                        name=sink.name,
+                        state="detached",
+                        attached=False,
+                        start_attempts=0,
+                        submissions=0,
+                        successful_submissions=0,
+                        failures=0,
+                        start_failures=0,
+                        submit_failures=0,
+                        stop_failures=0,
+                        transition_sequence=0,
+                        state_changed_at=timestamp,
+                        last_started_at=None,
+                        last_failure_at=None,
+                        last_error=None,
+                    )
+                    self._next_subscriber_id += 1
+                    self._records.append(record)
+
+                if record.attached:
                     return
+
+                record.attached = True
+                self._transition_locked(record, "attached")
                 running = self._running
 
-            if running:
-                sink.start()
+            failure = self._start_subscriber(record) if running else None
 
-            with self._state_lock:
-                self._sinks.append(sink)
+        self._emit_pending_transitions()
+        if failure is not None:
+            raise failure
 
     def detach(self, sink: PcmSink, *, stop: bool = True) -> None:
         with self._lifecycle_lock:
             with self._state_lock:
-                if sink not in self._sinks:
+                record = self._find_record_locked(sink)
+                if record is None or not record.attached:
                     return
-                self._sinks.remove(sink)
+                record.attached = False
+                if stop:
+                    self._transition_locked(record, "stopping")
+                else:
+                    self._transition_locked(record, "detached")
 
-            # Wait for a callback that already captured this sink to finish.
+            # Wait for a callback that already captured this subscriber.
             with self._submit_lock:
                 pass
 
             if stop:
-                sink.stop()
+                self._stop_subscriber(record)
+
+        self._emit_pending_transitions()
 
     def submit_pcm(self, data: bytes) -> None:
         with self._submit_lock:
             with self._state_lock:
                 if not self._running:
                     return
-                sinks = tuple(self._sinks)
+                records = tuple(
+                    record for record in self._records if record.attached
+                )
                 self._bytes_submitted += len(data)
 
-            for sink in sinks:
+            for record in records:
                 try:
-                    sink.submit_pcm(data)
-                except Exception:
+                    record.sink.submit_pcm(data)
+                except Exception as error:
+                    observed_at = _require_aware_datetime(self._now())
+                    with self._state_lock:
+                        record.submissions += 1
+                        record.failures += 1
+                        record.submit_failures += 1
+                        record.last_failure_at = observed_at
+                        record.last_error = _redacted_error_type(error)
+                        self._transition_locked(
+                            record,
+                            "failed",
+                            observed_at=observed_at,
+                        )
                     logger.exception(
                         "PCM sink router subscriber rejected PCM sink=%s",
-                        sink.name,
+                        record.name,
                     )
+                else:
+                    with self._state_lock:
+                        record.submissions += 1
+                        record.successful_submissions += 1
+                        if (
+                            record.state == "failed"
+                            and _safe_sink_running(record.sink)
+                        ):
+                            self._transition_locked(record, "active")
+
+        self._emit_pending_transitions()
 
     def stop(self) -> None:
         with self._lifecycle_lock:
@@ -324,23 +609,219 @@ class PcmSinkRouter:
                 if not self._running:
                     return
                 self._running = False
-                sinks = tuple(reversed(self._sinks))
-                self._sinks.clear()
+                records = tuple(
+                    reversed(
+                        tuple(
+                            record
+                            for record in self._records
+                            if record.attached
+                        )
+                    )
+                )
+                for record in records:
+                    record.attached = False
+                    self._transition_locked(record, "stopping")
 
-            # Do not stop sinks while an in-flight callback is submitting PCM.
+            # Do not stop subscribers during an in-flight PCM submission.
             with self._submit_lock:
                 pass
 
-            failure: BaseException | None = None
-            for sink in sinks:
-                try:
-                    sink.stop()
-                except BaseException as error:
-                    if failure is None:
-                        failure = error
+            for record in records:
+                self._stop_subscriber(record)
 
-            if failure is not None:
-                raise failure
+        self._emit_pending_transitions()
+
+    def _start_subscriber(
+        self,
+        record: _PcmSubscriberRecord,
+    ) -> Exception | None:
+        with self._state_lock:
+            record.start_attempts += 1
+            self._transition_locked(record, "starting")
+
+        try:
+            record.sink.start()
+        except Exception as error:
+            observed_at = _require_aware_datetime(self._now())
+            with self._state_lock:
+                record.attached = False
+                record.failures += 1
+                record.start_failures += 1
+                record.last_failure_at = observed_at
+                record.last_error = _redacted_error_type(error)
+                self._transition_locked(
+                    record,
+                    "failed",
+                    observed_at=observed_at,
+                )
+            logger.exception(
+                "PCM sink router subscriber failed to start sink=%s",
+                record.name,
+            )
+
+            # A failed start may still have opened partial audio resources.
+            try:
+                record.sink.stop()
+            except Exception as cleanup_error:
+                cleanup_at = _require_aware_datetime(self._now())
+                with self._state_lock:
+                    record.failures += 1
+                    record.stop_failures += 1
+                    record.last_failure_at = cleanup_at
+                    record.last_error = _redacted_error_type(cleanup_error)
+                logger.exception(
+                    "PCM sink router subscriber startup cleanup failed sink=%s",
+                    record.name,
+                )
+
+            return error
+
+        observed_at = _require_aware_datetime(self._now())
+        with self._state_lock:
+            record.last_started_at = observed_at
+            self._transition_locked(
+                record,
+                "active",
+                observed_at=observed_at,
+            )
+        return None
+
+    def _stop_subscriber(
+        self,
+        record: _PcmSubscriberRecord,
+    ) -> None:
+        try:
+            record.sink.stop()
+        except Exception as error:
+            observed_at = _require_aware_datetime(self._now())
+            with self._state_lock:
+                record.failures += 1
+                record.stop_failures += 1
+                record.last_failure_at = observed_at
+                record.last_error = _redacted_error_type(error)
+                self._transition_locked(
+                    record,
+                    "failed",
+                    observed_at=observed_at,
+                )
+            logger.exception(
+                "PCM sink router subscriber failed to stop sink=%s",
+                record.name,
+            )
+            return
+
+        with self._state_lock:
+            self._transition_locked(record, "detached")
+
+    def _find_record_locked(
+        self,
+        sink: PcmSink,
+    ) -> _PcmSubscriberRecord | None:
+        return next(
+            (
+                record
+                for record in self._records
+                if record.sink is sink
+            ),
+            None,
+        )
+
+    def _transition_locked(
+        self,
+        record: _PcmSubscriberRecord,
+        state: PcmSubscriberState,
+        *,
+        observed_at: datetime | None = None,
+    ) -> PcmSubscriberTransition | None:
+        if record.state == state:
+            return None
+
+        timestamp = _require_aware_datetime(
+            self._now() if observed_at is None else observed_at
+        )
+        previous_state = record.state
+        previous_health = _subscriber_health(previous_state)
+        self._transition_sequence += 1
+        record.state = state
+        record.transition_sequence = self._transition_sequence
+        record.state_changed_at = timestamp
+
+        snapshot = self._snapshot_record_locked(record)
+        transition = PcmSubscriberTransition(
+            sequence=self._transition_sequence,
+            observed_at=timestamp,
+            previous_state=previous_state,
+            state=state,
+            previous_health=previous_health,
+            health=snapshot.health,
+            snapshot=snapshot,
+        )
+        self._pending_transitions.append(transition)
+        return transition
+
+    def _emit_pending_transitions(self) -> None:
+        with self._state_lock:
+            if self._emitting_transitions:
+                return
+            self._emitting_transitions = True
+
+        while True:
+            with self._state_lock:
+                if not self._pending_transitions:
+                    self._emitting_transitions = False
+                    return
+                transition = self._pending_transitions.popleft()
+
+            try:
+                self.events.emit("transition", transition)
+            except BaseException:
+                with self._state_lock:
+                    self._emitting_transitions = False
+                raise
+
+    def _snapshot_record_locked(
+        self,
+        record: _PcmSubscriberRecord,
+    ) -> PcmSubscriberSnapshot:
+        return PcmSubscriberSnapshot(
+            subscriber_id=record.subscriber_id,
+            name=record.name,
+            state=record.state,
+            health=_subscriber_health(record.state),
+            attached=record.attached,
+            running=_safe_sink_running(record.sink),
+            statistics=_safe_sink_statistics(record.sink),
+            start_attempts=record.start_attempts,
+            submissions=record.submissions,
+            successful_submissions=record.successful_submissions,
+            failures=record.failures,
+            start_failures=record.start_failures,
+            submit_failures=record.submit_failures,
+            stop_failures=record.stop_failures,
+            transition_sequence=record.transition_sequence,
+            state_changed_at=record.state_changed_at,
+            last_started_at=record.last_started_at,
+            last_failure_at=record.last_failure_at,
+            last_error=record.last_error,
+        )
+
+    def _statistics_locked(self) -> PcmSinkStatistics:
+        statistics = tuple(
+            _safe_sink_statistics(record.sink)
+            for record in self._records
+            if record.attached
+        )
+        return PcmSinkStatistics(
+            bytes_submitted=self._bytes_submitted,
+            bytes_written=sum(item.bytes_written for item in statistics),
+            bytes_dropped=sum(item.bytes_dropped for item in statistics),
+            queued_bytes=sum(item.queued_bytes for item in statistics),
+            underflows=sum(item.underflows for item in statistics),
+            overflows=sum(item.overflows for item in statistics),
+            callback_statuses=sum(
+                item.callback_statuses for item in statistics
+            ),
+        )
 
 
 class _PcmBuffer:
