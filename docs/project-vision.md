@@ -293,10 +293,13 @@ Future recording work includes:
 - no deletion by default;
 - explicit confirmation for destructive policies.
 
-Future audio work includes:
+Milestone 18 delivers per-subscriber audio health events and explicit
+PortAudio, PipeWire, PulseAudio, and ALSA playback adapters.
 
-- per-subscriber audio health events and metrics for future daemon clients;
-- alternative local playback backends;
+Remaining future audio work includes:
+
+- daemon ownership and bounded local client subscriptions;
+- layered saved playback configuration and automatic backend selection;
 - continued separation between control and audio failures.
 
 ## Advanced scanner capabilities
