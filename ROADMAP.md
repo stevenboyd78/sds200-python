@@ -11,9 +11,18 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-No implementation milestone is currently active. Milestone 18.4 is complete; the
-remaining work below stays in candidate order until the next milestone is
-selected.
+### Milestone 18.6 — v0.18.0 release preparation
+
+- **Release readiness — planned**
+  - Finalize the v0.18.0 changelog, version metadata, and release notes.
+  - Run the complete Ruff, MyPy, pytest, documentation, packaging, and
+    distribution validation suite.
+  - Verify a clean Python 3.14 installation from the built distributions.
+- **Publication — planned**
+  - Merge the release-preparation pull request only after all required CI and
+    CodeQL checks pass.
+  - Publish the signed tag, GitHub release, and trusted PyPI distributions.
+  - Verify installation and package metadata from public PyPI.
 
 ## Deferred hardware validation
 
@@ -37,13 +46,6 @@ fixture-tested, not hardware-validated.
 
 These milestone groups preserve intended future work. Their numbering and release
 assignment may change before implementation begins.
-
-### Remaining Milestone 18 candidates — Remote-audio operations
-
-- Add pluggable local playback adapters for PortAudio, PipeWire, PulseAudio, and
-  ALSA while preserving bounded nonblocking sink behavior.
-- Add per-subscriber health events and metrics for future daemon audio clients.
-- Preserve the rule that audio failures never interrupt scanner control.
 
 ### Milestone 19 — Layered configuration, daemon, and local API
 
@@ -205,3 +207,8 @@ fixtures before renderer-specific implementation.
   bounded interruption and terminate/kill finalization, continuously drained
   diagnostics, and Broadcastify migration without changing its fixed FFmpeg MP3
   profile or Icecast transport behavior.
+- Milestone 18.5: renderer-neutral buffered local playback, preserved PortAudio
+  compatibility, explicit PipeWire, PulseAudio, and ALSA command adapters,
+  reusable dynamic PCM subscriber routing, immutable subscriber health snapshots
+  and ordered transitions, isolated lifecycle failures, redacted diagnostics, and
+  preserved separation from RTP reception and scanner control.

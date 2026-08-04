@@ -24,6 +24,14 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   lifecycle settings, reusable pipe-backed subprocess management, bounded
   interruption and finalization, stderr diagnostics, and migration of the fixed
   Broadcastify FFmpeg MP3 profile onto the shared lifecycle.
+- A renderer-neutral local playback lifecycle with bounded newest-audio buffering,
+  warm mute behavior, underflow and overflow metrics, preserved PortAudio
+  compatibility, and explicit PipeWire, PulseAudio, and ALSA command adapters with
+  injectable factories and bounded process cleanup.
+- Reusable dynamic PCM subscriber routing with immutable per-subscriber health
+  snapshots, ordered transition events, lifecycle and submission counters,
+  timezone-aware timestamps, redacted failure state, listener isolation, and
+  startup, submission, and shutdown failure isolation.
 
 ## [0.17.0] - 2026-08-03
 
