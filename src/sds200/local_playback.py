@@ -34,6 +34,15 @@ def _validate_name(value: str) -> None:
         raise ValueError("Playback adapter name must not contain line breaks.")
 
 
+def _validate_optional_text(label: str, value: str | None) -> None:
+    if value is None:
+        return
+    if not value or value.strip() != value:
+        raise ValueError(f"{label} must not be empty or padded.")
+    if "\n" in value or "\r" in value or "\x00" in value:
+        raise ValueError(f"{label} contains invalid characters.")
+
+
 @dataclass(frozen=True, slots=True)
 class CommandPlaybackConfig:
     """Immutable command and lifecycle settings for one playback process."""
@@ -426,6 +435,138 @@ class CommandPlaybackAdapter:
             if self._last_error is None:
                 self._last_error = message
             self._state = "failed"
+
+
+class PipeWirePlaybackAdapter(CommandPlaybackAdapter):
+    """Play PCM through the native PipeWire command-line client."""
+
+    def __init__(
+        self,
+        *,
+        target: str | None = None,
+        remote: str | None = None,
+        latency_ms: int = 100,
+        chunk_ms: int = 20,
+        stop_timeout: float = 2.0,
+        diagnostic_limit: int = 8192,
+        process_factory: CommandPlaybackProcessFactory | None = None,
+    ) -> None:
+        _validate_optional_text("PipeWire target", target)
+        _validate_optional_text("PipeWire remote", remote)
+        if latency_ms <= 0:
+            raise ValueError(
+                "PipeWire latency must be greater than zero milliseconds."
+            )
+
+        command = [
+            "pw-cat",
+            "--playback",
+            "--raw",
+            "--format=s16",
+            f"--rate={PCMU_SAMPLE_RATE}",
+            f"--channels={PCM_CHANNELS}",
+            "--channel-map=mono",
+            f"--latency={latency_ms}ms",
+        ]
+        if remote is not None:
+            command.append(f"--remote={remote}")
+        if target is not None:
+            command.append(f"--target={target}")
+        command.append("-")
+
+        super().__init__(
+            CommandPlaybackConfig(
+                name=f"pipewire:{target or 'default'}",
+                command=tuple(command),
+                chunk_ms=chunk_ms,
+                stop_timeout=stop_timeout,
+                diagnostic_limit=diagnostic_limit,
+            ),
+            process_factory=process_factory,
+        )
+
+
+class PulseAudioPlaybackAdapter(CommandPlaybackAdapter):
+    """Play PCM through the native PulseAudio command-line client."""
+
+    def __init__(
+        self,
+        *,
+        device: str | None = None,
+        server: str | None = None,
+        chunk_ms: int = 20,
+        stop_timeout: float = 2.0,
+        diagnostic_limit: int = 8192,
+        process_factory: CommandPlaybackProcessFactory | None = None,
+    ) -> None:
+        _validate_optional_text("PulseAudio device", device)
+        _validate_optional_text("PulseAudio server", server)
+
+        command = [
+            "pacat",
+            "--playback",
+            "--raw",
+            "--format=s16le",
+            f"--rate={PCMU_SAMPLE_RATE}",
+            f"--channels={PCM_CHANNELS}",
+            "--channel-map=mono",
+            "--client-name=sds200",
+            "--stream-name=SDS200 scanner audio",
+        ]
+        if server is not None:
+            command.append(f"--server={server}")
+        if device is not None:
+            command.append(f"--device={device}")
+
+        super().__init__(
+            CommandPlaybackConfig(
+                name=f"pulseaudio:{device or 'default'}",
+                command=tuple(command),
+                chunk_ms=chunk_ms,
+                stop_timeout=stop_timeout,
+                diagnostic_limit=diagnostic_limit,
+            ),
+            process_factory=process_factory,
+        )
+
+
+class AlsaPlaybackAdapter(CommandPlaybackAdapter):
+    """Play PCM through the native ALSA command-line client."""
+
+    def __init__(
+        self,
+        *,
+        device: str | None = None,
+        chunk_ms: int = 20,
+        stop_timeout: float = 2.0,
+        diagnostic_limit: int = 8192,
+        process_factory: CommandPlaybackProcessFactory | None = None,
+    ) -> None:
+        _validate_optional_text("ALSA device", device)
+
+        command = [
+            "aplay",
+            "--quiet",
+            "--nonblock",
+            "--file-type=raw",
+            "--format=S16_LE",
+            f"--rate={PCMU_SAMPLE_RATE}",
+            f"--channels={PCM_CHANNELS}",
+        ]
+        if device is not None:
+            command.append(f"--device={device}")
+        command.append("-")
+
+        super().__init__(
+            CommandPlaybackConfig(
+                name=f"alsa:{device or 'default'}",
+                command=tuple(command),
+                chunk_ms=chunk_ms,
+                stop_timeout=stop_timeout,
+                diagnostic_limit=diagnostic_limit,
+            ),
+            process_factory=process_factory,
+        )
 
 
 class _PopenCommandPlaybackProcess:

@@ -10,9 +10,12 @@ import pytest
 
 from sds200.exceptions import AudioOutputError
 from sds200.local_playback import (
+    AlsaPlaybackAdapter,
     CommandPlaybackAdapter,
     CommandPlaybackConfig,
     CommandPlaybackProcess,
+    PipeWirePlaybackAdapter,
+    PulseAudioPlaybackAdapter,
 )
 
 
@@ -229,3 +232,93 @@ def test_command_playback_adapter_rejects_invalid_factory_result() -> None:
         match="CommandPlaybackProcess-compatible",
     ):
         adapter.start(lambda size: bytes(size), lambda active: None)
+
+
+def test_pipewire_playback_adapter_builds_explicit_raw_pcm_command() -> None:
+    adapter = PipeWirePlaybackAdapter(
+        target="alsa_output.usb-radio",
+        remote="pipewire-0",
+        latency_ms=80,
+    )
+
+    assert adapter.name == "pipewire:alsa_output.usb-radio"
+    assert adapter.config.command == (
+        "pw-cat",
+        "--playback",
+        "--raw",
+        "--format=s16",
+        "--rate=8000",
+        "--channels=1",
+        "--channel-map=mono",
+        "--latency=80ms",
+        "--remote=pipewire-0",
+        "--target=alsa_output.usb-radio",
+        "-",
+    )
+
+    with pytest.raises(ValueError, match="greater than zero"):
+        PipeWirePlaybackAdapter(latency_ms=0)
+
+
+def test_pulseaudio_playback_adapter_builds_explicit_raw_pcm_command() -> None:
+    adapter = PulseAudioPlaybackAdapter(
+        device="alsa_output.usb-radio",
+        server="unix:/run/user/1000/pulse/native",
+    )
+
+    assert adapter.name == "pulseaudio:alsa_output.usb-radio"
+    assert adapter.config.command == (
+        "pacat",
+        "--playback",
+        "--raw",
+        "--format=s16le",
+        "--rate=8000",
+        "--channels=1",
+        "--channel-map=mono",
+        "--client-name=sds200",
+        "--stream-name=SDS200 scanner audio",
+        "--server=unix:/run/user/1000/pulse/native",
+        "--device=alsa_output.usb-radio",
+    )
+
+
+def test_alsa_playback_adapter_builds_explicit_raw_pcm_command() -> None:
+    adapter = AlsaPlaybackAdapter(device="plughw:CARD=Radio,DEV=0")
+
+    assert adapter.name == "alsa:plughw:CARD=Radio,DEV=0"
+    assert adapter.config.command == (
+        "aplay",
+        "--quiet",
+        "--nonblock",
+        "--file-type=raw",
+        "--format=S16_LE",
+        "--rate=8000",
+        "--channels=1",
+        "--device=plughw:CARD=Radio,DEV=0",
+        "-",
+    )
+
+
+@pytest.mark.parametrize(
+    ("factory", "message"),
+    [
+        (
+            lambda: PipeWirePlaybackAdapter(target=" "),
+            "PipeWire target",
+        ),
+        (
+            lambda: PulseAudioPlaybackAdapter(device=" "),
+            "PulseAudio device",
+        ),
+        (
+            lambda: AlsaPlaybackAdapter(device=" "),
+            "ALSA device",
+        ),
+    ],
+)
+def test_linux_playback_adapters_validate_optional_destinations(
+    factory: object,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        factory()  # type: ignore[operator]

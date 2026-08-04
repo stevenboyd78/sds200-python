@@ -92,12 +92,15 @@ from .fallback import (
     TransportCandidate,
 )
 from .local_playback import (
+    AlsaPlaybackAdapter,
     CommandPlaybackAdapter,
     CommandPlaybackConfig,
     CommandPlaybackProcess,
     CommandPlaybackProcessFactory,
     CommandPlaybackSnapshot,
     CommandPlaybackState,
+    PipeWirePlaybackAdapter,
+    PulseAudioPlaybackAdapter,
     start_command_playback_process,
 )
 from .models import (
@@ -289,6 +292,7 @@ __all__ = [
     "ASTERISK_MOH_SAMPLE_RATE",
     "ASTERISK_MOH_SAMPLE_WIDTH",
     "ActivityStatus",
+    "AlsaPlaybackAdapter",
     "AsteriskMohSignalController",
     "AudioChunk",
     "AudioEncoderConfig",
@@ -376,6 +380,8 @@ __all__ = [
     "PcmStreamSink",
     "PcmStreamSinkSnapshot",
     "PcmWavSink",
+    "PipeWirePlaybackAdapter",
+    "PulseAudioPlaybackAdapter",
     "ProfileKind",
     "ProfileRepairResult",
     "PresentationSeverity",
