@@ -6,6 +6,11 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+### Fixed
+
+- Added the package author email to the PEP 621 project metadata so future
+  distributions expose the expected `Author-email` value.
+
 ## [0.18.0] - 2026-08-03
 
 ### Added
