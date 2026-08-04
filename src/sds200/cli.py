@@ -5,7 +5,7 @@ import argparse
 import json
 import logging
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -31,6 +31,12 @@ from .completion import (
     enable_tab_completion,
     port_completer,
     profile_completer,
+)
+from .configuration import (
+    APPLICATION_CONFIGURATION_FIELDS,
+    ConfigurationPaths,
+    ResolvedApplicationConfiguration,
+    load_application_configuration,
 )
 from .device import choose_scanner, discover_scanners
 from .discovery import (
@@ -95,6 +101,14 @@ def _set_completer(
     completer: Callable[..., object],
 ) -> None:
     cast(_CompletableAction, action).completer = completer
+
+
+def _configuration_parser_default(
+    value: object,
+    *,
+    suppress: bool,
+) -> object:
+    return argparse.SUPPRESS if suppress else value
 
 
 def _positive_integer(value: str) -> int:
@@ -234,7 +248,10 @@ def _add_profile_recovery_options(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser(
+    *,
+    suppress_configuration_defaults: bool = False,
+) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="sdsctl")
     parser.add_argument(
         "-V",
@@ -318,42 +335,60 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--max-xml-retries",
         type=_non_negative_integer,
-        default=2,
+        default=_configuration_parser_default(
+            2,
+            suppress=suppress_configuration_defaults,
+        ),
         metavar="COUNT",
         help="Automatic retries after a lost UDP XML fragment (default: 2)",
     )
     parser.add_argument(
         "--reconnect-attempts",
         type=_non_negative_integer,
-        default=0,
+        default=_configuration_parser_default(
+            0,
+            suppress=suppress_configuration_defaults,
+        ),
         metavar="COUNT",
         help="Reconnect attempts after a disconnect; 0 retries forever (default: 0)",
     )
     parser.add_argument(
         "--reconnect-initial-delay",
         type=_positive_float,
-        default=1.0,
+        default=_configuration_parser_default(
+            1.0,
+            suppress=suppress_configuration_defaults,
+        ),
         metavar="SECONDS",
         help="Initial reconnect delay (default: 1.0)",
     )
     parser.add_argument(
         "--reconnect-multiplier",
         type=_positive_float,
-        default=2.0,
+        default=_configuration_parser_default(
+            2.0,
+            suppress=suppress_configuration_defaults,
+        ),
         metavar="FACTOR",
         help="Reconnect backoff multiplier (default: 2.0)",
     )
     parser.add_argument(
         "--reconnect-max-delay",
         type=_positive_float,
-        default=30.0,
+        default=_configuration_parser_default(
+            30.0,
+            suppress=suppress_configuration_defaults,
+        ),
         metavar="SECONDS",
         help="Maximum reconnect delay (default: 30.0)",
     )
     parser.add_argument(
         "--health-history-limit",
         type=_positive_integer,
-        default=100,
+        default=_configuration_parser_default(
+            100,
+            suppress=suppress_configuration_defaults,
+        ),
         metavar="COUNT",
         help="Maximum in-memory health observations (default: 100)",
     )
@@ -361,7 +396,10 @@ def build_parser() -> argparse.ArgumentParser:
     color.add_argument(
         "--color",
         choices=COLOR_MODES,
-        default="auto",
+        default=_configuration_parser_default(
+            "auto",
+            suppress=suppress_configuration_defaults,
+        ),
         help="ANSI styling policy: auto, always, or never (default: auto)",
     )
     color.add_argument(
@@ -369,30 +407,45 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_const",
         const="never",
         dest="color",
+        default=argparse.SUPPRESS,
         help="Disable ANSI styling (alias for --color never)",
     )
     parser.add_argument(
         "--theme",
         choices=THEME_NAMES,
-        default="dark",
+        default=_configuration_parser_default(
+            "dark",
+            suppress=suppress_configuration_defaults,
+        ),
         help="Semantic CLI palette: dark or light (default: dark)",
     )
     parser.add_argument(
         "-v",
         "--verbose",
         action="count",
-        default=0,
+        default=_configuration_parser_default(
+            0,
+            suppress=suppress_configuration_defaults,
+        ),
         help="Increase logging verbosity; repeat for DEBUG",
     )
     parser.add_argument(
         "--log-level",
         type=str.upper,
         choices=LOG_LEVEL_NAMES,
+        default=_configuration_parser_default(
+            None,
+            suppress=suppress_configuration_defaults,
+        ),
         help="Operational log level; overrides -v/--verbose",
     )
     parser.add_argument(
         "--log-file",
         type=Path,
+        default=_configuration_parser_default(
+            None,
+            suppress=suppress_configuration_defaults,
+        ),
         help="Append operational logs to a watched file in addition to stderr",
     )
     parser.add_argument("--trace", type=Path, help="Append raw traffic to a trace file")
@@ -1012,6 +1065,39 @@ def selected_port(
     model: ScannerModel | None = None,
 ) -> Path:
     return choose_scanner(explicit, model=model)
+
+
+def _apply_cli_configuration(
+    args: argparse.Namespace,
+    *,
+    paths: ConfigurationPaths | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> ResolvedApplicationConfiguration:
+    command_line_values = {
+        field: getattr(args, field)
+        for field in APPLICATION_CONFIGURATION_FIELDS
+        if hasattr(args, field)
+    }
+
+    if hasattr(args, "verbose") and "log_level" not in command_line_values:
+        command_line_values["log_level"] = (
+            "INFO" if args.verbose == 1 else "DEBUG"
+        )
+
+    resolved = load_application_configuration(
+        paths=paths,
+        environ=environ,
+        command_line_values=command_line_values,
+    )
+    configuration = resolved.configuration
+
+    for field in APPLICATION_CONFIGURATION_FIELDS:
+        setattr(args, field, getattr(configuration, field))
+
+    if not hasattr(args, "verbose"):
+        args.verbose = 0
+
+    return resolved
 
 
 def _reconnect_policy_from_args(args: argparse.Namespace) -> ReconnectPolicy:
@@ -2094,10 +2180,26 @@ def _run_discovery(args: argparse.Namespace) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
+def main(
+    argv: list[str] | None = None,
+    *,
+    configuration_paths: ConfigurationPaths | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> int:
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    parser = build_parser(suppress_configuration_defaults=True)
     enable_tab_completion(parser)
-    args = parser.parse_args(argv)
+    args = parser.parse_args(arguments)
+
+    try:
+        _apply_cli_configuration(
+            args,
+            paths=configuration_paths,
+            environ=environ,
+        )
+    except (SDS200Error, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
 
     try:
         configure_logging(

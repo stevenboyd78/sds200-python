@@ -228,3 +228,212 @@ def test_replay_speed_requires_replay(
 ) -> None:
     assert cli.main(["--replay-speed", "1", "info"]) == 2
     assert "--replay-speed requires --replay" in capsys.readouterr().err
+
+
+def test_standard_parser_preserves_existing_managed_defaults() -> None:
+    args = cli.build_parser().parse_args(["info"])
+
+    assert args.max_xml_retries == 2
+    assert args.reconnect_attempts == 0
+    assert args.reconnect_initial_delay == 1.0
+    assert args.reconnect_multiplier == 2.0
+    assert args.reconnect_max_delay == 30.0
+    assert args.health_history_limit == 100
+    assert args.color == "auto"
+    assert args.theme == "dark"
+    assert args.verbose == 0
+    assert args.log_level is None
+    assert args.log_file is None
+
+
+def test_runtime_parser_preserves_absent_managed_values() -> None:
+    from sds200 import APPLICATION_CONFIGURATION_FIELDS
+
+    args = cli.build_parser(
+        suppress_configuration_defaults=True
+    ).parse_args(["info"])
+
+    assert all(
+        not hasattr(args, field)
+        for field in APPLICATION_CONFIGURATION_FIELDS
+    )
+    assert not hasattr(args, "verbose")
+
+
+def test_cli_configuration_applies_files_environment_and_explicit_options(
+    tmp_path: Path,
+) -> None:
+    from sds200 import resolve_configuration_paths
+
+    paths = resolve_configuration_paths(
+        environ={},
+        home=tmp_path / "home",
+        system_config_dir=tmp_path / "etc" / "sdsctl",
+    )
+    paths.system_config_dir.mkdir(parents=True)
+    paths.user_config_dir.mkdir(parents=True)
+    paths.system_config_file.write_text(
+        "version = 1\n\n"
+        "[application]\n"
+        "max_xml_retries = 5\n"
+        'theme = "dark"\n',
+        encoding="utf-8",
+    )
+    paths.user_config_file.write_text(
+        "version = 1\n\n"
+        "[application]\n"
+        "health_history_limit = 250\n",
+        encoding="utf-8",
+    )
+
+    args = cli.build_parser(
+        suppress_configuration_defaults=True
+    ).parse_args(
+        [
+            "-vv",
+            "--color=auto",
+            "--reconnect-attempts",
+            "0",
+            "info",
+        ]
+    )
+
+    resolved = cli._apply_cli_configuration(
+        args,
+        paths=paths,
+        environ={
+            "SDSCTL_THEME": "light",
+            "SDSCTL_COLOR": "never",
+            "SDSCTL_LOG_LEVEL": "ERROR",
+        },
+    )
+
+    assert args.max_xml_retries == 5
+    assert args.health_history_limit == 250
+    assert args.theme == "light"
+    assert args.color == "auto"
+    assert args.reconnect_attempts == 0
+    assert args.log_level == "DEBUG"
+    assert args.verbose == 2
+    assert resolved.source_for("max_xml_retries") == "system"
+    assert resolved.source_for("health_history_limit") == "user"
+    assert resolved.source_for("theme") == "environment"
+    assert resolved.source_for("color") == "command-line"
+    assert resolved.source_for("reconnect_attempts") == "command-line"
+    assert resolved.source_for("log_level") == "command-line"
+
+
+def test_explicit_log_level_overrides_verbose_for_configuration(
+    tmp_path: Path,
+) -> None:
+    from sds200 import resolve_configuration_paths
+
+    paths = resolve_configuration_paths(
+        environ={},
+        home=tmp_path / "home",
+        system_config_dir=tmp_path / "etc" / "sdsctl",
+    )
+    args = cli.build_parser(
+        suppress_configuration_defaults=True
+    ).parse_args(["-vv", "--log-level", "error", "info"])
+
+    resolved = cli._apply_cli_configuration(
+        args,
+        paths=paths,
+        environ={"SDSCTL_LOG_LEVEL": "INFO"},
+    )
+
+    assert args.verbose == 2
+    assert args.log_level == "ERROR"
+    assert resolved.source_for("log_level") == "command-line"
+
+
+def test_main_uses_layered_logging_configuration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from sds200 import resolve_configuration_paths
+
+    paths = resolve_configuration_paths(
+        environ={},
+        home=tmp_path / "home",
+        system_config_dir=tmp_path / "etc" / "sdsctl",
+    )
+    paths.user_config_dir.mkdir(parents=True)
+    paths.user_config_file.write_text(
+        "version = 1\n\n"
+        "[application]\n"
+        'log_level = "WARNING"\n',
+        encoding="utf-8",
+    )
+    observed: list[tuple[int, str | None, Path | None]] = []
+
+    def configure(
+        verbose: int = 0,
+        *,
+        level_name: str | None = None,
+        log_file: Path | None = None,
+    ) -> int:
+        observed.append((verbose, level_name, log_file))
+        return 20
+
+    monkeypatch.setattr(cli, "configure_logging", configure)
+    monkeypatch.setattr(cli, "completion_script", lambda shell: f"{shell} completion")
+
+    result = cli.main(
+        ["-v", "completion", "bash"],
+        configuration_paths=paths,
+        environ={"SDSCTL_LOG_LEVEL": "ERROR"},
+    )
+
+    assert result == 0
+    assert observed == [(1, "INFO", None)]
+    assert capsys.readouterr().out == "bash completion\n"
+
+
+def test_main_reports_configuration_error_before_logging(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from sds200 import resolve_configuration_paths
+
+    paths = resolve_configuration_paths(
+        environ={},
+        home=tmp_path / "home",
+        system_config_dir=tmp_path / "etc" / "sdsctl",
+    )
+    paths.user_config_dir.mkdir(parents=True)
+    paths.user_config_file.write_text(
+        "version = 1\n\n"
+        "[application]\n"
+        "health_history_limit = 0\n",
+        encoding="utf-8",
+    )
+    logging_calls: list[object] = []
+    monkeypatch.setattr(
+        cli,
+        "configure_logging",
+        lambda *args, **kwargs: logging_calls.append((args, kwargs)),
+    )
+
+    result = cli.main(
+        ["completion", "bash"],
+        configuration_paths=paths,
+        environ={},
+    )
+
+    captured = capsys.readouterr()
+    assert result == 2
+    assert logging_calls == []
+    assert "Invalid user configuration" in captured.err
+    assert str(paths.user_config_file) in captured.err
+
+
+def test_runtime_parser_preserves_explicit_no_color_alias() -> None:
+    args = cli.build_parser(
+        suppress_configuration_defaults=True
+    ).parse_args(["--no-color", "info"])
+
+    assert args.color == "never"
