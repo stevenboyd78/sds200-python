@@ -4,6 +4,7 @@ import io
 import subprocess
 import threading
 import time
+from pathlib import Path
 from typing import BinaryIO, cast
 
 import pytest
@@ -16,6 +17,7 @@ from sds200.local_playback import (
     CommandPlaybackProcess,
     PipeWirePlaybackAdapter,
     PulseAudioPlaybackAdapter,
+    start_command_playback_process,
 )
 
 
@@ -216,6 +218,18 @@ def test_command_playback_adapter_defers_worker_failure_to_close() -> None:
         adapter.close()
 
     assert process.terminate_calls == 1
+
+
+def test_command_playback_process_reports_missing_executable(
+    tmp_path: Path,
+) -> None:
+    executable = tmp_path / "missing-playback-command"
+
+    with pytest.raises(
+        AudioOutputError,
+        match="Playback executable 'missing-playback-command' was not found",
+    ):
+        start_command_playback_process((str(executable),))
 
 
 def test_command_playback_adapter_rejects_invalid_factory_result() -> None:
