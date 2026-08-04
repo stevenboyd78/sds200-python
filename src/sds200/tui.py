@@ -13,6 +13,7 @@ from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import VerticalScroll
+from textual.events import Resize
 from textual.timer import Timer
 from textual.widgets import Footer, Header, Static
 
@@ -574,6 +575,12 @@ class ScannerTuiApp(App[None]):
                         self._tui_audio_session.open_audio,
                     )
                 )
+
+    def on_resize(self, event: Resize) -> None:
+        """Refresh size-dependent summaries after terminal resizing."""
+
+        del event
+        self.call_after_refresh(self._refresh_view)
 
     def on_unmount(self) -> None:
         self._shutdown_started.set()
@@ -1444,56 +1451,92 @@ class ScannerTuiApp(App[None]):
         self.query_one("#state", Static).update(self._state_panel(presentation, roles))
         stream_mode = "STALE" if self._stale else self._stream_mode
         self.query_one("#status", Static).update(
-            self._panel(
-                (
-                    "Availability",
-                    self._transition_display(
-                        "availability",
-                        _state_label(presentation.availability.value),
-                    ),
-                    roles.availability,
-                ),
-                (
-                    "Severity",
-                    self._transition_display(
-                        "severity",
-                        _state_label(presentation.severity.value),
-                    ),
-                    roles.severity,
-                ),
-                ("Stream", stream_mode, ThemeRole.TEXT_PRIMARY),
-                (
-                    "PSI recovery A/S/F",
-                    (
-                        f"{self._psi_recovery_attempts} / "
-                        f"{self._psi_recovery_successes} / "
-                        f"{self._psi_recovery_failures}"
-                    ),
-                    ThemeRole.TEXT_PRIMARY,
-                ),
-                (
-                    "Volume",
-                    _level_display(
-                        self._snapshot.volume,
-                        self._capabilities.maximum_volume,
-                    ),
-                    ThemeRole.TEXT_PRIMARY,
-                ),
-                (
-                    "Squelch",
-                    _level_display(
-                        self._snapshot.squelch,
-                        self._capabilities.maximum_squelch,
-                    ),
-                    ThemeRole.TEXT_PRIMARY,
-                ),
-                ("Control", self._control_message, ThemeRole.TEXT_PRIMARY),
-                ("Detail", self._status_message, ThemeRole.TEXT_PRIMARY),
-            )
+            self._status_panel(presentation, roles, stream_mode)
         )
 
         self.query_one("#audio", Static).update(self._audio_panel())
         self._refresh_log_panel()
+
+    def _uses_short_layout(self) -> bool:
+        return self.screen.size.height < 32
+
+    def _status_panel(
+        self,
+        presentation: ScannerPresentation,
+        roles: PresentationThemeRoles,
+        stream_mode: str,
+    ) -> Text:
+        availability = _state_label(presentation.availability.value)
+        severity = _state_label(presentation.severity.value)
+        availability_transition = self._transition_display(
+            "availability",
+            availability,
+        )
+        severity_transition = self._transition_display(
+            "severity",
+            severity,
+        )
+        volume = _level_display(
+            self._snapshot.volume,
+            self._capabilities.maximum_volume,
+        )
+        squelch = _level_display(
+            self._snapshot.squelch,
+            self._capabilities.maximum_squelch,
+        )
+        recovery = (
+            f"{self._psi_recovery_attempts}/"
+            f"{self._psi_recovery_successes}/"
+            f"{self._psi_recovery_failures}"
+        )
+
+        if self._uses_short_layout():
+            status_detail = (
+                self._status_message
+                if self._control_message == "Ready"
+                else f"{self._control_message} | {self._status_message}"
+            )
+            return self._panel(
+                ("Health", f"{availability} / {severity}", roles.severity),
+                (
+                    "PSI",
+                    f"{stream_mode} | recovery {recovery}",
+                    ThemeRole.TEXT_PRIMARY,
+                ),
+                (
+                    "Levels",
+                    f"VOL {volume} | SQL {squelch}",
+                    ThemeRole.TEXT_PRIMARY,
+                ),
+                ("Status", status_detail, ThemeRole.TEXT_PRIMARY),
+            )
+
+        return self._panel(
+            (
+                "Availability",
+                availability_transition,
+                roles.availability,
+            ),
+            (
+                "Severity",
+                severity_transition,
+                roles.severity,
+            ),
+            ("Stream", stream_mode, ThemeRole.TEXT_PRIMARY),
+            (
+                "PSI recovery A/S/F",
+                (
+                    f"{self._psi_recovery_attempts} / "
+                    f"{self._psi_recovery_successes} / "
+                    f"{self._psi_recovery_failures}"
+                ),
+                ThemeRole.TEXT_PRIMARY,
+            ),
+            ("Volume", volume, ThemeRole.TEXT_PRIMARY),
+            ("Squelch", squelch, ThemeRole.TEXT_PRIMARY),
+            ("Control", self._control_message, ThemeRole.TEXT_PRIMARY),
+            ("Detail", self._status_message, ThemeRole.TEXT_PRIMARY),
+        )
 
     def _system_panel(self) -> Text:
         if self._snapshot.screen_kind in {
@@ -1718,6 +1761,30 @@ class ScannerTuiApp(App[None]):
         else:
             status_role = ThemeRole.TEXT_PRIMARY
         detail = snapshot.error or self._audio_message
+        if self._uses_short_layout():
+            return self._panel(
+                ("Audio", _state_label(snapshot.status.value), status_role),
+                (
+                    "Timing",
+                    (
+                        f"{snapshot.elapsed_seconds:.1f}s elapsed | "
+                        f"{snapshot.audio_duration_seconds:.1f}s audio"
+                    ),
+                    ThemeRole.TEXT_PRIMARY,
+                ),
+                (
+                    "Data",
+                    (
+                        f"{snapshot.packets} packets | "
+                        f"{snapshot.samples} samples | "
+                        f"loss/dup {reliability.packets_lost}/"
+                        f"{reliability.duplicate_packets}"
+                    ),
+                    ThemeRole.TEXT_PRIMARY,
+                ),
+                ("Audio status", detail, ThemeRole.TEXT_PRIMARY),
+            )
+
         return self._panel(
             ("Audio", _state_label(snapshot.status.value), status_role),
             (
@@ -1803,6 +1870,39 @@ class ScannerTuiApp(App[None]):
         recording_status = (
             _state_label(snapshot.status.value) if session.recording_enabled else "UNAVAILABLE"
         )
+        if self._uses_short_layout() and not self._recording_library_visible:
+            audio_detail = snapshot.error or self._audio_message
+            return self._panel(
+                (
+                    "Live",
+                    f"{live_playback} | device {playback_device}",
+                    ThemeRole.TEXT_PRIMARY,
+                ),
+                (
+                    "Saved / recording",
+                    f"{saved_playback} | {recording_status}",
+                    status_role,
+                ),
+                (
+                    "Session",
+                    (
+                        f"{snapshot.elapsed_seconds:.1f}s | "
+                        f"{snapshot.packets} packets | "
+                        f"{session.completed_recordings} completed"
+                    ),
+                    ThemeRole.TEXT_PRIMARY,
+                ),
+                (
+                    "Audio",
+                    (
+                        f"{audio_detail} | loss/dup "
+                        f"{reliability.packets_lost}/"
+                        f"{reliability.duplicate_packets}"
+                    ),
+                    ThemeRole.TEXT_PRIMARY,
+                ),
+            )
+
         rows: list[tuple[str, str, ThemeRole]] = [
             ("Live playback", live_playback, ThemeRole.TEXT_PRIMARY),
             ("Playback device", playback_device, ThemeRole.TEXT_PRIMARY),

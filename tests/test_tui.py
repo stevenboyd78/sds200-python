@@ -288,7 +288,8 @@ def test_tui_responsive_breakpoints_and_key_help() -> None:
             assert audio.region.y == state.region.bottom
             assert status.region.y == audio.region.bottom
             assert status.region.bottom <= body.region.bottom
-            assert logs.region.y >= body.region.bottom
+            assert logs.region.y == status.region.bottom
+            assert logs.region.bottom <= body.region.bottom
 
         standard = _app()
         async with standard.run_test(size=(90, 32)) as pilot:

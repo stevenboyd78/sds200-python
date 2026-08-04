@@ -132,6 +132,87 @@ def test_tui_defers_requested_playback_until_connected_live_psi() -> None:
     asyncio.run(exercise())
 
 
+def test_tui_short_layout_summarizes_audio_and_status_and_restores_detail(
+    tmp_path: Path,
+) -> None:
+    async def exercise() -> None:
+        transport = FakeAudioTransport()
+        playback = CollectingPlaybackSink()
+        info = ScannerInfoParser().parse("GSI", XML)
+        session = TuiAudioSession(
+            AudioStream(transport),
+            RecordingPathPolicy(directory=tmp_path),
+            live_playback=True,
+            playback_sink=playback,
+        )
+        app = ScannerTuiApp(
+            ScannerIdentity(
+                endpoint="udp://192.0.2.25:50536",
+                model="SDS200",
+                firmware="Version 1.26.01",
+            ),
+            info,
+            audio_session=session,
+            connected=True,
+        )
+
+        async with app.run_test(size=(90, 28)) as pilot:
+            for _ in range(200):
+                if session.open and not app._audio_pending:
+                    break
+                await asyncio.sleep(0.01)
+            assert session.open
+
+            app._apply_radio_state(snapshot_from_scanner_info(info))
+            for _ in range(200):
+                if session.live_playback_active and not app._audio_pending:
+                    break
+                await asyncio.sleep(0.01)
+            await pilot.pause()
+
+            audio_widget = app.query_one("#audio", Static)
+            status_widget = app.query_one("#status", Static)
+            body = app.query_one("#body")
+
+            compact_audio = _plain(audio_widget)
+            compact_status = _plain(status_widget)
+
+            assert compact_audio.splitlines() == [
+                "Live: ON | device ACTIVE",
+                "Saved / recording: STOPPED | IDLE",
+                "Session: 0.0s | 0 packets | 0 completed",
+                "Audio: Live playback active | loss/dup 0/0",
+            ]
+            assert compact_status.splitlines() == [
+                "Health: AVAILABLE / NORMAL",
+                "PSI: LIVE PSI | recovery 0/0/0",
+                "Levels: VOL 10/29 | SQL 2/19",
+                "Status: Live PSI update received",
+            ]
+            assert status_widget.region.bottom <= body.region.bottom
+            assert "Output:" not in compact_audio
+            assert "Availability:" not in compact_status
+
+            await pilot.resize_terminal(120, 40)
+            await pilot.pause()
+
+            detailed_audio = _plain(audio_widget)
+            detailed_status = _plain(status_widget)
+
+            assert app.screen.has_class("-wide")
+            assert app.screen.has_class("-tall")
+            assert "Playback device: ACTIVE" in detailed_audio
+            assert "Output:" in detailed_audio
+            assert "Playback underflow / dropped:" in detailed_audio
+            assert "Availability: AVAILABLE since" in detailed_status
+            assert "PSI recovery A/S/F: 0 / 0 / 0" in detailed_status
+            assert "Detail: Live PSI update received" in detailed_status
+
+        assert playback.stop_calls == 1
+
+    asyncio.run(exercise())
+
+
 def test_tui_manual_playback_toggle_keeps_device_prepared() -> None:
     async def exercise() -> None:
         transport = FakeAudioTransport()
