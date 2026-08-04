@@ -108,6 +108,14 @@ from .daemon_api import (
     DaemonApiResponse,
     DaemonReadOnlyApi,
 )
+from .daemon_ipc import (
+    DAEMON_SOCKET_DIRECTORY_MODE,
+    DAEMON_SOCKET_FILENAME,
+    DAEMON_SOCKET_MODE,
+    DaemonSocketLocation,
+    DaemonSocketSource,
+    resolve_daemon_socket_location,
+)
 from .daemon_process import (
     DaemonProcess,
     DaemonProcessResult,
@@ -417,6 +425,9 @@ __all__ = [
     "DAEMON_API_PROTOCOL",
     "DAEMON_API_SUPPORTED_VERSIONS",
     "DAEMON_API_VERSION",
+    "DAEMON_SOCKET_DIRECTORY_MODE",
+    "DAEMON_SOCKET_FILENAME",
+    "DAEMON_SOCKET_MODE",
     "DaemonApiError",
     "DaemonApiErrorCode",
     "DaemonApiOperation",
@@ -430,6 +441,8 @@ __all__ = [
     "DaemonRuntimeState",
     "DaemonRuntimeTransition",
     "DaemonSignalController",
+    "DaemonSocketLocation",
+    "DaemonSocketSource",
     "DEFAULT_LIGHT_THEME",
     "DEFAULT_REMOTE_STREAM_TITLE_MAX_LENGTH",
     "DEFAULT_RTSP_PORT",
@@ -620,6 +633,7 @@ __all__ = [
     "repair_profile",
     "resolve_application_configuration",
     "resolve_configuration_paths",
+    "resolve_daemon_socket_location",
     "scan_recording_inventory",
     "safe_recording_component",
     "theme_roles_for",
