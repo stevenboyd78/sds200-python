@@ -11,27 +11,33 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 19.3 — Daemon ownership foundation
+### Milestone 19.4 — Local daemon process foundation
 
-- **Single-owner runtime — complete**
-  - Added a renderer-neutral runtime that owns one scanner control session, PSI,
-    one SDS200 RTSP/RTP audio stream, and one decoded-PCM fanout.
-  - Reused `PcmSinkRouter` as the dynamic destination boundary so recording,
-    local playback, and remote destinations share the same scanner audio stream.
-- **Deterministic lifecycle and state — complete**
-  - Added immutable runtime snapshots and ordered lifecycle transitions.
-  - Defined serialized startup, reverse-order teardown, partial-start cleanup,
-    idempotent stop, listener isolation, and redacted failure reporting.
-- **Dynamic destination ownership — complete**
-  - PCM sinks can be attached before or while the runtime is active and
-    detached without interrupting scanner control or other subscribers.
-  - Kept local socket APIs, PCMU client subscriptions, and CLI/TUI daemon mode
-    outside this foundation milestone.
-- **Regression and documentation — complete**
-  - Regression coverage includes successful lifecycle, startup failures at
-    each boundary, concurrent stop behavior, transition ordering, destination
-    isolation, and clean shutdown.
-  - The ownership contract and follow-on local API work are documented.
+- **Foreground daemon command — planned**
+  - Add `sdsctl daemon` to construct and host one `DaemonRuntime` in the
+    foreground.
+  - Reuse existing scanner, profile, transport, logging, and layered
+    configuration behavior.
+  - Require a network-capable SDS200 endpoint for the runtime-owned RTSP/RTP
+    audio session.
+- **Signal-safe process lifecycle — planned**
+  - Add a dedicated SIGINT and SIGTERM controller whose handlers only request
+    shutdown.
+  - Restore previous handlers after the process loop exits and keep SIGHUP
+    outside the shutdown contract for future reload work.
+  - Stop the runtime deterministically after normal requests, startup
+    interruptions, and process-loop failures.
+- **System service contract — planned**
+  - Document foreground operation under systemd `Type=simple`, journald
+    logging, restart policy, and orderly termination.
+  - Keep forking, pidfiles, privilege changes, socket activation, and service
+    installation outside this foundation milestone.
+- **Regression and documentation — planned**
+  - Cover parser options, network-host and profile validation, runtime
+    construction, signal restoration, startup and shutdown failures, and clean
+    process exit.
+  - Keep local APIs, PCMU client subscriptions, and CLI/TUI daemon clients in
+    follow-on Milestone 19 work.
 
 ## Deferred hardware validation
 
@@ -58,8 +64,6 @@ assignment may change before implementation begins.
 
 ### Remaining Milestone 19 candidates — Local daemon process, API, and clients
 
-- Host the ownership runtime in a long-running local daemon process with
-  signal-safe startup and shutdown.
 - Add bounded PCMU client subscriptions alongside runtime-owned decoded-PCM
   destination routing.
 - Add a local API and event stream suitable for CLI, TUI, web, and integrations.
@@ -226,3 +230,8 @@ fixtures before renderer-specific implementation.
   short-screen panels, concise audio and PSI summaries, an essential-controls
   footer, deterministic responsive and resize coverage, refreshed SVG evidence,
   and physical 800 by 480 Raspberry Pi validation.
+- Milestone 19.3: renderer-neutral ownership of scanner control, PSI, one
+  RTSP/RTP decoded-PCM fanout, and dynamic destinations; immutable runtime
+  snapshots and ordered transitions; serialized startup, reverse-order cleanup,
+  concurrent idempotent stop, listener isolation, redacted failures, and
+  lifecycle regression coverage.
