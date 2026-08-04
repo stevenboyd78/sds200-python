@@ -32,6 +32,7 @@ class DaemonApiErrorCode(StrEnum):
     UNSUPPORTED_VERSION = "unsupported_version"
     UNKNOWN_OPERATION = "unknown_operation"
     INVALID_PARAMETERS = "invalid_parameters"
+    REQUEST_TOO_LARGE = "request_too_large"
     INTERNAL_ERROR = "internal_error"
 
 

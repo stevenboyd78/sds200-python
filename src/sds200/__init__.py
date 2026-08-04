@@ -128,6 +128,16 @@ from .daemon_runtime import (
     DaemonRuntimeState,
     DaemonRuntimeTransition,
 )
+from .daemon_server import (
+    DAEMON_API_DEFAULT_ACCEPT_POLL_INTERVAL,
+    DAEMON_API_DEFAULT_CLIENT_TIMEOUT,
+    DAEMON_API_DEFAULT_MAX_CLIENTS,
+    DAEMON_API_DEFAULT_MAX_REQUEST_BYTES,
+    DAEMON_API_DEFAULT_MAX_RESPONSE_BYTES,
+    DAEMON_API_DEFAULT_SHUTDOWN_TIMEOUT,
+    DaemonApiServer,
+    DaemonApiServerSnapshot,
+)
 from .device import (
     DEFAULT_SDS200_PATTERN,
     DEFAULT_SDS_PATTERN,
@@ -424,6 +434,12 @@ __all__ = [
     "DEFAULT_AUDIO_PATH",
     "DEFAULT_DARK_THEME",
     "DEFAULT_DISCOVERY_WORKERS",
+    "DAEMON_API_DEFAULT_ACCEPT_POLL_INTERVAL",
+    "DAEMON_API_DEFAULT_CLIENT_TIMEOUT",
+    "DAEMON_API_DEFAULT_MAX_CLIENTS",
+    "DAEMON_API_DEFAULT_MAX_REQUEST_BYTES",
+    "DAEMON_API_DEFAULT_MAX_RESPONSE_BYTES",
+    "DAEMON_API_DEFAULT_SHUTDOWN_TIMEOUT",
     "DAEMON_API_MAX_REQUEST_ID_LENGTH",
     "DAEMON_API_PROTOCOL",
     "DAEMON_API_SUPPORTED_VERSIONS",
@@ -436,6 +452,8 @@ __all__ = [
     "DaemonApiOperation",
     "DaemonApiRequest",
     "DaemonApiResponse",
+    "DaemonApiServer",
+    "DaemonApiServerSnapshot",
     "DaemonProcess",
     "DaemonProcessResult",
     "DaemonReadOnlyApi",
