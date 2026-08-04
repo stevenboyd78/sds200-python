@@ -13,24 +13,25 @@ and ideas that are not ready for scheduling are recorded in
 
 ### Milestone 19.3 — Daemon ownership foundation
 
-- **Single-owner runtime — planned**
-  - Add a renderer-neutral runtime that owns one scanner control session, PSI,
+- **Single-owner runtime — complete**
+  - Added a renderer-neutral runtime that owns one scanner control session, PSI,
     one SDS200 RTSP/RTP audio stream, and one decoded-PCM fanout.
-  - Reuse `PcmSinkRouter` as the dynamic destination boundary so recording,
+  - Reused `PcmSinkRouter` as the dynamic destination boundary so recording,
     local playback, and remote destinations share the same scanner audio stream.
-- **Deterministic lifecycle and state — planned**
-  - Add immutable runtime snapshots and ordered lifecycle transitions.
-  - Define serialized startup, reverse-order teardown, partial-start cleanup,
+- **Deterministic lifecycle and state — complete**
+  - Added immutable runtime snapshots and ordered lifecycle transitions.
+  - Defined serialized startup, reverse-order teardown, partial-start cleanup,
     idempotent stop, listener isolation, and redacted failure reporting.
-- **Dynamic destination ownership — planned**
-  - Allow PCM sinks to be attached before or while the runtime is active and
+- **Dynamic destination ownership — complete**
+  - PCM sinks can be attached before or while the runtime is active and
     detached without interrupting scanner control or other subscribers.
-  - Keep local socket APIs, PCMU client subscriptions, and CLI/TUI daemon mode
+  - Kept local socket APIs, PCMU client subscriptions, and CLI/TUI daemon mode
     outside this foundation milestone.
-- **Regression and documentation — planned**
-  - Cover successful lifecycle, startup failures at each boundary, concurrent
-    stop behavior, transition ordering, destination isolation, and clean shutdown.
-  - Document the ownership contract and follow-on local API work.
+- **Regression and documentation — complete**
+  - Regression coverage includes successful lifecycle, startup failures at
+    each boundary, concurrent stop behavior, transition ordering, destination
+    isolation, and clean shutdown.
+  - The ownership contract and follow-on local API work are documented.
 
 ## Deferred hardware validation
 

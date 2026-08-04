@@ -14,6 +14,10 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 - Versioned system and user TOML loading, supported `SDSCTL_*` environment
   overrides, explicit CLI precedence, deterministic `sdsctl` configuration,
   state, and cache paths, and read-only legacy configuration discovery.
+- Renderer-neutral `DaemonRuntime` ownership of scanner control, PSI, one
+  RTSP/RTP decoded-PCM fanout, and dynamic destinations, with immutable snapshots,
+  ordered transitions, partial-start cleanup, reverse-order shutdown, isolated
+  listeners, and redacted failures.
 
 ### Changed
 
