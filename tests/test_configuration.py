@@ -163,3 +163,247 @@ def test_existing_profile_defaults_remain_in_legacy_root(
         / LEGACY_CONFIG_DIRECTORY_NAME
         / REMOTE_AUDIO_PROFILE_FILENAME
     )
+
+
+def test_application_configuration_defaults_include_provenance() -> None:
+    from sds200 import (
+        APPLICATION_CONFIGURATION_FIELDS,
+        ApplicationConfiguration,
+        resolve_application_configuration,
+    )
+
+    resolved = resolve_application_configuration()
+
+    assert resolved.configuration == ApplicationConfiguration()
+    assert all(
+        resolved.source_for(field) == "default"
+        for field in APPLICATION_CONFIGURATION_FIELDS
+    )
+    assert resolved.configuration.reconnect_policy.max_attempts is None
+
+
+def test_application_configuration_uses_fixed_layer_precedence(
+    tmp_path: Path,
+) -> None:
+    from sds200 import ConfigurationLayer, resolve_application_configuration
+
+    resolved = resolve_application_configuration(
+        (
+            ConfigurationLayer(
+                "system",
+                {
+                    "theme": "light",
+                    "max_xml_retries": 4,
+                    "reconnect_attempts": 3,
+                },
+                "/etc/sdsctl/config.toml",
+            ),
+            ConfigurationLayer(
+                "user",
+                {
+                    "theme": "dark",
+                    "health_history_limit": 250,
+                },
+                str(tmp_path / "config.toml"),
+            ),
+            ConfigurationLayer(
+                "environment",
+                {
+                    "theme": "light",
+                    "log_level": "info",
+                },
+                "environment",
+            ),
+            ConfigurationLayer(
+                "command-line",
+                {
+                    "theme": "dark",
+                    "reconnect_attempts": 0,
+                },
+                "command line",
+            ),
+        )
+    )
+
+    config = resolved.configuration
+    assert config.theme == "dark"
+    assert config.max_xml_retries == 4
+    assert config.health_history_limit == 250
+    assert config.log_level == "INFO"
+    assert config.reconnect_attempts == 0
+    assert config.reconnect_policy.max_attempts is None
+    assert resolved.origin_for("theme").source == "command-line"
+    assert resolved.origin_for("theme").location == "command line"
+    assert resolved.source_for("health_history_limit") == "user"
+    assert resolved.source_for("max_xml_retries") == "system"
+
+
+def test_explicit_value_equal_to_default_retains_override_provenance() -> None:
+    from sds200 import ConfigurationLayer, resolve_application_configuration
+
+    resolved = resolve_application_configuration(
+        (
+            ConfigurationLayer(
+                "environment",
+                {"color": "auto"},
+                "SDSCTL_COLOR",
+            ),
+        )
+    )
+
+    assert resolved.configuration.color == "auto"
+    assert resolved.source_for("color") == "environment"
+    assert resolved.origin_for("color").location == "SDSCTL_COLOR"
+
+
+def test_configuration_layers_reject_duplicate_or_out_of_order_sources() -> None:
+    from sds200 import (
+        ConfigurationError,
+        ConfigurationLayer,
+        resolve_application_configuration,
+    )
+
+    with pytest.raises(ConfigurationError, match="more than once"):
+        resolve_application_configuration(
+            (
+                ConfigurationLayer("user", {"theme": "light"}),
+                ConfigurationLayer("user", {"theme": "dark"}),
+            )
+        )
+
+    with pytest.raises(ConfigurationError, match="precedence order"):
+        resolve_application_configuration(
+            (
+                ConfigurationLayer("environment", {"theme": "light"}),
+                ConfigurationLayer("system", {"theme": "dark"}),
+            )
+        )
+
+
+def test_configuration_layer_rejects_default_source() -> None:
+    from sds200 import ConfigurationLayer
+
+    with pytest.raises(ValueError, match="Built-in defaults"):
+        ConfigurationLayer("default", {})
+
+
+def test_configuration_reports_unknown_fields_with_source_location() -> None:
+    from sds200 import (
+        ConfigurationError,
+        ConfigurationLayer,
+        resolve_application_configuration,
+    )
+
+    with pytest.raises(
+        ConfigurationError,
+        match=r"user configuration at .*config\.toml.*unsupported field",
+    ):
+        resolve_application_configuration(
+            (
+                ConfigurationLayer(
+                    "user",
+                    {"future_setting": True},
+                    "/home/example/.config/sdsctl/config.toml",
+                ),
+            )
+        )
+
+
+def test_configuration_reports_invalid_values_with_source_location() -> None:
+    from sds200 import (
+        ConfigurationError,
+        ConfigurationLayer,
+        resolve_application_configuration,
+    )
+
+    with pytest.raises(
+        ConfigurationError,
+        match=r"Invalid system configuration at /etc/sdsctl/config\.toml: "
+        r"Health history limit",
+    ):
+        resolve_application_configuration(
+            (
+                ConfigurationLayer(
+                    "system",
+                    {"health_history_limit": 0},
+                    "/etc/sdsctl/config.toml",
+                ),
+            )
+        )
+
+
+def test_application_configuration_normalizes_operational_values(
+    tmp_path: Path,
+) -> None:
+    from sds200 import ApplicationConfiguration
+
+    config = ApplicationConfiguration(
+        reconnect_initial_delay=2,
+        reconnect_multiplier=1,
+        reconnect_max_delay=8,
+        reconnect_attempts=5,
+        color=" ALWAYS ",
+        theme=" LIGHT ",
+        log_level=" debug ",
+        log_file=tmp_path / "sdsctl.log",
+    )
+
+    assert config.reconnect_initial_delay == 2.0
+    assert config.reconnect_multiplier == 1.0
+    assert config.reconnect_max_delay == 8.0
+    assert config.reconnect_policy.max_attempts == 5
+    assert config.color == "always"
+    assert config.theme == "light"
+    assert config.log_level == "DEBUG"
+    assert config.log_file == tmp_path / "sdsctl.log"
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"max_xml_retries": True}, "Maximum XML retries must be an integer"),
+        ({"reconnect_attempts": -1}, "Reconnect attempts must be at least 0"),
+        (
+            {"reconnect_initial_delay": 0},
+            "Reconnect initial delay must be greater than 0",
+        ),
+        (
+            {"reconnect_multiplier": 0.5},
+            "Reconnect multiplier must be at least 1",
+        ),
+        (
+            {"reconnect_initial_delay": 5, "reconnect_max_delay": 4},
+            "Reconnect maximum delay must be at least the initial delay",
+        ),
+        ({"color": "sometimes"}, "Color mode must be one of"),
+        ({"theme": "blue"}, "Theme name must be one of"),
+        ({"log_level": "TRACE"}, "Log level must be one of"),
+    ],
+)
+def test_application_configuration_rejects_invalid_values(
+    overrides: dict[str, object],
+    message: str,
+) -> None:
+    from sds200 import ApplicationConfiguration
+
+    with pytest.raises((TypeError, ValueError), match=message):
+        ApplicationConfiguration(**overrides)
+
+
+def test_configuration_layer_and_provenance_are_immutable() -> None:
+    from sds200 import ConfigurationLayer, resolve_application_configuration
+
+    values = {"theme": "light"}
+    layer = ConfigurationLayer("user", values, "user config")
+    values["theme"] = "dark"
+
+    assert layer.values["theme"] == "light"
+
+    resolved = resolve_application_configuration((layer,))
+    assert resolved.configuration.theme == "light"
+
+    with pytest.raises(TypeError):
+        layer.values["theme"] = "dark"  # type: ignore[index]
+
+    with pytest.raises(TypeError):
+        resolved.origins["theme"] = resolved.origin_for("theme")  # type: ignore[index]

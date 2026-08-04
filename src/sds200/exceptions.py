@@ -38,6 +38,10 @@ class ProfileError(SDS200Error):
     """A saved connection profile is missing or invalid."""
 
 
+class ConfigurationError(SDS200Error):
+    """Layered application configuration is missing or invalid."""
+
+
 class UnsupportedScannerModelError(SDS200Error):
     """A connected scanner is not a supported SDS-series model."""
 
