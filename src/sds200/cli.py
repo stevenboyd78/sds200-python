@@ -19,6 +19,7 @@ from .audio_recording import PcmuWavRecorder
 from .audio_sinks import (
     AudioFanoutSession,
     PcmSink,
+    PcmSinkRouter,
     PcmWavSink,
     SoundDevicePlaybackSink,
     inspect_audio_backend,
@@ -38,6 +39,8 @@ from .configuration import (
     ResolvedApplicationConfiguration,
     load_application_configuration,
 )
+from .daemon_process import DaemonProcess
+from .daemon_runtime import DaemonRuntime
 from .device import choose_scanner, discover_scanners
 from .discovery import (
     DEFAULT_DISCOVERY_TIMEOUT,
@@ -554,6 +557,60 @@ def build_parser(
     )
     subparsers.add_parser("raw", help="Print packets until interrupted")
     subparsers.add_parser("scanner-info", help="Get structured GSI scanner information")
+
+    daemon = subparsers.add_parser(
+        "daemon",
+        help="Run the single-owner scanner and audio runtime in the foreground",
+    )
+    daemon.add_argument(
+        "--interval",
+        type=_positive_integer,
+        default=500,
+        metavar="MS",
+        help="PSI update interval in milliseconds (default: 500)",
+    )
+    daemon.add_argument(
+        "--psi-timeout",
+        type=_positive_float,
+        default=3.0,
+        metavar="SECONDS",
+        help="Timeout for the initial PSI response (default: 3.0)",
+    )
+    daemon.add_argument(
+        "--rtsp-port",
+        type=_remote_port,
+        default=DEFAULT_RTSP_PORT,
+        metavar="PORT",
+        help=f"Scanner audio RTSP port (default: {DEFAULT_RTSP_PORT})",
+    )
+    daemon.add_argument(
+        "--rtsp-timeout",
+        type=_positive_float,
+        default=5.0,
+        metavar="SECONDS",
+        help="RTSP operation timeout (default: 5.0)",
+    )
+    daemon.add_argument(
+        "--rtp-bind-address",
+        default="",
+        metavar="ADDRESS",
+        help="Local address for the daemon RTP socket",
+    )
+    daemon.add_argument(
+        "--rtp-bind-port",
+        type=_local_port,
+        default=0,
+        metavar="PORT",
+        help="Local daemon RTP port; 0 selects an ephemeral port",
+    )
+    daemon.add_argument(
+        "--keepalive-interval",
+        type=_positive_float,
+        default=15.0,
+        metavar="SECONDS",
+        help="RTSP GET_PARAMETER interval (default: 15.0)",
+    )
+
     tui = subparsers.add_parser(
         "tui",
         help="Launch the optional full-screen Textual interface",
@@ -1580,6 +1637,66 @@ def _manage_profile(args: argparse.Namespace, store: ProfileStore) -> int:
 
 
 
+def _daemon_host(
+    args: argparse.Namespace,
+    *,
+    profile_store: ProfileStore | None = None,
+) -> str:
+    if args.replay is not None:
+        raise ValueError("daemon does not support replay captures")
+
+    if args.profile is not None:
+        if args.model is not None:
+            raise ValueError("--model cannot override a saved profile")
+        store = profile_store or ProfileStore(args.config)
+        profile = store.get(args.profile)
+        if profile.kind not in {"network", "fallback"} or profile.host is None:
+            raise ValueError(
+                "daemon requires a network-capable SDS200 connection profile"
+            )
+        return profile.host
+
+    if args.host is None:
+        raise ValueError(
+            "daemon requires --host or a network-capable SDS200 --profile"
+        )
+    if args.model not in {None, "SDS200"}:
+        raise ValueError("Daemon network audio is only available on the SDS200")
+    return cast(str, args.host)
+
+
+def _run_daemon(args: argparse.Namespace) -> int:
+    profile_store = ProfileStore(args.config) if args.profile is not None else None
+    host = _daemon_host(args, profile_store=profile_store)
+    scanner = selected_radio(args, profile_store=profile_store)
+
+    router = PcmSinkRouter(name="daemon-pcm")
+    transport = NetworkAudioTransport(
+        host,
+        rtsp_port=args.rtsp_port,
+        local_host=args.rtp_bind_address,
+        local_port=args.rtp_bind_port,
+        rtsp_timeout=args.rtsp_timeout,
+        keepalive_interval=args.keepalive_interval,
+    )
+    audio = AudioFanoutSession(AudioStream(transport), (router,))
+    runtime = DaemonRuntime(
+        scanner,
+        audio,
+        router,
+        psi_interval_ms=args.interval,
+        psi_timeout=args.psi_timeout,
+    )
+
+    result = DaemonProcess(runtime).run()
+    logger.info(
+        "foreground daemon stopped host=%s signal=%s",
+        host,
+        result.last_signal,
+    )
+    return 0
+
+
 def _asterisk_moh_host(args: argparse.Namespace) -> str:
     if args.port is not None:
         raise ValueError("asterisk-moh does not use USB serial control")
@@ -2233,6 +2350,9 @@ def main(
 
         if args.action == "audio-devices":
             return _run_audio_devices()
+
+        if args.action == "daemon":
+            return _run_daemon(args)
 
         if args.action == "asterisk-moh":
             return _run_asterisk_moh(args)
