@@ -254,6 +254,29 @@ class ScannerTuiApp(App[None]):
         min-height: 1;
     }
 
+    Screen.-short #body {
+        padding: 0;
+    }
+
+    Screen.-short .panel {
+        min-height: 1;
+        margin-bottom: 0;
+        padding: 0 1;
+        border: none;
+    }
+
+    Screen.-short #status {
+        min-height: 1;
+    }
+
+    Screen.-short #audio {
+        min-height: 1;
+    }
+
+    Screen.-short #logs {
+        min-height: 1;
+    }
+
     Screen.-short #identity {
         display: none;
     }

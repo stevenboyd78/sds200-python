@@ -255,6 +255,44 @@ def test_tui_responsive_breakpoints_and_key_help() -> None:
             assert not compact.key_help_visible
             assert not compact.screen.has_class("show-keys")
 
+        pi_screen = _app()
+        async with pi_screen.run_test(size=(90, 28)) as pilot:
+            await pilot.pause()
+            assert pi_screen.screen.has_class("-standard")
+            assert pi_screen.screen.has_class("-short")
+            assert not pi_screen.screen.has_class("-compact")
+
+            body = pi_screen.query_one("#body")
+            connection = pi_screen.query_one("#connection")
+            system = pi_screen.query_one("#system")
+            channel = pi_screen.query_one("#channel")
+            state = pi_screen.query_one("#state")
+            audio = pi_screen.query_one("#audio")
+            status = pi_screen.query_one("#status")
+            logs = pi_screen.query_one("#logs")
+
+            assert connection.region.y == body.region.y
+            assert system.region.y == connection.region.bottom
+            assert channel.region.y == system.region.bottom
+            assert state.region.y == channel.region.bottom
+            assert audio.region.y == state.region.bottom
+            assert status.region.y == audio.region.bottom
+            assert status.region.bottom <= body.region.bottom
+            assert logs.region.y >= body.region.bottom
+
+        standard = _app()
+        async with standard.run_test(size=(90, 32)) as pilot:
+            await pilot.pause()
+            assert standard.screen.has_class("-standard")
+            assert standard.screen.has_class("-tall")
+
+            body = standard.query_one("#body")
+            connection = standard.query_one("#connection")
+            system = standard.query_one("#system")
+
+            assert connection.region.y > body.region.y
+            assert system.region.y > connection.region.bottom
+
         wide = _app()
         async with wide.run_test(size=(120, 40)) as pilot:
             await pilot.pause()
