@@ -2,10 +2,11 @@
 
 Version 0.11.0 introduced hardware-validated SDS200 network audio while keeping
 its lifecycle independent from scanner control. Milestone 16.1 added decoded-PCM
-fanout for local playback and simultaneous recording, and Milestone 18.5 adds
-pluggable playback adapters plus per-subscriber health and isolation. Audio
-failures never switch, close, or delay USB serial, UDP control, fallback profiles,
-or preferred recovery.
+fanout for local playback and simultaneous recording, Milestone 18.5 added
+pluggable playback adapters plus per-subscriber health and isolation, and
+Milestone 19.3 adds the renderer-neutral single-owner runtime. Audio failures
+never switch, close, or delay USB serial, UDP control, fallback profiles, or
+preferred recovery.
 
 ## Layers
 
@@ -25,6 +26,8 @@ or preferred recovery.
   `AlsaPlaybackAdapter` provide explicit command-backed Linux alternatives.
 - `PcmSinkRouter` dynamically attaches subscribers and exposes immutable health
   snapshots, ordered transitions, counters, timestamps, and redacted failures.
+- `DaemonRuntime` owns scanner control, PSI, one `AudioFanoutSession`, and its
+  dynamic router through one serialized lifecycle.
 - `PcmWavSink` moves WAV writes to a worker thread and finalizes the
   `PcmuWavRecorder` during shutdown.
 - `PcmStreamSink` writes raw PCM through a bounded nonblocking descriptor worker
@@ -138,13 +141,20 @@ sink router: one long-lived fanout owns RTSP/RTP reception while live playback,
 repeatable WAV sinks, and saved-recording playback are attached or detached without
 opening a second scanner audio session.
 
-`PcmSinkRouter.snapshot()` returns immutable router and subscriber state suitable
-for future daemon or API clients. Each subscriber includes attachment and running
-state, health classification, sink statistics, start and submission totals,
-failure counters, transition sequence and timestamps, and a redacted last-error
-type. `on_transition()` publishes ordered immutable changes, and listener or
-subscriber failures are isolated so another destination, RTP reception, and
-scanner control continue independently.
+`PcmSinkRouter.snapshot()` returns immutable router and subscriber state. Each
+subscriber includes attachment and running state, health classification, sink
+statistics, start and submission totals, failure counters, transition sequence
+and timestamps, and a redacted last-error type. `on_transition()` publishes
+ordered immutable changes, and listener or subscriber failures are isolated so
+another destination, RTP reception, and scanner control continue independently.
+
+Milestone 19.3 adds `DaemonRuntime` above these existing layers. It serializes
+scanner connection, PSI startup, one audio fanout, dynamic destination ownership,
+partial-start cleanup, and reverse-order shutdown. Immutable runtime snapshots
+combine scanner, PSI, radio-state, audio, router, timestamp, transition, and
+redacted-failure state for later local API consumers. The current CLI and TUI
+remain standalone clients and do not yet connect to a daemon process. See the
+[daemon ownership runtime guide](daemon-runtime.md).
 
 ## Recording metadata foundation
 

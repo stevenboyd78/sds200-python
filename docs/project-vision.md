@@ -73,18 +73,20 @@ device, encoder, or network operations must not block RTP reception.
 
 ### Single-owner daemon direction
 
-A future daemon should own long-lived scanner, PSI, audio, recording, and remote
-destination sessions.
+Milestone 19.3 provides the renderer-neutral ownership runtime for long-lived
+scanner control, PSI, one audio fanout, and dynamic decoded-PCM destinations. A
+future local daemon process should host that runtime and add process-level
+signaling, local transports, and client policy.
 
-The SDS200 accepts only one network-audio client at a time. The daemon should own
-that single RTSP/RTP session, decode accepted audio once, and expose independent
-bounded PCM or PCMU subscriptions to CLI, TUI, web, recording, streaming, and
-automation clients. A slow or failed subscriber must not block RTP reception or
-another subscriber.
+The SDS200 accepts only one network-audio client at a time. The ownership runtime
+holds that single RTSP/RTP session and decodes accepted audio once. Future daemon
+transports should expose independent bounded PCM or PCMU subscriptions to CLI,
+TUI, web, recording, streaming, and automation clients. A slow or failed
+subscriber must not block RTP reception or another subscriber.
 
-CLI, TUI, web, and automation clients should be able to consume the daemon API
-instead of opening duplicate scanner connections. Standalone operation may remain
-available where practical.
+CLI, TUI, web, and automation clients should eventually consume the local daemon
+API instead of opening duplicate scanner connections. Standalone operation may
+remain available where practical.
 
 ### Deterministic lifecycle behavior
 
@@ -303,7 +305,8 @@ PortAudio, PipeWire, PulseAudio, and ALSA playback adapters.
 
 Remaining future audio work includes:
 
-- daemon ownership and bounded local client subscriptions;
+- hosting the ownership runtime in a local daemon process;
+- bounded local PCMU client subscriptions and API transports;
 - layered saved playback configuration and automatic backend selection;
 - continued separation between control and audio failures.
 

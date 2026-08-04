@@ -11,27 +11,27 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 19.2 — Compact Raspberry Pi TUI layout
+### Milestone 19.3 — Daemon ownership foundation
 
-- **Constrained-screen composition — complete**
-  - Short terminals now activate a dense presentation independently of width,
-    including the 800 by 480 reference display.
-  - Standard and wide terminals retain their existing larger-screen composition.
-- **Space-efficient operational view — complete**
-  - Short layouts remove decorative borders, padding, fixed minimum-height gaps,
-    and the full Textual footer.
-  - Four-line audio and PSI health summaries keep connection, system, channel,
-    activity, signal, playback, recording, stream, and level state visible.
-  - Detailed audio, status, logs, recordings, and keyboard help remain available
-    through tall layouts, existing controls, and scrolling.
-- **Regression and physical validation — complete**
-  - Deterministic coverage includes compact, Raspberry Pi-like, standard, wide,
-    and live terminal-resize cases.
-  - The native compact Textual SVG screenshot was regenerated and verified for
-    deterministic output.
-  - Physical validation passed on a Raspberry Pi 4 with an 800 by 480 display at
-    100 by 30 terminal cells, including rendering, controls, scrolling, live
-    playback, recording, library access, live PSI, and clean shutdown.
+- **Single-owner runtime — complete**
+  - Added a renderer-neutral runtime that owns one scanner control session, PSI,
+    one SDS200 RTSP/RTP audio stream, and one decoded-PCM fanout.
+  - Reused `PcmSinkRouter` as the dynamic destination boundary so recording,
+    local playback, and remote destinations share the same scanner audio stream.
+- **Deterministic lifecycle and state — complete**
+  - Added immutable runtime snapshots and ordered lifecycle transitions.
+  - Defined serialized startup, reverse-order teardown, partial-start cleanup,
+    idempotent stop, listener isolation, and redacted failure reporting.
+- **Dynamic destination ownership — complete**
+  - PCM sinks can be attached before or while the runtime is active and
+    detached without interrupting scanner control or other subscribers.
+  - Kept local socket APIs, PCMU client subscriptions, and CLI/TUI daemon mode
+    outside this foundation milestone.
+- **Regression and documentation — complete**
+  - Regression coverage includes successful lifecycle, startup failures at
+    each boundary, concurrent stop behavior, transition ordering, destination
+    isolation, and clean shutdown.
+  - The ownership contract and follow-on local API work are documented.
 
 ## Deferred hardware validation
 
@@ -56,12 +56,12 @@ fixture-tested, not hardware-validated.
 These milestone groups preserve intended future work. Their numbering and release
 assignment may change before implementation begins.
 
-### Remaining Milestone 19 candidates — Daemon and local API
+### Remaining Milestone 19 candidates — Local daemon process, API, and clients
 
-- Add a long-running daemon that owns scanner, PSI, the SDS200's single
-  RTSP/RTP audio session, recording, and remote destination sessions.
-- Add bounded PCM and PCMU subscriptions so multiple local clients share one
-  scanner audio connection.
+- Host the ownership runtime in a long-running local daemon process with
+  signal-safe startup and shutdown.
+- Add bounded PCMU client subscriptions alongside runtime-owned decoded-PCM
+  destination routing.
 - Add a local API and event stream suitable for CLI, TUI, web, and integrations.
 - Allow CLI and TUI clients to use daemon-owned sessions while retaining an
   explicit standalone fallback.
@@ -222,3 +222,7 @@ fixtures before renderer-specific implementation.
   loading; deterministic `sdsctl` paths; source-aware diagnostics and provenance;
   read-only legacy discovery; CLI integration; and host-independent regression
   coverage.
+- Milestone 19.2: compact Raspberry Pi TUI composition with dense borderless
+  short-screen panels, concise audio and PSI summaries, an essential-controls
+  footer, deterministic responsive and resize coverage, refreshed SVG evidence,
+  and physical 800 by 480 Raspberry Pi validation.

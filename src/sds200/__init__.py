@@ -96,6 +96,12 @@ from .configuration import (
     resolve_application_configuration,
     resolve_configuration_paths,
 )
+from .daemon_runtime import (
+    DaemonRuntime,
+    DaemonRuntimeSnapshot,
+    DaemonRuntimeState,
+    DaemonRuntimeTransition,
+)
 from .device import (
     DEFAULT_SDS200_PATTERN,
     DEFAULT_SDS_PATTERN,
@@ -390,6 +396,10 @@ __all__ = [
     "DEFAULT_AUDIO_PATH",
     "DEFAULT_DARK_THEME",
     "DEFAULT_DISCOVERY_WORKERS",
+    "DaemonRuntime",
+    "DaemonRuntimeSnapshot",
+    "DaemonRuntimeState",
+    "DaemonRuntimeTransition",
     "DEFAULT_LIGHT_THEME",
     "DEFAULT_REMOTE_STREAM_TITLE_MAX_LENGTH",
     "DEFAULT_RTSP_PORT",

@@ -64,6 +64,8 @@ information in this image represents a real system.*
   PortAudio behavior, and explicit PipeWire, PulseAudio, and ALSA adapters
 - Per-subscriber PCM health snapshots, ordered transitions, lifecycle metrics,
   redacted errors, and isolated startup, submission, and shutdown failures
+- Renderer-neutral single-owner runtime for scanner control, PSI, one RTSP/RTP
+  fanout, dynamic PCM destinations, immutable snapshots, and deterministic cleanup
 - Optional live playback through the local default or selected audio output device
 - Simultaneous local playback and streaming PCM WAV recording from one RTSP session
 - UDP XML fragment validation, statistics, and bounded retries
@@ -576,6 +578,7 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting and
 - [Reliability and observability](docs/reliability.md)
 - [Operational logging](docs/logging.md)
 - [Textual TUI](docs/tui.md)
+- [Daemon ownership runtime](docs/daemon-runtime.md)
 - [Audio subsystem architecture](docs/audio.md)
 - [Acknowledgments](ACKNOWLEDGMENTS.md)
 - [Contributing](CONTRIBUTING.md)
