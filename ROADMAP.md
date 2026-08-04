@@ -16,16 +16,18 @@ and ideas that are not ready for scheduling are recorded in
 - **Release bookkeeping — complete**
   - Set the package and public runtime version to `0.18.0`.
   - Finalized the changelog and completed-milestone roadmap entries.
-- **Acceptance validation — planned**
-  - Run the complete Ruff, MyPy, pytest, documentation, packaging, and
+- **Acceptance validation — complete**
+  - Passed the complete Ruff, MyPy, pytest, documentation, packaging, and
     distribution validation suite.
-  - Build and inspect the wheel and source distribution and pass `twine check`.
-  - Verify a clean Python 3.14 installation from the built distributions.
-- **Publication — planned**
+  - Built and inspected the wheel and source distribution and passed `twine check`.
+  - Verified package metadata, required package and license contents, CLI version
+    output, and a clean Python 3.14 wheel installation.
+  - Confirmed the public playback-adapter and PCM subscriber-router imports from
+    the clean installation.
+- **Publication — active**
   - Merge the release-preparation pull request only after all required CI and
     CodeQL checks pass.
-  - Publish the signed `v0.18.0` tag, GitHub release, and trusted PyPI
-    distributions.
+  - Publish the `v0.18.0` tag, GitHub release, and trusted PyPI distributions.
   - Verify installation and package metadata from public PyPI.
 
 ## Deferred hardware validation
