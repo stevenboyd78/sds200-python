@@ -11,33 +11,33 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 19.4 — Local daemon process foundation
+### Milestone 19.5 — Local IPC and read-only API foundation
 
-- **Foreground daemon command — complete**
-  - Added `sdsctl daemon` to construct and host one `DaemonRuntime` in the
-    foreground.
-  - Reused existing scanner, profile, transport, logging, and layered
-    configuration behavior.
-  - Required a network-capable SDS200 endpoint for the runtime-owned RTSP/RTP
-    audio session.
-- **Signal-safe process lifecycle — complete**
-  - Added a dedicated SIGINT and SIGTERM controller whose handlers only request
-    shutdown.
-  - Restored previous handlers after the process loop exits and kept SIGHUP
-    outside the shutdown contract for future reload work.
-  - Added deterministic runtime cleanup after normal requests, startup
-    interruptions, and process-loop failures while preserving primary errors.
-- **System service contract — complete**
-  - Documented foreground operation under systemd `Type=simple`, journald
-    logging, restart policy, and orderly SIGTERM termination.
-  - Kept forking, pidfiles, privilege changes, socket activation, and service
-    installation outside this foundation milestone.
-- **Regression and documentation — complete**
-  - Covered parser options, network-host and profile validation, runtime
-    construction, signal installation and restoration, startup and shutdown
-    failures, and clean process exit.
-  - Kept local APIs, PCMU client subscriptions, destination activation, and
-    CLI/TUI daemon clients in follow-on Milestone 19 work.
+- **Versioned local protocol — planned**
+  - Define a renderer-neutral, versioned request and response protocol with
+    correlation identifiers and structured error responses.
+  - Expose protocol negotiation, daemon capabilities, ping, runtime snapshots,
+    scanner state, and audio and router health.
+  - Keep the initial API read-only and preserve immutable snapshot semantics.
+- **Unix-domain socket ownership — planned**
+  - Add one daemon-owned Unix-domain socket with explicit path and permission
+    behavior.
+  - Detect and safely remove stale sockets without replacing an active daemon
+    endpoint.
+  - Close listeners and clients deterministically during daemon shutdown and
+    partial startup failure.
+- **Bounded client handling — planned**
+  - Bound request size, connected clients, per-client work, response queues, and
+    shutdown waits.
+  - Isolate malformed, stalled, disconnected, and slow clients from the daemon
+    runtime and from other clients.
+  - Keep socket I/O outside scanner, PSI, RTP, and destination worker paths.
+- **Regression and documentation — planned**
+  - Cover protocol negotiation, request correlation, read-only operations,
+    framing and validation failures, stale-socket handling, permissions, client
+    limits, concurrency, and orderly shutdown.
+  - Keep event subscriptions, audio delivery, scanner controls, TCP exposure,
+    and CLI/TUI daemon-client migration in follow-on milestones.
 
 ## Deferred hardware validation
 
@@ -62,15 +62,65 @@ fixture-tested, not hardware-validated.
 These milestone groups preserve intended future work. Their numbering and release
 assignment may change before implementation begins.
 
-### Remaining Milestone 19 candidates — Local API and clients
+### Milestone 19.6 — Local event stream
 
-- Add bounded PCMU client subscriptions alongside runtime-owned decoded-PCM
-  destination routing.
-- Add a local API and event stream suitable for CLI, TUI, web, and integrations.
-- Allow CLI and TUI clients to use daemon-owned sessions while retaining an
-  explicit standalone fallback.
-- Keep the existing Python import package compatible until a separate migration
-  plan justifies a rename.
+- Publish an initial authoritative snapshot followed by ordered daemon, scanner,
+  PSI, radio-state, audio, and destination-health events.
+- Add sequence numbers, bounded per-client queues, clean unsubscribe behavior,
+  and slow-client isolation.
+- Keep binary audio and scanner controls outside the event-stream contract.
+
+### Milestone 19.7 — Bounded PCMU client subscriptions
+
+- Publish accepted RTP PCMU payloads before decoding rather than re-encoding PCM.
+- Preserve the existing single decoded-PCM path while adding independent bounded
+  PCMU subscriber queues.
+- Report packet sequence, loss, discontinuity, and slow-client state without
+  allowing audio consumers to delay control or event traffic.
+
+### Milestone 19.8 — Safe daemon controls
+
+- Add explicit capability-checked scanner operations such as hold, resume, next,
+  previous, and reconnect.
+- Correlate requests with authoritative completion or rejection responses and
+  serialize conflicting operations.
+- Do not expose unrestricted raw scanner-command passthrough initially.
+
+### Milestone 19.9 — CLI daemon client
+
+- Add daemon status, snapshot, event-watch, safe-control, and optional audio
+  client workflows.
+- Preserve explicit daemon and standalone selection with clear absent,
+  incompatible, and disconnected daemon diagnostics.
+- Use the CLI migration to validate protocol compatibility before TUI adoption.
+
+### Milestone 19.10 — TUI daemon client
+
+- Consume daemon snapshots, ordered events, controls, and daemon-owned audio.
+- Preserve an explicit standalone mode and show daemon protocol, connection,
+  reconnect, and degraded-state information.
+- Ensure closing or reconnecting the TUI never stops the daemon-owned scanner
+  session.
+
+### Milestone 19.11 — Destination activation and reload
+
+- Activate saved playback, recording, and remote-stream destinations under daemon
+  ownership.
+- Define validated, previewable configuration replacement and failure-isolated
+  destination updates.
+- Assign `SIGHUP` reload behavior only after deterministic reload and rollback
+  contracts exist.
+
+### Milestone 19.12 — v0.19.0 release
+
+- Complete compatibility, migration, deployment, and systemd documentation.
+- Validate multiple clients, slow and malformed clients, shutdown fault
+  injection, clean installation, and upgrade behavior.
+- Run full Python 3.11–3.14 CI and CodeQL validation plus physical SDS200
+  daemon-owned CLI and TUI client testing.
+
+Keep the existing Python import package compatible until a separate migration
+plan justifies a rename.
 
 ### Milestone 20 — Web dashboard and Home Assistant
 
@@ -235,3 +285,8 @@ fixtures before renderer-specific implementation.
   snapshots and ordered transitions; serialized startup, reverse-order cleanup,
   concurrent idempotent stop, listener isolation, redacted failures, and
   lifecycle regression coverage.
+- Milestone 19.4: foreground `sdsctl daemon` ownership of scanner control, PSI,
+  one RTSP/RTP audio session, and one decoded-PCM router; signal-safe SIGINT and
+  SIGTERM shutdown, restored handlers, preserved primary failures, documented
+  systemd `Type=simple` operation, regression coverage, and physical SDS200
+  validation.
