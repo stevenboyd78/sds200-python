@@ -91,6 +91,15 @@ from .fallback import (
     PreferredRecoveryPolicy,
     TransportCandidate,
 )
+from .local_playback import (
+    CommandPlaybackAdapter,
+    CommandPlaybackConfig,
+    CommandPlaybackProcess,
+    CommandPlaybackProcessFactory,
+    CommandPlaybackSnapshot,
+    CommandPlaybackState,
+    start_command_playback_process,
+)
 from .models import (
     ChargeStatus,
     FirmwareResponse,
@@ -317,6 +326,12 @@ __all__ = [
     "CaptureFormatError",
     "CaptureSession",
     "ChargeStatus",
+    "CommandPlaybackAdapter",
+    "CommandPlaybackConfig",
+    "CommandPlaybackProcess",
+    "CommandPlaybackProcessFactory",
+    "CommandPlaybackSnapshot",
+    "CommandPlaybackState",
     "CommandRejectedError",
     "ConnectionProfile",
     "ConnectionStatus",
@@ -451,6 +466,7 @@ __all__ = [
     "SignalLevel",
     "SoundDevicePlaybackAdapter",
     "SoundDevicePlaybackSink",
+    "start_command_playback_process",
     "StartScannerInfoPush",
     "StateChange",
     "StatusResponse",
