@@ -11,9 +11,27 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-No implementation milestone is currently active. Remaining Milestone 19
-daemon and local API work is retained below as future candidates pending an
-explicit kickoff.
+### Milestone 19.2 — Compact Raspberry Pi TUI layout
+
+- **Constrained-screen composition — complete**
+  - Short terminals now activate a dense presentation independently of width,
+    including the 800 by 480 reference display.
+  - Standard and wide terminals retain their existing larger-screen composition.
+- **Space-efficient operational view — complete**
+  - Short layouts remove decorative borders, padding, fixed minimum-height gaps,
+    and the full Textual footer.
+  - Four-line audio and PSI health summaries keep connection, system, channel,
+    activity, signal, playback, recording, stream, and level state visible.
+  - Detailed audio, status, logs, recordings, and keyboard help remain available
+    through tall layouts, existing controls, and scrolling.
+- **Regression and physical validation — complete**
+  - Deterministic coverage includes compact, Raspberry Pi-like, standard, wide,
+    and live terminal-resize cases.
+  - The native compact Textual SVG screenshot was regenerated and verified for
+    deterministic output.
+  - Physical validation passed on a Raspberry Pi 4 with an 800 by 480 display at
+    100 by 30 terminal cells, including rendering, controls, scrolling, live
+    playback, recording, library access, live PSI, and clean shutdown.
 
 ## Deferred hardware validation
 

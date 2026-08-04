@@ -23,6 +23,12 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   optional files are absent.
 - Kept `--config PATH` dedicated to the legacy scanner connection-profile file;
   no profile or remote-audio configuration is moved or rewritten automatically.
+- Short TUI layouts now use dense borderless panels, four-line audio and PSI
+  health summaries, and a one-line essential-controls footer so the operational
+  view fits Raspberry Pi-class displays while tall layouts retain full detail.
+- Physically validated the compact TUI on a Raspberry Pi 4 with an 800 by 480
+  display at 100 by 30 terminal cells, including live playback, recording,
+  library navigation, scrolling, controls, live PSI, and clean shutdown.
 
 ### Fixed
 
