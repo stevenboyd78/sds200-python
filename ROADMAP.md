@@ -11,17 +11,21 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 18.6 — v0.18.0 release preparation
+### Milestone 18.6 — v0.18.0 release
 
-- **Release readiness — planned**
-  - Finalize the v0.18.0 changelog, version metadata, and release notes.
+- **Release bookkeeping — complete**
+  - Set the package and public runtime version to `0.18.0`.
+  - Finalized the changelog and completed-milestone roadmap entries.
+- **Acceptance validation — planned**
   - Run the complete Ruff, MyPy, pytest, documentation, packaging, and
     distribution validation suite.
+  - Build and inspect the wheel and source distribution and pass `twine check`.
   - Verify a clean Python 3.14 installation from the built distributions.
 - **Publication — planned**
   - Merge the release-preparation pull request only after all required CI and
     CodeQL checks pass.
-  - Publish the signed tag, GitHub release, and trusted PyPI distributions.
+  - Publish the signed `v0.18.0` tag, GitHub release, and trusted PyPI
+    distributions.
   - Verify installation and package metadata from public PyPI.
 
 ## Deferred hardware validation
