@@ -171,14 +171,18 @@ def test_stale_socket_is_replaced(tmp_path: Path) -> None:
     target = location(tmp_path / "daemon.sock")
     stale = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     stale.bind(os.fspath(target.path))
-    stale_identity = target.path.stat().st_ino
     stale.close()
 
     listener = DaemonSocketListener(target)
     listener.start()
     try:
         assert listener.active is True
-        assert target.path.stat().st_ino != stale_identity
+        assert stat.S_ISSOCK(target.path.stat().st_mode)
+        assert listener.socket.getsockname() == os.fspath(target.path)
+
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(1.0)
+            client.connect(os.fspath(target.path))
     finally:
         listener.stop()
 
