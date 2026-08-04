@@ -11,29 +11,9 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 19.1 — Layered configuration foundation
-
-- **Configuration model and precedence — planned**
-  - Add renderer-neutral configuration loading with precedence from defaults,
-    system configuration, user configuration, environment variables, and explicit
-    CLI arguments.
-  - Preserve the distinction between absent values and explicit overrides.
-  - Keep existing standalone CLI and Python-library behavior compatible when no
-    configuration files are present.
-- **Paths and discovery — planned**
-  - Define deterministic path resolution for `/etc/sdsctl/`,
-    `~/.config/sdsctl/`, `~/.local/state/sdsctl/`, and `~/.cache/sdsctl/`.
-  - Keep configuration reads non-mutating and make path discovery testable without
-    depending on the host user's real directories.
-  - Detect legacy `sds200` configuration locations without silently moving,
-    replacing, or deleting user data.
-- **Validation and diagnostics — planned**
-  - Reject malformed or unsupported configuration with actionable source-aware
-    diagnostics.
-  - Preserve secret references without writing resolved credentials into
-    configuration, logs, exceptions, or serialized output.
-  - Add deterministic precedence, path, environment, malformed-input, legacy
-    discovery, and compatibility tests.
+No implementation milestone is currently active. Remaining Milestone 19
+daemon and local API work is retained below as future candidates pending an
+explicit kickoff.
 
 ## Deferred hardware validation
 
@@ -219,3 +199,8 @@ fixtures before renderer-specific implementation.
   documentation, distribution, clean-install, CI, and CodeQL validation, trusted
   PyPI publication, GitHub release publication, and clean Python 3.14 installation
   verification from public PyPI.
+- Milestone 19.1: immutable layered application configuration with fixed
+  default, system, user, environment, and CLI precedence; versioned strict TOML
+  loading; deterministic `sdsctl` paths; source-aware diagnostics and provenance;
+  read-only legacy discovery; CLI integration; and host-independent regression
+  coverage.

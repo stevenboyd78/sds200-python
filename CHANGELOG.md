@@ -6,6 +6,24 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+### Added
+
+- Immutable renderer-neutral application configuration values with validated
+  reconnect, reliability, presentation, and logging settings plus per-field
+  source provenance.
+- Versioned system and user TOML loading, supported `SDSCTL_*` environment
+  overrides, explicit CLI precedence, deterministic `sdsctl` configuration,
+  state, and cache paths, and read-only legacy configuration discovery.
+
+### Changed
+
+- `sdsctl` now resolves application settings from built-in defaults,
+  `/etc/sdsctl/config.toml`, the XDG user configuration file, environment
+  variables, and explicit CLI options while preserving existing behavior when
+  optional files are absent.
+- Kept `--config PATH` dedicated to the legacy scanner connection-profile file;
+  no profile or remote-audio configuration is moved or rewritten automatically.
+
 ### Fixed
 
 - Added the package author email to the PEP 621 project metadata so future

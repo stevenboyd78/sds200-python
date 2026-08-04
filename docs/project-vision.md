@@ -30,8 +30,9 @@ scanner protocols or opening competing scanner sessions.
 
 `SDSScanner` and `sdsctl` are the preferred model-neutral user-facing names.
 
-Going forward, configuration, services, state, cache, daemon, and integration
-names should use the `sdsctl` namespace:
+Layered application configuration now uses the `sdsctl` namespace. Future
+services, state, cache, daemon, and integration names should use the same
+namespace:
 
 - system configuration: `/etc/sdsctl/`;
 - user configuration: `~/.config/sdsctl/`;
@@ -43,9 +44,10 @@ The existing distribution and Python import package remain named `sds200`, and
 the repository remains named `sds200-python`, until a separate compatibility and
 migration plan justifies changing them.
 
-Legacy `sds200` configuration must not be silently abandoned. Future
-configuration work should detect legacy locations, explain precedence, and provide
-a safe migration or compatibility path.
+Legacy `sds200` configuration must not be silently abandoned. Milestone 19.1
+adds read-only detection of known legacy profile locations while preserving their
+existing defaults. It does not move or rewrite user data; any future migration
+requires an explicit compatibility plan.
 
 ## Architectural principles
 
@@ -95,13 +97,16 @@ or rejected clearly.
 
 ## Configuration and secrets
 
-Future layered configuration should use this precedence:
+Layered application configuration uses this precedence:
 
 1. built-in defaults;
 2. system configuration;
 3. user configuration;
 4. environment variables;
 5. command-line arguments.
+
+The versioned schema, supported settings, and path behavior are documented in
+[the configuration guide](configuration.md).
 
 Secrets should be referenced rather than embedded in ordinary profiles,
 Favorites data, exported configuration, logs, traces, or API responses.

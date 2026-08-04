@@ -16,6 +16,7 @@ REQUIRED_FILES = (
     Path("CODE_OF_CONDUCT.md"),
     Path("SECURITY.md"),
     Path("SUPPORT.md"),
+    Path("docs/configuration.md"),
     Path("docs/releasing.md"),
     Path("docs/supported-models.md"),
     Path("wiki/Home.md"),
@@ -80,6 +81,8 @@ def main() -> int:
         errors.append("README does not link to the security policy.")
     if "ROADMAP.md" not in readme:
         errors.append("README does not link to the project roadmap.")
+    if "docs/configuration.md" not in readme:
+        errors.append("README does not link to layered configuration documentation.")
 
     for markdown in markdown_files():
         text = markdown.read_text(encoding="utf-8")

@@ -11,6 +11,7 @@
 - [Textual TUI](https://github.com/stevenboyd78/sds200-python/blob/main/docs/tui.md)
 - [Network audio](https://github.com/stevenboyd78/sds200-python/blob/main/docs/audio.md)
 - [Operational logging](https://github.com/stevenboyd78/sds200-python/blob/main/docs/logging.md)
+- [Layered configuration](https://github.com/stevenboyd78/sds200-python/blob/main/docs/configuration.md)
 - [Capture and replay](https://github.com/stevenboyd78/sds200-python/blob/main/docs/replay-and-capture.md)
 
 ### Project

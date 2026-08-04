@@ -69,6 +69,12 @@ sdsctl --profile home monitor
 The default file is `${XDG_CONFIG_HOME:-~/.config}/sds200/profiles.toml`.
 Override it with `--config PATH`.
 
+This is legacy connection-profile storage. `--config` does not select the
+application-wide `/etc/sdsctl/config.toml` or
+`${XDG_CONFIG_HOME:-~/.config}/sdsctl/config.toml` files. See
+[Layered application configuration](configuration.md) for that separate schema
+and its precedence rules.
+
 ## Health and diagnostics
 
 The `health` command sends `MDL` and `VER`, measures the `MDL` round-trip, and
