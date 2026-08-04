@@ -1,10 +1,11 @@
 # Audio subsystem architecture
 
 Version 0.11.0 introduced hardware-validated SDS200 network audio while keeping
-its lifecycle independent from scanner control. Milestone 16.1 adds a decoded-PCM
-fanout layer for local playback and simultaneous recording. Audio failures never
-switch, close, or delay USB serial, UDP control, fallback profiles, or preferred
-recovery.
+its lifecycle independent from scanner control. Milestone 16.1 added decoded-PCM
+fanout for local playback and simultaneous recording, and Milestone 18.5 adds
+pluggable playback adapters plus per-subscriber health and isolation. Audio
+failures never switch, close, or delay USB serial, UDP control, fallback profiles,
+or preferred recovery.
 
 ## Layers
 
@@ -17,7 +18,13 @@ recovery.
   accepted RTP packet.
 - `AudioFanoutSession` decodes each accepted packet once and submits 8 kHz mono
   signed 16-bit PCM to one or more independently buffered `PcmSink` destinations.
-- `SoundDevicePlaybackSink` sends PCM to the selected PortAudio output device.
+- `BufferedPlaybackSink` owns bounded newest-audio buffering, mute behavior,
+  underflow and overflow accounting, and backend-independent playback lifecycle.
+- `SoundDevicePlaybackAdapter` preserves the default PortAudio implementation;
+  `PipeWirePlaybackAdapter`, `PulseAudioPlaybackAdapter`, and
+  `AlsaPlaybackAdapter` provide explicit command-backed Linux alternatives.
+- `PcmSinkRouter` dynamically attaches subscribers and exposes immutable health
+  snapshots, ordered transitions, counters, timestamps, and redacted failures.
 - `PcmWavSink` moves WAV writes to a worker thread and finalizes the
   `PcmuWavRecorder` during shutdown.
 - `PcmStreamSink` writes raw PCM through a bounded nonblocking descriptor worker
@@ -53,8 +60,9 @@ sdsctl audio-devices
 
 PortAudio may expose Linux audio through ALSA, PipeWire or PulseAudio
 compatibility, or JACK, depending on the operating-system configuration and
-PortAudio build. Direct PipeWire, PulseAudio, and ALSA sinks remain planned
-backends rather than claims of current native support.
+PortAudio build. The CLI and TUI continue to use PortAudio. Python callers can
+explicitly select PipeWire, PulseAudio, or ALSA through the shared buffered
+playback lifecycle when `pw-cat`, `pacat`, or `aplay` is installed.
 
 Listen through the operating system's default output device:
 
@@ -111,6 +119,14 @@ want one stream and one recorder. The TUI uses `TuiAudioSession` with a dynamic 
 sink router: one long-lived fanout owns RTSP/RTP reception while live playback,
 repeatable WAV sinks, and saved-recording playback are attached or detached without
 opening a second scanner audio session.
+
+`PcmSinkRouter.snapshot()` returns immutable router and subscriber state suitable
+for future daemon or API clients. Each subscriber includes attachment and running
+state, health classification, sink statistics, start and submission totals,
+failure counters, transition sequence and timestamps, and a redacted last-error
+type. `on_transition()` publishes ordered immutable changes, and listener or
+subscriber failures are isolated so another destination, RTP reception, and
+scanner control continue independently.
 
 ## Recording metadata foundation
 
