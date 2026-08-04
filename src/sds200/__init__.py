@@ -25,9 +25,13 @@ from .audio_session import (
 from .audio_sinks import (
     AudioFanoutSession,
     AudioFanoutSnapshot,
+    BufferedPlaybackSink,
+    LocalPlaybackAdapter,
+    LocalPlaybackAdapterFactory,
     PcmSink,
     PcmSinkStatistics,
     PcmWavSink,
+    SoundDevicePlaybackAdapter,
     SoundDevicePlaybackSink,
 )
 from .broadcastify import (
@@ -304,6 +308,7 @@ __all__ = [
     "BroadcastifyConnectionFactory",
     "BroadcastifyMetadataPublication",
     "BroadcastifyMetadataPublicationFactory",
+    "BufferedPlaybackSink",
     "PCM_CHANNELS",
     "PCM_SAMPLE_WIDTH",
     "PCMU_SAMPLE_RATE",
@@ -340,6 +345,8 @@ __all__ = [
     "HealthHistory",
     "HealthSummary",
     "HealthThresholds",
+    "LocalPlaybackAdapter",
+    "LocalPlaybackAdapterFactory",
     "ModelResponse",
     "NAVIGATION_TARGETS",
     "NavigationTarget",
@@ -442,6 +449,7 @@ __all__ = [
     "SetSquelch",
     "SetVolume",
     "SignalLevel",
+    "SoundDevicePlaybackAdapter",
     "SoundDevicePlaybackSink",
     "StartScannerInfoPush",
     "StateChange",

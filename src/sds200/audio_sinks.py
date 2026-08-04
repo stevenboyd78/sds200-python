@@ -271,6 +271,32 @@ class _RawOutputStream(Protocol):
     def close(self) -> object: ...
 
 
+@runtime_checkable
+class LocalPlaybackAdapter(Protocol):
+    """Backend-specific local PCM consumer used by a buffered playback sink."""
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def running(self) -> bool: ...
+
+    def start(
+        self,
+        pcm_reader: Callable[[int], bytes],
+        status_reporter: Callable[[bool], None],
+    ) -> None: ...
+
+    def interrupt(self) -> None:
+        """Promptly interrupt backend playback from another thread."""
+        ...
+
+    def close(self) -> None: ...
+
+
+LocalPlaybackAdapterFactory = Callable[[], LocalPlaybackAdapter]
+
+
 class _SoundDeviceDefaults(Protocol):
     device: object
 
@@ -480,28 +506,32 @@ def inspect_audio_backend(
     )
 
 
-class SoundDevicePlaybackSink:
-    """Play decoded PCM through a sounddevice/PortAudio output stream."""
+class BufferedPlaybackSink:
+    """Bounded newest-audio PCM sink backed by one local playback adapter."""
 
     def __init__(
         self,
         *,
-        device: str | int | None = None,
+        name: str,
+        adapter_factory: LocalPlaybackAdapterFactory,
         buffer_ms: int = 250,
-        module_loader: Callable[[str], object] = import_module,
     ) -> None:
+        if not name or name.strip() != name:
+            raise ValueError("Playback sink name must not be empty or padded")
         if buffer_ms <= 0:
             raise ValueError("Playback buffer must be greater than zero milliseconds")
+
         capacity = max(
             PCM_SAMPLE_WIDTH,
             _PCM_BYTES_PER_SECOND * buffer_ms // 1000,
         )
-        self.device = device
+        self._name = name
         self.buffer_ms = buffer_ms
-        self._module_loader = module_loader
+        self._adapter_factory = adapter_factory
         self._buffer = _PcmBuffer(capacity)
-        self._stream: _RawOutputStream | None = None
+        self._lifecycle_lock = threading.RLock()
         self._lock = threading.RLock()
+        self._adapter: LocalPlaybackAdapter | None = None
         self._bytes_submitted = 0
         self._bytes_written = 0
         self._bytes_dropped = 0
@@ -512,12 +542,13 @@ class SoundDevicePlaybackSink:
 
     @property
     def name(self) -> str:
-        return "playback:default" if self.device is None else f"playback:{self.device}"
+        return self._name
 
     @property
     def running(self) -> bool:
         with self._lock:
-            return self._stream is not None
+            adapter = self._adapter
+        return adapter is not None and adapter.running
 
     @property
     def muted(self) -> bool:
@@ -538,31 +569,47 @@ class SoundDevicePlaybackSink:
             )
 
     def start(self) -> None:
-        with self._lock:
-            if self._stream is not None:
-                return
-        module = _load_sounddevice(self._module_loader)
+        with self._lifecycle_lock:
+            with self._lock:
+                if self._adapter is not None:
+                    return
 
-        stream: _RawOutputStream | None = None
-        try:
-            stream = module.RawOutputStream(
-                samplerate=PCMU_SAMPLE_RATE,
-                channels=PCM_CHANNELS,
-                dtype="int16",
-                device=self.device,
-                callback=self._playback_callback,
-            )
-            stream.start()
-        except Exception as error:
-            if stream is not None:
+            adapter = self._adapter_factory()
+            if not isinstance(adapter, LocalPlaybackAdapter):
+                raise TypeError(
+                    "Local playback adapter factories must return "
+                    "LocalPlaybackAdapter-compatible objects."
+                )
+
+            try:
+                adapter.start(self._read_pcm, self._report_status)
+            except BaseException:
                 try:
-                    stream.close()
+                    adapter.interrupt()
                 except Exception:
-                    logger.exception("Audio output cleanup failed after start error")
-            raise AudioOutputError(f"Could not open audio output device: {error}") from error
-        with self._lock:
-            self._stream = stream
-        logger.info("audio playback started device=%s", self.device or "default")
+                    logger.exception(
+                        "Local playback adapter interrupt failed after start error "
+                        "adapter=%s",
+                        adapter.name,
+                    )
+                try:
+                    adapter.close()
+                except Exception:
+                    logger.exception(
+                        "Local playback adapter cleanup failed after start error "
+                        "adapter=%s",
+                        adapter.name,
+                    )
+                raise
+
+            with self._lock:
+                self._adapter = adapter
+
+        logger.info(
+            "audio playback started sink=%s adapter=%s",
+            self.name,
+            adapter.name,
+        )
 
     def set_muted(self, muted: bool) -> None:
         with self._lock:
@@ -580,52 +627,207 @@ class SoundDevicePlaybackSink:
             if dropped:
                 self._overflows += 1
 
-    def stop(self) -> None:
+    def interrupt(self) -> None:
         with self._lock:
-            stream, self._stream = self._stream, None
-        if stream is None:
+            adapter = self._adapter
+        if adapter is not None:
+            adapter.interrupt()
+
+    def stop(self) -> None:
+        with self._lifecycle_lock:
+            with self._lock:
+                adapter, self._adapter = self._adapter, None
+            if adapter is None:
+                return
+
+            failure: BaseException | None = None
+            try:
+                adapter.interrupt()
+            except BaseException as error:
+                failure = error
+            try:
+                adapter.close()
+            except BaseException as error:
+                if failure is None:
+                    failure = error
+
+            self._buffer.clear()
+            logger.info(
+                "audio playback stopped sink=%s adapter=%s",
+                self.name,
+                adapter.name,
+            )
+            if failure is not None:
+                if isinstance(failure, AudioOutputError):
+                    raise failure
+                raise AudioOutputError(
+                    f"Could not close audio output device: {failure}"
+                ) from failure
+
+    def _read_pcm(self, size: int) -> bytes:
+        if size < 0 or size % PCM_SAMPLE_WIDTH:
+            raise ValueError(
+                "Playback adapter reads must request complete 16-bit samples"
+            )
+
+        with self._lock:
+            if self._muted:
+                return bytes(size)
+
+            pcm = self._buffer.pop(size)
+            missing = size - len(pcm)
+            self._bytes_written += len(pcm)
+            if missing:
+                self._underflows += 1
+            return pcm + bytes(missing)
+
+    def _report_status(self, active: bool) -> None:
+        if not active:
             return
-        failure: BaseException | None = None
+        with self._lock:
+            self._callback_statuses += 1
+
+
+class SoundDevicePlaybackAdapter:
+    """Local playback adapter implemented with sounddevice and PortAudio."""
+
+    def __init__(
+        self,
+        *,
+        device: str | int | None = None,
+        module_loader: Callable[[str], object] = import_module,
+    ) -> None:
+        self.device = device
+        self._module_loader = module_loader
+        self._lock = threading.RLock()
+        self._stream: _RawOutputStream | None = None
+        self._interrupted = False
+
+    @property
+    def name(self) -> str:
+        return (
+            "portaudio:default"
+            if self.device is None
+            else f"portaudio:{self.device}"
+        )
+
+    @property
+    def running(self) -> bool:
+        with self._lock:
+            return self._stream is not None and not self._interrupted
+
+    def start(
+        self,
+        pcm_reader: Callable[[int], bytes],
+        status_reporter: Callable[[bool], None],
+    ) -> None:
+        with self._lock:
+            if self._stream is not None:
+                return
+
+            module = _load_sounddevice(self._module_loader)
+
+            def playback_callback(
+                outdata: object,
+                frames: int,
+                time_info: object,
+                status: object,
+            ) -> None:
+                del time_info
+                requested = frames * PCM_CHANNELS * PCM_SAMPLE_WIDTH
+                cast(_WritableBuffer, outdata)[:] = pcm_reader(requested)
+                status_reporter(bool(status))
+
+            stream: _RawOutputStream | None = None
+            try:
+                stream = module.RawOutputStream(
+                    samplerate=PCMU_SAMPLE_RATE,
+                    channels=PCM_CHANNELS,
+                    dtype="int16",
+                    device=self.device,
+                    callback=playback_callback,
+                )
+                stream.start()
+            except Exception as error:
+                if stream is not None:
+                    try:
+                        stream.close()
+                    except Exception:
+                        logger.exception(
+                            "Audio output cleanup failed after start error"
+                        )
+                raise AudioOutputError(
+                    f"Could not open audio output device: {error}"
+                ) from error
+
+            self._stream = stream
+            self._interrupted = False
+
+    def interrupt(self) -> None:
+        with self._lock:
+            stream = self._stream
+            if stream is None or self._interrupted:
+                return
+            self._interrupted = True
+
         try:
             stream.stop()
-        except BaseException as error:
-            failure = error
+        except Exception as error:
+            raise AudioOutputError(
+                f"Could not interrupt audio output device: {error}"
+            ) from error
+
+    def close(self) -> None:
+        with self._lock:
+            stream, self._stream = self._stream, None
+            interrupted = self._interrupted
+            self._interrupted = False
+
+        if stream is None:
+            return
+
+        failure: BaseException | None = None
+        if not interrupted:
+            try:
+                stream.stop()
+            except BaseException as error:
+                failure = error
         try:
             stream.close()
         except BaseException as error:
             if failure is None:
                 failure = error
-        self._buffer.clear()
-        logger.info("audio playback stopped device=%s", self.device or "default")
-        if failure is not None:
-            raise AudioOutputError(f"Could not close audio output device: {failure}") from failure
 
-    def _playback_callback(
+        if failure is not None:
+            raise AudioOutputError(
+                f"Could not close audio output device: {failure}"
+            ) from failure
+
+
+class SoundDevicePlaybackSink(BufferedPlaybackSink):
+    """Compatibility sink for sounddevice/PortAudio local playback."""
+
+    def __init__(
         self,
-        outdata: object,
-        frames: int,
-        time_info: object,
-        status: object,
+        *,
+        device: str | int | None = None,
+        buffer_ms: int = 250,
+        module_loader: Callable[[str], object] = import_module,
     ) -> None:
-        del time_info
-        requested = frames * PCM_CHANNELS * PCM_SAMPLE_WIDTH
-        with self._lock:
-            muted = self._muted
-        if muted:
-            cast(_WritableBuffer, outdata)[:] = bytes(requested)
-            with self._lock:
-                if bool(status):
-                    self._callback_statuses += 1
-            return
-        pcm = self._buffer.pop(requested)
-        missing = requested - len(pcm)
-        cast(_WritableBuffer, outdata)[:] = pcm + bytes(missing)
-        with self._lock:
-            self._bytes_written += len(pcm)
-            if missing:
-                self._underflows += 1
-            if bool(status):
-                self._callback_statuses += 1
+        self.device = device
+        self._module_loader = module_loader
+        super().__init__(
+            name=(
+                "playback:default"
+                if device is None
+                else f"playback:{device}"
+            ),
+            buffer_ms=buffer_ms,
+            adapter_factory=lambda: SoundDevicePlaybackAdapter(
+                device=device,
+                module_loader=module_loader,
+            ),
+        )
 
 
 class PcmWavSink:

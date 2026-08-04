@@ -11,6 +11,8 @@ from sds200.audio import AudioChunk, AudioChunkHandler, AudioStream
 from sds200.audio_recording import PCM_SAMPLE_WIDTH, PCMU_SAMPLE_RATE, PcmuWavRecorder
 from sds200.audio_sinks import (
     AudioFanoutSession,
+    BufferedPlaybackSink,
+    LocalPlaybackAdapter,
     PcmSinkStatistics,
     PcmWavSink,
     SoundDevicePlaybackSink,
@@ -89,6 +91,40 @@ class FakeRawOutputStream:
 
     def close(self) -> None:
         self.closed = True
+
+
+class FakePlaybackAdapter:
+    def __init__(self) -> None:
+        self._running = False
+        self.reader: Callable[[int], bytes] | None = None
+        self.status_reporter: Callable[[bool], None] | None = None
+        self.interrupt_calls = 0
+        self.close_calls = 0
+
+    @property
+    def name(self) -> str:
+        return "fake-playback"
+
+    @property
+    def running(self) -> bool:
+        return self._running
+
+    def start(
+        self,
+        pcm_reader: Callable[[int], bytes],
+        status_reporter: Callable[[bool], None],
+    ) -> None:
+        self.reader = pcm_reader
+        self.status_reporter = status_reporter
+        self._running = True
+
+    def interrupt(self) -> None:
+        self.interrupt_calls += 1
+        self._running = False
+
+    def close(self) -> None:
+        self.close_calls += 1
+        self._running = False
 
 
 class FakeInputOutputPair:
@@ -178,6 +214,52 @@ def test_audio_fanout_decodes_once_for_multiple_sinks() -> None:
     assert not snapshot.running
 
 
+def test_buffered_playback_sink_uses_renderer_neutral_adapter() -> None:
+    adapter = FakePlaybackAdapter()
+    sink = BufferedPlaybackSink(
+        name="playback:test",
+        buffer_ms=1,
+        adapter_factory=lambda: adapter,
+    )
+
+    assert isinstance(adapter, LocalPlaybackAdapter)
+    sink.start()
+    assert sink.running
+    assert adapter.reader is not None
+    assert adapter.status_reporter is not None
+
+    pcm = bytes(range(32))
+    sink.submit_pcm(pcm)
+    assert adapter.reader(16) == pcm[-16:]
+    adapter.status_reporter(True)
+
+    statistics = sink.statistics
+    assert statistics.bytes_submitted == 32
+    assert statistics.bytes_written == 16
+    assert statistics.bytes_dropped == 16
+    assert statistics.overflows == 1
+    assert statistics.callback_statuses == 1
+
+    sink.set_muted(True)
+    assert adapter.reader(16) == bytes(16)
+    assert sink.statistics.underflows == 0
+
+    sink.stop()
+    assert adapter.interrupt_calls == 1
+    assert adapter.close_calls == 1
+    assert not sink.running
+
+
+def test_buffered_playback_sink_rejects_invalid_adapter_factory() -> None:
+    sink = BufferedPlaybackSink(
+        name="playback:test",
+        adapter_factory=lambda: object(),  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(TypeError, match="LocalPlaybackAdapter-compatible"):
+        sink.start()
+
+
 def test_sounddevice_playback_uses_nonblocking_bounded_buffer() -> None:
     module = FakeSoundDeviceModule()
     sink = SoundDevicePlaybackSink(
@@ -222,6 +304,8 @@ def test_sounddevice_playback_uses_nonblocking_bounded_buffer() -> None:
 
     sink.set_muted(False)
     assert not sink.muted
+    sink.interrupt()
+    assert not sink.running
     sink.stop()
     assert module.stream.closed
     assert not sink.running
