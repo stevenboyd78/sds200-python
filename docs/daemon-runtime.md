@@ -10,8 +10,11 @@ Milestone 19.4 adds `DaemonSignalController`, `DaemonProcess`, and the foregroun
 shutdown request, stops the runtime deterministically, and restores the previous
 signal handlers before returning.
 
-This foundation is not a socket server, local API, event-stream transport, or
-CLI/TUI daemon-client mode. It does not fork or create a pidfile.
+Milestone 19.5 adds a private Unix-domain socket, a strict versioned JSON Lines
+protocol, and bounded read-only access to daemon capabilities and authoritative
+runtime snapshots. It remains outside the event-stream, scanner-control, audio
+subscription, and CLI/TUI daemon-client contracts. The process does not fork or
+create a pidfile.
 
 ## Foreground process contract
 
@@ -27,10 +30,11 @@ A saved network or fallback profile is also accepted:
 sdsctl --log-level INFO --profile home daemon
 ```
 
-The command constructs exactly one `DaemonRuntime`, one `PcmSinkRouter`, and one
-`NetworkAudioTransport`. The router begins without destinations because local
-APIs, client subscriptions, playback, recording, and remote-profile activation
-remain follow-on work.
+The command constructs exactly one `DaemonRuntime`, one `PcmSinkRouter`, one
+`NetworkAudioTransport`, one `DaemonReadOnlyApi`, and one bounded
+`DaemonApiServer`. The router begins without destinations because audio
+subscriptions, playback, recording, remote-profile activation, and daemon-client
+migration remain follow-on work.
 
 The audio endpoint must come from either `--host` or a network-capable SDS200
 profile. A fallback profile may select serial control at runtime, but its saved
@@ -40,6 +44,7 @@ are rejected.
 
 The command runs in the foreground. It does not daemonize itself, fork, create a
 pidfile, change privileges, install a service unit, or request socket activation.
+The local API owns its Unix socket directly after the runtime has started.
 
 ### Signals and exit behavior
 
@@ -60,6 +65,25 @@ without exposing its message.
 `SIGHUP` is deliberately outside this graceful-shutdown contract so a future
 milestone can define reload behavior. Service managers should use `SIGTERM` for
 orderly termination.
+
+### Local API process lifecycle
+
+At the process-host level, startup occurs in this order:
+
+1. start `DaemonRuntime`;
+2. bind and start the local `DaemonApiServer`; and
+3. wait for `SIGINT`, `SIGTERM`, or another process-loop failure.
+
+Shutdown reverses that ownership:
+
+1. close the API listener and connected clients;
+2. wait for bounded API worker completion; and
+3. stop the daemon runtime.
+
+If API startup fails, the process attempts API cleanup and then stops the
+runtime. If process work and cleanup both fail, the process error remains
+authoritative. See the [local daemon API guide](daemon-api.md) for the socket,
+framing, operation, permission, and limit contracts.
 
 ## Ownership graph
 
@@ -207,15 +231,29 @@ Validated on 2026-08-04 with a physical SDS200 network endpoint:
   produced reverse-order cleanup and exit status 0; and
 - both runs received live scanner audio before shutdown.
 
+The Milestone 19.5 local API layer was also validated on 2026-08-04 against
+the same physical SDS200:
+
+- the managed socket directory and socket used modes `0700` and `0600`;
+- all six read-only protocol operations returned correlated successful
+  responses while scanner control, PSI, audio, and the router were live;
+- malformed JSON was isolated and the same client connection remained usable;
+- an independent second client completed a capability request;
+- the runtime received seven RTP packets and 2,240 decoded samples; and
+- `SIGTERM` returned exit status 0 after closing clients and removed the owned
+  socket before process exit.
+
 ## Follow-on work
 
 Later Milestone 19 work may:
 
+- publish ordered runtime, scanner, PSI, radio-state, audio, and destination
+  events;
 - add bounded PCMU subscriptions for local clients;
-- expose snapshots and transitions through a local API and event stream;
+- add capability-checked scanner controls;
 - activate configured playback, recording, and remote destinations; and
 - allow CLI and TUI clients to select daemon-owned sessions while preserving an
   explicit standalone mode.
 
-Those transport, authentication, destination-activation, and client-selection
-contracts are not part of Milestone 19.4.
+Those event, audio-subscription, control, destination-activation, reload, and
+client-selection contracts are not part of Milestone 19.5.

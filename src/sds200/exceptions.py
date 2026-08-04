@@ -42,6 +42,10 @@ class ConfigurationError(SDS200Error):
     """Layered application configuration is missing or invalid."""
 
 
+class DaemonIpcError(SDS200Error):
+    """The local daemon IPC endpoint could not be owned or operated safely."""
+
+
 class UnsupportedScannerModelError(SDS200Error):
     """A connected scanner is not a supported SDS-series model."""
 

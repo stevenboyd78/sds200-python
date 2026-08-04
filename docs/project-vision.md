@@ -77,8 +77,10 @@ Milestone 19.3 provides the renderer-neutral ownership runtime for long-lived
 scanner control, PSI, one audio fanout, and dynamic decoded-PCM destinations.
 Milestone 19.4 hosts that runtime in the foreground `sdsctl daemon` process with
 SIGINT and SIGTERM coordination, deterministic cleanup, and a `Type=simple`
-service-manager contract. Local transports and client policy remain follow-on
-work.
+service-manager contract. Milestone 19.5 adds a private local Unix-domain socket,
+a versioned read-only protocol, authoritative snapshots, and bounded client
+handling. Events, audio subscriptions, controls, and client migration remain
+follow-on work.
 
 The SDS200 accepts only one network-audio client at a time. The ownership runtime
 holds that single RTSP/RTP session and decodes accepted audio once. Future daemon
