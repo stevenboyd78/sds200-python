@@ -11,9 +11,41 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-No implementation milestone is currently active. Milestone 18.4 is complete; the
-remaining work below stays in candidate order until the next milestone is
-selected.
+### Milestone 18.5 — Pluggable local playback and subscriber health
+
+- **Renderer-neutral playback lifecycle — planned**
+  - Define typed contracts for local playback adapter creation, PCM delivery,
+    lifecycle state, interruption, and bounded finalization.
+  - Separate bounded newest-audio buffering, mute behavior, and playback
+    statistics from backend-specific device or process operations.
+  - Preserve `SoundDevicePlaybackSink` compatibility and current PortAudio
+    CLI and TUI behavior.
+- **Local playback adapters — planned**
+  - Rebuild the existing sounddevice/PortAudio implementation on the shared
+    playback lifecycle without changing its default-device or explicit-device
+    behavior.
+  - Add explicit PipeWire, PulseAudio, and ALSA adapters while retaining
+    bounded nonblocking submission and newest-audio overflow behavior.
+  - Provide clear missing-runtime and startup diagnostics plus injectable
+    adapter or process factories for hardware-independent tests.
+  - Do not add automatic backend fallback or layered saved configuration in
+    this milestone.
+- **Per-subscriber health and isolation — planned**
+  - Move dynamic PCM subscriber routing out of the TUI layer into a reusable
+    renderer-neutral service.
+  - Add immutable per-subscriber snapshots, lifecycle health, ordered
+    transition events, counters, timestamps, and redacted last-error state.
+  - Isolate transition listeners and subscriber startup, submission, and
+    shutdown failures from every other subscriber.
+  - Preserve the invariant that playback and subscriber failures never stop
+    RTP reception or interrupt scanner control.
+- **Compatibility and scope — planned**
+  - Keep existing live playback, warm mute and resume, saved-recording
+    playback, WAV recording, and one-session fanout behavior unchanged.
+  - Add bounded-buffer, overflow, underflow, startup, runtime failure,
+    interruption, shutdown, listener-isolation, and compatibility tests.
+  - Leave daemon ownership, local API subscriptions, layered configuration,
+    and automatic backend selection for Milestone 19.
 
 ## Deferred hardware validation
 
@@ -37,13 +69,6 @@ fixture-tested, not hardware-validated.
 
 These milestone groups preserve intended future work. Their numbering and release
 assignment may change before implementation begins.
-
-### Remaining Milestone 18 candidates — Remote-audio operations
-
-- Add pluggable local playback adapters for PortAudio, PipeWire, PulseAudio, and
-  ALSA while preserving bounded nonblocking sink behavior.
-- Add per-subscriber health events and metrics for future daemon audio clients.
-- Preserve the rule that audio failures never interrupt scanner control.
 
 ### Milestone 19 — Layered configuration, daemon, and local API
 
