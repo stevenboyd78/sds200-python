@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import tomllib
 from collections.abc import Mapping
 from contextlib import suppress
@@ -10,6 +9,7 @@ from pathlib import Path
 from typing import Literal
 
 from .broadcastify import BroadcastifyConfig
+from .configuration import resolve_configuration_paths
 from .exceptions import ProfileError
 from .reliability import ReconnectPolicy
 from .remote_audio import EnvironmentSecret
@@ -20,11 +20,9 @@ RemoteAudioProfileKind = Literal["broadcastify"]
 
 
 def default_remote_audio_profile_path() -> Path:
-    """Return the legacy user path used until layered configuration is added."""
+    """Return the legacy user path used until migration is explicitly selected."""
 
-    config_home = os.environ.get("XDG_CONFIG_HOME")
-    base = Path(config_home) if config_home else Path.home() / ".config"
-    return base / "sds200" / "remote-audio-profiles.toml"
+    return resolve_configuration_paths().legacy_remote_audio_profiles_file
 
 
 @dataclass(frozen=True, slots=True)

@@ -82,6 +82,7 @@ sdsctl --host SCANNER_IP audio \
 - [Roadmap](https://github.com/stevenboyd78/sds200-python/blob/main/ROADMAP.md)
 - [Changelog](https://github.com/stevenboyd78/sds200-python/blob/main/CHANGELOG.md)
 - [Operational logging](https://github.com/stevenboyd78/sds200-python/blob/main/docs/logging.md)
+- [Layered application configuration](https://github.com/stevenboyd78/sds200-python/blob/main/docs/configuration.md)
 - [Capture and replay](https://github.com/stevenboyd78/sds200-python/blob/main/docs/replay-and-capture.md)
 - [Linux udev rule](https://github.com/stevenboyd78/sds200-python/blob/main/docs/udev.md)
 

@@ -346,6 +346,19 @@ sdsctl profile add home \
 ```
 
 Profiles are stored in `${XDG_CONFIG_HOME:-~/.config}/sds200/profiles.toml`.
+This legacy connection-profile document remains separate from layered application
+configuration, and `--config PATH` continues to override only this profile file.
+
+### Layered application configuration
+
+Optional application settings are loaded from `/etc/sdsctl/config.toml`,
+`${XDG_CONFIG_HOME:-~/.config}/sdsctl/config.toml`, supported `SDSCTL_*`
+environment variables, and explicit CLI options in that precedence order.
+Missing files preserve the existing defaults and are never created automatically.
+
+See [Layered application configuration](docs/configuration.md) for the versioned
+TOML schema, supported fields, environment-variable names, path behavior,
+validation rules, and Python provenance API.
 
 Repair stale USB paths or a changed scanner IP address without losing the saved
 transport preference:
@@ -531,9 +544,11 @@ for scanner in discover_network_scanners(["192.168.0.0/24"]):
 
 ## Project naming
 
-The model-neutral executable is `sdsctl`. The distribution, Python import package,
-configuration directory, and repository remain named `sds200`; Python applications
-should use `SDSScanner`, while the historical `SDS200` class name remains an alias.
+The model-neutral executable is `sdsctl`. New application configuration,
+state, and cache paths use the `sdsctl` namespace. The distribution, Python import
+package, and repository remain named `sds200`, while legacy profile files remain
+under the existing `sds200` configuration root. Python applications should use
+`SDSScanner`; the historical `SDS200` class name remains an alias.
 
 ## Security
 
@@ -555,6 +570,7 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting and
 - [Supported scanner models](docs/supported-models.md)
 - [Control transports](docs/transports.md)
 - [LAN discovery and profiles](docs/discovery-and-profiles.md)
+- [Layered application configuration](docs/configuration.md)
 - [Fallback profiles](docs/fallback-profiles.md)
 - [Reliability and observability](docs/reliability.md)
 - [Operational logging](docs/logging.md)

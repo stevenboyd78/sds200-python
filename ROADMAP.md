@@ -11,24 +11,9 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 18.6 — v0.18.0 release
-
-- **Release bookkeeping — complete**
-  - Set the package and public runtime version to `0.18.0`.
-  - Finalized the changelog and completed-milestone roadmap entries.
-- **Acceptance validation — complete**
-  - Passed the complete Ruff, MyPy, pytest, documentation, packaging, and
-    distribution validation suite.
-  - Built and inspected the wheel and source distribution and passed `twine check`.
-  - Verified package metadata, required package and license contents, CLI version
-    output, and a clean Python 3.14 wheel installation.
-  - Confirmed the public playback-adapter and PCM subscriber-router imports from
-    the clean installation.
-- **Publication — active**
-  - Merge the release-preparation pull request only after all required CI and
-    CodeQL checks pass.
-  - Publish the `v0.18.0` tag, GitHub release, and trusted PyPI distributions.
-  - Verify installation and package metadata from public PyPI.
+No implementation milestone is currently active. Remaining Milestone 19
+daemon and local API work is retained below as future candidates pending an
+explicit kickoff.
 
 ## Deferred hardware validation
 
@@ -53,16 +38,8 @@ fixture-tested, not hardware-validated.
 These milestone groups preserve intended future work. Their numbering and release
 assignment may change before implementation begins.
 
-### Milestone 19 — Layered configuration, daemon, and local API
+### Remaining Milestone 19 candidates — Daemon and local API
 
-- Adopt `sdsctl` as the user-facing configuration and service namespace.
-- Support layered configuration with precedence:
-  defaults, system configuration, user configuration, environment, then CLI.
-- Use `/etc/sdsctl/` for system configuration.
-- Use `~/.config/sdsctl/` for user configuration.
-- Use `~/.local/state/sdsctl/` for persistent user state.
-- Use `~/.cache/sdsctl/` for disposable cached data.
-- Detect legacy `sds200` configuration and provide a safe migration path.
 - Add a long-running daemon that owns scanner, PSI, the SDS200's single
   RTSP/RTP audio session, recording, and remote destination sessions.
 - Add bounded PCM and PCMU subscriptions so multiple local clients share one
@@ -218,3 +195,12 @@ fixtures before renderer-specific implementation.
   reusable dynamic PCM subscriber routing, immutable subscriber health snapshots
   and ordered transitions, isolated lifecycle failures, redacted diagnostics, and
   preserved separation from RTP reception and scanner control.
+- Milestone 18.6: v0.18.0 release preparation, full static, test,
+  documentation, distribution, clean-install, CI, and CodeQL validation, trusted
+  PyPI publication, GitHub release publication, and clean Python 3.14 installation
+  verification from public PyPI.
+- Milestone 19.1: immutable layered application configuration with fixed
+  default, system, user, environment, and CLI precedence; versioned strict TOML
+  loading; deterministic `sdsctl` paths; source-aware diagnostics and provenance;
+  read-only legacy discovery; CLI integration; and host-independent regression
+  coverage.

@@ -10,6 +10,12 @@ sdsctl --log-level DEBUG --log-file /var/log/sdsctl.log \
 ```
 
 Supported levels are `CRITICAL`, `ERROR`, `WARNING`, `INFO`, and `DEBUG`.
+
+Logging settings can also be supplied through the system or user application
+configuration files, `SDSCTL_LOG_LEVEL`, and `SDSCTL_LOG_FILE`. Explicit CLI
+options and verbosity shortcuts have higher precedence. See
+[Layered application configuration](configuration.md).
+
 The existing verbosity shortcuts remain available:
 
 - no `-v`: `WARNING`

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import tomllib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -9,6 +8,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Literal
 
+from .configuration import resolve_configuration_paths
 from .device import ScannerDevice
 from .discovery import NetworkScanner
 from .exceptions import ProfileError
@@ -22,9 +22,7 @@ TRANSPORT_PREFERENCES: tuple[TransportPreference, ...] = ("serial", "network")
 
 
 def default_profile_path() -> Path:
-    config_home = os.environ.get("XDG_CONFIG_HOME")
-    base = Path(config_home) if config_home else Path.home() / ".config"
-    return base / "sds200" / "profiles.toml"
+    return resolve_configuration_paths().legacy_connection_profiles_file
 
 
 @dataclass(frozen=True, slots=True)
