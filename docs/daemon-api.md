@@ -190,6 +190,25 @@ print(json.loads(response))
 Use the user-state fallback path instead when `XDG_RUNTIME_DIR` is not defined,
 or start the daemon with an explicit absolute `--socket-path`.
 
+## Physical SDS200 validation
+
+Validated on 2026-08-04 against a physical SDS200 at
+`192.168.0.251`:
+
+- the managed XDG socket directory used mode `0700` and the socket used
+  mode `0600`;
+- `hello`, `daemon.capabilities`, `ping`, `runtime.snapshot`,
+  `scanner.state`, and `audio.health` returned successful correlated
+  responses;
+- the authoritative runtime reported `running`, connected scanner control,
+  active PSI, active RTSP/RTP audio, and a running decoded-PCM router;
+- malformed JSON returned `invalid_request`, after which the same connection
+  completed another valid request;
+- a second concurrent client completed capability negotiation independently;
+- the daemon received seven RTP packets and 2,240 decoded samples during the
+  validation run; and
+- systemd-style `SIGTERM` produced exit status 0 and removed the owned socket.
+
 ## Lifecycle and current exclusions
 
 `DaemonProcess` starts the ownership runtime before opening the local API. This

@@ -37,8 +37,10 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   options, and process lifecycle integration that stops API clients before the
   ownership runtime.
 - Physical SDS200 validation of foreground startup, live PSI and RTSP/RTP
-  reception, controlled `SIGINT` and systemd-style `SIGTERM` shutdown,
-  reverse-order cleanup, and successful process exit.
+  reception, private API socket permissions, all read-only operations,
+  malformed-request recovery, an independent second client, controlled
+  `SIGINT` and systemd-style `SIGTERM` shutdown, socket removal, reverse-order
+  cleanup, and successful process exit.
 
 ### Changed
 

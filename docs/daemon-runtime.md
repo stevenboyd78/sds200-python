@@ -231,6 +231,18 @@ Validated on 2026-08-04 with a physical SDS200 network endpoint:
   produced reverse-order cleanup and exit status 0; and
 - both runs received live scanner audio before shutdown.
 
+The Milestone 19.5 local API layer was also validated on 2026-08-04 against
+the same physical SDS200:
+
+- the managed socket directory and socket used modes `0700` and `0600`;
+- all six read-only protocol operations returned correlated successful
+  responses while scanner control, PSI, audio, and the router were live;
+- malformed JSON was isolated and the same client connection remained usable;
+- an independent second client completed a capability request;
+- the runtime received seven RTP packets and 2,240 decoded samples; and
+- `SIGTERM` returned exit status 0 after closing clients and removed the owned
+  socket before process exit.
+
 ## Follow-on work
 
 Later Milestone 19 work may:
