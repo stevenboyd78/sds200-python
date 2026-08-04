@@ -60,6 +60,10 @@ information in this image represents a real system.*
   updates isolated from PSI and PCM delivery
 - Renderer-neutral audio encoder process lifecycle with immutable commands,
   bounded shutdown, stderr diagnostics, and injectable process factories
+- Pluggable local playback with bounded newest-audio buffering, preserved
+  PortAudio behavior, and explicit PipeWire, PulseAudio, and ALSA adapters
+- Per-subscriber PCM health snapshots, ordered transitions, lifecycle metrics,
+  redacted errors, and isolated startup, submission, and shutdown failures
 - Optional live playback through the local default or selected audio output device
 - Simultaneous local playback and streaming PCM WAV recording from one RTSP session
 - UDP XML fragment validation, statistics, and bounded retries
@@ -123,7 +127,10 @@ sdsctl audio-devices
 
 Depending on the operating-system audio stack and PortAudio build, Linux devices
 may be exposed through ALSA, PipeWire compatibility, PulseAudio compatibility, or
-JACK. Direct PipeWire, PulseAudio, and ALSA playback adapters are planned work.
+JACK. The CLI and TUI continue to use PortAudio by default. Python integrations can
+instead construct a `BufferedPlaybackSink` with `PipeWirePlaybackAdapter`,
+`PulseAudioPlaybackAdapter`, or `AlsaPlaybackAdapter`; the corresponding `pw-cat`,
+`pacat`, or `aplay` executable must be installed.
 
 Install the TUI with live and saved-recording playback:
 
