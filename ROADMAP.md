@@ -13,31 +13,31 @@ and ideas that are not ready for scheduling are recorded in
 
 ### Milestone 19.4 — Local daemon process foundation
 
-- **Foreground daemon command — planned**
-  - Add `sdsctl daemon` to construct and host one `DaemonRuntime` in the
+- **Foreground daemon command — complete**
+  - Added `sdsctl daemon` to construct and host one `DaemonRuntime` in the
     foreground.
-  - Reuse existing scanner, profile, transport, logging, and layered
+  - Reused existing scanner, profile, transport, logging, and layered
     configuration behavior.
-  - Require a network-capable SDS200 endpoint for the runtime-owned RTSP/RTP
+  - Required a network-capable SDS200 endpoint for the runtime-owned RTSP/RTP
     audio session.
-- **Signal-safe process lifecycle — planned**
-  - Add a dedicated SIGINT and SIGTERM controller whose handlers only request
+- **Signal-safe process lifecycle — complete**
+  - Added a dedicated SIGINT and SIGTERM controller whose handlers only request
     shutdown.
-  - Restore previous handlers after the process loop exits and keep SIGHUP
+  - Restored previous handlers after the process loop exits and kept SIGHUP
     outside the shutdown contract for future reload work.
-  - Stop the runtime deterministically after normal requests, startup
-    interruptions, and process-loop failures.
-- **System service contract — planned**
-  - Document foreground operation under systemd `Type=simple`, journald
-    logging, restart policy, and orderly termination.
-  - Keep forking, pidfiles, privilege changes, socket activation, and service
+  - Added deterministic runtime cleanup after normal requests, startup
+    interruptions, and process-loop failures while preserving primary errors.
+- **System service contract — complete**
+  - Documented foreground operation under systemd `Type=simple`, journald
+    logging, restart policy, and orderly SIGTERM termination.
+  - Kept forking, pidfiles, privilege changes, socket activation, and service
     installation outside this foundation milestone.
-- **Regression and documentation — planned**
-  - Cover parser options, network-host and profile validation, runtime
-    construction, signal restoration, startup and shutdown failures, and clean
-    process exit.
-  - Keep local APIs, PCMU client subscriptions, and CLI/TUI daemon clients in
-    follow-on Milestone 19 work.
+- **Regression and documentation — complete**
+  - Covered parser options, network-host and profile validation, runtime
+    construction, signal installation and restoration, startup and shutdown
+    failures, and clean process exit.
+  - Kept local APIs, PCMU client subscriptions, destination activation, and
+    CLI/TUI daemon clients in follow-on Milestone 19 work.
 
 ## Deferred hardware validation
 
@@ -62,7 +62,7 @@ fixture-tested, not hardware-validated.
 These milestone groups preserve intended future work. Their numbering and release
 assignment may change before implementation begins.
 
-### Remaining Milestone 19 candidates — Local daemon process, API, and clients
+### Remaining Milestone 19 candidates — Local API and clients
 
 - Add bounded PCMU client subscriptions alongside runtime-owned decoded-PCM
   destination routing.

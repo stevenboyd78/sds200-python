@@ -152,9 +152,14 @@ Milestone 19.3 adds `DaemonRuntime` above these existing layers. It serializes
 scanner connection, PSI startup, one audio fanout, dynamic destination ownership,
 partial-start cleanup, and reverse-order shutdown. Immutable runtime snapshots
 combine scanner, PSI, radio-state, audio, router, timestamp, transition, and
-redacted-failure state for later local API consumers. The current CLI and TUI
-remain standalone clients and do not yet connect to a daemon process. See the
-[daemon ownership runtime guide](daemon-runtime.md).
+redacted-failure state for later local API consumers.
+
+Milestone 19.4 adds the foreground `sdsctl daemon` process host. It owns one
+runtime and one initially empty decoded-PCM router, handles SIGINT and SIGTERM
+outside the signal callback, and supports systemd `Type=simple` operation. The
+existing monitor, TUI, playback, recording, and streaming commands remain
+standalone clients and do not yet consume daemon-owned audio or control. See the
+[daemon runtime and process guide](daemon-runtime.md).
 
 ## Recording metadata foundation
 

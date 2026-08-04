@@ -73,12 +73,15 @@ delay.
 
 ## systemd and journald
 
-For a systemd-managed long-running process, journald is the preferred default;
-no log file option is required:
+`sdsctl daemon` remains in the foreground so systemd can own process creation,
+restart policy, termination, and log collection directly. Use `Type=simple`;
+`Type=forking` and pidfiles are not part of the daemon contract.
+
+A minimal unit using an explicit SDS200 network host is:
 
 ```ini
 [Unit]
-Description=SDS scanner event stream
+Description=SDS200 scanner ownership daemon
 After=network-online.target
 Wants=network-online.target
 
@@ -86,13 +89,31 @@ Wants=network-online.target
 Type=simple
 User=sdsctl
 Group=sdsctl
-ExecStart=/opt/sdsctl/bin/sdsctl --log-level INFO --host 192.168.0.251 events
+ExecStart=/opt/sdsctl/bin/sdsctl --log-level INFO --host 192.168.0.251 daemon
 Restart=on-failure
 RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=20
 
 [Install]
 WantedBy=multi-user.target
 ```
+
+Global connection and logging options precede the `daemon` subcommand. A saved
+network-capable SDS200 profile may be used instead:
+
+```ini
+ExecStart=/opt/sdsctl/bin/sdsctl --log-level INFO --profile home daemon
+```
+
+No `--log-file` option is required for journald. Standard error is captured by
+the service manager. `SIGTERM` requests orderly runtime shutdown and normally
+returns success, so `Restart=on-failure` does not restart an intentionally
+stopped service. Startup or shutdown errors use a nonzero exit status and are
+eligible for restart.
+
+`SIGHUP` is not a graceful-stop or reload signal in this milestone. Do not use it
+for controlled service termination.
 
 Inspect the service log with:
 
@@ -101,6 +122,9 @@ journalctl -u sdsctl.service
 journalctl -u sdsctl.service --since today
 journalctl -u sdsctl.service -f
 ```
+
+Service installation, account creation, privilege changes, hardening directives,
+and distribution-specific packaging remain administrator responsibilities.
 
 ## `/var/log/sdsctl.log`
 

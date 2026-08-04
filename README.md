@@ -238,6 +238,38 @@ sdsctl --host 192.168.0.251 monitor
 
 The SDS200 virtual serial service uses UDP port `50536` by default.
 
+### Foreground SDS200 daemon
+
+Run one long-lived scanner-control, PSI, and network-audio ownership runtime in
+the foreground:
+
+```bash
+sdsctl --log-level INFO --host 192.168.0.251 daemon
+```
+
+A saved network or fallback SDS200 profile may supply the endpoint:
+
+```bash
+sdsctl --log-level INFO --profile home daemon
+```
+
+The process owns one scanner control session, one PSI stream, one SDS200
+RTSP/RTP session, and one decoded-PCM router. A fallback profile may use serial
+control while its configured network host remains the audio endpoint.
+
+Stop the process with `Ctrl+C` or `SIGTERM`. Both request orderly reverse-order
+shutdown. `SIGHUP` is reserved for future reload work and is not part of the
+controlled-shutdown contract.
+
+The command remains in the foreground for service-manager ownership. It does not
+fork, create a pidfile, install a service, expose a local API, or provide client
+audio subscriptions. The initial router has no attached destinations. See the
+[daemon runtime and process guide](docs/daemon-runtime.md) and
+[operational logging](docs/logging.md).
+
+Serial-only profiles, replay captures, and non-SDS200 network-audio selections
+are rejected.
+
 ### SDS200 network audio playback and recording
 
 Listen to the scanner through the operating system's default audio output:
@@ -578,7 +610,7 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting and
 - [Reliability and observability](docs/reliability.md)
 - [Operational logging](docs/logging.md)
 - [Textual TUI](docs/tui.md)
-- [Daemon ownership runtime](docs/daemon-runtime.md)
+- [Foreground daemon and ownership runtime](docs/daemon-runtime.md)
 - [Audio subsystem architecture](docs/audio.md)
 - [Acknowledgments](ACKNOWLEDGMENTS.md)
 - [Contributing](CONTRIBUTING.md)
