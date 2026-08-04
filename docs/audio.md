@@ -114,6 +114,24 @@ with AudioFanoutSession(stream, sinks):
     run_application()
 ```
 
+Select an explicit Linux playback adapter without changing the fanout contract:
+
+```python
+from sds200 import BufferedPlaybackSink, PipeWirePlaybackAdapter
+
+playback = BufferedPlaybackSink(
+    name="playback:pipewire",
+    adapter_factory=PipeWirePlaybackAdapter,
+)
+```
+
+Use `PulseAudioPlaybackAdapter` or `AlsaPlaybackAdapter` in the same way.
+Adapter construction is deferred until `BufferedPlaybackSink.start()`. PCM
+submission remains bounded and nonblocking, overflow discards the oldest queued
+audio, and shutdown interrupts and finalizes the backend through a bounded
+lifecycle. Missing command runtimes produce an `AudioOutputError` naming the
+unavailable executable.
+
 The direct one-shot `AudioRecordingSession` API remains available for callers that
 want one stream and one recorder. The TUI uses `TuiAudioSession` with a dynamic PCM
 sink router: one long-lived fanout owns RTSP/RTP reception while live playback,
