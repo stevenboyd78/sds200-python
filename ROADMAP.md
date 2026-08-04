@@ -11,41 +11,18 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 18.5 — Pluggable local playback and subscriber health
+### Milestone 18.6 — v0.18.0 release preparation
 
-- **Renderer-neutral playback lifecycle — planned**
-  - Define typed contracts for local playback adapter creation, PCM delivery,
-    lifecycle state, interruption, and bounded finalization.
-  - Separate bounded newest-audio buffering, mute behavior, and playback
-    statistics from backend-specific device or process operations.
-  - Preserve `SoundDevicePlaybackSink` compatibility and current PortAudio
-    CLI and TUI behavior.
-- **Local playback adapters — planned**
-  - Rebuild the existing sounddevice/PortAudio implementation on the shared
-    playback lifecycle without changing its default-device or explicit-device
-    behavior.
-  - Add explicit PipeWire, PulseAudio, and ALSA adapters while retaining
-    bounded nonblocking submission and newest-audio overflow behavior.
-  - Provide clear missing-runtime and startup diagnostics plus injectable
-    adapter or process factories for hardware-independent tests.
-  - Do not add automatic backend fallback or layered saved configuration in
-    this milestone.
-- **Per-subscriber health and isolation — planned**
-  - Move dynamic PCM subscriber routing out of the TUI layer into a reusable
-    renderer-neutral service.
-  - Add immutable per-subscriber snapshots, lifecycle health, ordered
-    transition events, counters, timestamps, and redacted last-error state.
-  - Isolate transition listeners and subscriber startup, submission, and
-    shutdown failures from every other subscriber.
-  - Preserve the invariant that playback and subscriber failures never stop
-    RTP reception or interrupt scanner control.
-- **Compatibility and scope — planned**
-  - Keep existing live playback, warm mute and resume, saved-recording
-    playback, WAV recording, and one-session fanout behavior unchanged.
-  - Add bounded-buffer, overflow, underflow, startup, runtime failure,
-    interruption, shutdown, listener-isolation, and compatibility tests.
-  - Leave daemon ownership, local API subscriptions, layered configuration,
-    and automatic backend selection for Milestone 19.
+- **Release readiness — planned**
+  - Finalize the v0.18.0 changelog, version metadata, and release notes.
+  - Run the complete Ruff, MyPy, pytest, documentation, packaging, and
+    distribution validation suite.
+  - Verify a clean Python 3.14 installation from the built distributions.
+- **Publication — planned**
+  - Merge the release-preparation pull request only after all required CI and
+    CodeQL checks pass.
+  - Publish the signed tag, GitHub release, and trusted PyPI distributions.
+  - Verify installation and package metadata from public PyPI.
 
 ## Deferred hardware validation
 
@@ -230,3 +207,8 @@ fixtures before renderer-specific implementation.
   bounded interruption and terminate/kill finalization, continuously drained
   diagnostics, and Broadcastify migration without changing its fixed FFmpeg MP3
   profile or Icecast transport behavior.
+- Milestone 18.5: renderer-neutral buffered local playback, preserved PortAudio
+  compatibility, explicit PipeWire, PulseAudio, and ALSA command adapters,
+  reusable dynamic PCM subscriber routing, immutable subscriber health snapshots
+  and ordered transitions, isolated lifecycle failures, redacted diagnostics, and
+  preserved separation from RTP reception and scanner control.
