@@ -66,6 +66,8 @@ information in this image represents a real system.*
   redacted errors, and isolated startup, submission, and shutdown failures
 - Renderer-neutral single-owner runtime for scanner control, PSI, one RTSP/RTP
   fanout, dynamic PCM destinations, immutable snapshots, and deterministic cleanup
+- Versioned read-only local daemon API over a private Unix-domain socket with
+  strict JSON Lines envelopes, bounded clients, and deterministic shutdown
 - Optional live playback through the local default or selected audio output device
 - Simultaneous local playback and streaming PCM WAV recording from one RTSP session
 - UDP XML fragment validation, statistics, and bounded retries
@@ -257,14 +259,22 @@ The process owns one scanner control session, one PSI stream, one SDS200
 RTSP/RTP session, and one decoded-PCM router. A fallback profile may use serial
 control while its configured network host remains the audio endpoint.
 
+The daemon also exposes a versioned read-only JSON Lines API through a private
+Unix-domain socket. It uses `$XDG_RUNTIME_DIR/sdsctl/daemon.sock` when available
+and otherwise falls back to the resolved user state directory. An explicit
+absolute path may be selected with `--socket-path`.
+
 Stop the process with `Ctrl+C` or `SIGTERM`. Both request orderly reverse-order
-shutdown. `SIGHUP` is reserved for future reload work and is not part of the
+shutdown, including closing API clients before stopping scanner ownership.
+`SIGHUP` is reserved for future reload work and is not part of the
 controlled-shutdown contract.
 
 The command remains in the foreground for service-manager ownership. It does not
-fork, create a pidfile, install a service, expose a local API, or provide client
-audio subscriptions. The initial router has no attached destinations. See the
-[daemon runtime and process guide](docs/daemon-runtime.md) and
+fork, create a pidfile, install a service, expose TCP, publish an event stream,
+accept scanner controls, or provide client audio subscriptions. Existing CLI and
+TUI workflows remain standalone. The initial router has no attached
+destinations. See the [daemon runtime and process guide](docs/daemon-runtime.md),
+[local daemon API guide](docs/daemon-api.md), and
 [operational logging](docs/logging.md).
 
 Serial-only profiles, replay captures, and non-SDS200 network-audio selections
@@ -611,6 +621,7 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting and
 - [Operational logging](docs/logging.md)
 - [Textual TUI](docs/tui.md)
 - [Foreground daemon and ownership runtime](docs/daemon-runtime.md)
+- [Local daemon API](docs/daemon-api.md)
 - [Audio subsystem architecture](docs/audio.md)
 - [Acknowledgments](ACKNOWLEDGMENTS.md)
 - [Contributing](CONTRIBUTING.md)

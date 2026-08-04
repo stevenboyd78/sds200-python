@@ -11,33 +11,13 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 19.5 — Local IPC and read-only API foundation
+### Milestone 19.6 — Local event stream
 
-- **Versioned local protocol — planned**
-  - Define a renderer-neutral, versioned request and response protocol with
-    correlation identifiers and structured error responses.
-  - Expose protocol negotiation, daemon capabilities, ping, runtime snapshots,
-    scanner state, and audio and router health.
-  - Keep the initial API read-only and preserve immutable snapshot semantics.
-- **Unix-domain socket ownership — planned**
-  - Add one daemon-owned Unix-domain socket with explicit path and permission
-    behavior.
-  - Detect and safely remove stale sockets without replacing an active daemon
-    endpoint.
-  - Close listeners and clients deterministically during daemon shutdown and
-    partial startup failure.
-- **Bounded client handling — planned**
-  - Bound request size, connected clients, per-client work, response queues, and
-    shutdown waits.
-  - Isolate malformed, stalled, disconnected, and slow clients from the daemon
-    runtime and from other clients.
-  - Keep socket I/O outside scanner, PSI, RTP, and destination worker paths.
-- **Regression and documentation — planned**
-  - Cover protocol negotiation, request correlation, read-only operations,
-    framing and validation failures, stale-socket handling, permissions, client
-    limits, concurrency, and orderly shutdown.
-  - Keep event subscriptions, audio delivery, scanner controls, TCP exposure,
-    and CLI/TUI daemon-client migration in follow-on milestones.
+- Publish an initial authoritative snapshot followed by ordered daemon, scanner,
+  PSI, radio-state, audio, and destination-health events.
+- Add sequence numbers, bounded per-client queues, clean unsubscribe behavior,
+  and slow-client isolation.
+- Keep binary audio and scanner controls outside the event-stream contract.
 
 ## Deferred hardware validation
 
@@ -61,14 +41,6 @@ fixture-tested, not hardware-validated.
 
 These milestone groups preserve intended future work. Their numbering and release
 assignment may change before implementation begins.
-
-### Milestone 19.6 — Local event stream
-
-- Publish an initial authoritative snapshot followed by ordered daemon, scanner,
-  PSI, radio-state, audio, and destination-health events.
-- Add sequence numbers, bounded per-client queues, clean unsubscribe behavior,
-  and slow-client isolation.
-- Keep binary audio and scanner controls outside the event-stream contract.
 
 ### Milestone 19.7 — Bounded PCMU client subscriptions
 
@@ -290,3 +262,8 @@ fixtures before renderer-specific implementation.
   SIGTERM shutdown, restored handlers, preserved primary failures, documented
   systemd `Type=simple` operation, regression coverage, and physical SDS200
   validation.
+- Milestone 19.5: strict versioned read-only local API envelopes, capability
+  negotiation, authoritative runtime, scanner, audio, and router snapshots,
+  private Unix-domain socket ownership, safe stale-socket handling, bounded and
+  isolated clients, deterministic process integration, CLI server limits, and
+  host-independent regression coverage.

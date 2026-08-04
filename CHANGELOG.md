@@ -25,6 +25,17 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 - Foreground `sdsctl daemon` construction of one scanner, PSI, RTSP/RTP audio,
   decoded-PCM router, and `DaemonRuntime` from an explicit SDS200 host or
   network-capable saved profile.
+- Versioned read-only `sdsctl.daemon` protocol with strict JSON Lines request and
+  response envelopes, correlation identifiers, capability negotiation, ping,
+  runtime snapshots, scanner state, audio health, and structured redacted errors.
+- Private Unix-domain socket resolution through an explicit path,
+  `XDG_RUNTIME_DIR`, or the user state directory, with private permissions,
+  active-daemon refusal, safe stale-socket replacement, and filesystem identity
+  checks.
+- Bounded local API client handling with request and response limits, idle
+  timeouts, isolated connection workers, server health snapshots, CLI limit
+  options, and process lifecycle integration that stops API clients before the
+  ownership runtime.
 - Physical SDS200 validation of foreground startup, live PSI and RTSP/RTP
   reception, controlled `SIGINT` and systemd-style `SIGTERM` shutdown,
   reverse-order cleanup, and successful process exit.
