@@ -11,9 +11,27 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-No implementation milestone is currently active. Remaining Milestone 19
-daemon and local API work is retained below as future candidates pending an
-explicit kickoff.
+### Milestone 19.2 — Compact Raspberry Pi TUI layout
+
+- **Constrained-screen composition — planned**
+  - Optimize the Textual interface for Raspberry Pi displays and other terminals
+    with limited vertical space, including the 800 by 480 reference display.
+  - Activate compact presentation from both width and height constraints instead
+    of requiring a terminal narrower than 80 columns.
+  - Preserve the existing standard and wide layouts for larger terminals.
+- **Space-efficient operational view — planned**
+  - Reduce decorative borders, padding, fixed minimum heights, empty rows, and
+    footer crowding without discarding scanner state or controls.
+  - Prioritize connection, system, channel, activity, signal, audio, recording,
+    PSI, and health summaries in the immediately visible viewport.
+  - Keep detailed audio, status, logs, recordings, and keyboard help accessible
+    through existing controls and scrolling.
+- **Regression and physical validation — planned**
+  - Add deterministic responsive-layout coverage at Raspberry Pi-like terminal
+    dimensions alongside the existing compact, standard, and wide cases.
+  - Regenerate the real Textual SVG screenshots after the layout stabilizes.
+  - Validate readability, controls, scrolling, audio, recording, and live PSI on
+    the physical Raspberry Pi display.
 
 ## Deferred hardware validation
 
