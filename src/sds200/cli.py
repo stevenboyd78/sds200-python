@@ -39,8 +39,18 @@ from .configuration import (
     ResolvedApplicationConfiguration,
     load_application_configuration,
 )
+from .daemon_api import DaemonReadOnlyApi
+from .daemon_ipc import DaemonSocketListener, resolve_daemon_socket_location
 from .daemon_process import DaemonProcess
 from .daemon_runtime import DaemonRuntime
+from .daemon_server import (
+    DAEMON_API_DEFAULT_CLIENT_TIMEOUT,
+    DAEMON_API_DEFAULT_MAX_CLIENTS,
+    DAEMON_API_DEFAULT_MAX_REQUEST_BYTES,
+    DAEMON_API_DEFAULT_MAX_RESPONSE_BYTES,
+    DAEMON_API_DEFAULT_SHUTDOWN_TIMEOUT,
+    DaemonApiServer,
+)
 from .device import choose_scanner, discover_scanners
 from .discovery import (
     DEFAULT_DISCOVERY_TIMEOUT,
@@ -609,6 +619,65 @@ def build_parser(
         default=15.0,
         metavar="SECONDS",
         help="RTSP GET_PARAMETER interval (default: 15.0)",
+    )
+    daemon.add_argument(
+        "--socket-path",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Explicit absolute Unix socket path; otherwise use "
+            "XDG_RUNTIME_DIR or the user state directory"
+        ),
+    )
+    daemon.add_argument(
+        "--api-max-clients",
+        type=_positive_integer,
+        default=DAEMON_API_DEFAULT_MAX_CLIENTS,
+        metavar="COUNT",
+        help=(
+            "Maximum concurrent local API clients "
+            f"(default: {DAEMON_API_DEFAULT_MAX_CLIENTS})"
+        ),
+    )
+    daemon.add_argument(
+        "--api-max-request-bytes",
+        type=_positive_integer,
+        default=DAEMON_API_DEFAULT_MAX_REQUEST_BYTES,
+        metavar="BYTES",
+        help=(
+            "Maximum local API request size "
+            f"(default: {DAEMON_API_DEFAULT_MAX_REQUEST_BYTES})"
+        ),
+    )
+    daemon.add_argument(
+        "--api-max-response-bytes",
+        type=_positive_integer,
+        default=DAEMON_API_DEFAULT_MAX_RESPONSE_BYTES,
+        metavar="BYTES",
+        help=(
+            "Maximum local API response size "
+            f"(default: {DAEMON_API_DEFAULT_MAX_RESPONSE_BYTES})"
+        ),
+    )
+    daemon.add_argument(
+        "--api-client-timeout",
+        type=_positive_float,
+        default=DAEMON_API_DEFAULT_CLIENT_TIMEOUT,
+        metavar="SECONDS",
+        help=(
+            "Idle local API client timeout "
+            f"(default: {DAEMON_API_DEFAULT_CLIENT_TIMEOUT})"
+        ),
+    )
+    daemon.add_argument(
+        "--api-shutdown-timeout",
+        type=_positive_float,
+        default=DAEMON_API_DEFAULT_SHUTDOWN_TIMEOUT,
+        metavar="SECONDS",
+        help=(
+            "Local API worker shutdown deadline "
+            f"(default: {DAEMON_API_DEFAULT_SHUTDOWN_TIMEOUT})"
+        ),
     )
 
     tui = subparsers.add_parser(
@@ -1665,7 +1734,12 @@ def _daemon_host(
     return cast(str, args.host)
 
 
-def _run_daemon(args: argparse.Namespace) -> int:
+def _run_daemon(
+    args: argparse.Namespace,
+    *,
+    configuration_paths: ConfigurationPaths | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> int:
     profile_store = ProfileStore(args.config) if args.profile is not None else None
     host = _daemon_host(args, profile_store=profile_store)
     scanner = selected_radio(args, profile_store=profile_store)
@@ -1688,10 +1762,30 @@ def _run_daemon(args: argparse.Namespace) -> int:
         psi_timeout=args.psi_timeout,
     )
 
-    result = DaemonProcess(runtime).run()
+    socket_location = resolve_daemon_socket_location(
+        args.socket_path,
+        environ=environ,
+        configuration_paths=configuration_paths,
+    )
+    listener = DaemonSocketListener(socket_location)
+    api_server = DaemonApiServer(
+        listener,
+        DaemonReadOnlyApi(runtime),
+        max_clients=args.api_max_clients,
+        max_request_bytes=args.api_max_request_bytes,
+        max_response_bytes=args.api_max_response_bytes,
+        client_timeout=args.api_client_timeout,
+        shutdown_timeout=args.api_shutdown_timeout,
+    )
+
+    result = DaemonProcess(
+        runtime,
+        api_server=api_server,
+    ).run()
     logger.info(
-        "foreground daemon stopped host=%s signal=%s",
+        "foreground daemon stopped host=%s socket=%s signal=%s",
         host,
+        socket_location.path,
         result.last_signal,
     )
     return 0
@@ -2352,7 +2446,11 @@ def main(
             return _run_audio_devices()
 
         if args.action == "daemon":
-            return _run_daemon(args)
+            return _run_daemon(
+                args,
+                configuration_paths=configuration_paths,
+                environ=environ,
+            )
 
         if args.action == "asterisk-moh":
             return _run_asterisk_moh(args)
