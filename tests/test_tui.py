@@ -236,6 +236,14 @@ def test_tui_responsive_breakpoints_and_key_help() -> None:
             assert compact.screen.has_class("-compact")
             assert compact.screen.has_class("-short")
             assert not compact.key_help_visible
+            assert not compact.query_one("#footer").display
+
+            compact_footer = compact.query_one("#compact-footer", Static)
+            assert compact_footer.display
+            assert _plain(compact_footer) == (
+                "Q Quit | A Audio | R Record | C Reconnect | G Logs | ? Keys"
+            )
+            assert compact_footer.region.bottom == compact.screen.region.bottom
 
             await pilot.press("question_mark")
             await pilot.pause()
@@ -261,6 +269,8 @@ def test_tui_responsive_breakpoints_and_key_help() -> None:
             assert pi_screen.screen.has_class("-standard")
             assert pi_screen.screen.has_class("-short")
             assert not pi_screen.screen.has_class("-compact")
+            assert not pi_screen.query_one("#footer").display
+            assert pi_screen.query_one("#compact-footer", Static).display
 
             body = pi_screen.query_one("#body")
             connection = pi_screen.query_one("#connection")
@@ -285,6 +295,8 @@ def test_tui_responsive_breakpoints_and_key_help() -> None:
             await pilot.pause()
             assert standard.screen.has_class("-standard")
             assert standard.screen.has_class("-tall")
+            assert standard.query_one("#footer").display
+            assert not standard.query_one("#compact-footer", Static).display
 
             body = standard.query_one("#body")
             connection = standard.query_one("#connection")
@@ -298,6 +310,8 @@ def test_tui_responsive_breakpoints_and_key_help() -> None:
             await pilot.pause()
             assert wide.screen.has_class("-wide")
             assert wide.screen.has_class("-tall")
+            assert wide.query_one("#footer").display
+            assert not wide.query_one("#compact-footer", Static).display
 
     asyncio.run(exercise())
 

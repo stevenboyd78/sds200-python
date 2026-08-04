@@ -84,6 +84,11 @@ N / P    Next / previous channel
 """
 
 
+COMPACT_FOOTER_TEXT = (
+    "Q Quit | A Audio | R Record | C Reconnect | G Logs | ? Keys"
+)
+
+
 class ScannerTuiRadio(Protocol):
     """Radio operations required by the live Textual adapter."""
 
@@ -204,6 +209,29 @@ class ScannerTuiApp(App[None]):
     Screen.light .panel {
         background: #ffffff;
         border: round #1d4ed8;
+    }
+
+    #compact-footer {
+        display: none;
+        dock: bottom;
+        height: 1;
+        padding: 0 1;
+        content-align: center middle;
+        background: #1b2430;
+        color: #f5f5f5;
+    }
+
+    Screen.light #compact-footer {
+        background: #ffffff;
+        color: #1f2937;
+    }
+
+    Screen.-short #footer {
+        display: none;
+    }
+
+    Screen.-short #compact-footer {
+        display: block;
     }
 
     #status {
@@ -519,7 +547,12 @@ class ScannerTuiApp(App[None]):
             yield _titled_panel("Audio", widget_id="audio")
             yield _titled_panel("Live PSI / Controls", widget_id="status")
             yield _titled_panel("Operational Logs", widget_id="logs")
-        yield Footer()
+        yield Footer(id="footer")
+        yield Static(
+            COMPACT_FOOTER_TEXT,
+            id="compact-footer",
+            markup=False,
+        )
 
     def on_mount(self) -> None:
         self._shutdown_started.clear()
