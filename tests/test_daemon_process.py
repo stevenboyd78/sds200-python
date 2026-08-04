@@ -39,6 +39,33 @@ class FakeRuntime:
             raise self.stop_error
 
 
+class FakeApiServer:
+    def __init__(
+        self,
+        order: list[str],
+        *,
+        start_error: BaseException | None = None,
+        stop_error: BaseException | None = None,
+    ) -> None:
+        self.order = order
+        self.start_error = start_error
+        self.stop_error = stop_error
+        self.start_calls = 0
+        self.stop_calls = 0
+
+    def start(self) -> None:
+        self.order.append("api.start")
+        self.start_calls += 1
+        if self.start_error is not None:
+            raise self.start_error
+
+    def stop(self) -> None:
+        self.order.append("api.stop")
+        self.stop_calls += 1
+        if self.stop_error is not None:
+            raise self.stop_error
+
+
 class FakeSignalController:
     def __init__(
         self,
@@ -337,3 +364,177 @@ def test_process_propagates_clean_shutdown_failure() -> None:
 def test_process_requires_positive_poll_interval(poll_interval: float) -> None:
     with pytest.raises(ValueError, match="greater than zero"):
         DaemonProcess(FakeRuntime([]), poll_interval=poll_interval)
+
+
+def test_process_starts_api_after_runtime_and_stops_it_first() -> None:
+    order: list[str] = []
+    runtime = FakeRuntime(order)
+    api_server = FakeApiServer(order)
+    signals = FakeSignalController(
+        order,
+        (True,),
+        last_signal=int(signal.SIGTERM),
+    )
+
+    result = DaemonProcess(
+        runtime,
+        api_server=api_server,
+        signals=signals,
+        poll_interval=0.25,
+    ).run()
+
+    assert result.last_signal == int(signal.SIGTERM)
+    assert order == [
+        "signals.enter",
+        "runtime.start",
+        "api.start",
+        "signals.wait",
+        "api.stop",
+        "runtime.stop",
+        "signals.exit",
+    ]
+    assert api_server.start_calls == 1
+    assert api_server.stop_calls == 1
+
+
+def test_api_startup_failure_stops_api_then_runtime() -> None:
+    order: list[str] = []
+    startup_error = RuntimeError("secret API startup failure")
+    runtime = FakeRuntime(order)
+    api_server = FakeApiServer(order, start_error=startup_error)
+    signals = FakeSignalController(order, ())
+
+    with pytest.raises(RuntimeError) as raised:
+        DaemonProcess(
+            runtime,
+            api_server=api_server,
+            signals=signals,
+            poll_interval=0.25,
+        ).run()
+
+    assert raised.value is startup_error
+    assert order == [
+        "signals.enter",
+        "runtime.start",
+        "api.start",
+        "api.stop",
+        "runtime.stop",
+        "signals.exit",
+    ]
+
+
+def test_runtime_startup_failure_does_not_touch_api_server() -> None:
+    order: list[str] = []
+    startup_error = RuntimeError("secret runtime startup failure")
+    runtime = FakeRuntime(order, start_error=startup_error)
+    api_server = FakeApiServer(order)
+    signals = FakeSignalController(order, ())
+
+    with pytest.raises(RuntimeError) as raised:
+        DaemonProcess(
+            runtime,
+            api_server=api_server,
+            signals=signals,
+            poll_interval=0.25,
+        ).run()
+
+    assert raised.value is startup_error
+    assert order == [
+        "signals.enter",
+        "runtime.start",
+        "runtime.stop",
+        "signals.exit",
+    ]
+    assert api_server.start_calls == 0
+    assert api_server.stop_calls == 0
+
+
+def test_process_error_preserves_primary_when_all_cleanup_fails(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    order: list[str] = []
+    wait_error = RuntimeError("secret wait failure")
+    api_error = RuntimeError("secret API cleanup failure")
+    runtime_error = RuntimeError("secret runtime cleanup failure")
+    runtime = FakeRuntime(order, stop_error=runtime_error)
+    api_server = FakeApiServer(order, stop_error=api_error)
+    signals = FakeSignalController(order, (wait_error,))
+
+    with (
+        caplog.at_level(logging.ERROR, logger="sds200.daemon_process"),
+        pytest.raises(RuntimeError) as raised,
+    ):
+        DaemonProcess(
+            runtime,
+            api_server=api_server,
+            signals=signals,
+            poll_interval=0.25,
+        ).run()
+
+    assert raised.value is wait_error
+    assert order == [
+        "signals.enter",
+        "runtime.start",
+        "api.start",
+        "signals.wait",
+        "api.stop",
+        "runtime.stop",
+        "signals.exit",
+    ]
+    assert "process_error=RuntimeError" in caplog.text
+    assert "cleanup_error=RuntimeError" in caplog.text
+    assert "secret" not in caplog.text
+
+
+def test_clean_api_shutdown_failure_still_stops_runtime() -> None:
+    order: list[str] = []
+    api_error = RuntimeError("API shutdown failed")
+    runtime = FakeRuntime(order)
+    api_server = FakeApiServer(order, stop_error=api_error)
+    signals = FakeSignalController(order, (True,))
+
+    with pytest.raises(RuntimeError) as raised:
+        DaemonProcess(
+            runtime,
+            api_server=api_server,
+            signals=signals,
+            poll_interval=0.25,
+        ).run()
+
+    assert raised.value is api_error
+    assert order == [
+        "signals.enter",
+        "runtime.start",
+        "api.start",
+        "signals.wait",
+        "api.stop",
+        "runtime.stop",
+        "signals.exit",
+    ]
+
+
+def test_clean_shutdown_preserves_first_failure_and_logs_second(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    order: list[str] = []
+    api_error = RuntimeError("secret API shutdown failure")
+    runtime_error = RuntimeError("secret runtime shutdown failure")
+    runtime = FakeRuntime(order, stop_error=runtime_error)
+    api_server = FakeApiServer(order, stop_error=api_error)
+    signals = FakeSignalController(order, (True,))
+
+    with (
+        caplog.at_level(logging.ERROR, logger="sds200.daemon_process"),
+        pytest.raises(RuntimeError) as raised,
+    ):
+        DaemonProcess(
+            runtime,
+            api_server=api_server,
+            signals=signals,
+            poll_interval=0.25,
+        ).run()
+
+    assert raised.value is api_error
+    assert "primary_error=RuntimeError" in caplog.text
+    assert "cleanup_error=RuntimeError" in caplog.text
+    assert "secret" not in caplog.text

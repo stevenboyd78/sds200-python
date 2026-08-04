@@ -16,6 +16,12 @@ class _DaemonRuntimeLike(Protocol):
     def stop(self) -> None: ...
 
 
+class _DaemonApiServerLike(Protocol):
+    def start(self) -> None: ...
+
+    def stop(self) -> None: ...
+
+
 class _DaemonSignalControllerLike(Protocol):
     @property
     def last_signal(self) -> int | None: ...
@@ -134,12 +140,13 @@ class DaemonSignalController:
 
 
 class DaemonProcess:
-    """Host one daemon runtime in the foreground until shutdown is requested."""
+    """Host one daemon runtime and optional local API until shutdown."""
 
     def __init__(
         self,
         runtime: _DaemonRuntimeLike,
         *,
+        api_server: _DaemonApiServerLike | None = None,
         signals: _DaemonSignalControllerLike | None = None,
         poll_interval: float = 0.1,
     ) -> None:
@@ -147,30 +154,69 @@ class DaemonProcess:
             raise ValueError("Daemon process poll interval must be greater than zero.")
 
         self.runtime = runtime
+        self.api_server = api_server
         self.signals = signals or DaemonSignalController()
         self.poll_interval = poll_interval
 
     def run(self) -> DaemonProcessResult:
         with self.signals:
+            api_server_attempted = False
+
             try:
                 self.runtime.start()
+                if self.api_server is not None:
+                    api_server_attempted = True
+                    self.api_server.start()
+
                 while not self.signals.wait(self.poll_interval):
                     pass
             except BaseException as process_error:
-                try:
-                    self.runtime.stop()
-                except BaseException as cleanup_error:
+                cleanup_failures = self._stop_components(
+                    stop_api_server=api_server_attempted,
+                )
+                if cleanup_failures:
                     logger.error(
-                        "daemon runtime cleanup failed process_error=%s "
+                        "daemon process cleanup failed process_error=%s "
                         "cleanup_error=%s",
                         process_error.__class__.__name__,
-                        cleanup_error.__class__.__name__,
+                        cleanup_failures[0].__class__.__name__,
                     )
                 raise
             else:
-                self.runtime.stop()
+                cleanup_failures = self._stop_components(
+                    stop_api_server=api_server_attempted,
+                )
+                if cleanup_failures:
+                    if len(cleanup_failures) > 1:
+                        logger.error(
+                            "daemon process cleanup encountered multiple failures "
+                            "primary_error=%s cleanup_error=%s",
+                            cleanup_failures[0].__class__.__name__,
+                            cleanup_failures[1].__class__.__name__,
+                        )
+                    raise cleanup_failures[0]
 
         return DaemonProcessResult(last_signal=self.signals.last_signal)
+
+    def _stop_components(
+        self,
+        *,
+        stop_api_server: bool,
+    ) -> list[BaseException]:
+        failures: list[BaseException] = []
+
+        if stop_api_server and self.api_server is not None:
+            try:
+                self.api_server.stop()
+            except BaseException as error:
+                failures.append(error)
+
+        try:
+            self.runtime.stop()
+        except BaseException as error:
+            failures.append(error)
+
+        return failures
 
 
 def _daemon_stop_signals() -> tuple[int, ...]:
