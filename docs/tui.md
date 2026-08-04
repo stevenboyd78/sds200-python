@@ -205,6 +205,13 @@ Headless Textual tests exercise compact, Raspberry Pi-like, standard, and wide
 terminal sizes, including a live resize from the short summary view back to the
 full detailed layout.
 
+Physical validation passed on a Raspberry Pi 4 driving an 800 by 480 display at
+100 by 30 terminal cells. The initial display rendered cleanly; the compact
+footer, operational summaries, and logs were visible; live playback and its
+mute toggle worked; logs and keyboard help opened and closed correctly; a WAV
+recording finalized successfully and appeared in the recording library; scrolling
+remained usable; and the TUI exited cleanly.
+
 ## Network audio playback, recording, and library
 
 TUI audio requires an explicit SDS200 network host. Every such TUI session exposes

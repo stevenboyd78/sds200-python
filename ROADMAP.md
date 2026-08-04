@@ -24,13 +24,14 @@ and ideas that are not ready for scheduling are recorded in
     activity, signal, playback, recording, stream, and level state visible.
   - Detailed audio, status, logs, recordings, and keyboard help remain available
     through tall layouts, existing controls, and scrolling.
-- **Regression and physical validation — in progress**
-  - Deterministic coverage now includes compact, Raspberry Pi-like, standard,
-    wide, and live terminal-resize cases.
-  - The native compact Textual SVG screenshot has been regenerated and verified
-    for deterministic output.
-  - Physical Raspberry Pi validation remains for readability, controls,
-    scrolling, audio, recording, and live PSI.
+- **Regression and physical validation — complete**
+  - Deterministic coverage includes compact, Raspberry Pi-like, standard, wide,
+    and live terminal-resize cases.
+  - The native compact Textual SVG screenshot was regenerated and verified for
+    deterministic output.
+  - Physical validation passed on a Raspberry Pi 4 with an 800 by 480 display at
+    100 by 30 terminal cells, including rendering, controls, scrolling, live
+    playback, recording, library access, live PSI, and clean shutdown.
 
 ## Deferred hardware validation
 
