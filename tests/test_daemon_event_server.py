@@ -111,6 +111,8 @@ def wait_until(
         ("max_clients", 0, ValueError),
         ("send_timeout", True, TypeError),
         ("send_timeout", 0, ValueError),
+        ("max_event_bytes", True, TypeError),
+        ("max_event_bytes", 0, ValueError),
         ("accept_poll_interval", 0, ValueError),
         ("shutdown_timeout", float("inf"), ValueError),
     ],
@@ -332,6 +334,39 @@ def test_event_server_stop_before_start_is_terminal(
         server.start()
 
 
+def test_event_server_disconnects_client_for_oversized_event(
+    tmp_path: Path,
+) -> None:
+    stream = FakeEventStream()
+    server, path = make_server(
+        tmp_path,
+        stream,
+        max_event_bytes=1024,
+    )
+    server.start()
+    client = connect(path)
+
+    try:
+        snapshot_line = read_line(client)
+        assert snapshot_line.endswith(b"\n")
+        wait_until(lambda: server.connected_clients == 1)
+
+        stream.publish(
+            DaemonEventKind.RADIO_STATE,
+            {"value": "x" * 4096},
+        )
+
+        wait_until(lambda: server.connected_clients == 0)
+        assert read_line(client) == b""
+    finally:
+        client.close()
+        server.stop()
+
+    snapshot = server.snapshot()
+    assert snapshot.events_sent == 1
+    assert snapshot.last_error == "DaemonIpcError"
+
+
 def test_event_server_snapshot_is_json_compatible(
     tmp_path: Path,
 ) -> None:
@@ -343,5 +378,6 @@ def test_event_server_snapshot_is_json_compatible(
     assert json.loads(json.dumps(payload)) == payload
     assert payload["active"] is False
     assert payload["connected_clients"] == 0
+    assert payload["max_event_bytes"] == 1024 * 1024
     assert payload["events_sent"] == 0
     assert payload["last_error"] is None

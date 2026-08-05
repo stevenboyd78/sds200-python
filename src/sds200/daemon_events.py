@@ -16,6 +16,8 @@ from typing import cast
 DAEMON_EVENT_PROTOCOL = "sdsctl.daemon.events"
 DAEMON_EVENT_VERSION = 1
 DAEMON_EVENT_SUPPORTED_VERSIONS = (DAEMON_EVENT_VERSION,)
+DAEMON_EVENT_DEFAULT_QUEUE_CAPACITY = 64
+DAEMON_EVENT_DEFAULT_MAX_BYTES = 1024 * 1024
 
 
 class DaemonEventKind(StrEnum):
@@ -226,8 +228,9 @@ class DaemonEventPublisher:
         self,
         snapshot: Callable[[], Mapping[str, object]],
         *,
-        queue_capacity: int = 64,
+        queue_capacity: int = DAEMON_EVENT_DEFAULT_QUEUE_CAPACITY,
         max_subscribers: int = 32,
+        max_event_bytes: int = DAEMON_EVENT_DEFAULT_MAX_BYTES,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         if type(queue_capacity) is not int:
@@ -246,15 +249,36 @@ class DaemonEventPublisher:
             raise ValueError(
                 "Daemon event subscriber limit must be greater than zero."
             )
+        if type(max_event_bytes) is not int:
+            raise TypeError(
+                "Daemon event maximum encoded size must be an integer."
+            )
+        if max_event_bytes <= 0:
+            raise ValueError(
+                "Daemon event maximum encoded size must be greater than zero."
+            )
 
         self._snapshot = snapshot
         self._queue_capacity = queue_capacity
         self._max_subscribers = max_subscribers
+        self._max_event_bytes = max_event_bytes
         self._now = now
         self._lock = threading.RLock()
         self._subscriptions: set[DaemonEventSubscription] = set()
         self._sequence = 0
         self._closed = False
+
+    @property
+    def queue_capacity(self) -> int:
+        return self._queue_capacity
+
+    @property
+    def max_subscribers(self) -> int:
+        return self._max_subscribers
+
+    @property
+    def max_event_bytes(self) -> int:
+        return self._max_event_bytes
 
     @property
     def sequence(self) -> int:
@@ -286,6 +310,10 @@ class DaemonEventPublisher:
                 observed_at=self._now(),
                 kind=DaemonEventKind.SNAPSHOT,
                 payload=self._snapshot(),
+            )
+            _require_event_size(
+                snapshot,
+                max_event_bytes=self._max_event_bytes,
             )
             subscription = DaemonEventSubscription(
                 self,
@@ -321,6 +349,10 @@ class DaemonEventPublisher:
                 kind=kind,
                 payload=payload,
             )
+            _require_event_size(
+                event,
+                max_event_bytes=self._max_event_bytes,
+            )
             self._sequence = sequence
 
             for subscription in tuple(self._subscriptions):
@@ -346,6 +378,19 @@ class DaemonEventPublisher:
         with self._lock:
             self._subscriptions.discard(subscription)
             subscription._close_from_publisher()
+
+
+def _require_event_size(
+    event: DaemonEvent,
+    *,
+    max_event_bytes: int,
+) -> None:
+    encoded_size = len(event.to_json_line())
+    if encoded_size > max_event_bytes:
+        raise ValueError(
+            "Daemon event exceeds the maximum encoded size "
+            f"of {max_event_bytes} bytes."
+        )
 
 
 def _freeze_mapping(

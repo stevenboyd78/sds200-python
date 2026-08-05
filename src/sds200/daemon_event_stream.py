@@ -12,6 +12,8 @@ from .audio_sinks import (
     PcmSubscriberTransition,
 )
 from .daemon_events import (
+    DAEMON_EVENT_DEFAULT_MAX_BYTES,
+    DAEMON_EVENT_DEFAULT_QUEUE_CAPACITY,
     DaemonEventKind,
     DaemonEventPublisher,
     DaemonEventSubscription,
@@ -65,8 +67,9 @@ class DaemonEventStream:
         self,
         runtime: DaemonRuntime,
         *,
-        queue_capacity: int = 64,
+        queue_capacity: int = DAEMON_EVENT_DEFAULT_QUEUE_CAPACITY,
         max_subscribers: int = 32,
+        max_event_bytes: int = DAEMON_EVENT_DEFAULT_MAX_BYTES,
         now: Callable[[], datetime] = _utc_now,
     ) -> None:
         self.runtime = runtime
@@ -76,6 +79,7 @@ class DaemonEventStream:
             self._snapshot,
             queue_capacity=queue_capacity,
             max_subscribers=max_subscribers,
+            max_event_bytes=max_event_bytes,
             now=now,
         )
         self._unsubscribes: tuple[Callable[[], None], ...] = ()
@@ -109,6 +113,18 @@ class DaemonEventStream:
             raise
 
         self._unsubscribes = tuple(unsubscribes)
+
+    @property
+    def queue_capacity(self) -> int:
+        return self._publisher.queue_capacity
+
+    @property
+    def max_subscribers(self) -> int:
+        return self._publisher.max_subscribers
+
+    @property
+    def max_event_bytes(self) -> int:
+        return self._publisher.max_event_bytes
 
     @property
     def sequence(self) -> int:

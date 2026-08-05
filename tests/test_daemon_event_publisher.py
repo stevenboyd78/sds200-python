@@ -19,12 +19,14 @@ def make_publisher(
     *,
     queue_capacity: int = 4,
     max_subscribers: int = 8,
+    max_event_bytes: int = 1024 * 1024,
     now: Callable[[], datetime] | None = None,
 ) -> DaemonEventPublisher:
     return DaemonEventPublisher(
         snapshot or (lambda: {"state": "idle"}),
         queue_capacity=queue_capacity,
         max_subscribers=max_subscribers,
+        max_event_bytes=max_event_bytes,
         **({} if now is None else {"now": now}),
     )
 
@@ -331,6 +333,54 @@ def test_publisher_rejects_non_integer_bounds(
         make_publisher(
             queue_capacity=queue_capacity,  # type: ignore[arg-type]
             max_subscribers=max_subscribers,  # type: ignore[arg-type]
+        )
+
+
+def test_publisher_rejects_oversized_snapshot_without_subscription() -> None:
+    publisher = make_publisher(
+        lambda: {"value": "x" * 2048},
+        max_event_bytes=256,
+    )
+
+    with pytest.raises(ValueError, match="maximum encoded size"):
+        publisher.subscribe()
+
+    assert publisher.sequence == 0
+    assert publisher.subscriber_count == 0
+
+
+def test_publisher_rejects_oversized_event_without_advancing_sequence() -> None:
+    publisher = make_publisher(max_event_bytes=512)
+    subscription = publisher.subscribe()
+
+    assert subscription.get(timeout=0).sequence == 0
+
+    with pytest.raises(ValueError, match="maximum encoded size"):
+        publisher.publish(
+            DaemonEventKind.RADIO_STATE,
+            {"value": "x" * 4096},
+        )
+
+    assert publisher.sequence == 0
+    with pytest.raises(queue.Empty):
+        subscription.get(timeout=0)
+
+
+@pytest.mark.parametrize("max_event_bytes", [0, -1])
+def test_publisher_rejects_invalid_max_event_bytes(
+    max_event_bytes: int,
+) -> None:
+    with pytest.raises(ValueError, match="encoded size"):
+        make_publisher(max_event_bytes=max_event_bytes)
+
+
+@pytest.mark.parametrize("max_event_bytes", [True, 1.5, "1024"])
+def test_publisher_rejects_non_integer_max_event_bytes(
+    max_event_bytes: object,
+) -> None:
+    with pytest.raises(TypeError, match="integer"):
+        make_publisher(
+            max_event_bytes=max_event_bytes,  # type: ignore[arg-type]
         )
 
 

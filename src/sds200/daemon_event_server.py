@@ -11,6 +11,7 @@ from time import monotonic
 from typing import Protocol
 
 from .daemon_events import (
+    DAEMON_EVENT_DEFAULT_MAX_BYTES,
     DaemonEventSubscription,
     DaemonEventSubscriptionClosed,
 )
@@ -38,6 +39,7 @@ class DaemonEventServerSnapshot:
     active: bool
     connected_clients: int
     max_clients: int
+    max_event_bytes: int
     accepted_clients: int
     rejected_clients: int
     events_sent: int
@@ -48,6 +50,7 @@ class DaemonEventServerSnapshot:
             "active": self.active,
             "connected_clients": self.connected_clients,
             "max_clients": self.max_clients,
+            "max_event_bytes": self.max_event_bytes,
             "accepted_clients": self.accepted_clients,
             "rejected_clients": self.rejected_clients,
             "events_sent": self.events_sent,
@@ -64,6 +67,7 @@ class DaemonEventServer:
         stream: _DaemonEventStreamLike,
         *,
         max_clients: int = DAEMON_EVENT_DEFAULT_MAX_CLIENTS,
+        max_event_bytes: int = DAEMON_EVENT_DEFAULT_MAX_BYTES,
         send_timeout: float = DAEMON_EVENT_DEFAULT_SEND_TIMEOUT,
         accept_poll_interval: float = (
             DAEMON_EVENT_DEFAULT_ACCEPT_POLL_INTERVAL
@@ -74,10 +78,15 @@ class DaemonEventServer:
             max_clients,
             label="Maximum daemon event clients",
         )
+        _require_positive_integer(
+            max_event_bytes,
+            label="Maximum encoded daemon event size",
+        )
 
         self.listener = listener
         self.stream = stream
         self.max_clients = max_clients
+        self.max_event_bytes = max_event_bytes
         self.send_timeout = _require_positive_number(
             send_timeout,
             label="Daemon event send timeout",
@@ -123,6 +132,7 @@ class DaemonEventServer:
                 active=self._active,
                 connected_clients=len(self._clients),
                 max_clients=self.max_clients,
+                max_event_bytes=self.max_event_bytes,
                 accepted_clients=self._accepted_clients,
                 rejected_clients=self._rejected_clients,
                 events_sent=self._events_sent,
@@ -341,7 +351,13 @@ class DaemonEventServer:
                 except DaemonEventSubscriptionClosed:
                     return
 
-                client.sendall(event.to_json_line())
+                encoded = event.to_json_line()
+                if len(encoded) > self.max_event_bytes:
+                    raise DaemonIpcError(
+                        "Daemon event exceeds the maximum encoded size "
+                        f"of {self.max_event_bytes} bytes."
+                    )
+                client.sendall(encoded)
                 with self._state_lock:
                     self._events_sent += 1
         except OSError:

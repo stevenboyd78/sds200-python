@@ -31,6 +31,24 @@ class FakeAudioTransport:
         self._running = False
 
 
+class FakeDaemonEventStream:
+    def __init__(
+        self,
+        runtime: object,
+        *,
+        queue_capacity: int,
+        max_subscribers: int,
+        max_event_bytes: int,
+    ) -> None:
+        self.runtime = runtime
+        self.queue_capacity = queue_capacity
+        self.max_subscribers = max_subscribers
+        self.max_event_bytes = max_event_bytes
+
+    def close(self) -> None:
+        pass
+
+
 class StubProfileStore:
     def __init__(self, profile: ConnectionProfile) -> None:
         self.profile = profile
@@ -72,6 +90,18 @@ def test_daemon_parser_accepts_process_and_audio_options() -> None:
             "7",
             "--api-shutdown-timeout",
             "3",
+            "--event-socket-path",
+            "/tmp/sdsctl-events-test.sock",
+            "--event-queue-capacity",
+            "96",
+            "--event-max-clients",
+            "5",
+            "--event-max-bytes",
+            "32768",
+            "--event-send-timeout",
+            "8",
+            "--event-shutdown-timeout",
+            "4",
         ]
     )
 
@@ -88,6 +118,12 @@ def test_daemon_parser_accepts_process_and_audio_options() -> None:
     assert args.api_max_response_bytes == 16384
     assert args.api_client_timeout == 7.0
     assert args.api_shutdown_timeout == 3.0
+    assert args.event_socket_path == Path("/tmp/sdsctl-events-test.sock")
+    assert args.event_queue_capacity == 96
+    assert args.event_max_clients == 5
+    assert args.event_max_bytes == 32768
+    assert args.event_send_timeout == 8.0
+    assert args.event_shutdown_timeout == 4.0
 
 
 @pytest.mark.parametrize(
@@ -182,9 +218,11 @@ def test_daemon_cli_constructs_one_runtime_and_process(
             runtime: object,
             *,
             api_server: object,
+            event_server: object,
         ) -> None:
             self.runtime = runtime
             self.api_server = api_server
+            self.event_server = event_server
             processes.append(self)
 
         def run(self) -> DaemonProcessResult:
@@ -192,6 +230,7 @@ def test_daemon_cli_constructs_one_runtime_and_process(
 
     monkeypatch.setattr(cli, "selected_radio", select_radio)
     monkeypatch.setattr(cli, "NetworkAudioTransport", transport_factory)
+    monkeypatch.setattr(cli, "DaemonEventStream", FakeDaemonEventStream)
     monkeypatch.setattr(cli, "DaemonProcess", FakeProcess)
 
     paths = resolve_configuration_paths(
@@ -262,6 +301,22 @@ def test_daemon_cli_constructs_one_runtime_and_process(
     assert api_server.listener.location.path == (
         paths.user_state_dir / "daemon.sock"
     )
+
+    event_server = process.event_server
+    assert isinstance(event_server, cli.DaemonEventServer)
+    assert isinstance(event_server.stream, cli.DaemonEventStream)
+    assert event_server.stream.runtime is runtime
+    assert event_server.stream.queue_capacity == 64
+    assert event_server.stream.max_subscribers == 8
+    assert event_server.stream.max_event_bytes == 1024 * 1024
+    assert event_server.max_clients == 8
+    assert event_server.max_event_bytes == 1024 * 1024
+    assert event_server.send_timeout == 5.0
+    assert event_server.shutdown_timeout == 2.0
+    assert event_server.listener.location.source is DaemonSocketSource.USER_STATE
+    assert event_server.listener.location.path == (
+        paths.user_state_dir / "events.sock"
+    )
     assert capsys.readouterr().out == ""
 
 
@@ -303,12 +358,14 @@ def test_daemon_cli_reports_process_os_error(
             runtime: object,
             *,
             api_server: object,
+            event_server: object,
         ) -> None:
-            del runtime, api_server
+            del runtime, api_server, event_server
 
         def run(self) -> DaemonProcessResult:
             raise OSError("process startup failed")
 
+    monkeypatch.setattr(cli, "DaemonEventStream", FakeDaemonEventStream)
     monkeypatch.setattr(cli, "DaemonProcess", FailingProcess)
 
     assert cli.main(["--host", "192.0.2.25", "daemon"]) == 2
@@ -320,8 +377,9 @@ def test_daemon_cli_explicit_socket_path_overrides_runtime_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     explicit = tmp_path / "explicit" / "daemon.sock"
+    explicit_events = tmp_path / "explicit" / "events.sock"
     explicit.parent.mkdir()
-    observed: list[object] = []
+    observed: list[tuple[object, object]] = []
 
     monkeypatch.setattr(
         cli,
@@ -340,13 +398,15 @@ def test_daemon_cli_explicit_socket_path_overrides_runtime_environment(
             runtime: object,
             *,
             api_server: object,
+            event_server: object,
         ) -> None:
             del runtime
-            observed.append(api_server)
+            observed.append((api_server, event_server))
 
         def run(self) -> DaemonProcessResult:
             return DaemonProcessResult(last_signal=int(signal.SIGTERM))
 
+    monkeypatch.setattr(cli, "DaemonEventStream", FakeDaemonEventStream)
     monkeypatch.setattr(cli, "DaemonProcess", FakeProcess)
 
     result = cli.main(
@@ -366,6 +426,18 @@ def test_daemon_cli_explicit_socket_path_overrides_runtime_environment(
             "9",
             "--api-shutdown-timeout",
             "4",
+            "--event-socket-path",
+            str(explicit_events),
+            "--event-queue-capacity",
+            "12",
+            "--event-max-clients",
+            "6",
+            "--event-max-bytes",
+            "65536",
+            "--event-send-timeout",
+            "10",
+            "--event-shutdown-timeout",
+            "5",
         ],
         environ={
             "XDG_RUNTIME_DIR": str(tmp_path / "runtime"),
@@ -374,7 +446,7 @@ def test_daemon_cli_explicit_socket_path_overrides_runtime_environment(
 
     assert result == 0
     assert len(observed) == 1
-    api_server = observed[0]
+    api_server, event_server = observed[0]
     assert isinstance(api_server, cli.DaemonApiServer)
     assert api_server.listener.location.source is DaemonSocketSource.EXPLICIT
     assert api_server.listener.location.path == explicit
@@ -383,6 +455,18 @@ def test_daemon_cli_explicit_socket_path_overrides_runtime_environment(
     assert api_server.max_response_bytes == 8192
     assert api_server.client_timeout == 9.0
     assert api_server.shutdown_timeout == 4.0
+
+    assert isinstance(event_server, cli.DaemonEventServer)
+    assert isinstance(event_server.stream, cli.DaemonEventStream)
+    assert event_server.stream.queue_capacity == 12
+    assert event_server.stream.max_subscribers == 6
+    assert event_server.stream.max_event_bytes == 65536
+    assert event_server.listener.location.source is DaemonSocketSource.EXPLICIT
+    assert event_server.listener.location.path == explicit_events
+    assert event_server.max_clients == 6
+    assert event_server.max_event_bytes == 65536
+    assert event_server.send_timeout == 10.0
+    assert event_server.shutdown_timeout == 5.0
 
 
 def test_daemon_cli_reports_relative_socket_path(
@@ -407,6 +491,36 @@ def test_daemon_cli_reports_relative_socket_path(
             "daemon",
             "--socket-path",
             "relative/daemon.sock",
+        ],
+        environ={},
+    )
+
+    assert result == 2
+    assert "must be absolute" in capsys.readouterr().err
+
+
+def test_daemon_cli_reports_relative_event_socket_path(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "selected_radio",
+        lambda args, **kwargs: object(),
+    )
+    monkeypatch.setattr(
+        cli,
+        "NetworkAudioTransport",
+        lambda *args, **kwargs: FakeAudioTransport(),
+    )
+
+    result = cli.main(
+        [
+            "--host",
+            "192.0.2.25",
+            "daemon",
+            "--event-socket-path",
+            "relative/events.sock",
         ],
         environ={},
     )
