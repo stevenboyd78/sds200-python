@@ -108,6 +108,14 @@ from .daemon_api import (
     DaemonApiResponse,
     DaemonReadOnlyApi,
 )
+from .daemon_event_server import (
+    DAEMON_EVENT_DEFAULT_ACCEPT_POLL_INTERVAL,
+    DAEMON_EVENT_DEFAULT_MAX_CLIENTS,
+    DAEMON_EVENT_DEFAULT_SEND_TIMEOUT,
+    DAEMON_EVENT_DEFAULT_SHUTDOWN_TIMEOUT,
+    DaemonEventServer,
+    DaemonEventServerSnapshot,
+)
 from .daemon_event_stream import DaemonEventStream
 from .daemon_events import (
     DAEMON_EVENT_PROTOCOL,
@@ -455,6 +463,10 @@ __all__ = [
     "DAEMON_API_PROTOCOL",
     "DAEMON_API_SUPPORTED_VERSIONS",
     "DAEMON_API_VERSION",
+    "DAEMON_EVENT_DEFAULT_ACCEPT_POLL_INTERVAL",
+    "DAEMON_EVENT_DEFAULT_MAX_CLIENTS",
+    "DAEMON_EVENT_DEFAULT_SEND_TIMEOUT",
+    "DAEMON_EVENT_DEFAULT_SHUTDOWN_TIMEOUT",
     "DAEMON_EVENT_PROTOCOL",
     "DAEMON_EVENT_SUPPORTED_VERSIONS",
     "DAEMON_EVENT_VERSION",
@@ -471,6 +483,8 @@ __all__ = [
     "DaemonEvent",
     "DaemonEventKind",
     "DaemonEventPublisher",
+    "DaemonEventServer",
+    "DaemonEventServerSnapshot",
     "DaemonEventSubscription",
     "DaemonEventSubscriptionClosed",
     "DaemonEventStream",
