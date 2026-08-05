@@ -8,6 +8,7 @@ import pytest
 
 from sds200.pcmu import PcmuPacket
 from sds200.pcmu_protocol import (
+    PCMU_STREAM_HEADER_BYTES,
     PCMU_STREAM_MAGIC,
     PCMU_STREAM_PROTOCOL,
     PCMU_STREAM_SUPPORTED_VERSIONS,
@@ -90,6 +91,7 @@ def replace_header_field(
 def test_protocol_identity_is_versioned_and_stable() -> None:
     assert PCMU_STREAM_PROTOCOL == "sdsctl.daemon.pcmu"
     assert PCMU_STREAM_MAGIC == b"SDSP"
+    assert _HEADER.size == PCMU_STREAM_HEADER_BYTES
     assert PCMU_STREAM_VERSION == 1
     assert PCMU_STREAM_SUPPORTED_VERSIONS == (1,)
 

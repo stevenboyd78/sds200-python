@@ -28,6 +28,7 @@ _KNOWN_FLAGS = (
 )
 
 _HEADER = struct.Struct("!4sBBHIQqHIIHIIIQQQHI")
+PCMU_STREAM_HEADER_BYTES = _HEADER.size
 _UINT16_MAX = (1 << 16) - 1
 _UINT32_MAX = (1 << 32) - 1
 _UINT64_MAX = (1 << 64) - 1
