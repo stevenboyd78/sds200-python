@@ -10,7 +10,7 @@ from sds200.exceptions import (
     UnsupportedScannerModelError,
 )
 from sds200.fallback import FallbackTransport
-from sds200.models import RadioEvent
+from sds200.models import RadioEvent, ScannerInfo
 from sds200.profiles import ConnectionProfile
 from sds200.radio import SDS200
 from sds200.transport import TransportDiagnostic
@@ -362,6 +362,38 @@ def test_preferred_recovery_restarts_active_psi_stream() -> None:
         radio._psi_interval_ms = None
 
     assert transport.writes == ["PSI,500"]
+
+def test_on_psi_emits_parsed_frame_after_state_update_and_unsubscribes() -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport, expected_model="SDS200")
+    observed: list[ScannerInfo] = []
+    state_channels: list[str | None] = []
+
+    def capture(info: ScannerInfo) -> None:
+        observed.append(info)
+        state_channels.append(radio.state.snapshot.channel)
+
+    unsubscribe = radio.on_psi(capture)
+    xml = """<?xml version="1.0" encoding="utf-8"?>
+<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">
+<System Name="Example System" Index="100" />
+<TGID Name="Example Channel" TGID="TGID:1234" />
+<Property VOL="10" SQL="2" Sig="5" />
+</ScannerInfo>"""
+
+    with radio:
+        for line_number in range(2):
+            transport.feed_line("PSI,<XML>,")
+            for line in xml.splitlines():
+                transport.feed_line(line)
+            if line_number == 0:
+                unsubscribe()
+
+    assert len(observed) == 1
+    assert observed[0].command == "PSI"
+    assert observed[0].channel == "Example Channel"
+    assert state_channels == ["Example Channel"]
+
 
 def test_identical_psi_frames_refresh_state_observers() -> None:
     transport = FakeTransport()

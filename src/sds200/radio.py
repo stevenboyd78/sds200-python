@@ -511,6 +511,12 @@ class SDSScanner:
     def on_response(self, callback: Callable[[object], None]) -> Callable[[], None]:
         return self.events.subscribe("response", callback)
 
+    def on_psi(
+        self,
+        callback: Callable[[ScannerInfo], None],
+    ) -> Callable[[], None]:
+        return self.events.subscribe("psi", callback)
+
     def on_state(
         self,
         callback: Callable[[RadioStateSnapshot], None],
