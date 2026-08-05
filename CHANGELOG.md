@@ -54,6 +54,11 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   malformed-request recovery, an independent second client, controlled
   `SIGINT` and systemd-style `SIGTERM` shutdown, socket removal, reverse-order
   cleanup, and successful process exit.
+- Physical SDS200 validation of the private local event endpoint with two
+  independent snapshot-first clients, excess-client rejection, uninterrupted
+  API ping, 76 continuous ordered events from sequence 11 through 86, live PSI
+  and radio-state updates, shutdown lifecycle events, 507 received RTP packets,
+  162,240 decoded samples, clean `SIGTERM`, and removal of both owned sockets.
 
 ### Changed
 

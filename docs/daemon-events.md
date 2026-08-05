@@ -224,8 +224,28 @@ Milestone 19.6 does not add:
 
 ## Physical SDS200 validation
 
-Physical validation of the event-stream layer is pending. Current coverage is
-hardware-independent and includes envelope validation, snapshot ordering,
-global sequence continuity, overflow gaps, all aggregated sources, concurrent
-clients, encoded-size enforcement, slow and disconnected clients, lifecycle
-ordering, and bounded shutdown.
+Validated on 2026-08-05 against a physical SDS200 at `192.168.0.251`:
+
+- the caller-managed socket directory used mode `0700`, and both local sockets
+  used mode `0600`;
+- two independent clients received authoritative `stream.snapshot` events at
+  the same sequence 11 boundary;
+- a third connection above the configured two-client limit was closed without
+  receiving an event;
+- the request-response API completed a correlated `ping` while event clients
+  remained connected;
+- one client received 76 valid events from sequence 11 through 86 without a
+  sequence gap, regression, malformed line, or reader failure;
+- observed event kinds included `stream.snapshot`, `scanner.psi`,
+  `radio.state`, `audio.state`, `scanner.connection`, and
+  `daemon.transition`;
+- controlled `SIGTERM` delivered shutdown audio, scanner-connection, and daemon
+  lifecycle events before the event socket closed;
+- the runtime received 507 RTP packets and 162,240 decoded samples;
+- the daemon returned exit status 0; and
+- both `daemon.sock` and `events.sock` were removed before process exit.
+
+The initial daemon router contains no activated destinations, so
+`destination.health` was not exercised by this hardware run. Destination
+aggregation, overflow, unsubscribe, size, concurrency, and failure-isolation
+behavior remain covered by hardware-independent regression tests.

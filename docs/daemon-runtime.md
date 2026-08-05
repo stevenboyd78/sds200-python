@@ -260,9 +260,27 @@ the same physical SDS200:
 - `SIGTERM` returned exit status 0 after closing clients and removed the owned
   socket before process exit.
 
-Physical validation of the Milestone 19.6 `events.sock` service remains pending.
-The protocol, aggregation, overflow, size, concurrency, and lifecycle contracts
-are currently hardware-independent and regression-tested.
+The Milestone 19.6 `events.sock` service was physically validated on
+2026-08-05 against the same SDS200:
+
+- the caller-managed validation directory used mode `0700`, and both
+  `daemon.sock` and `events.sock` used mode `0600`;
+- two independent event clients received authoritative `stream.snapshot`
+  envelopes at sequence 11, while a third connection above the configured limit
+  was closed without receiving an event;
+- the existing request-response API completed a correlated `ping` while both
+  event clients remained connected;
+- the primary client received 76 valid events from sequence 11 through 86 with
+  no gaps, regressions, malformed lines, or reader errors;
+- live traffic produced 38 `scanner.psi` and 34 `radio.state` events;
+- controlled `SIGTERM` delivered final `audio.state`, `scanner.connection`, and
+  `daemon.transition` events while the event service remained active;
+- the runtime received 507 RTP packets and 162,240 decoded samples; and
+- the process returned exit status 0 and removed both owned sockets.
+
+The initial daemon router has no activated destinations, so
+`destination.health` was not hardware-exercised. Its aggregation and isolation
+contracts remain covered by hardware-independent regression tests.
 
 ## Follow-on work
 

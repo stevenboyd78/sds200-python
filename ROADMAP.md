@@ -50,10 +50,18 @@ and ideas that are not ready for scheduling are recorded in
     behavior, encoded-size enforcement, and CLI construction.
   - Protocol framing, event kinds, limits, resynchronization, lifecycle, socket
     resolution, and current exclusions are documented.
-- **Physical SDS200 validation — pending**
-  - Validate private socket permissions, startup snapshots, live PSI and
-    radio-state events, audio and destination transitions, independent clients,
-    controlled shutdown events, socket removal, and clean process exit.
+- **Physical SDS200 validation — completed**
+  - Validated private `0700` directory and `0600` socket permissions, two
+    independent snapshot-first clients at the same sequence boundary, excess
+    client rejection, and unchanged request-response API operation.
+  - Observed 76 ordered events from sequence 11 through 86 without gaps,
+    regressions, malformed lines, or reader errors, including live PSI and
+    radio-state events plus shutdown audio, scanner-connection, and daemon
+    lifecycle transitions.
+  - Controlled `SIGTERM` returned success after 507 RTP packets and 162,240
+    decoded samples, removed both owned sockets, and left no process error.
+    Destination-health transitions remain regression-tested because the initial
+    daemon router has no activated destinations in this milestone.
 
 ## Deferred hardware validation
 
