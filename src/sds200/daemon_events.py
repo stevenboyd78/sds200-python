@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+import queue
+import threading
+from collections import deque
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from math import isfinite
+from time import monotonic
 from types import MappingProxyType
 from typing import cast
 
@@ -113,6 +117,235 @@ class DaemonEvent:
             )
             + "\n"
         ).encode("utf-8")
+
+
+class DaemonEventSubscriptionClosed(RuntimeError):
+    """Raised when receiving from a closed daemon event subscription."""
+
+
+class DaemonEventSubscription:
+    """One independent bounded daemon event subscription."""
+
+    def __init__(
+        self,
+        publisher: DaemonEventPublisher,
+        snapshot: DaemonEvent,
+        *,
+        queue_capacity: int,
+    ) -> None:
+        self._publisher = publisher
+        self._queue_capacity = queue_capacity
+        self._condition = threading.Condition()
+        self._queue: deque[DaemonEvent] = deque((snapshot,))
+        self._dropped_events = 0
+        self._closed = False
+
+    @property
+    def queue_capacity(self) -> int:
+        return self._queue_capacity
+
+    @property
+    def dropped_events(self) -> int:
+        with self._condition:
+            return self._dropped_events
+
+    @property
+    def closed(self) -> bool:
+        with self._condition:
+            return self._closed
+
+    def get(self, timeout: float | None = None) -> DaemonEvent:
+        if timeout is not None:
+            if isinstance(timeout, bool) or not isinstance(
+                timeout,
+                (int, float),
+            ):
+                raise TypeError(
+                    "Subscription timeout must be a number or None."
+                )
+            if not isfinite(timeout):
+                raise ValueError("Subscription timeout must be finite.")
+            if timeout < 0:
+                raise ValueError(
+                    "Subscription timeout must not be negative."
+                )
+
+        deadline = None if timeout is None else monotonic() + timeout
+        with self._condition:
+            while True:
+                if self._closed:
+                    raise DaemonEventSubscriptionClosed(
+                        "Daemon event subscription is closed."
+                    )
+                if self._queue:
+                    return self._queue.popleft()
+                if deadline is None:
+                    self._condition.wait()
+                    continue
+
+                remaining = deadline - monotonic()
+                if remaining <= 0:
+                    raise queue.Empty
+                self._condition.wait(remaining)
+
+    def close(self) -> None:
+        self._publisher._close_subscription(self)
+
+    def _enqueue(self, event: DaemonEvent) -> None:
+        with self._condition:
+            if self._closed:
+                return
+
+            if len(self._queue) >= self._queue_capacity:
+                if (
+                    self._queue
+                    and self._queue[0].kind
+                    == DaemonEventKind.SNAPSHOT
+                ):
+                    del self._queue[1]
+                else:
+                    self._queue.popleft()
+                self._dropped_events += 1
+
+            self._queue.append(event)
+            self._condition.notify()
+
+    def _close_from_publisher(self) -> None:
+        with self._condition:
+            if self._closed:
+                return
+            self._closed = True
+            self._queue.clear()
+            self._condition.notify_all()
+
+
+class DaemonEventPublisher:
+    """Publish globally ordered events to isolated bounded subscriptions."""
+
+    def __init__(
+        self,
+        snapshot: Callable[[], Mapping[str, object]],
+        *,
+        queue_capacity: int = 64,
+        max_subscribers: int = 32,
+        now: Callable[[], datetime] = lambda: datetime.now(UTC),
+    ) -> None:
+        if type(queue_capacity) is not int:
+            raise TypeError(
+                "Daemon event queue capacity must be an integer."
+            )
+        if queue_capacity < 2:
+            raise ValueError(
+                "Daemon event queue capacity must be at least two."
+            )
+        if type(max_subscribers) is not int:
+            raise TypeError(
+                "Daemon event subscriber limit must be an integer."
+            )
+        if max_subscribers <= 0:
+            raise ValueError(
+                "Daemon event subscriber limit must be greater than zero."
+            )
+
+        self._snapshot = snapshot
+        self._queue_capacity = queue_capacity
+        self._max_subscribers = max_subscribers
+        self._now = now
+        self._lock = threading.RLock()
+        self._subscriptions: set[DaemonEventSubscription] = set()
+        self._sequence = 0
+        self._closed = False
+
+    @property
+    def sequence(self) -> int:
+        with self._lock:
+            return self._sequence
+
+    @property
+    def subscriber_count(self) -> int:
+        with self._lock:
+            return len(self._subscriptions)
+
+    @property
+    def closed(self) -> bool:
+        with self._lock:
+            return self._closed
+
+    def subscribe(self) -> DaemonEventSubscription:
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Daemon event publisher is closed.")
+            if len(self._subscriptions) >= self._max_subscribers:
+                raise RuntimeError(
+                    "Daemon event publisher reached its maximum "
+                    "subscriber count."
+                )
+
+            snapshot = DaemonEvent(
+                sequence=self._sequence,
+                observed_at=self._now(),
+                kind=DaemonEventKind.SNAPSHOT,
+                payload=self._snapshot(),
+            )
+            subscription = DaemonEventSubscription(
+                self,
+                snapshot,
+                queue_capacity=self._queue_capacity,
+            )
+            self._subscriptions.add(subscription)
+            return subscription
+
+    def publish(
+        self,
+        kind: str,
+        payload: Mapping[str, object],
+        *,
+        observed_at: datetime | None = None,
+    ) -> DaemonEvent:
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Daemon event publisher is closed.")
+            if kind == DaemonEventKind.SNAPSHOT:
+                raise ValueError(
+                    "The daemon stream snapshot kind is reserved."
+                )
+
+            sequence = self._sequence + 1
+            event = DaemonEvent(
+                sequence=sequence,
+                observed_at=(
+                    self._now()
+                    if observed_at is None
+                    else observed_at
+                ),
+                kind=kind,
+                payload=payload,
+            )
+            self._sequence = sequence
+
+            for subscription in tuple(self._subscriptions):
+                subscription._enqueue(event)
+
+            return event
+
+    def close(self) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            subscriptions = tuple(self._subscriptions)
+            self._subscriptions.clear()
+
+            for subscription in subscriptions:
+                subscription._close_from_publisher()
+
+    def _close_subscription(
+        self,
+        subscription: DaemonEventSubscription,
+    ) -> None:
+        with self._lock:
+            self._subscriptions.discard(subscription)
+            subscription._close_from_publisher()
 
 
 def _freeze_mapping(

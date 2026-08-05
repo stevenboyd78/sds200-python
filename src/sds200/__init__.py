@@ -114,6 +114,9 @@ from .daemon_events import (
     DAEMON_EVENT_VERSION,
     DaemonEvent,
     DaemonEventKind,
+    DaemonEventPublisher,
+    DaemonEventSubscription,
+    DaemonEventSubscriptionClosed,
 )
 from .daemon_ipc import (
     DAEMON_SOCKET_DIRECTORY_MODE,
@@ -466,6 +469,9 @@ __all__ = [
     "DaemonApiServerSnapshot",
     "DaemonEvent",
     "DaemonEventKind",
+    "DaemonEventPublisher",
+    "DaemonEventSubscription",
+    "DaemonEventSubscriptionClosed",
     "DaemonProcess",
     "DaemonProcessResult",
     "DaemonReadOnlyApi",
