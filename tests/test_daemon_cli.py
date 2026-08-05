@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import signal
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -8,12 +9,15 @@ import pytest
 from sds200 import DaemonSocketSource, cli, resolve_configuration_paths
 from sds200.audio import AudioChunkHandler
 from sds200.daemon_process import DaemonProcessResult
+from sds200.pcmu import PcmuPacketHandler
+from sds200.pcmu_protocol import PCMU_STREAM_HEADER_BYTES
 from sds200.profiles import ConnectionProfile
 
 
 class FakeAudioTransport:
     def __init__(self) -> None:
         self._running = False
+        self.packet_handlers: list[PcmuPacketHandler] = []
 
     @property
     def endpoint(self) -> str:
@@ -22,6 +26,18 @@ class FakeAudioTransport:
     @property
     def running(self) -> bool:
         return self._running
+
+    def on_packet(
+        self,
+        callback: PcmuPacketHandler,
+    ) -> Callable[[], None]:
+        self.packet_handlers.append(callback)
+
+        def unsubscribe() -> None:
+            if callback in self.packet_handlers:
+                self.packet_handlers.remove(callback)
+
+        return unsubscribe
 
     def start(self, handler: AudioChunkHandler) -> None:
         del handler
@@ -44,9 +60,10 @@ class FakeDaemonEventStream:
         self.queue_capacity = queue_capacity
         self.max_subscribers = max_subscribers
         self.max_event_bytes = max_event_bytes
+        self.close_calls = 0
 
     def close(self) -> None:
-        pass
+        self.close_calls += 1
 
 
 class StubProfileStore:
@@ -102,6 +119,22 @@ def test_daemon_parser_accepts_process_and_audio_options() -> None:
             "8",
             "--event-shutdown-timeout",
             "4",
+            "--pcmu-socket-path",
+            "/tmp/sdsctl-pcmu-test.sock",
+            "--pcmu-queue-capacity",
+            "128",
+            "--pcmu-max-clients",
+            "7",
+            "--pcmu-max-payload-bytes",
+            "2048",
+            "--pcmu-max-endpoint-bytes",
+            "1024",
+            "--pcmu-max-frame-bytes",
+            "8192",
+            "--pcmu-send-timeout",
+            "9",
+            "--pcmu-shutdown-timeout",
+            "6",
         ]
     )
 
@@ -124,6 +157,14 @@ def test_daemon_parser_accepts_process_and_audio_options() -> None:
     assert args.event_max_bytes == 32768
     assert args.event_send_timeout == 8.0
     assert args.event_shutdown_timeout == 4.0
+    assert args.pcmu_socket_path == Path("/tmp/sdsctl-pcmu-test.sock")
+    assert args.pcmu_queue_capacity == 128
+    assert args.pcmu_max_clients == 7
+    assert args.pcmu_max_payload_bytes == 2048
+    assert args.pcmu_max_endpoint_bytes == 1024
+    assert args.pcmu_max_frame_bytes == 8192
+    assert args.pcmu_send_timeout == 9.0
+    assert args.pcmu_shutdown_timeout == 6.0
 
 
 @pytest.mark.parametrize(
@@ -195,6 +236,7 @@ def test_daemon_cli_constructs_one_runtime_and_process(
     scanner = object()
     selected: list[tuple[object, object]] = []
     transport_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+    transports: list[FakeAudioTransport] = []
     processes: list[object] = []
 
     def select_radio(
@@ -210,7 +252,9 @@ def test_daemon_cli_constructs_one_runtime_and_process(
         **kwargs: object,
     ) -> FakeAudioTransport:
         transport_calls.append((args, kwargs))
-        return FakeAudioTransport()
+        transport = FakeAudioTransport()
+        transports.append(transport)
+        return transport
 
     class FakeProcess:
         def __init__(
@@ -219,10 +263,12 @@ def test_daemon_cli_constructs_one_runtime_and_process(
             *,
             api_server: object,
             event_server: object,
+            pcmu_server: object,
         ) -> None:
             self.runtime = runtime
             self.api_server = api_server
             self.event_server = event_server
+            self.pcmu_server = pcmu_server
             processes.append(self)
 
         def run(self) -> DaemonProcessResult:
@@ -317,6 +363,26 @@ def test_daemon_cli_constructs_one_runtime_and_process(
     assert event_server.listener.location.path == (
         paths.user_state_dir / "events.sock"
     )
+
+    pcmu_server = process.pcmu_server
+    assert isinstance(pcmu_server, cli.DaemonPcmuServer)
+    assert isinstance(pcmu_server.stream, cli.PcmuStream)
+    assert pcmu_server.stream.source is transports[0]
+    assert pcmu_server.stream.queue_capacity == 64
+    assert pcmu_server.stream.max_subscribers == 8
+    assert pcmu_server.stream.max_payload_bytes == 65535
+    assert pcmu_server.max_clients == 8
+    assert pcmu_server.max_endpoint_bytes == 4096
+    assert pcmu_server.max_frame_bytes == 128 * 1024
+    assert pcmu_server.send_timeout == 5.0
+    assert pcmu_server.shutdown_timeout == 2.0
+    assert pcmu_server.listener.location.source is (
+        DaemonSocketSource.USER_STATE
+    )
+    assert pcmu_server.listener.location.path == (
+        paths.user_state_dir / "pcmu.sock"
+    )
+    assert len(transports[0].packet_handlers) == 1
     assert capsys.readouterr().out == ""
 
 
@@ -359,8 +425,9 @@ def test_daemon_cli_reports_process_os_error(
             *,
             api_server: object,
             event_server: object,
+            pcmu_server: object,
         ) -> None:
-            del runtime, api_server, event_server
+            del runtime, api_server, event_server, pcmu_server
 
         def run(self) -> DaemonProcessResult:
             raise OSError("process startup failed")
@@ -378,8 +445,9 @@ def test_daemon_cli_explicit_socket_path_overrides_runtime_environment(
 ) -> None:
     explicit = tmp_path / "explicit" / "daemon.sock"
     explicit_events = tmp_path / "explicit" / "events.sock"
+    explicit_pcmu = tmp_path / "explicit" / "pcmu.sock"
     explicit.parent.mkdir()
-    observed: list[tuple[object, object]] = []
+    observed: list[tuple[object, object, object]] = []
 
     monkeypatch.setattr(
         cli,
@@ -399,9 +467,10 @@ def test_daemon_cli_explicit_socket_path_overrides_runtime_environment(
             *,
             api_server: object,
             event_server: object,
+            pcmu_server: object,
         ) -> None:
             del runtime
-            observed.append((api_server, event_server))
+            observed.append((api_server, event_server, pcmu_server))
 
         def run(self) -> DaemonProcessResult:
             return DaemonProcessResult(last_signal=int(signal.SIGTERM))
@@ -438,6 +507,22 @@ def test_daemon_cli_explicit_socket_path_overrides_runtime_environment(
             "10",
             "--event-shutdown-timeout",
             "5",
+            "--pcmu-socket-path",
+            str(explicit_pcmu),
+            "--pcmu-queue-capacity",
+            "20",
+            "--pcmu-max-clients",
+            "7",
+            "--pcmu-max-payload-bytes",
+            "4096",
+            "--pcmu-max-endpoint-bytes",
+            "2048",
+            "--pcmu-max-frame-bytes",
+            "16384",
+            "--pcmu-send-timeout",
+            "11",
+            "--pcmu-shutdown-timeout",
+            "6",
         ],
         environ={
             "XDG_RUNTIME_DIR": str(tmp_path / "runtime"),
@@ -446,7 +531,7 @@ def test_daemon_cli_explicit_socket_path_overrides_runtime_environment(
 
     assert result == 0
     assert len(observed) == 1
-    api_server, event_server = observed[0]
+    api_server, event_server, pcmu_server = observed[0]
     assert isinstance(api_server, cli.DaemonApiServer)
     assert api_server.listener.location.source is DaemonSocketSource.EXPLICIT
     assert api_server.listener.location.path == explicit
@@ -467,6 +552,21 @@ def test_daemon_cli_explicit_socket_path_overrides_runtime_environment(
     assert event_server.max_event_bytes == 65536
     assert event_server.send_timeout == 10.0
     assert event_server.shutdown_timeout == 5.0
+
+    assert isinstance(pcmu_server, cli.DaemonPcmuServer)
+    assert isinstance(pcmu_server.stream, cli.PcmuStream)
+    assert pcmu_server.stream.queue_capacity == 20
+    assert pcmu_server.stream.max_subscribers == 7
+    assert pcmu_server.stream.max_payload_bytes == 4096
+    assert pcmu_server.listener.location.source is (
+        DaemonSocketSource.EXPLICIT
+    )
+    assert pcmu_server.listener.location.path == explicit_pcmu
+    assert pcmu_server.max_clients == 7
+    assert pcmu_server.max_endpoint_bytes == 2048
+    assert pcmu_server.max_frame_bytes == 16384
+    assert pcmu_server.send_timeout == 11.0
+    assert pcmu_server.shutdown_timeout == 6.0
 
 
 def test_daemon_cli_reports_relative_socket_path(
@@ -527,3 +627,101 @@ def test_daemon_cli_reports_relative_event_socket_path(
 
     assert result == 2
     assert "must be absolute" in capsys.readouterr().err
+
+
+def test_daemon_cli_reports_relative_pcmu_socket_path(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "selected_radio",
+        lambda args, **kwargs: object(),
+    )
+    monkeypatch.setattr(
+        cli,
+        "NetworkAudioTransport",
+        lambda *args, **kwargs: FakeAudioTransport(),
+    )
+
+    result = cli.main(
+        [
+            "--host",
+            "192.0.2.25",
+            "daemon",
+            "--pcmu-socket-path",
+            "relative/pcmu.sock",
+        ],
+        environ={},
+    )
+
+    assert result == 2
+    assert "must be absolute" in capsys.readouterr().err
+
+
+def test_daemon_cli_closes_pcmu_stream_after_server_validation_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    transports: list[FakeAudioTransport] = []
+    event_streams: list[FakeDaemonEventStream] = []
+
+    def transport_factory(
+        *args: object,
+        **kwargs: object,
+    ) -> FakeAudioTransport:
+        del args, kwargs
+        transport = FakeAudioTransport()
+        transports.append(transport)
+        return transport
+
+    monkeypatch.setattr(
+        cli,
+        "selected_radio",
+        lambda args, **kwargs: object(),
+    )
+    monkeypatch.setattr(
+        cli,
+        "NetworkAudioTransport",
+        transport_factory,
+    )
+
+    def event_stream_factory(
+        runtime: object,
+        *,
+        queue_capacity: int,
+        max_subscribers: int,
+        max_event_bytes: int,
+    ) -> FakeDaemonEventStream:
+        stream = FakeDaemonEventStream(
+            runtime,
+            queue_capacity=queue_capacity,
+            max_subscribers=max_subscribers,
+            max_event_bytes=max_event_bytes,
+        )
+        event_streams.append(stream)
+        return stream
+
+    monkeypatch.setattr(
+        cli,
+        "DaemonEventStream",
+        event_stream_factory,
+    )
+
+    result = cli.main(
+        [
+            "--host",
+            "192.0.2.25",
+            "daemon",
+            "--pcmu-max-frame-bytes",
+            str(PCMU_STREAM_HEADER_BYTES - 1),
+        ],
+        environ={},
+    )
+
+    assert result == 2
+    assert len(transports) == 1
+    assert transports[0].packet_handlers == []
+    assert len(event_streams) == 1
+    assert event_streams[0].close_calls == 1
+    assert "must be at least" in capsys.readouterr().err
