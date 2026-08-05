@@ -39,7 +39,11 @@ from .configuration import (
     ResolvedApplicationConfiguration,
     load_application_configuration,
 )
-from .daemon_api import DaemonApiOperation, DaemonReadOnlyApi
+from .daemon_api import (
+    DAEMON_API_DEFAULT_CONTROL_TIMEOUT,
+    DaemonApiOperation,
+    DaemonReadOnlyApi,
+)
 from .daemon_client import (
     DAEMON_API_CLIENT_DEFAULT_TIMEOUT,
     DaemonApiClient,
@@ -902,6 +906,80 @@ def build_parser(
     daemon_client_commands.add_parser(
         "snapshot",
         help="Print the complete authoritative runtime snapshot as JSON",
+    )
+
+    for action_name, action_help in (
+        ("hold", "Hold a documented scanner selection through the daemon"),
+        (
+            "next",
+            "Move forward through a documented daemon-owned selection list",
+        ),
+        (
+            "previous",
+            "Move backward through a documented daemon-owned selection list",
+        ),
+    ):
+        daemon_control = daemon_client_commands.add_parser(
+            action_name,
+            help=action_help,
+        )
+        daemon_control.add_argument(
+            "target",
+            type=str.upper,
+            choices=NAVIGATION_TARGETS,
+        )
+        daemon_control.add_argument(
+            "first",
+            nargs="?",
+            help="Primary protocol index or frequency",
+        )
+        daemon_control.add_argument(
+            "second",
+            nargs="?",
+            help="Optional parent index required by some targets",
+        )
+        if action_name != "hold":
+            daemon_control.add_argument(
+                "--count",
+                type=_positive_integer,
+                default=1,
+                choices=range(1, 9),
+                help="Number of selections to move (1-8)",
+            )
+        daemon_control.add_argument(
+            "--control-timeout",
+            type=_positive_float,
+            default=DAEMON_API_DEFAULT_CONTROL_TIMEOUT,
+            metavar="SECONDS",
+            help=(
+                "Bounded daemon scanner-control timeout "
+                f"(default: {DAEMON_API_DEFAULT_CONTROL_TIMEOUT})"
+            ),
+        )
+        daemon_control.add_argument(
+            "--json",
+            action="store_true",
+            help="Print the authoritative completion result as JSON",
+        )
+
+    daemon_reconnect = daemon_client_commands.add_parser(
+        "reconnect",
+        help="Request one bounded daemon-owned scanner reconnect",
+    )
+    daemon_reconnect.add_argument(
+        "--control-timeout",
+        type=_positive_float,
+        default=DAEMON_API_DEFAULT_CONTROL_TIMEOUT,
+        metavar="SECONDS",
+        help=(
+            "Bounded daemon scanner-control timeout "
+            f"(default: {DAEMON_API_DEFAULT_CONTROL_TIMEOUT})"
+        ),
+    )
+    daemon_reconnect.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the authoritative completion result as JSON",
     )
 
     tui = subparsers.add_parser(
@@ -2149,6 +2227,50 @@ def _daemon_client_flag(value: object) -> str:
     return "-"
 
 
+def _require_daemon_client_operation(
+    hello: Mapping[str, object],
+    operation: DaemonApiOperation,
+    *,
+    control: bool = False,
+) -> None:
+    if control:
+        if hello.get("read_only") is True:
+            raise DaemonProtocolError(
+                "The connected daemon is read-only and does not support "
+                f"{operation.value}."
+            )
+
+        control_operations = hello.get("control_operations")
+        if (
+            not isinstance(control_operations, list)
+            or operation.value not in control_operations
+        ):
+            raise DaemonProtocolError(
+                "The daemon does not advertise "
+                f"{operation.value} control support."
+            )
+
+    operations = hello.get("operations")
+    if not isinstance(operations, list) or operation.value not in operations:
+        raise DaemonProtocolError(
+            f"The daemon does not advertise {operation.value} support."
+        )
+
+
+def _print_daemon_control_result(result: Mapping[str, object]) -> None:
+    snapshot = _daemon_client_mapping(result, "snapshot")
+    print(f"Control:            {result.get('operation', '-')}")
+    print(f"Sequence:           {result.get('sequence', '-')}")
+    print(f"Started:            {result.get('started_at', '-')}")
+    print(f"Completed:          {result.get('completed_at', '-')}")
+    print(f"Runtime:            {snapshot.get('state', '-')}")
+    print(
+        "Scanner connected:  "
+        f"{_daemon_client_flag(snapshot.get('scanner_connected'))}"
+    )
+    print(f"Scanner endpoint:   {snapshot.get('scanner_endpoint', '-')}")
+
+
 def _print_daemon_client_status(
     socket_path: Path,
     socket_source: str,
@@ -2190,29 +2312,87 @@ def _run_daemon_client(
         configuration_paths=configuration_paths,
     )
 
+    action = args.daemon_client_action
+    snapshot: dict[str, object] | None = None
+    control_result: dict[str, object] | None = None
+
     with DaemonApiClient(
         location,
         timeout=args.timeout,
         max_response_bytes=args.max_response_bytes,
     ) as client:
         hello = client.hello()
-        operations = hello["operations"]
-        assert isinstance(operations, list)
-        if DaemonApiOperation.RUNTIME_SNAPSHOT.value not in operations:
-            raise DaemonProtocolError(
-                "The daemon does not advertise runtime.snapshot support."
-            )
-        snapshot = client.runtime_snapshot()
 
-    if args.daemon_client_action == "snapshot":
+        if action in {"status", "snapshot"}:
+            _require_daemon_client_operation(
+                hello,
+                DaemonApiOperation.RUNTIME_SNAPSHOT,
+            )
+            snapshot = client.runtime_snapshot()
+        elif action == "hold":
+            _require_daemon_client_operation(
+                hello,
+                DaemonApiOperation.SCANNER_HOLD,
+                control=True,
+            )
+            control_result = client.hold(
+                args.target,
+                args.first,
+                args.second,
+                timeout=args.control_timeout,
+            )
+        elif action == "next":
+            _require_daemon_client_operation(
+                hello,
+                DaemonApiOperation.SCANNER_NEXT,
+                control=True,
+            )
+            control_result = client.next(
+                args.target,
+                args.first,
+                args.second,
+                count=args.count,
+                timeout=args.control_timeout,
+            )
+        elif action == "previous":
+            _require_daemon_client_operation(
+                hello,
+                DaemonApiOperation.SCANNER_PREVIOUS,
+                control=True,
+            )
+            control_result = client.previous(
+                args.target,
+                args.first,
+                args.second,
+                count=args.count,
+                timeout=args.control_timeout,
+            )
+        elif action == "reconnect":
+            _require_daemon_client_operation(
+                hello,
+                DaemonApiOperation.SCANNER_RECONNECT,
+                control=True,
+            )
+            control_result = client.reconnect(
+                timeout=args.control_timeout,
+            )
+        else:
+            raise ValueError(f"Unsupported daemon-client action: {action}")
+
+    if action == "snapshot":
+        assert snapshot is not None
         print(json.dumps(snapshot, indent=2, sort_keys=True))
         return 0
 
-    if args.daemon_client_action != "status":
-        raise ValueError(
-            f"Unsupported daemon-client action: {args.daemon_client_action}"
-        )
+    if control_result is not None:
+        if args.json:
+            print(json.dumps(control_result, indent=2, sort_keys=True))
+        else:
+            _print_daemon_control_result(control_result)
+        return 0
 
+    assert action == "status"
+    assert snapshot is not None
     if args.json:
         print(
             json.dumps(

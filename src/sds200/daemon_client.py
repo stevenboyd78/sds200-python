@@ -7,9 +7,13 @@ import socket as socket_module
 import threading
 from collections.abc import Mapping
 from contextlib import suppress
+from copy import deepcopy
+from datetime import datetime
 from math import isfinite
 
+from .commands import NAVIGATION_TARGETS
 from .daemon_api import (
+    DAEMON_API_DEFAULT_CONTROL_TIMEOUT,
     DAEMON_API_PROTOCOL,
     DAEMON_API_SUPPORTED_VERSIONS,
     DAEMON_API_VERSION,
@@ -68,6 +72,7 @@ class DaemonApiClient:
         self._lifecycle_lock = threading.RLock()
         self._request_lock = threading.Lock()
         self._socket: socket_module.socket | None = None
+        self._hello_result: dict[str, object] | None = None
         self._request_sequence = 0
 
     @property
@@ -98,6 +103,7 @@ class DaemonApiClient:
         with self._lifecycle_lock:
             client = self._socket
             self._socket = None
+            self._hello_result = None
         if client is not None:
             _close_socket(client)
 
@@ -117,13 +123,23 @@ class DaemonApiClient:
     def hello(self) -> dict[str, object]:
         """Negotiate and validate the local daemon protocol contract."""
 
+        with self._lifecycle_lock:
+            cached = self._hello_result
+        if cached is not None:
+            return deepcopy(cached)
+
         result = self.request(DaemonApiOperation.HELLO)
         try:
             _validate_hello_result(result)
         except DaemonProtocolError:
             self.close()
             raise
-        return result
+
+        normalized_result = deepcopy(result)
+        with self._lifecycle_lock:
+            if self._socket is not None:
+                self._hello_result = normalized_result
+        return deepcopy(normalized_result)
 
     def runtime_snapshot(self) -> dict[str, object]:
         """Return one validated authoritative runtime snapshot."""
@@ -135,6 +151,156 @@ class DaemonApiClient:
             self.close()
             raise
         return result
+
+    def hold(
+        self,
+        target: str,
+        first: str | int | None = None,
+        second: str | int | None = None,
+        *,
+        timeout: float = DAEMON_API_DEFAULT_CONTROL_TIMEOUT,
+    ) -> dict[str, object]:
+        """Complete one daemon-owned scanner hold operation."""
+
+        normalized_target, normalized_first, normalized_second = (
+            _navigation_parameters(target, first, second)
+        )
+        normalized_timeout = self._require_control_operation(
+            DaemonApiOperation.SCANNER_HOLD,
+            timeout,
+        )
+        params: dict[str, object] = {
+            "target": normalized_target,
+            "timeout": normalized_timeout,
+        }
+        if normalized_first is not None:
+            params["first"] = normalized_first
+        if normalized_second is not None:
+            params["second"] = normalized_second
+        return self._control(DaemonApiOperation.SCANNER_HOLD, params)
+
+    def next(
+        self,
+        target: str,
+        first: str | int | None = None,
+        second: str | int | None = None,
+        *,
+        count: int = 1,
+        timeout: float = DAEMON_API_DEFAULT_CONTROL_TIMEOUT,
+    ) -> dict[str, object]:
+        """Move forward through one daemon-owned scanner selection list."""
+
+        normalized_target, normalized_first, normalized_second = (
+            _navigation_parameters(target, first, second)
+        )
+        normalized_count = _navigation_count(count)
+        normalized_timeout = self._require_control_operation(
+            DaemonApiOperation.SCANNER_NEXT,
+            timeout,
+        )
+        params: dict[str, object] = {
+            "target": normalized_target,
+            "count": normalized_count,
+            "timeout": normalized_timeout,
+        }
+        if normalized_first is not None:
+            params["first"] = normalized_first
+        if normalized_second is not None:
+            params["second"] = normalized_second
+        return self._control(DaemonApiOperation.SCANNER_NEXT, params)
+
+    def previous(
+        self,
+        target: str,
+        first: str | int | None = None,
+        second: str | int | None = None,
+        *,
+        count: int = 1,
+        timeout: float = DAEMON_API_DEFAULT_CONTROL_TIMEOUT,
+    ) -> dict[str, object]:
+        """Move backward through one daemon-owned scanner selection list."""
+
+        normalized_target, normalized_first, normalized_second = (
+            _navigation_parameters(target, first, second)
+        )
+        normalized_count = _navigation_count(count)
+        normalized_timeout = self._require_control_operation(
+            DaemonApiOperation.SCANNER_PREVIOUS,
+            timeout,
+        )
+        params: dict[str, object] = {
+            "target": normalized_target,
+            "count": normalized_count,
+            "timeout": normalized_timeout,
+        }
+        if normalized_first is not None:
+            params["first"] = normalized_first
+        if normalized_second is not None:
+            params["second"] = normalized_second
+        return self._control(DaemonApiOperation.SCANNER_PREVIOUS, params)
+
+    def reconnect(
+        self,
+        *,
+        timeout: float = DAEMON_API_DEFAULT_CONTROL_TIMEOUT,
+    ) -> dict[str, object]:
+        """Complete one bounded daemon-owned scanner reconnect."""
+
+        normalized_timeout = self._require_control_operation(
+            DaemonApiOperation.SCANNER_RECONNECT,
+            timeout,
+        )
+        return self._control(
+            DaemonApiOperation.SCANNER_RECONNECT,
+            {"timeout": normalized_timeout},
+        )
+
+    def _control(
+        self,
+        operation: DaemonApiOperation,
+        params: Mapping[str, object],
+    ) -> dict[str, object]:
+        result = self.request(operation, params)
+        try:
+            _validate_control_result(result, expected_operation=operation)
+        except DaemonProtocolError:
+            self.close()
+            raise
+        return result
+
+    def _require_operation(self, operation: DaemonApiOperation) -> None:
+        hello = self.hello()
+        operations = hello["operations"]
+        assert isinstance(operations, list)
+        if operation.value not in operations:
+            raise DaemonProtocolError(
+                f"The daemon does not advertise {operation.value} support."
+            )
+
+    def _require_control_operation(
+        self,
+        operation: DaemonApiOperation,
+        timeout: float,
+    ) -> float:
+        hello = self.hello()
+
+        if hello["read_only"] is True:
+            raise DaemonProtocolError(
+                "The connected daemon is read-only and does not support "
+                f"{operation.value}."
+            )
+
+        control_operations = hello["control_operations"]
+        assert isinstance(control_operations, list)
+        if operation.value not in control_operations:
+            raise DaemonProtocolError(
+                f"The daemon does not advertise {operation.value} control support."
+            )
+
+        self._require_operation(operation)
+        maximum = hello["max_control_timeout"]
+        assert isinstance(maximum, (int, float))
+        return _bounded_control_timeout(timeout, maximum=float(maximum))
 
     def request(
         self,
@@ -244,6 +410,7 @@ class DaemonApiClient:
         with self._lifecycle_lock:
             if self._socket is expected:
                 self._socket = None
+                self._hello_result = None
         _close_socket(expected)
 
     def _raise_connect_error(self, error: OSError) -> None:
@@ -269,6 +436,143 @@ class DaemonApiClient:
         raise DaemonUnavailableError(
             f"Could not connect to daemon socket {path}: {detail}"
         ) from error
+
+
+def _navigation_parameters(
+    target: object,
+    first: object,
+    second: object,
+) -> tuple[str, str | int | None, str | int | None]:
+    if not isinstance(target, str) or not target.strip():
+        raise ValueError("Daemon scanner control target must be a non-empty string.")
+    normalized_target = target.strip().upper()
+    if normalized_target not in NAVIGATION_TARGETS:
+        choices = ", ".join(NAVIGATION_TARGETS)
+        raise ValueError(
+            f"Daemon scanner control target must be one of: {choices}."
+        )
+
+    return (
+        normalized_target,
+        _navigation_value(first, "first"),
+        _navigation_value(second, "second"),
+    )
+
+
+def _navigation_value(
+    value: object,
+    name: str,
+) -> str | int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
+        raise TypeError(
+            f"Daemon navigation parameter {name!r} must be a string or integer."
+        )
+
+    normalized = str(value).strip()
+    if any(delimiter in normalized for delimiter in (",", "\r", "\n")):
+        raise ValueError(
+            f"Daemon navigation parameter {name!r} cannot contain "
+            "commas or line breaks."
+        )
+    return value
+
+
+def _navigation_count(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError("Daemon navigation count must be an integer.")
+    if not 1 <= value <= 8:
+        raise ValueError("Daemon navigation count must be between 1 and 8.")
+    return value
+
+
+def _bounded_control_timeout(
+    value: object,
+    *,
+    maximum: float,
+) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError("Daemon control timeout must be a number.")
+    normalized = float(value)
+    if not isfinite(normalized) or normalized <= 0:
+        raise ValueError(
+            "Daemon control timeout must be finite and greater than zero."
+        )
+    if normalized > maximum:
+        raise ValueError(
+            "Daemon control timeout exceeds the advertised maximum "
+            f"of {maximum} seconds."
+        )
+    return normalized
+
+
+def _validate_control_result(
+    result: Mapping[str, object],
+    *,
+    expected_operation: DaemonApiOperation,
+) -> None:
+    required = {
+        "sequence",
+        "operation",
+        "started_at",
+        "completed_at",
+        "snapshot",
+    }
+    missing = sorted(required - set(result))
+    if missing:
+        raise DaemonProtocolError(
+            "The daemon control result omitted required fields: "
+            f"{missing!r}."
+        )
+
+    sequence = result["sequence"]
+    if type(sequence) is not int or sequence <= 0:
+        raise DaemonProtocolError(
+            "The daemon control result sequence must be a positive integer."
+        )
+
+    operation = result["operation"]
+    if operation != expected_operation.value:
+        raise DaemonProtocolError(
+            "The daemon control result operation did not match the request."
+        )
+
+    started_at = _aware_datetime(result["started_at"], "started_at")
+    completed_at = _aware_datetime(result["completed_at"], "completed_at")
+    if completed_at < started_at:
+        raise DaemonProtocolError(
+            "The daemon control completion precedes its start time."
+        )
+
+    snapshot = result["snapshot"]
+    if not isinstance(snapshot, Mapping) or any(
+        not isinstance(key, str) for key in snapshot
+    ):
+        raise DaemonProtocolError(
+            "The daemon control result snapshot must be a JSON object."
+        )
+    _validate_runtime_snapshot(snapshot)
+
+
+def _aware_datetime(value: object, name: str) -> datetime:
+    if not isinstance(value, str) or not value:
+        raise DaemonProtocolError(
+            f"The daemon control result field {name!r} must be a timestamp."
+        )
+
+    normalized = f"{value[:-1]}+00:00" if value.endswith(("Z", "z")) else value
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as error:
+        raise DaemonProtocolError(
+            f"The daemon control result field {name!r} is not ISO 8601."
+        ) from error
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise DaemonProtocolError(
+            f"The daemon control result field {name!r} lacks a UTC offset."
+        )
+    return parsed
 
 
 def _validate_hello_result(result: Mapping[str, object]) -> None:
