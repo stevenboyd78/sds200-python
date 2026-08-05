@@ -108,6 +108,13 @@ from .daemon_api import (
     DaemonApiResponse,
     DaemonReadOnlyApi,
 )
+from .daemon_events import (
+    DAEMON_EVENT_PROTOCOL,
+    DAEMON_EVENT_SUPPORTED_VERSIONS,
+    DAEMON_EVENT_VERSION,
+    DaemonEvent,
+    DaemonEventKind,
+)
 from .daemon_ipc import (
     DAEMON_SOCKET_DIRECTORY_MODE,
     DAEMON_SOCKET_FILENAME,
@@ -444,6 +451,9 @@ __all__ = [
     "DAEMON_API_PROTOCOL",
     "DAEMON_API_SUPPORTED_VERSIONS",
     "DAEMON_API_VERSION",
+    "DAEMON_EVENT_PROTOCOL",
+    "DAEMON_EVENT_SUPPORTED_VERSIONS",
+    "DAEMON_EVENT_VERSION",
     "DAEMON_SOCKET_DIRECTORY_MODE",
     "DAEMON_SOCKET_FILENAME",
     "DAEMON_SOCKET_MODE",
@@ -454,6 +464,8 @@ __all__ = [
     "DaemonApiResponse",
     "DaemonApiServer",
     "DaemonApiServerSnapshot",
+    "DaemonEvent",
+    "DaemonEventKind",
     "DaemonProcess",
     "DaemonProcessResult",
     "DaemonReadOnlyApi",
