@@ -11,42 +11,38 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 19.7 — Bounded PCMU client subscriptions
+### Milestone 19.8 — Safe daemon controls
 
-- **Accepted PCMU packet fanout — complete**
-  - Publish accepted RTP PCMU payloads before decoding rather than re-encoding
-    decoded PCM.
-  - Preserve RTP sequence, timestamp, discontinuity, observation, and endpoint
-    information needed by local clients.
-  - Keep packet acceptance and decoded-PCM routing under one authoritative
-    network-audio session.
-- **Independent bounded subscriptions — complete**
-  - Give every audio subscriber an independent bounded queue and deterministic
-    close and unsubscribe behavior.
-  - Isolate slow, disconnected, malformed, and excess clients without delaying
-    RTP reception, scanner control, PSI, daemon events, or other subscribers.
-  - Expose packet loss, queue overflow, discontinuity, and subscriber-health
-    state through immutable snapshots or transitions.
-- **Private local delivery — complete**
-  - Add a versioned local PCMU subscription contract without changing the
-    existing request-response API or ordered event-stream protocols.
-  - Bound client count, queued packets, payload and frame sizes, write waits, and
-    shutdown deadlines.
-  - Preserve private Unix-socket ownership, safe stale-socket handling, and
-    deterministic daemon-process lifecycle integration.
-- **Regression, documentation, and hardware validation — complete**
-  - Regression coverage includes packet ordering, sequence wraparound, network
-    discontinuity, independent queues, overflow, disconnect races, size limits,
-    excess clients, lifecycle integration, and bounded shutdown.
-  - Framing, limits, loss interpretation, lifecycle, socket resolution, client
-    behavior, and current exclusions are documented.
-  - Physical validation kept one API client, one event client, and two PCMU
-    clients active simultaneously while scanner control, PSI, RTP reception,
-    decoded audio, and the router remained healthy.
-  - Both PCMU clients received the same 1,503 ordered frames without local queue
-    loss or network discontinuity, an excess client was rejected, 231 event
-    messages remained continuous, 61 API pings succeeded, and controlled
-    `SIGTERM` removed all three private sockets with exit status 0.
+- **Capability-checked control operations — planned**
+  - Add explicit daemon operations for hold, resume, next, previous, and
+    reconnect without exposing unrestricted raw scanner-command passthrough.
+  - Reuse the existing typed scanner-control contracts and validate operation
+    availability against the connected model and daemon protocol version.
+  - Keep read-only API operations backward-compatible and preserve standalone
+    CLI and TUI behavior.
+- **Serialized execution and authoritative completion — planned**
+  - Serialize conflicting scanner mutations under daemon ownership so clients
+    cannot interleave unsafe command sequences.
+  - Correlate every request with a deterministic success or rejection response
+    after authoritative scanner completion is known.
+  - Define bounded waits, cancellation, disconnect, and shutdown behavior
+    without blocking PSI, RTP reception, daemon events, or other clients.
+- **Safety, isolation, and observability — planned**
+  - Reject malformed, unsupported, stale, concurrent, or unsafe requests with
+    structured redacted errors.
+  - Publish resulting scanner and runtime changes through existing authoritative
+    snapshots and ordered event sources rather than inventing renderer-specific
+    state.
+  - Preserve private Unix-socket permissions, bounded clients, failure
+    isolation, and single-owner scanner lifecycle.
+- **Regression, documentation, and hardware validation — planned**
+  - Cover successful controls, capability rejection, conflicting operations,
+    timeouts, disconnect races, repeated requests, shutdown, and unchanged
+    read-only behavior.
+  - Document operation envelopes, completion semantics, safety exclusions,
+    client responsibilities, and compatibility behavior.
+  - Validate safe controls against a physical SDS200 while API, event, PCMU,
+    PSI, and decoded-audio activity remain healthy.
 
 ## Deferred hardware validation
 
@@ -70,14 +66,6 @@ fixture-tested, not hardware-validated.
 
 These milestone groups preserve intended future work. Their numbering and release
 assignment may change before implementation begins.
-
-### Milestone 19.8 — Safe daemon controls
-
-- Add explicit capability-checked scanner operations such as hold, resume, next,
-  previous, and reconnect.
-- Correlate requests with authoritative completion or rejection responses and
-  serialize conflicting operations.
-- Do not expose unrestricted raw scanner-command passthrough initially.
 
 ### Milestone 19.9 — CLI daemon client
 
@@ -294,3 +282,11 @@ fixtures before renderer-specific implementation.
   separate private `events.sock` endpoint, bounded clients and encoded event
   sizes, deterministic process lifecycle integration, CLI configuration,
   documentation, regression coverage, and physical SDS200 validation.
+- Milestone 19.7: authoritative accepted-PCMU publication before decode,
+  immutable RTP continuity metadata, independent bounded per-client queues with
+  cumulative local-loss accounting, a strict versioned binary frame protocol,
+  a third private `pcmu.sock` endpoint, bounded clients, payloads, frames, waits,
+  and shutdown, deterministic daemon lifecycle integration, public decoding
+  helpers, documentation, extensive regression coverage, a reusable hardware
+  validator, and physical SDS200 validation with simultaneous API, event, and
+  dual-PCMU clients.
