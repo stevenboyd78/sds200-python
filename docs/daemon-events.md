@@ -7,7 +7,8 @@ request-response API.
 
 The stream publishes state and lifecycle information only. It does not publish
 packet-rate PCM or PCMU audio, scanner controls, remote TCP traffic, or
-renderer-specific output.
+renderer-specific output. Accepted PCMU packets use the separate
+[local daemon PCMU stream](daemon-pcmu.md).
 
 ## Starting the stream
 
@@ -154,18 +155,20 @@ sequence boundary.
 `DaemonProcess` starts services in this order:
 
 1. event listener and accept worker;
-2. ownership runtime; and
-3. request-response API.
+2. PCMU listener and accept worker;
+3. ownership runtime; and
+4. request-response API.
 
 This allows an already connected event client to observe runtime startup
-transitions while keeping API requests unavailable until runtime startup
-succeeds.
+transitions, prepares PCMU subscriptions before authoritative audio starts, and
+keeps API requests unavailable until runtime startup succeeds.
 
 Shutdown occurs in this order:
 
 1. request-response API;
-2. ownership runtime; and
-3. event service.
+2. ownership runtime;
+3. PCMU service; and
+4. event service.
 
 The event service therefore remains available while the runtime emits final
 shutdown transitions. Stopping the event service closes the listener, closes the
@@ -215,7 +218,7 @@ Milestone 19.6 does not add:
 
 - event replay or server-side filtering;
 - client-selected event kinds;
-- binary PCM or PCMU subscriptions;
+- binary PCM delivery or PCMU delivery on the event socket;
 - scanner-control operations;
 - TCP or remote authentication;
 - daemon discovery or automatic client selection;

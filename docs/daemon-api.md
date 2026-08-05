@@ -3,7 +3,9 @@
 Milestone 19.5 adds a versioned, renderer-neutral, read-only API to the
 foreground `sdsctl daemon` process. The API is served only through the private
 local `daemon.sock` Unix-domain stream socket. It does not expose TCP, remote
-authentication, scanner controls, streaming responses, or audio subscriptions.
+authentication, scanner controls, streaming responses, or embedded audio
+subscriptions. Accepted PCMU packets use the separate
+[local daemon PCMU stream](daemon-pcmu.md).
 
 Milestone 19.6 adds ordered event subscriptions through a separate private
 `events.sock` endpoint. The request-response API described here remains
@@ -215,14 +217,15 @@ Validated on 2026-08-04 against a physical SDS200 at
 
 ## Lifecycle and current exclusions
 
-`DaemonProcess` starts the event listener first, then starts the ownership
-runtime, and finally opens the request-response API. This ensures every admitted
-API request observes an initialized runtime while event subscribers may observe
-runtime startup transitions.
+`DaemonProcess` starts the event listener, starts the PCMU listener, starts
+the ownership runtime, and finally opens the request-response API. This ensures
+every admitted API request observes an initialized runtime while event
+subscribers may observe startup transitions and PCMU subscribers are ready
+before authoritative audio begins.
 
 Shutdown closes the API listener and clients before stopping scanner, PSI, audio,
-and router ownership. The separate event service remains available during
-runtime teardown and stops last.
+and router ownership. The PCMU service stops after the runtime, and the separate
+event service remains available for final lifecycle transitions and stops last.
 
 If service startup fails, every attempted component is cleaned up. Cleanup
 continues after an individual failure, while the primary startup or process
@@ -231,7 +234,7 @@ error remains authoritative.
 The `daemon.sock` request-response protocol intentionally excludes:
 
 - streaming event responses on an API connection;
-- binary PCM or PCMU delivery;
+- binary PCM or PCMU delivery on the API connection;
 - scanner-control operations;
 - TCP or remote-network exposure;
 - daemon discovery and automatic client selection;

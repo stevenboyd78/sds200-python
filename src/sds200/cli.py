@@ -54,7 +54,14 @@ from .daemon_events import (
 from .daemon_ipc import (
     DaemonSocketListener,
     resolve_daemon_event_socket_location,
+    resolve_daemon_pcmu_socket_location,
     resolve_daemon_socket_location,
+)
+from .daemon_pcmu_server import (
+    DAEMON_PCMU_DEFAULT_MAX_CLIENTS,
+    DAEMON_PCMU_DEFAULT_SEND_TIMEOUT,
+    DAEMON_PCMU_DEFAULT_SHUTDOWN_TIMEOUT,
+    DaemonPcmuServer,
 )
 from .daemon_process import DaemonProcess
 from .daemon_runtime import DaemonRuntime
@@ -79,6 +86,15 @@ from .models import HealthSummary, RadioEvent, RadioHealth, StatusResponse
 from .monitor import TerminalMonitor
 from .network import DEFAULT_UDP_PORT
 from .network_audio import NetworkAudioTransport
+from .pcmu_protocol import (
+    PCMU_STREAM_DEFAULT_MAX_ENDPOINT_BYTES,
+    PCMU_STREAM_DEFAULT_MAX_FRAME_BYTES,
+)
+from .pcmu_stream import PcmuStream
+from .pcmu_subscriptions import (
+    PCMU_DEFAULT_MAX_PAYLOAD_BYTES,
+    PCMU_DEFAULT_QUEUE_CAPACITY,
+)
 from .profiles import (
     TRANSPORT_PREFERENCES,
     ConnectionProfile,
@@ -751,6 +767,85 @@ def build_parser(
         help=(
             "Local event worker shutdown deadline "
             f"(default: {DAEMON_EVENT_DEFAULT_SHUTDOWN_TIMEOUT})"
+        ),
+    )
+    daemon.add_argument(
+        "--pcmu-socket-path",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Explicit absolute Unix PCMU socket path; otherwise use "
+            "XDG_RUNTIME_DIR or the user state directory"
+        ),
+    )
+    daemon.add_argument(
+        "--pcmu-queue-capacity",
+        type=_positive_integer,
+        default=PCMU_DEFAULT_QUEUE_CAPACITY,
+        metavar="COUNT",
+        help=(
+            "Maximum queued PCMU packets per local subscriber "
+            f"(default: {PCMU_DEFAULT_QUEUE_CAPACITY})"
+        ),
+    )
+    daemon.add_argument(
+        "--pcmu-max-clients",
+        type=_positive_integer,
+        default=DAEMON_PCMU_DEFAULT_MAX_CLIENTS,
+        metavar="COUNT",
+        help=(
+            "Maximum concurrent local PCMU clients "
+            f"(default: {DAEMON_PCMU_DEFAULT_MAX_CLIENTS})"
+        ),
+    )
+    daemon.add_argument(
+        "--pcmu-max-payload-bytes",
+        type=_positive_integer,
+        default=PCMU_DEFAULT_MAX_PAYLOAD_BYTES,
+        metavar="BYTES",
+        help=(
+            "Maximum accepted PCMU packet payload size "
+            f"(default: {PCMU_DEFAULT_MAX_PAYLOAD_BYTES})"
+        ),
+    )
+    daemon.add_argument(
+        "--pcmu-max-endpoint-bytes",
+        type=_positive_integer,
+        default=PCMU_STREAM_DEFAULT_MAX_ENDPOINT_BYTES,
+        metavar="BYTES",
+        help=(
+            "Maximum encoded PCMU endpoint size "
+            f"(default: {PCMU_STREAM_DEFAULT_MAX_ENDPOINT_BYTES})"
+        ),
+    )
+    daemon.add_argument(
+        "--pcmu-max-frame-bytes",
+        type=_positive_integer,
+        default=PCMU_STREAM_DEFAULT_MAX_FRAME_BYTES,
+        metavar="BYTES",
+        help=(
+            "Maximum encoded PCMU frame size "
+            f"(default: {PCMU_STREAM_DEFAULT_MAX_FRAME_BYTES})"
+        ),
+    )
+    daemon.add_argument(
+        "--pcmu-send-timeout",
+        type=_positive_float,
+        default=DAEMON_PCMU_DEFAULT_SEND_TIMEOUT,
+        metavar="SECONDS",
+        help=(
+            "Local PCMU client send timeout "
+            f"(default: {DAEMON_PCMU_DEFAULT_SEND_TIMEOUT})"
+        ),
+    )
+    daemon.add_argument(
+        "--pcmu-shutdown-timeout",
+        type=_positive_float,
+        default=DAEMON_PCMU_DEFAULT_SHUTDOWN_TIMEOUT,
+        metavar="SECONDS",
+        help=(
+            "Local PCMU worker shutdown deadline "
+            f"(default: {DAEMON_PCMU_DEFAULT_SHUTDOWN_TIMEOUT})"
         ),
     )
 
@@ -1818,6 +1913,22 @@ def _run_daemon(
     host = _daemon_host(args, profile_store=profile_store)
     scanner = selected_radio(args, profile_store=profile_store)
 
+    socket_location = resolve_daemon_socket_location(
+        args.socket_path,
+        environ=environ,
+        configuration_paths=configuration_paths,
+    )
+    event_socket_location = resolve_daemon_event_socket_location(
+        args.event_socket_path,
+        environ=environ,
+        configuration_paths=configuration_paths,
+    )
+    pcmu_socket_location = resolve_daemon_pcmu_socket_location(
+        args.pcmu_socket_path,
+        environ=environ,
+        configuration_paths=configuration_paths,
+    )
+
     router = PcmSinkRouter(name="daemon-pcm")
     transport = NetworkAudioTransport(
         host,
@@ -1836,11 +1947,6 @@ def _run_daemon(
         psi_timeout=args.psi_timeout,
     )
 
-    socket_location = resolve_daemon_socket_location(
-        args.socket_path,
-        environ=environ,
-        configuration_paths=configuration_paths,
-    )
     listener = DaemonSocketListener(socket_location)
     api_server = DaemonApiServer(
         listener,
@@ -1852,11 +1958,6 @@ def _run_daemon(
         shutdown_timeout=args.api_shutdown_timeout,
     )
 
-    event_socket_location = resolve_daemon_event_socket_location(
-        args.event_socket_path,
-        environ=environ,
-        configuration_paths=configuration_paths,
-    )
     event_stream = DaemonEventStream(
         runtime,
         queue_capacity=args.event_queue_capacity,
@@ -1872,16 +1973,59 @@ def _run_daemon(
         shutdown_timeout=args.event_shutdown_timeout,
     )
 
+    pcmu_stream: PcmuStream | None = None
+    try:
+        pcmu_stream = PcmuStream(
+            transport,
+            queue_capacity=args.pcmu_queue_capacity,
+            max_subscribers=args.pcmu_max_clients,
+            max_payload_bytes=args.pcmu_max_payload_bytes,
+        )
+        pcmu_server = DaemonPcmuServer(
+            DaemonSocketListener(pcmu_socket_location),
+            pcmu_stream,
+            max_clients=args.pcmu_max_clients,
+            max_endpoint_bytes=args.pcmu_max_endpoint_bytes,
+            max_frame_bytes=args.pcmu_max_frame_bytes,
+            send_timeout=args.pcmu_send_timeout,
+            shutdown_timeout=args.pcmu_shutdown_timeout,
+        )
+    except BaseException as construction_error:
+        cleanup_errors: list[BaseException] = []
+
+        if pcmu_stream is not None:
+            try:
+                pcmu_stream.close()
+            except BaseException as cleanup_error:
+                cleanup_errors.append(cleanup_error)
+
+        try:
+            event_stream.close()
+        except BaseException as cleanup_error:
+            cleanup_errors.append(cleanup_error)
+
+        if cleanup_errors:
+            logger.error(
+                "daemon PCMU construction cleanup failed "
+                "construction_error=%s cleanup_error=%s",
+                construction_error.__class__.__name__,
+                cleanup_errors[0].__class__.__name__,
+            )
+        raise
+
     result = DaemonProcess(
         runtime,
         api_server=api_server,
         event_server=event_server,
+        pcmu_server=pcmu_server,
     ).run()
     logger.info(
-        "foreground daemon stopped host=%s socket=%s event_socket=%s signal=%s",
+        "foreground daemon stopped host=%s socket=%s event_socket=%s "
+        "pcmu_socket=%s signal=%s",
         host,
         socket_location.path,
         event_socket_location.path,
+        pcmu_socket_location.path,
         result.last_signal,
     )
     return 0

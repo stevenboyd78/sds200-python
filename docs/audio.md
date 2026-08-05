@@ -3,8 +3,9 @@
 Version 0.11.0 introduced hardware-validated SDS200 network audio while keeping
 its lifecycle independent from scanner control. Milestone 16.1 added decoded-PCM
 fanout for local playback and simultaneous recording, Milestone 18.5 added
-pluggable playback adapters plus per-subscriber health and isolation, and
-Milestone 19.3 adds the renderer-neutral single-owner runtime. Audio failures
+pluggable playback adapters plus per-subscriber health and isolation, Milestone
+19.3 added the renderer-neutral single-owner runtime, and Milestone 19.7 adds
+bounded local publication of accepted PCMU packets before decode. Audio failures
 never switch, close, or delay USB serial, UDP control, fallback profiles, or
 preferred recovery.
 
@@ -13,8 +14,12 @@ preferred recovery.
 - `NetworkAudioTransport` performs RTSP negotiation over TCP and receives RTP over
   one UDP client port. The SDS200 requires `RTP/AVP;unicast;client_port=PORT`
   rather than the conventional RTP/RTCP port pair.
-- `AudioStream` owns subscriptions and lifecycle without depending on
-  `SDSScanner`.
+- `AudioStream` owns decoded-audio subscriptions and lifecycle without
+  depending on `SDSScanner`.
+- `PcmuStream` subscribes to accepted packets from the same authoritative
+  `NetworkAudioTransport` and publishes them through independent bounded queues.
+- `DaemonPcmuServer` serves one versioned binary PCMU subscription per admitted
+  private Unix-domain client without owning the shared transport lifecycle.
 - `AudioChunk.data` contains the raw payload type 0 G.711 mu-law bytes from one
   accepted RTP packet.
 - `AudioFanoutSession` decodes each accepted packet once and submits 8 kHz mono
@@ -160,12 +165,15 @@ outside the signal callback, and supports systemd `Type=simple` operation.
 Milestone 19.5 exposes read-only audio and router health through the private
 local daemon API. Milestone 19.6 publishes audio lifecycle and decoded-PCM
 destination-health transitions through the separate local event stream, but it
-does not publish packet-rate PCM or PCMU audio. The existing monitor, TUI,
+does not publish packet-rate PCM or PCMU audio. The separate daemon PCMU
+socket publishes accepted packet payloads without changing the event protocol.
+The existing monitor, TUI,
 playback, recording, and streaming commands remain standalone clients and do not
 yet consume daemon-owned audio or control. See the
 [daemon runtime and process guide](daemon-runtime.md),
 [local daemon API guide](daemon-api.md), and
-[local daemon event stream guide](daemon-events.md).
+[local daemon event stream guide](daemon-events.md), and
+[local daemon PCMU stream guide](daemon-pcmu.md).
 
 ## Recording metadata foundation
 

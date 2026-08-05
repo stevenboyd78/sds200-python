@@ -93,6 +93,33 @@ class FakeEventServer:
             raise self.stop_error
 
 
+class FakePcmuServer:
+    def __init__(
+        self,
+        order: list[str],
+        *,
+        start_error: BaseException | None = None,
+        stop_error: BaseException | None = None,
+    ) -> None:
+        self.order = order
+        self.start_error = start_error
+        self.stop_error = stop_error
+        self.start_calls = 0
+        self.stop_calls = 0
+
+    def start(self) -> None:
+        self.order.append("pcmu.start")
+        self.start_calls += 1
+        if self.start_error is not None:
+            raise self.start_error
+
+    def stop(self) -> None:
+        self.order.append("pcmu.stop")
+        self.stop_calls += 1
+        if self.stop_error is not None:
+            raise self.stop_error
+
+
 class FakeSignalController:
     def __init__(
         self,
@@ -771,6 +798,204 @@ def test_clean_shutdown_attempts_event_stop_after_other_failures(
         "signals.wait",
         "api.stop",
         "runtime.stop",
+        "events.stop",
+        "signals.exit",
+    ]
+    assert "primary_error=RuntimeError" in caplog.text
+    assert "cleanup_error=OSError" in caplog.text
+    assert "secret" not in caplog.text
+
+def test_process_brackets_runtime_with_event_and_pcmu_servers() -> None:
+    order: list[str] = []
+    runtime = FakeRuntime(order)
+    api_server = FakeApiServer(order)
+    event_server = FakeEventServer(order)
+    pcmu_server = FakePcmuServer(order)
+    signals = FakeSignalController(
+        order,
+        (True,),
+        last_signal=int(signal.SIGTERM),
+    )
+
+    result = DaemonProcess(
+        runtime,
+        api_server=api_server,
+        event_server=event_server,
+        pcmu_server=pcmu_server,
+        signals=signals,
+        poll_interval=0.25,
+    ).run()
+
+    assert result.last_signal == int(signal.SIGTERM)
+    assert order == [
+        "signals.enter",
+        "events.start",
+        "pcmu.start",
+        "runtime.start",
+        "api.start",
+        "signals.wait",
+        "api.stop",
+        "runtime.stop",
+        "pcmu.stop",
+        "events.stop",
+        "signals.exit",
+    ]
+    assert pcmu_server.start_calls == 1
+    assert pcmu_server.stop_calls == 1
+
+
+def test_pcmu_startup_failure_stops_pcmu_then_event_before_runtime() -> None:
+    order: list[str] = []
+    startup_error = RuntimeError("secret PCMU startup failure")
+    runtime = FakeRuntime(order)
+    api_server = FakeApiServer(order)
+    event_server = FakeEventServer(order)
+    pcmu_server = FakePcmuServer(
+        order,
+        start_error=startup_error,
+    )
+    signals = FakeSignalController(order, ())
+
+    with pytest.raises(RuntimeError) as raised:
+        DaemonProcess(
+            runtime,
+            api_server=api_server,
+            event_server=event_server,
+            pcmu_server=pcmu_server,
+            signals=signals,
+            poll_interval=0.25,
+        ).run()
+
+    assert raised.value is startup_error
+    assert order == [
+        "signals.enter",
+        "events.start",
+        "pcmu.start",
+        "pcmu.stop",
+        "events.stop",
+        "signals.exit",
+    ]
+    assert runtime.start_calls == 0
+    assert runtime.stop_calls == 0
+    assert api_server.start_calls == 0
+    assert api_server.stop_calls == 0
+
+
+def test_runtime_startup_failure_keeps_both_stream_servers_active() -> None:
+    order: list[str] = []
+    startup_error = RuntimeError("secret runtime startup failure")
+    runtime = FakeRuntime(order, start_error=startup_error)
+    api_server = FakeApiServer(order)
+    event_server = FakeEventServer(order)
+    pcmu_server = FakePcmuServer(order)
+    signals = FakeSignalController(order, ())
+
+    with pytest.raises(RuntimeError) as raised:
+        DaemonProcess(
+            runtime,
+            api_server=api_server,
+            event_server=event_server,
+            pcmu_server=pcmu_server,
+            signals=signals,
+            poll_interval=0.25,
+        ).run()
+
+    assert raised.value is startup_error
+    assert order == [
+        "signals.enter",
+        "events.start",
+        "pcmu.start",
+        "runtime.start",
+        "runtime.stop",
+        "pcmu.stop",
+        "events.stop",
+        "signals.exit",
+    ]
+    assert api_server.start_calls == 0
+    assert api_server.stop_calls == 0
+
+
+def test_api_startup_failure_keeps_both_streams_through_runtime_stop() -> None:
+    order: list[str] = []
+    startup_error = RuntimeError("secret API startup failure")
+    runtime = FakeRuntime(order)
+    api_server = FakeApiServer(
+        order,
+        start_error=startup_error,
+    )
+    event_server = FakeEventServer(order)
+    pcmu_server = FakePcmuServer(order)
+    signals = FakeSignalController(order, ())
+
+    with pytest.raises(RuntimeError) as raised:
+        DaemonProcess(
+            runtime,
+            api_server=api_server,
+            event_server=event_server,
+            pcmu_server=pcmu_server,
+            signals=signals,
+            poll_interval=0.25,
+        ).run()
+
+    assert raised.value is startup_error
+    assert order == [
+        "signals.enter",
+        "events.start",
+        "pcmu.start",
+        "runtime.start",
+        "api.start",
+        "api.stop",
+        "runtime.stop",
+        "pcmu.stop",
+        "events.stop",
+        "signals.exit",
+    ]
+
+
+def test_clean_shutdown_attempts_pcmu_and_event_after_prior_failures(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    order: list[str] = []
+    api_error = RuntimeError("secret API shutdown failure")
+    runtime_error = OSError("secret runtime shutdown failure")
+    pcmu_error = LookupError("secret PCMU shutdown failure")
+    event_error = ValueError("secret event shutdown failure")
+    runtime = FakeRuntime(order, stop_error=runtime_error)
+    api_server = FakeApiServer(order, stop_error=api_error)
+    event_server = FakeEventServer(
+        order,
+        stop_error=event_error,
+    )
+    pcmu_server = FakePcmuServer(
+        order,
+        stop_error=pcmu_error,
+    )
+    signals = FakeSignalController(order, (True,))
+
+    with (
+        caplog.at_level(logging.ERROR, logger="sds200.daemon_process"),
+        pytest.raises(RuntimeError) as raised,
+    ):
+        DaemonProcess(
+            runtime,
+            api_server=api_server,
+            event_server=event_server,
+            pcmu_server=pcmu_server,
+            signals=signals,
+            poll_interval=0.25,
+        ).run()
+
+    assert raised.value is api_error
+    assert order == [
+        "signals.enter",
+        "events.start",
+        "pcmu.start",
+        "runtime.start",
+        "api.start",
+        "signals.wait",
+        "api.stop",
+        "runtime.stop",
+        "pcmu.stop",
         "events.stop",
         "signals.exit",
     ]

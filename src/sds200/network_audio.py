@@ -6,10 +6,13 @@ import threading
 from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Protocol
 
 from .audio import AudioChunk, AudioChunkHandler
+from .events import EventBus
 from .exceptions import ScannerConnectionError
+from .pcmu import PcmuPacket, PcmuPacketHandler
 from .rtp import (
     RtpPacket,
     RtpProtocolError,
@@ -211,6 +214,7 @@ class NetworkAudioTransport:
         self._datagram_socket_factory = datagram_socket_factory
         self._rtsp_client_factory = rtsp_client_factory
         self._local_address_resolver = local_address_resolver
+        self.events = EventBus()
         self._rtp_socket: AudioDatagramSocketLike | None = None
         self._rtsp_client: RtspSessionClientLike | None = None
         self._handler: AudioChunkHandler | None = None
@@ -242,6 +246,14 @@ class NetworkAudioTransport:
     def statistics(self) -> NetworkAudioStatistics:
         with self._statistics_lock:
             return self._statistics.snapshot()
+
+    def on_packet(
+        self,
+        callback: PcmuPacketHandler,
+    ) -> Callable[[], None]:
+        """Subscribe to accepted RTP PCMU packets before PCM decoding."""
+
+        return self.events.subscribe("packet", callback)
 
     def start(self, handler: AudioChunkHandler) -> None:
         with self._state_lock:
@@ -458,10 +470,34 @@ class NetworkAudioTransport:
                 statistics.last_sequence = packet.sequence
                 statistics.last_timestamp = packet.timestamp
 
+            observed_at = datetime.now(UTC)
+            self.events.emit(
+                "packet",
+                PcmuPacket(
+                    endpoint=self.endpoint,
+                    sequence=packet.sequence,
+                    timestamp=packet.timestamp,
+                    ssrc=packet.ssrc,
+                    payload=packet.payload,
+                    observed_at=observed_at,
+                    marker=packet.marker,
+                    expected_sequence=observation.expected,
+                    missing_packets=observation.missing,
+                    expected_timestamp=timestamp.expected,
+                    missing_samples=timestamp.missing_samples,
+                    timestamp_backwards=timestamp.backwards,
+                ),
+            )
+
             handler = self._handler
             if handler is not None:
                 try:
-                    handler(AudioChunk(packet.payload))
+                    handler(
+                        AudioChunk(
+                            packet.payload,
+                            received_at=observed_at,
+                        )
+                    )
                 except Exception:
                     with self._statistics_lock:
                         self._statistics.callback_errors += 1

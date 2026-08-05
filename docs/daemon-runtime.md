@@ -17,9 +17,13 @@ runtime snapshots.
 Milestone 19.6 adds a second private Unix-domain socket for ordered daemon events.
 Every event subscription starts with an authoritative runtime snapshot and then
 receives later runtime, scanner, PSI, radio-state, audio-lifecycle, and
-destination-health events. Scanner controls, audio subscriptions, and CLI/TUI
-daemon-client migration remain follow-on work. The process does not fork or
-create a pidfile.
+destination-health events.
+
+Milestone 19.7 adds a third private Unix-domain socket for accepted RTP PCMU
+packets. Each client owns an independent bounded queue, receives the original
+payload before decode, and observes RTP continuity plus cumulative local queue
+loss. Scanner controls, decoded-PCM subscriptions, and CLI/TUI daemon-client
+migration remain follow-on work. The process does not fork or create a pidfile.
 
 ## Foreground process contract
 
@@ -37,9 +41,11 @@ sdsctl --log-level INFO --profile home daemon
 
 The command constructs exactly one `DaemonRuntime`, one `PcmSinkRouter`, one
 `NetworkAudioTransport`, one `DaemonReadOnlyApi`, one bounded `DaemonApiServer`,
-one `DaemonEventStream`, and one bounded `DaemonEventServer`. The router begins
-without destinations because audio subscriptions, playback, recording,
-remote-profile activation, and daemon-client migration remain follow-on work.
+one `DaemonEventStream`, one bounded `DaemonEventServer`, one `PcmuStream`, and
+one bounded `DaemonPcmuServer`. The PCMU stream subscribes to the same
+authoritative transport used by the decoded-PCM fanout. The router begins without
+destinations because playback, recording, remote-profile activation, decoded-PCM
+subscriptions, and daemon-client migration remain follow-on work.
 
 The audio endpoint must come from either `--host` or a network-capable SDS200
 profile. A fallback profile may select serial control at runtime, but its saved
@@ -49,9 +55,10 @@ are rejected.
 
 The command runs in the foreground. It does not daemonize itself, fork, create a
 pidfile, change privileges, install a service unit, or request socket activation.
-The event service owns its socket before runtime startup so it can observe
-lifecycle transitions. The request-response API opens only after the runtime has
-started successfully.
+The event and PCMU services own their sockets before runtime startup so the
+event stream can observe lifecycle transitions and PCMU clients can subscribe
+before authoritative audio begins. The request-response API opens only after the
+runtime has started successfully.
 
 ### Signals and exit behavior
 
@@ -78,13 +85,16 @@ orderly termination.
 At the process-host level, startup occurs in this order:
 
 1. bind and start the local `DaemonEventServer`;
-2. start `DaemonRuntime`;
-3. bind and start the local `DaemonApiServer`; and
-4. wait for `SIGINT`, `SIGTERM`, or another process-loop failure.
+2. bind and start the local `DaemonPcmuServer`;
+3. start `DaemonRuntime`;
+4. bind and start the local `DaemonApiServer`; and
+5. wait for `SIGINT`, `SIGTERM`, or another process-loop failure.
 
 Starting the event service first allows an already connected client to observe
-runtime startup transitions. Starting the API last ensures every admitted
-request observes an initialized runtime.
+runtime startup transitions. Starting the PCMU service before the runtime allows
+clients to subscribe before the shared transport begins publishing accepted
+packets. Starting the API last ensures every admitted request observes an
+initialized runtime.
 
 Shutdown occurs in this order:
 
@@ -92,8 +102,10 @@ Shutdown occurs in this order:
 2. wait for bounded API worker completion;
 3. stop the daemon runtime while the event service remains available for final
    lifecycle transitions;
-4. close the event listener and connected subscribers; and
-5. wait for bounded event-worker completion.
+4. close the PCMU listener, publisher subscription, and connected clients;
+5. wait for bounded PCMU worker completion;
+6. close the event listener and connected subscribers; and
+7. wait for bounded event-worker completion.
 
 If any component startup fails, cleanup is attempted for every component whose
 startup was attempted. Cleanup continues after an individual failure, while the
@@ -113,9 +125,11 @@ One runtime owns:
 5. any playback, recording, streaming, or integration sinks attached to the
    router.
 
-The scanner's PCMU audio is accepted once, decoded once, and submitted to the
-router as 8 kHz mono signed 16-bit PCM. Each attached sink retains its existing
-bounded buffering, worker, health, and failure-isolation behavior.
+The scanner's PCMU audio is accepted once. Each accepted packet is first
+published to the bounded PCMU stream with its original payload and RTP continuity
+metadata, then decoded once and submitted to the router as 8 kHz mono signed
+16-bit PCM. Each attached sink retains its existing bounded buffering, worker,
+health, and failure-isolation behavior.
 
 A destination failure does not stop scanner control, PSI, RTP reception, or
 another healthy destination.
@@ -278,6 +292,24 @@ The Milestone 19.6 `events.sock` service was physically validated on
 - the runtime received 507 RTP packets and 162,240 decoded samples; and
 - the process returned exit status 0 and removed both owned sockets.
 
+The Milestone 19.7 `pcmu.sock` service was physically validated on
+2026-08-05 against the same SDS200:
+
+- the caller-managed validation directory used mode `0700`, and all three local
+  sockets used mode `0600`;
+- one API client completed 61 successful pings while one event client and two
+  PCMU clients remained connected;
+- the event client received 231 ordered messages from sequence 1 through 231
+  without a gap;
+- both PCMU clients received the same 1,503 frames and 480,960 payload bytes
+  without queue loss, overflow, stream gaps, RTP discontinuity, timestamp
+  reversal, or mismatched overlapping frames;
+- a third PCMU connection above the configured limit was rejected;
+- decoded audio advanced by 1,500 packets and 480,000 samples during the
+  60-second simultaneous-client interval; and
+- controlled `SIGTERM` returned exit status 0 and removed `daemon.sock`,
+  `events.sock`, and `pcmu.sock`.
+
 The initial daemon router has no activated destinations, so
 `destination.health` was not hardware-exercised. Its aggregation and isolation
 contracts remain covered by hardware-independent regression tests.
@@ -286,12 +318,12 @@ contracts remain covered by hardware-independent regression tests.
 
 Later Milestone 19 work may:
 
-- add bounded PCM or PCMU subscriptions for local clients;
+- add bounded decoded-PCM subscriptions for local clients;
 - add capability-checked scanner controls;
 - activate configured playback, recording, and remote destinations;
 - add daemon discovery and client selection; and
 - allow CLI and TUI clients to consume daemon-owned sessions while preserving an
   explicit standalone mode.
 
-Audio-subscription, control, destination-activation, reload, discovery, and
-client-selection contracts remain outside Milestone 19.6.
+Decoded-PCM subscription, control, destination-activation, reload, discovery,
+and client-selection contracts remain outside Milestone 19.7.
