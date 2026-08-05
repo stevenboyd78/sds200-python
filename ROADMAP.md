@@ -13,11 +13,39 @@ and ideas that are not ready for scheduling are recorded in
 
 ### Milestone 19.6 — Local event stream
 
-- Publish an initial authoritative snapshot followed by ordered daemon, scanner,
-  PSI, radio-state, audio, and destination-health events.
-- Add sequence numbers, bounded per-client queues, clean unsubscribe behavior,
-  and slow-client isolation.
-- Keep binary audio and scanner controls outside the event-stream contract.
+- **Ordered event protocol — planned**
+  - Define immutable JSON-compatible event envelopes with a protocol version,
+    monotonic stream sequence, observation timestamp, event kind, and payload.
+  - Begin every subscription with one authoritative runtime snapshot captured
+    at its sequence boundary, followed only by later ordered events.
+  - Preserve renderer neutrality, immutable snapshot semantics, and redacted
+    failure information.
+- **Authoritative source aggregation — planned**
+  - Aggregate runtime lifecycle, scanner connection, PSI updates, radio-state
+    changes, audio lifecycle, and decoded-PCM destination-health transitions.
+  - Reuse existing immutable snapshots and transition models instead of
+    introducing renderer-specific state.
+  - Keep packet-rate PCM and PCMU data and scanner controls outside the event
+    stream.
+- **Bounded subscriptions — planned**
+  - Give every subscriber an independent bounded queue with deterministic close
+    and unsubscribe behavior.
+  - Disconnect only the affected subscriber on overflow, expose the sequence
+    gap explicitly, and never block source callback paths.
+  - Bound subscriber counts, queue depth, encoded event size, and shutdown
+    waits.
+- **Unix-socket streaming — planned**
+  - Add a versioned event-subscription operation to the local daemon API and
+    stream ordered JSON Lines over an admitted client connection.
+  - Preserve existing request-response behavior for non-streaming connections
+    and isolate malformed, stalled, disconnected, and slow clients.
+  - Stop subscriptions and stream workers before ownership-runtime teardown.
+- **Regression, documentation, and hardware validation — planned**
+  - Cover initial-snapshot ordering, sequence continuity, source aggregation,
+    concurrent clients, overflow, unsubscribe races, malformed clients, and
+    bounded shutdown.
+  - Document protocol framing, event kinds, queue limits, resynchronization,
+    current exclusions, and physical SDS200 validation.
 
 ## Deferred hardware validation
 
