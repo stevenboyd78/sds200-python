@@ -7,6 +7,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from math import isfinite
 from pathlib import Path
 from time import monotonic
 from typing import Self, TypeVar
@@ -451,6 +452,11 @@ class SDSScanner:
     def psi_interval_ms(self) -> int | None:
         return self._psi_interval_ms
 
+    @property
+    def supports_bounded_reconnect(self) -> bool:
+        """Whether reconnect uses the directly owned bounded UDP transport."""
+        return isinstance(self.transport, UdpTransport)
+
     def connect(self) -> None:
         self._closed.clear()
         try:
@@ -459,8 +465,13 @@ class SDSScanner:
             self._closed.set()
             raise
 
-    def reconnect(self) -> None:
-        """Restart the control transport and preserve an active PSI interval."""
+    def reconnect(self, *, timeout: float = 2.0) -> None:
+        """Apply one deadline to restart response waits and PSI restoration."""
+        normalized_timeout = _require_positive_timeout(
+            timeout,
+            label="Scanner reconnect timeout",
+        )
+        deadline = monotonic() + normalized_timeout
         interval_ms = self._psi_interval_ms
         logger.info(
             "scanner reconnect starting endpoint=%s psi_interval_ms=%s",
@@ -471,9 +482,26 @@ class SDSScanner:
         self.transport.stop()
         self._closed.set()
         try:
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                raise CommandTimeoutError(
+                    "Scanner reconnect timed out while stopping the control "
+                    "transport."
+                )
+
             self.connect()
+
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                raise CommandTimeoutError(
+                    "Scanner reconnect timed out while opening the control "
+                    "transport."
+                )
             if interval_ms is not None:
-                self.start_scanner_info_push(interval_ms)
+                self.start_scanner_info_push(
+                    interval_ms,
+                    timeout=remaining,
+                )
         except Exception:
             self._psi_interval_ms = interval_ms
             raise
@@ -986,3 +1014,12 @@ class SDSScanner:
 
 # Backward-compatible public name retained for existing applications.
 SDS200 = SDSScanner
+
+
+def _require_positive_timeout(value: object, *, label: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f"{label} must be a number.")
+    normalized = float(value)
+    if not isfinite(normalized) or normalized <= 0:
+        raise ValueError(f"{label} must be finite and greater than zero.")
+    return normalized

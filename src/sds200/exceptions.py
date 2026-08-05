@@ -42,6 +42,14 @@ class ConfigurationError(SDS200Error):
     """Layered application configuration is missing or invalid."""
 
 
+class DaemonControlBusyError(SDS200Error):
+    """Another daemon-owned scanner control is already in progress."""
+
+
+class DaemonControlUnavailableError(SDS200Error):
+    """A daemon-owned scanner control cannot run in the current runtime state."""
+
+
 class DaemonIpcError(SDS200Error):
     """The local daemon IPC endpoint could not be owned or operated safely."""
 

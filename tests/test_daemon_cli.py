@@ -342,7 +342,7 @@ def test_daemon_cli_constructs_one_runtime_and_process(
     assert api_server.max_request_bytes == 64 * 1024
     assert api_server.max_response_bytes == 1024 * 1024
     assert api_server.client_timeout == 5.0
-    assert api_server.shutdown_timeout == 2.0
+    assert api_server.shutdown_timeout == 3.0
     assert api_server.listener.location.source is DaemonSocketSource.USER_STATE
     assert api_server.listener.location.path == (
         paths.user_state_dir / "daemon.sock"

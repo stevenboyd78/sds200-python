@@ -7,6 +7,8 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
+from math import isfinite
+from time import monotonic
 from typing import Protocol, Self
 
 from .audio_sinks import (
@@ -17,6 +19,12 @@ from .audio_sinks import (
     PcmSinkRouterSnapshot,
 )
 from .events import EventBus
+from .exceptions import (
+    CommandTimeoutError,
+    DaemonControlBusyError,
+    DaemonControlUnavailableError,
+    UnsupportedScannerFeatureError,
+)
 from .state import RadioStateSnapshot
 
 logger = logging.getLogger(__name__)
@@ -31,6 +39,15 @@ class DaemonRuntimeState(StrEnum):
     STOPPING = "stopping"
     STOPPED = "stopped"
     FAILED = "failed"
+
+
+class DaemonControlOperation(StrEnum):
+    """Capability-checked scanner controls owned by one daemon runtime."""
+
+    HOLD = "scanner.hold"
+    NEXT = "scanner.next"
+    PREVIOUS = "scanner.previous"
+    RECONNECT = "scanner.reconnect"
 
 
 class _RadioStateLike(Protocol):
@@ -49,7 +66,41 @@ class _ScannerLike(Protocol):
     def psi_active(self) -> bool: ...
 
     @property
+    def supports_bounded_reconnect(self) -> bool: ...
+
+    @property
     def state(self) -> _RadioStateLike: ...
+
+    def hold(
+        self,
+        target: str,
+        first: str | int | None = None,
+        second: str | int | None = None,
+        *,
+        timeout: float = 2.0,
+    ) -> None: ...
+
+    def next(
+        self,
+        target: str,
+        first: str | int | None = None,
+        second: str | int | None = None,
+        *,
+        count: int = 1,
+        timeout: float = 2.0,
+    ) -> None: ...
+
+    def previous(
+        self,
+        target: str,
+        first: str | int | None = None,
+        second: str | int | None = None,
+        *,
+        count: int = 1,
+        timeout: float = 2.0,
+    ) -> None: ...
+
+    def reconnect(self, *, timeout: float = 2.0) -> None: ...
 
     def connect(self) -> None: ...
 
@@ -124,6 +175,36 @@ class DaemonRuntimeSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class DaemonControlResult:
+    """Immutable authoritative completion of one daemon-owned scanner control."""
+
+    sequence: int
+    operation: DaemonControlOperation
+    started_at: datetime
+    completed_at: datetime
+    snapshot: DaemonRuntimeSnapshot
+
+    def __post_init__(self) -> None:
+        if self.sequence <= 0:
+            raise ValueError("Daemon control sequence must be greater than zero.")
+        _require_aware_datetime(self.started_at)
+        _require_aware_datetime(self.completed_at)
+        if self.completed_at < self.started_at:
+            raise ValueError(
+                "Daemon control completion cannot precede its start time."
+            )
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "sequence": self.sequence,
+            "operation": self.operation.value,
+            "started_at": self.started_at.isoformat(),
+            "completed_at": self.completed_at.isoformat(),
+            "snapshot": self.snapshot.as_dict(),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class DaemonRuntimeTransition:
     """One ordered immutable runtime lifecycle transition."""
 
@@ -153,12 +234,23 @@ def _require_aware_datetime(value: datetime) -> datetime:
     return value
 
 
+def _require_positive_control_timeout(value: object) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError("Daemon control timeout must be a number.")
+    normalized = float(value)
+    if not isfinite(normalized) or normalized <= 0:
+        raise ValueError(
+            "Daemon control timeout must be finite and greater than zero."
+        )
+    return normalized
+
+
 def _redacted_error_type(error: BaseException) -> str:
     return error.__class__.__name__
 
 
 class DaemonRuntime:
-    """Own scanner control, PSI, one audio stream, and dynamic PCM sinks."""
+    """Own serialized scanner controls, PSI, audio, and dynamic PCM sinks."""
 
     def __init__(
         self,
@@ -189,6 +281,7 @@ class DaemonRuntime:
 
         self.events = EventBus()
         self._lifecycle_lock = threading.RLock()
+        self._control_lock = threading.Lock()
         self._state_lock = threading.RLock()
         self._pending_transitions: deque[DaemonRuntimeTransition] = deque()
         self._emitting_transitions = False
@@ -199,6 +292,7 @@ class DaemonRuntime:
         self._started_at: datetime | None = None
         self._stopped_at: datetime | None = None
         self._transition_sequence = 0
+        self._control_sequence = 0
         self._last_failure_at: datetime | None = None
         self._last_error: str | None = None
 
@@ -216,6 +310,87 @@ class DaemonRuntime:
         callback: Callable[[DaemonRuntimeTransition], None],
     ) -> Callable[[], None]:
         return self.events.subscribe("transition", callback)
+
+    def hold(
+        self,
+        target: str,
+        first: str | int | None = None,
+        second: str | int | None = None,
+        *,
+        timeout: float = 2.0,
+    ) -> DaemonControlResult:
+        return self._execute_control(
+            DaemonControlOperation.HOLD,
+            timeout,
+            lambda remaining: self.scanner.hold(
+                target,
+                first,
+                second,
+                timeout=remaining,
+            ),
+        )
+
+    def next(
+        self,
+        target: str,
+        first: str | int | None = None,
+        second: str | int | None = None,
+        *,
+        count: int = 1,
+        timeout: float = 2.0,
+    ) -> DaemonControlResult:
+        return self._execute_control(
+            DaemonControlOperation.NEXT,
+            timeout,
+            lambda remaining: self.scanner.next(
+                target,
+                first,
+                second,
+                count=count,
+                timeout=remaining,
+            ),
+        )
+
+    def previous(
+        self,
+        target: str,
+        first: str | int | None = None,
+        second: str | int | None = None,
+        *,
+        count: int = 1,
+        timeout: float = 2.0,
+    ) -> DaemonControlResult:
+        return self._execute_control(
+            DaemonControlOperation.PREVIOUS,
+            timeout,
+            lambda remaining: self.scanner.previous(
+                target,
+                first,
+                second,
+                count=count,
+                timeout=remaining,
+            ),
+        )
+
+    def reconnect(
+        self,
+        *,
+        timeout: float = 2.0,
+    ) -> DaemonControlResult:
+        def reconnect_with_deadline(remaining: float) -> None:
+            if not self.scanner.supports_bounded_reconnect:
+                raise UnsupportedScannerFeatureError(
+                    "Daemon reconnect requires a directly owned bounded "
+                    "network control transport."
+                )
+            self.scanner.reconnect(timeout=remaining)
+
+        return self._execute_control(
+            DaemonControlOperation.RECONNECT,
+            timeout,
+            reconnect_with_deadline,
+            requires_connection=False,
+        )
 
     def start(self) -> None:
         caught: BaseException | None = None
@@ -366,6 +541,67 @@ class DaemonRuntime:
 
     def __exit__(self, *_: object) -> None:
         self.stop()
+
+    def _execute_control(
+        self,
+        operation: DaemonControlOperation,
+        timeout: float,
+        action: Callable[[float], None],
+        *,
+        requires_connection: bool = True,
+    ) -> DaemonControlResult:
+        normalized_timeout = _require_positive_control_timeout(timeout)
+        deadline = monotonic() + normalized_timeout
+
+        if not self._control_lock.acquire(blocking=False):
+            raise DaemonControlBusyError(
+                "Another daemon scanner control is already in progress."
+            )
+
+        lifecycle_acquired = False
+        try:
+            remaining = deadline - monotonic()
+            if remaining <= 0 or not self._lifecycle_lock.acquire(
+                timeout=max(0.0, remaining)
+            ):
+                raise CommandTimeoutError(
+                    "Daemon scanner control timed out before execution."
+                )
+            lifecycle_acquired = True
+
+            with self._state_lock:
+                if self._state is not DaemonRuntimeState.RUNNING:
+                    raise DaemonControlUnavailableError(
+                        "Daemon scanner controls require a running runtime."
+                    )
+                if requires_connection and not self.scanner.connected:
+                    raise DaemonControlUnavailableError(
+                        "Daemon scanner controls require a connected scanner."
+                    )
+
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                raise CommandTimeoutError(
+                    "Daemon scanner control timed out before execution."
+                )
+
+            started_at = _require_aware_datetime(self._now())
+            action(remaining)
+            completed_at = _require_aware_datetime(self._now())
+
+            with self._state_lock:
+                self._control_sequence += 1
+                return DaemonControlResult(
+                    sequence=self._control_sequence,
+                    operation=operation,
+                    started_at=started_at,
+                    completed_at=completed_at,
+                    snapshot=self._snapshot_locked(),
+                )
+        finally:
+            if lifecycle_acquired:
+                self._lifecycle_lock.release()
+            self._control_lock.release()
 
     def _cleanup_step(
         self,

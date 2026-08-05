@@ -275,3 +275,12 @@ with `scripts/validate_daemon_pcmu.py`:
   60-second simultaneous-client interval;
 - controlled `SIGTERM` returned exit status 0; and
 - all three owned sockets were removed before process exit.
+
+The same validator now accepts `--exercise-controls` for an opt-in Milestone
+19.8 hardware sequence. On 2026-08-05 it completed TGID hold, next, previous,
+hold release, and bounded reconnect while one API client, one event client, and
+two PCMU clients remained connected. The run completed 16 API pings, 82 ordered
+events without a gap, and 410 identical loss-free frames per PCMU client before
+clean `SIGTERM` shutdown and removal of all three sockets. The control path
+requires an initially unheld controllable channel and binds reversible navigation
+to the actual PSI-reported held selection.

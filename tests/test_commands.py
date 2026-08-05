@@ -8,7 +8,7 @@ from sds200.commands import (
     SetVolume,
     StartScannerInfoPush,
 )
-from sds200.exceptions import ProtocolError
+from sds200.exceptions import CommandRejectedError, ProtocolError
 from sds200.models import Packet
 
 
@@ -70,5 +70,7 @@ def test_navigation_commands_validate_target_and_count() -> None:
 def test_navigation_acknowledgement() -> None:
     command = HoldSelection("SYS", 42)
     command.parse_response(Packet(command="HLD", fields=("OK",), raw="HLD,OK"))
-    with pytest.raises(ProtocolError, match="rejected HLD"):
-        command.parse_response(Packet(command="HLD", fields=("NG",), raw="HLD,NG"))
+    with pytest.raises(CommandRejectedError, match="rejected HLD"):
+        command.parse_response(
+            Packet(command="HLD", fields=("NG",), raw="HLD,NG")
+        )

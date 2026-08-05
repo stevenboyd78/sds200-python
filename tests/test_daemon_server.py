@@ -119,6 +119,7 @@ def wait_until(
         ("client_timeout", True, TypeError),
         ("client_timeout", 0, ValueError),
         ("accept_poll_interval", 0, ValueError),
+        ("shutdown_timeout", 2.0, ValueError),
         ("shutdown_timeout", float("inf"), ValueError),
     ],
 )
@@ -172,7 +173,7 @@ def test_connection_can_process_multiple_ordered_requests(
 
         assert first["request_id"] == "ping-1"
         assert second["request_id"] == "capabilities-1"
-        assert second["result"]["read_only"] is True
+        assert second["result"]["read_only"] is False
     finally:
         client.close()
         server.stop()

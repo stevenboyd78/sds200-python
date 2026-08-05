@@ -20,7 +20,7 @@ DAEMON_API_DEFAULT_MAX_REQUEST_BYTES = 64 * 1024
 DAEMON_API_DEFAULT_MAX_RESPONSE_BYTES = 1024 * 1024
 DAEMON_API_DEFAULT_CLIENT_TIMEOUT = 5.0
 DAEMON_API_DEFAULT_ACCEPT_POLL_INTERVAL = 0.1
-DAEMON_API_DEFAULT_SHUTDOWN_TIMEOUT = 2.0
+DAEMON_API_DEFAULT_SHUTDOWN_TIMEOUT = 3.0
 _DAEMON_API_MIN_RESPONSE_BYTES = 256
 _DAEMON_API_RECV_BYTES = 4096
 
@@ -110,6 +110,12 @@ class DaemonApiServer:
             shutdown_timeout,
             label="Daemon API shutdown timeout",
         )
+        maximum_request_seconds = _maximum_request_seconds(api)
+        if self.shutdown_timeout <= maximum_request_seconds:
+            raise ValueError(
+                "Daemon API shutdown timeout must be greater than the "
+                "API maximum request duration."
+            )
 
         self._lifecycle_lock = threading.RLock()
         self._state_lock = threading.RLock()
@@ -440,4 +446,16 @@ def _require_positive_number(value: object, *, label: str) -> float:
     normalized = float(value)
     if not isfinite(normalized) or normalized <= 0:
         raise ValueError(f"{label} must be finite and greater than zero.")
+    return normalized
+
+
+def _maximum_request_seconds(api: object) -> float:
+    value = getattr(api, "maximum_request_seconds", 0.0)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError("API maximum request duration must be a number.")
+    normalized = float(value)
+    if not isfinite(normalized) or normalized < 0:
+        raise ValueError(
+            "API maximum request duration must be finite and non-negative."
+        )
     return normalized

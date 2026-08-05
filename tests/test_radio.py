@@ -488,3 +488,48 @@ def test_failed_reconnect_preserves_active_psi_interval(
     thread = threading.Thread(target=respond, daemon=True)
     thread.start()
     radio.reconnect()
+
+
+def test_only_direct_udp_transport_advertises_bounded_reconnect() -> None:
+    direct = SDS200.network("192.0.2.25")
+    injected = SDS200.from_transport(
+        FakeTransport(),
+        expected_model="SDS200",
+    )
+
+    assert direct.supports_bounded_reconnect is True
+    assert injected.supports_bounded_reconnect is False
+
+
+@pytest.mark.parametrize("timeout", [True, 0, float("inf")])
+def test_reconnect_rejects_invalid_timeout(timeout: object) -> None:
+    radio = SDS200.from_transport(
+        FakeTransport(),
+        expected_model="SDS200",
+    )
+
+    with pytest.raises((TypeError, ValueError)):
+        radio.reconnect(timeout=timeout)  # type: ignore[arg-type]
+
+
+def test_reconnect_deadline_includes_transport_stop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(
+        transport,
+        expected_model="SDS200",
+    )
+    radio.connect()
+    original_stop = transport.stop
+
+    def slow_stop() -> None:
+        time.sleep(0.02)
+        original_stop()
+
+    monkeypatch.setattr(transport, "stop", slow_stop)
+
+    with pytest.raises(CommandTimeoutError, match="stopping"):
+        radio.reconnect(timeout=0.001)
+
+    radio.close()

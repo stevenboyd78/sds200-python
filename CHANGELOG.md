@@ -25,9 +25,10 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 - Foreground `sdsctl daemon` construction of one scanner, PSI, RTSP/RTP audio,
   decoded-PCM router, and `DaemonRuntime` from an explicit SDS200 host or
   network-capable saved profile.
-- Versioned read-only `sdsctl.daemon` protocol with strict JSON Lines request and
-  response envelopes, correlation identifiers, capability negotiation, ping,
-  runtime snapshots, scanner state, audio health, and structured redacted errors.
+- Versioned `sdsctl.daemon` protocol with backward-compatible snapshot
+  operations plus capability-checked hold, next, previous, and reconnect
+  controls, strict JSON Lines envelopes, correlation identifiers, capability
+  negotiation, and structured redacted errors.
 - Private Unix-domain socket resolution through an explicit path,
   `XDG_RUNTIME_DIR`, or the user state directory, with private permissions,
   active-daemon refusal, safe stale-socket replacement, and filesystem identity
@@ -36,6 +37,12 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   timeouts, isolated connection workers, server health snapshots, CLI limit
   options, and process lifecycle integration that stops API clients before the
   ownership runtime.
+- Single-owner daemon mutation execution with immediate concurrent-request
+  rejection, scanner-acknowledged completion, ordered immutable control results,
+  authoritative completion snapshots, and stable redacted control error codes.
+- One maximum two-second daemon control budget covering lifecycle-lock waits and
+  scanner completion, plus bounded reconnect that is advertised only for the
+  directly owned SDS200 UDP control transport.
 - Versioned `sdsctl.daemon.events` JSON Lines envelopes with immutable payloads,
   authoritative snapshot checkpoints, global sequence numbers, observation
   timestamps, stable event kinds, and encoded-size enforcement.
@@ -82,6 +89,15 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   frames. An excess PCMU client was rejected, decoded audio advanced by 1,500
   packets and 480,000 samples, and controlled `SIGTERM` removed all three sockets
   with exit status 0.
+- Physical SDS200 validation of capability negotiation and the complete safe
+  daemon-control sequence: TGID hold, next, previous, hold release, and bounded
+  reconnect. All five scanner-acknowledged operations completed in order, next
+  changed the held selection, previous returned to it, hold was restored to
+  `Off`, reconnect produced both connection transitions, and API, PSI, event,
+  RTSP/RTP, decoded-audio, and PCMU activity remained healthy. The run completed
+  16 API pings, 82 ordered events without a gap, and two matching loss-free PCMU
+  streams of 410 frames and 131,200 payload bytes each. Controlled `SIGTERM`
+  returned exit status 0 and removed all three sockets.
 
 ### Changed
 
@@ -91,6 +107,9 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   optional files are absent.
 - Kept `--config PATH` dedicated to the legacy scanner connection-profile file;
   no profile or remote-audio configuration is moved or rewritten automatically.
+- Raised the default daemon API worker shutdown deadline from two to three
+  seconds and added rejection of API server configurations whose shutdown
+  deadline cannot outlast the maximum request duration.
 - Short TUI layouts now use dense borderless panels, four-line audio and PSI
   health summaries, and a one-line essential-controls footer so the operational
   view fits Raspberry Pi-class displays while tall layouts retain full detail.
