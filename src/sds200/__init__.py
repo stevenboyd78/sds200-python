@@ -116,6 +116,10 @@ from .daemon_client import (
     DAEMON_API_CLIENT_DEFAULT_TIMEOUT,
     DaemonApiClient,
 )
+from .daemon_event_client import (
+    DAEMON_EVENT_CLIENT_DEFAULT_TIMEOUT,
+    DaemonEventClient,
+)
 from .daemon_event_server import (
     DAEMON_EVENT_DEFAULT_ACCEPT_POLL_INTERVAL,
     DAEMON_EVENT_DEFAULT_MAX_CLIENTS,
@@ -532,6 +536,7 @@ __all__ = [
     "DAEMON_API_SUPPORTED_VERSIONS",
     "DAEMON_API_VERSION",
     "DAEMON_EVENT_DEFAULT_ACCEPT_POLL_INTERVAL",
+    "DAEMON_EVENT_CLIENT_DEFAULT_TIMEOUT",
     "DAEMON_EVENT_DEFAULT_MAX_BYTES",
     "DAEMON_EVENT_DEFAULT_MAX_CLIENTS",
     "DAEMON_EVENT_DEFAULT_QUEUE_CAPACITY",
@@ -564,6 +569,7 @@ __all__ = [
     "DaemonControlUnavailableError",
     "DaemonDisconnectedError",
     "DaemonEvent",
+    "DaemonEventClient",
     "DaemonEventKind",
     "DaemonEventPublisher",
     "DaemonEventServer",

@@ -236,7 +236,7 @@ Use the explicit path instead when the daemon was started with
 
 ## Current exclusions
 
-Milestone 19.7 does not add:
+The PCMU service still does not add:
 
 - decoded-PCM subscriptions;
 - client negotiation, filtering, replay, or seek operations;
@@ -244,7 +244,7 @@ Milestone 19.7 does not add:
 - scanner-control operations;
 - TCP transport or remote authentication;
 - daemon discovery or automatic client selection;
-- CLI or TUI daemon-client modes; or
+- CLI or TUI PCMU/audio daemon-client workflows; or
 - destination activation and configuration reload.
 
 ## Physical SDS200 validation

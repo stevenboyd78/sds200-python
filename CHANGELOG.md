@@ -37,6 +37,10 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   timeouts, isolated connection workers, server health snapshots, CLI limit
   options, and process lifecycle integration that stops API clients before the
   ownership runtime.
+- Public `DaemonApiClient` and explicit `sdsctl daemon-client` status, snapshot,
+  hold, next, previous, and reconnect workflows with capability negotiation,
+  authoritative result validation, distinct control deadlines, clear absent or
+  incompatible daemon diagnostics, and preserved standalone scanner commands.
 - Single-owner daemon mutation execution with immediate concurrent-request
   rejection, scanner-acknowledged completion, ordered immutable control results,
   authoritative completion snapshots, and stable redacted control error codes.
@@ -53,6 +57,10 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   subscription per admitted client, independent overflow, explicit sequence-gap
   resynchronization, slow-client isolation, deterministic cleanup, and process
   lifecycle integration.
+- Public `DaemonEventClient` and `sdsctl daemon-client events` workflows with
+  validated envelope, protocol, version, snapshot, framing, size, and sequence
+  validation; clear disconnect diagnostics; bounded matching counts; and
+  optional client-side event-kind filtering.
 - Foreground daemon options for event socket location, subscriber queue depth,
   concurrent event clients, maximum encoded event size, send timeout, and worker
   shutdown deadline.

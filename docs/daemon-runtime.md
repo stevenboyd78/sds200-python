@@ -28,9 +28,13 @@ Milestone 19.8 adds capability-checked daemon operations for hold, next,
 previous, and bounded reconnect. Mutations are single-owner, concurrent requests
 are rejected rather than queued, completion follows scanner acknowledgement, and
 successful responses include authoritative runtime snapshots. Reconnect is
-limited to the directly owned SDS200 UDP control transport. Decoded-PCM
-subscriptions and CLI/TUI daemon-client migration remain follow-on work. The
-process does not fork or create a pidfile.
+limited to the directly owned SDS200 UDP control transport.
+
+Milestone 19.9 adds explicit CLI daemon-client status, authoritative snapshot,
+safe-control, and ordered event-watch workflows while preserving the standalone
+top-level scanner commands. Decoded-PCM and PCMU/audio CLI subscriptions,
+automatic daemon discovery and selection, and TUI migration remain follow-on
+work. The process does not fork or create a pidfile.
 
 ## Foreground process contract
 
@@ -53,8 +57,9 @@ bounded `DaemonApiServer`, one `DaemonEventStream`, one bounded
 API class retains its historical public name while exposing backward-compatible
 reads and explicit safe controls. The PCMU stream subscribes to the same
 authoritative transport used by the decoded-PCM fanout. The router begins without
-destinations because playback, recording, remote-profile activation, decoded-PCM
-subscriptions, and daemon-client migration remain follow-on work.
+destinations because playback, recording, remote-profile activation,
+decoded-PCM subscriptions, PCMU/audio CLI workflows, and TUI migration remain
+follow-on work.
 
 The audio endpoint must come from either `--host` or a network-capable SDS200
 profile. A fallback profile may select serial control at runtime, but its saved
@@ -383,9 +388,11 @@ Later Milestone 19 work may:
 
 - add bounded decoded-PCM subscriptions for local clients;
 - activate configured playback, recording, and remote destinations;
-- add daemon discovery and client selection; and
-- allow CLI and TUI clients to consume daemon-owned sessions while preserving an
-  explicit standalone mode.
+- add daemon discovery and automatic client selection;
+- add PCMU and decoded-PCM CLI client workflows; and
+- allow the TUI to consume daemon-owned sessions while preserving an explicit
+  standalone mode.
 
-Decoded-PCM subscription, destination activation, reload, discovery, and
-client-selection contracts remain outside Milestone 19.8.
+Decoded-PCM subscription, destination activation, reload, discovery, automatic
+selection, daemon audio clients, and TUI migration remain outside Milestone
+19.9.

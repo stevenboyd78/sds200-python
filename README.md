@@ -72,6 +72,8 @@ information in this image represents a real system.*
 - Versioned ordered local daemon event stream over a separate private Unix
   socket with authoritative snapshots, bounded subscriptions, and explicit
   sequence-gap resynchronization
+- Explicit `sdsctl daemon-client` workflows for negotiated status and snapshot
+  reads, safe typed scanner controls, and validated gap-detecting event watches
 - Versioned bounded local daemon PCMU stream over a third private Unix socket with
   accepted RTP payloads, continuity metadata, and independent client-loss counters
 - Optional live playback through the local default or selected audio output device
@@ -278,6 +280,21 @@ sockets:
   accepted RTP PCMU packets through a bounded binary stream. Select an explicit
   absolute path with `--pcmu-socket-path`.
 
+Use the explicit daemon client when another process owns the scanner:
+
+```bash
+sdsctl daemon-client status
+sdsctl daemon-client snapshot
+sdsctl daemon-client hold TGID 12345
+sdsctl daemon-client next TGID 12345 --count 1
+sdsctl daemon-client reconnect
+sdsctl daemon-client events --count 10 --json
+```
+
+API options such as `--socket-path` precede the client action. Event watching
+uses its separate `--event-socket-path`. The top-level scanner commands remain
+the explicit standalone workflows.
+
 Every event client first receives an authoritative runtime snapshot at the
 current global sequence boundary, then only later runtime, scanner, PSI,
 radio-state, audio-lifecycle, and destination-health events. Sequence gaps show
@@ -303,7 +320,10 @@ UDP control transport; fallback or serial control returns
 `unsupported_operation`. The complete safe-control sequence has been physically
 validated while API, event, PSI, RTSP/RTP, decoded-audio, and two PCMU clients
 remained active, followed by clean `SIGTERM` shutdown and socket removal.
-Existing CLI and TUI workflows remain standalone. The initial router has no
+The top-level scanner commands and TUI remain standalone. The explicit
+`sdsctl daemon-client` command now provides daemon-owned status, authoritative
+snapshot, safe-control, and ordered event-watch workflows. PCMU/audio client
+workflows and TUI migration remain follow-on work. The initial router has no
 attached destinations. See the
 [daemon runtime and process guide](docs/daemon-runtime.md),
 [local daemon API guide](docs/daemon-api.md),

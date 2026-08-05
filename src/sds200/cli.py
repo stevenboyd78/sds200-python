@@ -48,6 +48,9 @@ from .daemon_client import (
     DAEMON_API_CLIENT_DEFAULT_TIMEOUT,
     DaemonApiClient,
 )
+from .daemon_event_client import (
+    DaemonEventClient,
+)
 from .daemon_event_server import (
     DAEMON_EVENT_DEFAULT_MAX_CLIENTS,
     DAEMON_EVENT_DEFAULT_SEND_TIMEOUT,
@@ -58,6 +61,8 @@ from .daemon_event_stream import DaemonEventStream
 from .daemon_events import (
     DAEMON_EVENT_DEFAULT_MAX_BYTES,
     DAEMON_EVENT_DEFAULT_QUEUE_CAPACITY,
+    DaemonEvent,
+    DaemonEventKind,
 )
 from .daemon_ipc import (
     DaemonSocketListener,
@@ -876,14 +881,14 @@ def build_parser(
         default=DAEMON_API_CLIENT_DEFAULT_TIMEOUT,
         metavar="SECONDS",
         help=(
-            "Daemon connect and response timeout "
+            "Daemon connection timeout and API response timeout "
             f"(default: {DAEMON_API_CLIENT_DEFAULT_TIMEOUT})"
         ),
     )
     daemon_client.add_argument(
         "--max-response-bytes",
         type=_positive_integer,
-        default=DAEMON_API_DEFAULT_MAX_RESPONSE_BYTES,
+        default=None,
         metavar="BYTES",
         help=(
             "Maximum accepted daemon API response size "
@@ -906,6 +911,50 @@ def build_parser(
     daemon_client_commands.add_parser(
         "snapshot",
         help="Print the complete authoritative runtime snapshot as JSON",
+    )
+    daemon_events = daemon_client_commands.add_parser(
+        "events",
+        help="Watch the ordered daemon event stream without scanner hardware",
+    )
+    daemon_events.add_argument(
+        "--event-socket-path",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Explicit absolute daemon event socket path; otherwise use "
+            "XDG_RUNTIME_DIR or the user state directory"
+        ),
+    )
+    daemon_events.add_argument(
+        "--max-event-bytes",
+        type=_positive_integer,
+        default=DAEMON_EVENT_DEFAULT_MAX_BYTES,
+        metavar="BYTES",
+        help=(
+            "Maximum accepted encoded daemon event size "
+            f"(default: {DAEMON_EVENT_DEFAULT_MAX_BYTES})"
+        ),
+    )
+    daemon_events.add_argument(
+        "--kind",
+        action="append",
+        choices=[kind.value for kind in DaemonEventKind],
+        metavar="KIND",
+        help=(
+            "Only print this event kind locally; repeat for multiple kinds. "
+            "Filtered output may skip sequence values"
+        ),
+    )
+    daemon_events.add_argument(
+        "--count",
+        type=_positive_integer,
+        metavar="COUNT",
+        help="Stop after printing this many matching events",
+    )
+    daemon_events.add_argument(
+        "--json",
+        action="store_true",
+        help="Print validated daemon events as JSON Lines",
     )
 
     for action_name, action_help in (
@@ -2257,6 +2306,23 @@ def _require_daemon_client_operation(
         )
 
 
+def _print_daemon_event(event: DaemonEvent, *, as_json: bool) -> None:
+    if as_json:
+        print(json.dumps(event.as_dict(), sort_keys=True), flush=True)
+        return
+
+    payload = json.dumps(
+        event.as_dict()["payload"],
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    print(
+        f"{event.observed_at.isoformat()} "
+        f"#{event.sequence} {event.kind}: {payload}",
+        flush=True,
+    )
+
+
 def _print_daemon_control_result(result: Mapping[str, object]) -> None:
     snapshot = _daemon_client_mapping(result, "snapshot")
     print(f"Control:            {result.get('operation', '-')}")
@@ -2306,20 +2372,56 @@ def _run_daemon_client(
     environ: Mapping[str, str] | None = None,
 ) -> int:
     _reject_daemon_client_scanner_options(args)
+    action = args.daemon_client_action
+    if action == "events":
+        if args.socket_path is not None:
+            raise ValueError(
+                "--socket-path is not used with daemon-client events; "
+                "use --event-socket-path."
+            )
+        if args.max_response_bytes is not None:
+            raise ValueError(
+                "--max-response-bytes is not used with daemon-client events; "
+                "use --max-event-bytes."
+            )
+
+        event_location = resolve_daemon_event_socket_location(
+            args.event_socket_path,
+            environ=environ,
+            configuration_paths=configuration_paths,
+        )
+        with DaemonEventClient(
+            event_location,
+            timeout=args.timeout,
+            max_event_bytes=args.max_event_bytes,
+        ) as event_client:
+            try:
+                for event in event_client.watch(
+                    kinds=args.kind,
+                    count=args.count,
+                ):
+                    _print_daemon_event(event, as_json=args.json)
+            except KeyboardInterrupt:
+                return 0
+        return 0
+
     location = resolve_daemon_socket_location(
         args.socket_path,
         environ=environ,
         configuration_paths=configuration_paths,
     )
 
-    action = args.daemon_client_action
     snapshot: dict[str, object] | None = None
     control_result: dict[str, object] | None = None
 
     with DaemonApiClient(
         location,
         timeout=args.timeout,
-        max_response_bytes=args.max_response_bytes,
+        max_response_bytes=(
+            DAEMON_API_DEFAULT_MAX_RESPONSE_BYTES
+            if args.max_response_bytes is None
+            else args.max_response_bytes
+        ),
     ) as client:
         hello = client.hello()
 

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -9,7 +10,11 @@ import pytest
 from sds200 import (
     DAEMON_API_PROTOCOL,
     DAEMON_API_VERSION,
+    DAEMON_EVENT_PROTOCOL,
+    DAEMON_EVENT_VERSION,
     DaemonApiOperation,
+    DaemonEvent,
+    DaemonEventKind,
     DaemonSocketLocation,
     DaemonUnavailableError,
     cli,
@@ -84,6 +89,23 @@ CONTROL_RESULT = {
     "completed_at": "2026-08-05T11:00:01+00:00",
     "snapshot": SNAPSHOT,
 }
+
+EVENT_SNAPSHOT = DaemonEvent(
+    protocol=DAEMON_EVENT_PROTOCOL,
+    version=DAEMON_EVENT_VERSION,
+    sequence=7,
+    observed_at=datetime(2026, 8, 5, 11, tzinfo=UTC),
+    kind=DaemonEventKind.SNAPSHOT,
+    payload=SNAPSHOT,
+)
+EVENT_RADIO = DaemonEvent(
+    protocol=DAEMON_EVENT_PROTOCOL,
+    version=DAEMON_EVENT_VERSION,
+    sequence=8,
+    observed_at=datetime(2026, 8, 5, 11, 0, 1, tzinfo=UTC),
+    kind=DaemonEventKind.RADIO_STATE,
+    payload={"fields": ["channel"]},
+)
 
 
 class FakeDaemonApiClient:
@@ -224,6 +246,55 @@ class FakeControlDaemonApiClient(FakeDaemonApiClient):
         return result
 
 
+class FakeDaemonEventClient:
+    instances: list[FakeDaemonEventClient] = []
+
+    def __init__(
+        self,
+        location: DaemonSocketLocation,
+        *,
+        timeout: float,
+        max_event_bytes: int,
+    ) -> None:
+        self.location = location
+        self.timeout = timeout
+        self.max_event_bytes = max_event_bytes
+        self.closed = False
+        self.watch_calls: list[
+            tuple[list[str] | None, int | None]
+        ] = []
+        self.instances.append(self)
+
+    def __enter__(self) -> FakeDaemonEventClient:
+        return self
+
+    def __exit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception: BaseException | None,
+        traceback: object,
+    ) -> None:
+        del exception_type, exception, traceback
+        self.closed = True
+
+    def watch(
+        self,
+        *,
+        kinds: list[str] | None,
+        count: int | None,
+    ) -> Iterator[DaemonEvent]:
+        self.watch_calls.append((kinds, count))
+        events = [EVENT_SNAPSHOT, EVENT_RADIO]
+        emitted = 0
+        for event in events:
+            if kinds is not None and event.kind not in kinds:
+                continue
+            if count is not None and emitted >= count:
+                return
+            emitted += 1
+            yield event
+
+
 def test_daemon_client_parser_accepts_status_options() -> None:
     args = cli.build_parser().parse_args(
         [
@@ -244,6 +315,35 @@ def test_daemon_client_parser_accepts_status_options() -> None:
     assert args.socket_path == Path("/tmp/sdsctl-daemon.sock")
     assert args.timeout == 4.0
     assert args.max_response_bytes == 8192
+    assert args.json is True
+
+
+def test_daemon_client_parser_accepts_event_watch_options() -> None:
+    args = cli.build_parser().parse_args(
+        [
+            "daemon-client",
+            "--timeout",
+            "1.5",
+            "events",
+            "--event-socket-path",
+            "/tmp/sdsctl-events.sock",
+            "--max-event-bytes",
+            "4096",
+            "--kind",
+            "radio.state",
+            "--count",
+            "2",
+            "--json",
+        ]
+    )
+
+    assert args.action == "daemon-client"
+    assert args.daemon_client_action == "events"
+    assert args.timeout == 1.5
+    assert args.event_socket_path == Path("/tmp/sdsctl-events.sock")
+    assert args.max_event_bytes == 4096
+    assert args.kind == ["radio.state"]
+    assert args.count == 2
     assert args.json is True
 
 
@@ -383,6 +483,151 @@ def test_daemon_client_rejects_scanner_connection_options(
 
     assert cli.main(arguments, environ={}) == 2
     assert "not used with daemon-client" in capsys.readouterr().err
+
+
+def test_daemon_client_events_prints_filtered_json_lines(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    FakeDaemonEventClient.instances.clear()
+    monkeypatch.setattr(cli, "DaemonEventClient", FakeDaemonEventClient)
+
+    class UnexpectedApiClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            del args, kwargs
+            pytest.fail("daemon-client events must not open the API socket")
+
+    monkeypatch.setattr(cli, "DaemonApiClient", UnexpectedApiClient)
+
+    assert (
+        cli.main(
+            [
+                "daemon-client",
+                "--timeout",
+                "1.5",
+                "events",
+                "--event-socket-path",
+                "/tmp/sdsctl-events.sock",
+                "--kind",
+                "radio.state",
+                "--count",
+                "1",
+                "--json",
+            ],
+            environ={},
+        )
+        == 0
+    )
+
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 1
+    payload = json.loads(lines[0])
+    assert payload["kind"] == "radio.state"
+    assert payload["sequence"] == 8
+
+    client = FakeDaemonEventClient.instances[0]
+    assert client.location.path == Path("/tmp/sdsctl-events.sock")
+    assert client.timeout == 1.5
+    assert client.watch_calls == [(["radio.state"], 1)]
+    assert client.closed is True
+
+
+def test_daemon_client_events_prints_human_summary(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    FakeDaemonEventClient.instances.clear()
+    monkeypatch.setattr(cli, "DaemonEventClient", FakeDaemonEventClient)
+
+    assert (
+        cli.main(
+            [
+                "daemon-client",
+                "events",
+                "--event-socket-path",
+                "/tmp/sdsctl-events.sock",
+                "--count",
+                "1",
+            ],
+            environ={},
+        )
+        == 0
+    )
+
+    assert capsys.readouterr().out.splitlines() == [
+        "2026-08-05T11:00:00+00:00 #7 stream.snapshot: "
+        + json.dumps(SNAPSHOT, sort_keys=True, separators=(",", ":"))
+    ]
+
+
+def test_daemon_client_events_reports_missing_event_socket(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    path = tmp_path / "missing-events.sock"
+
+    assert (
+        cli.main(
+            [
+                "daemon-client",
+                "events",
+                "--event-socket-path",
+                str(path),
+                "--count",
+                "1",
+            ],
+            environ={},
+        )
+        == 2
+    )
+
+    assert "Daemon event socket was not found" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("option", "value", "expected"),
+    [
+        (
+            "--socket-path",
+            "/tmp/sdsctl-api.sock",
+            "--socket-path is not used with daemon-client events",
+        ),
+        (
+            "--max-response-bytes",
+            "4096",
+            "--max-response-bytes is not used with daemon-client events",
+        ),
+    ],
+)
+def test_daemon_client_events_rejects_api_only_options(
+    option: str,
+    value: str,
+    expected: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    FakeDaemonEventClient.instances.clear()
+    monkeypatch.setattr(cli, "DaemonEventClient", FakeDaemonEventClient)
+
+    assert (
+        cli.main(
+            [
+                "daemon-client",
+                option,
+                value,
+                "events",
+                "--event-socket-path",
+                "/tmp/sdsctl-events.sock",
+                "--count",
+                "1",
+            ],
+            environ={},
+        )
+        == 2
+    )
+
+    assert expected in capsys.readouterr().err
+    assert FakeDaemonEventClient.instances == []
 
 
 def test_daemon_client_hold_prints_authoritative_completion(
