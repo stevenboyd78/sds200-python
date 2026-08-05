@@ -9,6 +9,7 @@ import pytest
 
 from sds200.audio import AudioChunk
 from sds200.network_audio import NetworkAudioTransport
+from sds200.pcmu import PcmuPacket
 from sds200.rtsp import RtpTransportInfo
 
 
@@ -93,12 +94,14 @@ def make_rtp(
     payload: bytes,
     *,
     sequence: int = 741,
+    timestamp: int = 1234,
     ssrc: int = 5678,
+    marker: bool = False,
 ) -> bytes:
     return (
-        bytes((0x80, 0x00))
+        bytes((0x80, 0x80 if marker else 0x00))
         + sequence.to_bytes(2, "big")
-        + (1234).to_bytes(4, "big")
+        + timestamp.to_bytes(4, "big")
         + ssrc.to_bytes(4, "big")
         + payload
     )
@@ -124,6 +127,8 @@ def test_network_audio_performs_handshake_and_emits_pcmu_payload() -> None:
         return rtsp
 
     chunks: list[AudioChunk] = []
+    packets: list[PcmuPacket] = []
+    observed_order: list[str] = []
     transport = NetworkAudioTransport(
         "192.0.2.25",
         keepalive_interval=0.01,
@@ -131,11 +136,29 @@ def test_network_audio_performs_handshake_and_emits_pcmu_payload() -> None:
         rtsp_client_factory=client_factory,
         local_address_resolver=lambda _host, _port: "192.0.2.10",
     )
+    transport.on_packet(
+        lambda packet: (
+            packets.append(packet),
+            observed_order.append("packet"),
+        )
+    )
 
-    transport.start(chunks.append)
+    def receive_chunk(chunk: AudioChunk) -> None:
+        chunks.append(chunk)
+        observed_order.append("chunk")
+
+    transport.start(receive_chunk)
     try:
-        datagram.feed(make_rtp(b"pcmu"))
+        datagram.feed(
+            make_rtp(
+                b"pcmu",
+                sequence=741,
+                timestamp=1_407_173_956,
+                marker=True,
+            )
+        )
         wait_until(lambda: [chunk.data for chunk in chunks] == [b"pcmu"])
+        wait_until(lambda: len(packets) == 1)
         wait_until(lambda: rtsp.keepalives >= 1)
         assert transport.running
     finally:
@@ -149,6 +172,19 @@ def test_network_audio_performs_handshake_and_emits_pcmu_payload() -> None:
     assert rtsp.closed
     assert datagram.closed
     assert not transport.running
+
+    assert observed_order == ["packet", "chunk"]
+    packet = packets[0]
+    assert packet.endpoint == "rtsp://192.0.2.25/au:scanner.au"
+    assert packet.sequence == 741
+    assert packet.timestamp == 1_407_173_956
+    assert packet.ssrc == 5678
+    assert packet.payload == b"pcmu"
+    assert packet.marker
+    assert packet.expected_sequence is None
+    assert packet.expected_timestamp is None
+    assert not packet.discontinuous
+    assert packet.observed_at == chunks[0].received_at
 
 
 def test_network_audio_discards_duplicate_and_out_of_order_packets() -> None:
@@ -172,24 +208,53 @@ def test_network_audio_discards_duplicate_and_out_of_order_packets() -> None:
         return rtsp
 
     chunks: list[AudioChunk] = []
+    packets: list[PcmuPacket] = []
     transport = NetworkAudioTransport(
         "192.0.2.25",
         datagram_socket_factory=datagram_factory,
         rtsp_client_factory=client_factory,
         local_address_resolver=lambda _host, _port: "192.0.2.10",
     )
+    transport.on_packet(packets.append)
 
     transport.start(chunks.append)
     try:
-        datagram.feed(make_rtp(b"first", sequence=10))
-        datagram.feed(make_rtp(b"duplicate", sequence=10))
-        datagram.feed(make_rtp(b"next", sequence=11))
-        datagram.feed(make_rtp(b"late", sequence=9))
+        datagram.feed(
+            make_rtp(
+                b"first",
+                sequence=10,
+                timestamp=1000,
+            )
+        )
+        datagram.feed(
+            make_rtp(
+                b"duplicate",
+                sequence=10,
+                timestamp=1000,
+            )
+        )
+        datagram.feed(
+            make_rtp(
+                b"next",
+                sequence=11,
+                timestamp=1005,
+            )
+        )
+        datagram.feed(
+            make_rtp(
+                b"late",
+                sequence=9,
+                timestamp=996,
+            )
+        )
         wait_until(lambda: len(chunks) == 2)
+        wait_until(lambda: len(packets) == 2)
     finally:
         transport.stop()
 
     assert [chunk.data for chunk in chunks] == [b"first", b"next"]
+    assert [packet.sequence for packet in packets] == [10, 11]
+    assert not any(packet.discontinuous for packet in packets)
 
 
 def test_network_audio_rejects_unexpected_source_and_ssrc() -> None:
@@ -221,6 +286,122 @@ def test_network_audio_rejects_unexpected_source_and_ssrc() -> None:
     assert statistics.ssrc_mismatch_packets == 1
     assert statistics.packets_delivered == 1
 
+
+
+def test_network_audio_publishes_wraparound_and_gap_observations() -> None:
+    datagram = FakeAudioDatagramSocket()
+    rtsp = FakeRtspClient()
+    chunks: list[AudioChunk] = []
+    packets: list[PcmuPacket] = []
+    transport = NetworkAudioTransport(
+        "192.0.2.25",
+        datagram_socket_factory=lambda _family, _type: datagram,
+        rtsp_client_factory=lambda _host, _port, _path, _timeout: rtsp,
+        local_address_resolver=lambda _host, _port: "192.0.2.10",
+    )
+    transport.on_packet(packets.append)
+
+    transport.start(chunks.append)
+    try:
+        datagram.feed(
+            make_rtp(
+                b"abcd",
+                sequence=65535,
+                timestamp=0xFFFFFFFC,
+            )
+        )
+        datagram.feed(
+            make_rtp(
+                b"efgh",
+                sequence=0,
+                timestamp=0,
+            )
+        )
+        datagram.feed(
+            make_rtp(
+                b"ijkl",
+                sequence=3,
+                timestamp=8,
+            )
+        )
+        wait_until(lambda: len(chunks) == 3)
+        wait_until(lambda: len(packets) == 3)
+    finally:
+        transport.stop()
+
+    first, wrapped, gap = packets
+    assert first.expected_sequence is None
+    assert first.expected_timestamp is None
+    assert not first.discontinuous
+
+    assert wrapped.expected_sequence == 0
+    assert wrapped.expected_timestamp == 0
+    assert not wrapped.discontinuous
+
+    assert gap.expected_sequence == 1
+    assert gap.missing_packets == 2
+    assert gap.expected_timestamp == 4
+    assert gap.missing_samples == 4
+    assert not gap.timestamp_backwards
+    assert gap.sequence_discontinuity
+    assert gap.timestamp_discontinuity
+    assert gap.discontinuous
+
+
+def test_network_audio_packet_listener_failures_are_isolated() -> None:
+    datagram = FakeAudioDatagramSocket()
+    rtsp = FakeRtspClient()
+    chunks: list[AudioChunk] = []
+    packets: list[PcmuPacket] = []
+    transport = NetworkAudioTransport(
+        "192.0.2.25",
+        datagram_socket_factory=lambda _family, _type: datagram,
+        rtsp_client_factory=lambda _host, _port, _path, _timeout: rtsp,
+        local_address_resolver=lambda _host, _port: "192.0.2.10",
+    )
+
+    def fail_listener(packet: PcmuPacket) -> None:
+        del packet
+        raise RuntimeError("packet listener failed")
+
+    transport.on_packet(fail_listener)
+    transport.on_packet(packets.append)
+
+    transport.start(chunks.append)
+    try:
+        datagram.feed(make_rtp(b"accepted"))
+        wait_until(lambda: len(packets) == 1)
+        wait_until(lambda: len(chunks) == 1)
+    finally:
+        transport.stop()
+
+    assert packets[0].payload == b"accepted"
+    assert chunks[0].data == b"accepted"
+
+
+def test_network_audio_packet_listener_can_unsubscribe() -> None:
+    datagram = FakeAudioDatagramSocket()
+    rtsp = FakeRtspClient()
+    chunks: list[AudioChunk] = []
+    packets: list[PcmuPacket] = []
+    transport = NetworkAudioTransport(
+        "192.0.2.25",
+        datagram_socket_factory=lambda _family, _type: datagram,
+        rtsp_client_factory=lambda _host, _port, _path, _timeout: rtsp,
+        local_address_resolver=lambda _host, _port: "192.0.2.10",
+    )
+    unsubscribe = transport.on_packet(packets.append)
+    unsubscribe()
+
+    transport.start(chunks.append)
+    try:
+        datagram.feed(make_rtp(b"accepted"))
+        wait_until(lambda: len(chunks) == 1)
+    finally:
+        transport.stop()
+
+    assert packets == []
+    assert chunks[0].data == b"accepted"
 
 def test_network_audio_rejects_wildcard_bind_address() -> None:
     with pytest.raises(ValueError, match="must not bind all network interfaces"):
