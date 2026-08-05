@@ -28,6 +28,12 @@ class _DaemonEventServerLike(Protocol):
     def stop(self) -> None: ...
 
 
+class _DaemonPcmuServerLike(Protocol):
+    def start(self) -> None: ...
+
+    def stop(self) -> None: ...
+
+
 class _DaemonSignalControllerLike(Protocol):
     @property
     def last_signal(self) -> int | None: ...
@@ -146,7 +152,7 @@ class DaemonSignalController:
 
 
 class DaemonProcess:
-    """Host one runtime and optional local API and event servers."""
+    """Host one runtime and optional local API, event, and PCMU servers."""
 
     def __init__(
         self,
@@ -154,6 +160,7 @@ class DaemonProcess:
         *,
         api_server: _DaemonApiServerLike | None = None,
         event_server: _DaemonEventServerLike | None = None,
+        pcmu_server: _DaemonPcmuServerLike | None = None,
         signals: _DaemonSignalControllerLike | None = None,
         poll_interval: float = 0.1,
     ) -> None:
@@ -163,12 +170,14 @@ class DaemonProcess:
         self.runtime = runtime
         self.api_server = api_server
         self.event_server = event_server
+        self.pcmu_server = pcmu_server
         self.signals = signals or DaemonSignalController()
         self.poll_interval = poll_interval
 
     def run(self) -> DaemonProcessResult:
         with self.signals:
             event_server_attempted = False
+            pcmu_server_attempted = False
             runtime_attempted = False
             api_server_attempted = False
 
@@ -176,6 +185,10 @@ class DaemonProcess:
                 if self.event_server is not None:
                     event_server_attempted = True
                     self.event_server.start()
+
+                if self.pcmu_server is not None:
+                    pcmu_server_attempted = True
+                    self.pcmu_server.start()
 
                 runtime_attempted = True
                 self.runtime.start()
@@ -190,6 +203,7 @@ class DaemonProcess:
                 cleanup_failures = self._stop_components(
                     stop_api_server=api_server_attempted,
                     stop_runtime=runtime_attempted,
+                    stop_pcmu_server=pcmu_server_attempted,
                     stop_event_server=event_server_attempted,
                 )
                 if cleanup_failures:
@@ -204,6 +218,7 @@ class DaemonProcess:
                 cleanup_failures = self._stop_components(
                     stop_api_server=api_server_attempted,
                     stop_runtime=runtime_attempted,
+                    stop_pcmu_server=pcmu_server_attempted,
                     stop_event_server=event_server_attempted,
                 )
                 if cleanup_failures:
@@ -223,6 +238,7 @@ class DaemonProcess:
         *,
         stop_api_server: bool,
         stop_runtime: bool,
+        stop_pcmu_server: bool,
         stop_event_server: bool,
     ) -> list[BaseException]:
         failures: list[BaseException] = []
@@ -236,6 +252,12 @@ class DaemonProcess:
         if stop_runtime:
             try:
                 self.runtime.stop()
+            except BaseException as error:
+                failures.append(error)
+
+        if stop_pcmu_server and self.pcmu_server is not None:
+            try:
+                self.pcmu_server.stop()
             except BaseException as error:
                 failures.append(error)
 
