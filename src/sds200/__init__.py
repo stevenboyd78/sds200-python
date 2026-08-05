@@ -108,6 +108,7 @@ from .daemon_api import (
     DaemonApiResponse,
     DaemonReadOnlyApi,
 )
+from .daemon_event_stream import DaemonEventStream
 from .daemon_events import (
     DAEMON_EVENT_PROTOCOL,
     DAEMON_EVENT_SUPPORTED_VERSIONS,
@@ -472,6 +473,7 @@ __all__ = [
     "DaemonEventPublisher",
     "DaemonEventSubscription",
     "DaemonEventSubscriptionClosed",
+    "DaemonEventStream",
     "DaemonProcess",
     "DaemonProcessResult",
     "DaemonReadOnlyApi",
