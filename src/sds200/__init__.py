@@ -156,6 +156,8 @@ from .daemon_process import (
     DaemonSignalController,
 )
 from .daemon_runtime import (
+    DaemonControlOperation,
+    DaemonControlResult,
     DaemonRuntime,
     DaemonRuntimeSnapshot,
     DaemonRuntimeState,
@@ -188,6 +190,7 @@ from .exceptions import (
     CaptureFormatError,
     CommandRejectedError,
     ConfigurationError,
+    DaemonControlUnavailableError,
     DaemonIpcError,
     ReplayMismatchError,
     SDS200Error,
@@ -534,6 +537,9 @@ __all__ = [
     "DaemonApiResponse",
     "DaemonApiServer",
     "DaemonApiServerSnapshot",
+    "DaemonControlOperation",
+    "DaemonControlResult",
+    "DaemonControlUnavailableError",
     "DaemonEvent",
     "DaemonEventKind",
     "DaemonEventPublisher",
