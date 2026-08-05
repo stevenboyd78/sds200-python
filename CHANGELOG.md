@@ -89,6 +89,15 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   frames. An excess PCMU client was rejected, decoded audio advanced by 1,500
   packets and 480,000 samples, and controlled `SIGTERM` removed all three sockets
   with exit status 0.
+- Physical SDS200 validation of capability negotiation and the complete safe
+  daemon-control sequence: TGID hold, next, previous, hold release, and bounded
+  reconnect. All five scanner-acknowledged operations completed in order, next
+  changed the held selection, previous returned to it, hold was restored to
+  `Off`, reconnect produced both connection transitions, and API, PSI, event,
+  RTSP/RTP, decoded-audio, and PCMU activity remained healthy. The run completed
+  16 API pings, 82 ordered events without a gap, and two matching loss-free PCMU
+  streams of 410 frames and 131,200 payload bytes each. Controlled `SIGTERM`
+  returned exit status 0 and removed all three sockets.
 
 ### Changed
 

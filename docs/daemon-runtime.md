@@ -359,7 +359,23 @@ contracts remain covered by hardware-independent regression tests.
 Milestone 19.8 safe-control contracts are covered by hardware-independent tests,
 including acknowledgements, rejection, deadlines, unsupported transports,
 concurrent requests, shutdown interaction, and unchanged read-only operations.
-Physical SDS200 validation of the control operations remains pending.
+
+The complete safe-control sequence was physically validated on 2026-08-05
+against the same SDS200:
+
+- capability negotiation advertised hold, next, previous, and reconnect with the
+  documented two-second maximum deadline;
+- TGID hold, next, previous, hold release, and bounded reconnect completed with
+  increasing control sequences and healthy authoritative runtime snapshots;
+- the validator bound navigation to the PSI-reported held selection so normal
+  scanning movement between the precondition snapshot and hold acknowledgement
+  did not make restoration ambiguous;
+- hold returned to `Off`, reconnect produced both connection transitions, and
+  API, event, PSI, RTSP/RTP, decoded-audio, and PCMU activity remained healthy;
+- two PCMU clients received 410 identical loss-free frames each while the event
+  client received 82 ordered messages without a gap; and
+- controlled `SIGTERM` returned exit status 0 and removed all three local
+  sockets.
 
 ## Follow-on work
 

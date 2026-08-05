@@ -9,7 +9,7 @@ The broader product direction, architectural constraints, deferred capabilities,
 and ideas that are not ready for scheduling are recorded in
 [the project vision](docs/project-vision.md).
 
-## Active milestone
+## Recently completed milestone
 
 ### Milestone 19.8 — Safe daemon controls
 
@@ -41,15 +41,18 @@ and ideas that are not ready for scheduling are recorded in
     snapshots and the existing ordered event stream.
   - Preserved private socket permissions, bounded clients, worker isolation, and
     the single-owner scanner lifecycle.
-- **Regression, documentation, and hardware validation — in progress**
+- **Regression, documentation, and hardware validation — complete**
   - Added regression coverage for success, strict parameters, scanner rejection,
     timeouts, unsupported transports, concurrent controls, shutdown, and
     unchanged read-only behavior.
   - Documented envelopes, completion semantics, deadlines, exclusions,
     compatibility, and client responsibilities.
-  - Physical SDS200 validation remains: exercise hold, next, previous, and
-    reconnect while API, event, PCMU, PSI, and decoded-audio activity remain
-    healthy, then confirm controlled shutdown.
+  - Physically validated TGID hold, next, previous, hold release, and bounded
+    reconnect against an SDS200 while API, event, PSI, RTSP/RTP, decoded-audio,
+    and two PCMU clients remained healthy.
+  - Confirmed ordered control sequences, reversible hold state, reconnect
+    connection transitions, loss-free matching PCMU delivery, controlled
+    `SIGTERM`, successful process exit, and removal of all owned sockets.
 
 ## Deferred hardware validation
 
@@ -165,6 +168,11 @@ Research and fixture work must precede public support for:
 - analysis controls such as `AST` and `APR`;
 - waterfall data such as `PWF` and `GWF`;
 - menu operations such as `MNU`, `MSI`, `MSV`, and `MSB`;
+- a guarded SDS200 reboot-recovery operation based on the reported `MSM,1`
+  behavior, which places the scanner in mass-storage mode briefly before reboot;
+  require protocol and firmware validation, explicit operator intent, bounded
+  outage handling, and post-reboot control, PSI, and RTSP recovery checks before
+  exposing it, and do not treat it as ordinary reconnect;
 - additional NAC, RAN, color-code, area, activity, and quality details;
 - conventional and trunking discovery modes;
 - system-status and RF-power plot screens.

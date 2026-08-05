@@ -350,9 +350,24 @@ SDS200 at `192.168.0.251`:
   validation run; and
 - systemd-style `SIGTERM` produced exit status 0 and removed the owned socket.
 
-Milestone 19.8 control behavior is covered by hardware-independent regression
-tests. Physical SDS200 validation of hold, next, previous, reconnect,
-simultaneous API/event/PCMU activity, and controlled shutdown remains pending.
+The Milestone 19.8 safe controls were physically validated on 2026-08-05
+against the same SDS200:
+
+- capability negotiation advertised hold, next, previous, and reconnect with the
+  two-second maximum deadline;
+- TGID hold activated, next changed the held selection, previous returned to the
+  held selection, and the second hold restored the scanner to `Off`;
+- all five scanner-acknowledged operations returned increasing control sequences
+  and authoritative snapshots reporting a running runtime, connected scanner,
+  active PSI and audio, and a running router;
+- bounded reconnect emitted both scanner connection transitions while the API
+  connection remained usable;
+- the simultaneous-client run completed 16 correlated API pings and 82 ordered
+  events without a sequence gap;
+- two PCMU clients each received the same 410 frames and 131,200 payload bytes
+  without local loss, RTP loss, timestamp reversal, or mismatched overlap; and
+- controlled `SIGTERM` returned exit status 0 and removed `daemon.sock`,
+  `events.sock`, and `pcmu.sock`.
 
 ## Lifecycle and current exclusions
 

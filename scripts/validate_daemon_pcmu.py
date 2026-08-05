@@ -191,13 +191,14 @@ def _api_request(
     *,
     request_id: str,
     operation: str,
+    params: Mapping[str, object] | None = None,
 ) -> Mapping[str, object]:
     request = {
         "protocol": _API_PROTOCOL,
         "version": _API_VERSION,
         "request_id": request_id,
         "operation": operation,
-        "params": {},
+        "params": dict(params or {}),
     }
     encoded = (
         json.dumps(
@@ -289,6 +290,177 @@ def _validate_running_runtime(
     ):
         if metrics.get(field) is not True:
             raise RuntimeError(f"{label} runtime field {field} was false.")
+
+
+def _scanner_state(
+    snapshot: Mapping[str, object],
+) -> Mapping[str, object]:
+    return _require_mapping(
+        snapshot.get("radio_state"),
+        label="Runtime radio state",
+    )
+
+
+def _navigation_selection(
+    snapshot: Mapping[str, object],
+) -> tuple[str, int] | None:
+    state = _scanner_state(snapshot)
+    kind = state.get("channel_kind")
+    index = state.get("channel_index")
+    if isinstance(index, bool) or not isinstance(index, int):
+        return None
+    if kind == "TGID":
+        return "TGID", index
+    if kind == "ConvFrequency":
+        return "CFREQ", index
+    return None
+
+
+def _channel_hold(
+    snapshot: Mapping[str, object],
+) -> str | None:
+    value = _scanner_state(snapshot).get("channel_hold")
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise RuntimeError("Runtime channel hold state must be a string.")
+    normalized = value.strip().casefold()
+    if normalized == "on":
+        return "On"
+    if normalized == "off":
+        return "Off"
+    raise RuntimeError(
+        f"Runtime channel hold state is unsupported: {value!r}."
+    )
+
+
+def _event_kind_count(
+    summary: Mapping[str, object],
+    kind: str,
+) -> int:
+    kinds = _require_mapping(
+        summary.get("kinds"),
+        label="Daemon event-kind summary",
+    )
+    value = kinds.get(kind, 0)
+    return _require_integer(
+        value,
+        label=f"Daemon event count for {kind}",
+    )
+
+
+def _check_live_clients(
+    process: subprocess.Popen[str],
+    event_collector: EventCollector,
+    pcmu_collectors: list[PcmuCollector],
+) -> None:
+    return_code = process.poll()
+    if return_code is not None:
+        raise RuntimeError(
+            "Daemon exited during control validation "
+            f"with status {return_code}."
+        )
+    event_collector.raise_if_failed()
+    for collector in pcmu_collectors:
+        collector.raise_if_failed()
+
+
+def _wait_for_snapshot(
+    client: socket.socket,
+    process: subprocess.Popen[str],
+    event_collector: EventCollector,
+    pcmu_collectors: list[PcmuCollector],
+    *,
+    request_prefix: str,
+    timeout: float,
+    description: str,
+    predicate: Callable[[Mapping[str, object]], bool],
+) -> Mapping[str, object]:
+    deadline = monotonic() + timeout
+    attempt = 0
+    last_snapshot: Mapping[str, object] | None = None
+
+    while monotonic() < deadline:
+        _check_live_clients(
+            process,
+            event_collector,
+            pcmu_collectors,
+        )
+        attempt += 1
+        last_snapshot = _api_request(
+            client,
+            request_id=f"{request_prefix}-{attempt}",
+            operation="runtime.snapshot",
+        )
+        if predicate(last_snapshot):
+            return last_snapshot
+        sleep(0.1)
+
+    detail = ""
+    if last_snapshot is not None:
+        detail = (
+            f"; selection={_navigation_selection(last_snapshot)!r}, "
+            f"channel_hold={_channel_hold(last_snapshot)!r}"
+        )
+    raise TimeoutError(
+        f"Timed out waiting for {description}{detail}."
+    )
+
+
+def _control_result(
+    client: socket.socket,
+    *,
+    request_id: str,
+    operation: str,
+    params: Mapping[str, object],
+    previous_sequence: int,
+) -> tuple[dict[str, object], int]:
+    result = _api_request(
+        client,
+        request_id=request_id,
+        operation=operation,
+        params=params,
+    )
+
+    sequence = _require_integer(
+        result.get("sequence"),
+        label=f"{operation} control sequence",
+    )
+    if sequence <= previous_sequence:
+        raise RuntimeError(
+            f"{operation} control sequence did not increase."
+        )
+    if result.get("operation") != operation:
+        raise RuntimeError(
+            f"{operation} result reported an unexpected operation."
+        )
+    _require_string(
+        result.get("started_at"),
+        label=f"{operation} start timestamp",
+    )
+    _require_string(
+        result.get("completed_at"),
+        label=f"{operation} completion timestamp",
+    )
+
+    snapshot = _require_mapping(
+        result.get("snapshot"),
+        label=f"{operation} completion snapshot",
+    )
+    metrics = _runtime_metrics(snapshot)
+    _validate_running_runtime(
+        metrics,
+        label=operation,
+    )
+
+    return (
+        {
+            "operation": operation,
+            "sequence": sequence,
+            "runtime": metrics,
+        },
+        sequence,
+    )
 
 
 class EventCollector:
@@ -728,6 +900,313 @@ class PcmuCollector:
             self._first_frame.set()
 
 
+def _exercise_safe_controls(
+    client: socket.socket,
+    process: subprocess.Popen[str],
+    event_collector: EventCollector,
+    pcmu_collectors: list[PcmuCollector],
+    *,
+    timeout: float,
+) -> dict[str, object]:
+    capabilities = _api_request(
+        client,
+        request_id="controls-capabilities",
+        operation="daemon.capabilities",
+    )
+    advertised = capabilities.get("control_operations")
+    if not isinstance(advertised, list) or any(
+        not isinstance(value, str) for value in advertised
+    ):
+        raise RuntimeError(
+            "Daemon control operations were not advertised as strings."
+        )
+
+    required_operations = {
+        "scanner.hold",
+        "scanner.next",
+        "scanner.previous",
+        "scanner.reconnect",
+    }
+    missing_operations = sorted(
+        required_operations - set(advertised)
+    )
+    if missing_operations:
+        raise RuntimeError(
+            "Daemon omitted required control operations: "
+            f"{missing_operations!r}."
+        )
+    if capabilities.get("read_only") is not False:
+        raise RuntimeError(
+            "Daemon capabilities still reported a read-only API."
+        )
+
+    maximum_timeout = capabilities.get("max_control_timeout")
+    if (
+        isinstance(maximum_timeout, bool)
+        or not isinstance(maximum_timeout, (int, float))
+        or float(maximum_timeout) != 2.0
+    ):
+        raise RuntimeError(
+            "Daemon maximum control timeout was not 2 seconds."
+        )
+
+    initial_snapshot = _wait_for_snapshot(
+        client,
+        process,
+        event_collector,
+        pcmu_collectors,
+        request_prefix="controls-initial-state",
+        timeout=timeout,
+        description="a controllable unheld channel",
+        predicate=lambda snapshot: (
+            _navigation_selection(snapshot) is not None
+            and _channel_hold(snapshot) == "Off"
+        ),
+    )
+    requested_selection = _navigation_selection(initial_snapshot)
+    assert requested_selection is not None
+    requested_target, requested_index = requested_selection
+
+    operations: list[dict[str, object]] = []
+    previous_sequence = 0
+    hold_enabled = False
+    hold_restored = False
+    next_changed_selection = False
+
+    try:
+        result, previous_sequence = _control_result(
+            client,
+            request_id="control-hold-on",
+            operation="scanner.hold",
+            params={
+                "target": requested_target,
+                "first": requested_index,
+                "timeout": 2.0,
+            },
+            previous_sequence=previous_sequence,
+        )
+        operations.append(result)
+        hold_enabled = True
+
+        # The scanner may advance between the precondition snapshot and
+        # HLD acknowledgement, so bind reversible navigation to the actual
+        # PSI-reported held selection.
+        held_snapshot = _wait_for_snapshot(
+            client,
+            process,
+            event_collector,
+            pcmu_collectors,
+            request_prefix="control-hold-on-state",
+            timeout=timeout,
+            description="channel hold activation",
+            predicate=lambda snapshot: (
+                _navigation_selection(snapshot) is not None
+                and _channel_hold(snapshot) == "On"
+            ),
+        )
+        held_selection = _navigation_selection(held_snapshot)
+        assert held_selection is not None
+        held_target, held_index = held_selection
+
+        result, previous_sequence = _control_result(
+            client,
+            request_id="control-next",
+            operation="scanner.next",
+            params={
+                "target": held_target,
+                "first": held_index,
+                "count": 1,
+                "timeout": 2.0,
+            },
+            previous_sequence=previous_sequence,
+        )
+        operations.append(result)
+
+        next_snapshot = _wait_for_snapshot(
+            client,
+            process,
+            event_collector,
+            pcmu_collectors,
+            request_prefix="control-next-state",
+            timeout=timeout,
+            description="a different held channel after next",
+            predicate=lambda snapshot: (
+                _navigation_selection(snapshot) is not None
+                and _navigation_selection(snapshot) != held_selection
+                and _channel_hold(snapshot) == "On"
+            ),
+        )
+        next_selection = _navigation_selection(next_snapshot)
+        assert next_selection is not None
+        next_changed_selection = True
+        next_target, next_index = next_selection
+
+        result, previous_sequence = _control_result(
+            client,
+            request_id="control-previous",
+            operation="scanner.previous",
+            params={
+                "target": next_target,
+                "first": next_index,
+                "count": 1,
+                "timeout": 2.0,
+            },
+            previous_sequence=previous_sequence,
+        )
+        operations.append(result)
+
+        _wait_for_snapshot(
+            client,
+            process,
+            event_collector,
+            pcmu_collectors,
+            request_prefix="control-previous-state",
+            timeout=timeout,
+            description="the original held selection after previous",
+            predicate=lambda snapshot: (
+                _navigation_selection(snapshot) == held_selection
+                and _channel_hold(snapshot) == "On"
+            ),
+        )
+
+        result, previous_sequence = _control_result(
+            client,
+            request_id="control-hold-off",
+            operation="scanner.hold",
+            params={
+                "target": held_target,
+                "first": held_index,
+                "timeout": 2.0,
+            },
+            previous_sequence=previous_sequence,
+        )
+        operations.append(result)
+
+        _wait_for_snapshot(
+            client,
+            process,
+            event_collector,
+            pcmu_collectors,
+            request_prefix="control-hold-off-state",
+            timeout=timeout,
+            description="restoration of an unheld controllable channel",
+            predicate=lambda snapshot: (
+                _navigation_selection(snapshot) is not None
+                and _channel_hold(snapshot) == "Off"
+            ),
+        )
+        hold_restored = True
+
+        connection_events_before = _event_kind_count(
+            event_collector.summary(),
+            "scanner.connection",
+        )
+        pcmu_frames_before = [
+            collector.frame_count for collector in pcmu_collectors
+        ]
+
+        result, previous_sequence = _control_result(
+            client,
+            request_id="control-reconnect",
+            operation="scanner.reconnect",
+            params={"timeout": 2.0},
+            previous_sequence=previous_sequence,
+        )
+        operations.append(result)
+
+        _wait_until(
+            lambda: _event_kind_count(
+                event_collector.summary(),
+                "scanner.connection",
+            )
+            >= connection_events_before + 2,
+            timeout=timeout,
+            description="scanner disconnect and reconnect events",
+            check=lambda: _check_live_clients(
+                process,
+                event_collector,
+                pcmu_collectors,
+            ),
+        )
+
+        for collector, prior_frames in zip(
+            pcmu_collectors,
+            pcmu_frames_before,
+            strict=True,
+        ):
+            collector.wait_for_frames(
+                prior_frames + 1,
+                timeout,
+            )
+
+        final_snapshot = _wait_for_snapshot(
+            client,
+            process,
+            event_collector,
+            pcmu_collectors,
+            request_prefix="control-reconnect-state",
+            timeout=timeout,
+            description="a healthy unheld channel after reconnect",
+            predicate=lambda snapshot: (
+                _navigation_selection(snapshot) is not None
+                and _channel_hold(snapshot) == "Off"
+            ),
+        )
+        final_metrics = _runtime_metrics(final_snapshot)
+        _validate_running_runtime(
+            final_metrics,
+            label="Post-control",
+        )
+
+        return {
+            "capabilities": {
+                "read_only": False,
+                "required_operations_advertised": True,
+                "max_control_timeout_seconds": 2.0,
+            },
+            "requested_channel": {
+                "target": requested_target,
+                "hold": "Off",
+            },
+            "held_channel": {
+                "target": held_target,
+                "hold": "On",
+            },
+            "operations": operations,
+            "next_changed_selection": next_changed_selection,
+            "previous_returned_to_held_selection": True,
+            "hold_restored": True,
+            "reconnect_connection_events": 2,
+            "pcmu_advanced_after_reconnect": True,
+            "final_runtime": final_metrics,
+        }
+    finally:
+        if hold_enabled and not hold_restored and process.poll() is None:
+            with suppress(BaseException):
+                current_snapshot = _api_request(
+                    client,
+                    request_id="control-emergency-state",
+                    operation="runtime.snapshot",
+                )
+                current_selection = _navigation_selection(
+                    current_snapshot
+                )
+                if (
+                    current_selection is not None
+                    and _channel_hold(current_snapshot) == "On"
+                ):
+                    current_target, current_index = current_selection
+                    _api_request(
+                        client,
+                        request_id="control-emergency-hold-off",
+                        operation="scanner.hold",
+                        params={
+                            "target": current_target,
+                            "first": current_index,
+                            "timeout": 2.0,
+                        },
+                    )
+
 def _verify_excess_pcmu_client_rejected(
     path: Path,
     process: subprocess.Popen[str],
@@ -873,7 +1352,8 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Validate simultaneous daemon API, event, and bounded PCMU "
-            "clients against a physical SDS200."
+            "clients against a physical SDS200, with optional safe "
+            "daemon-control exercises."
         )
     )
     parser.add_argument(
@@ -904,6 +1384,14 @@ def _parse_args() -> argparse.Namespace:
         type=_positive_float,
         default=10.0,
         help="Daemon shutdown deadline in seconds (default: 10)",
+    )
+    parser.add_argument(
+        "--exercise-controls",
+        action="store_true",
+        help=(
+            "Exercise hold, next, previous, and reconnect after requiring "
+            "an initially unheld controllable channel"
+        ),
     )
     parser.add_argument(
         "--output-dir",
@@ -966,6 +1454,7 @@ def _run_validation(args: argparse.Namespace) -> dict[str, object]:
     socket_modes: dict[str, int] | None = None
     event_collector: EventCollector | None = None
     pcmu_collectors: list[PcmuCollector] = []
+    control_summary: dict[str, object] | None = None
     process_exited = False
 
     try:
@@ -1069,6 +1558,15 @@ def _run_validation(args: argparse.Namespace) -> dict[str, object]:
                 start_metrics,
                 label="Initial",
             )
+
+            if args.exercise_controls:
+                control_summary = _exercise_safe_controls(
+                    api_client,
+                    process,
+                    event_collector,
+                    pcmu_collectors,
+                    timeout=args.startup_timeout,
+                )
 
             deadline = monotonic() + args.duration
             next_ping = monotonic()
@@ -1193,7 +1691,7 @@ def _run_validation(args: argparse.Namespace) -> dict[str, object]:
         assert socket_modes is not None
         summary: dict[str, object] = {
             "schema": "sds200.daemon-pcmu-hardware-validation",
-            "version": 1,
+            "version": 2 if control_summary is not None else 1,
             "observed_at": datetime.now(UTC).isoformat(),
             "duration_seconds": args.duration,
             "permissions": {
@@ -1229,6 +1727,8 @@ def _run_validation(args: argparse.Namespace) -> dict[str, object]:
                 "daemon_stderr": stderr_path.name,
             },
         }
+        if control_summary is not None:
+            summary["controls"] = control_summary
 
         summary_path.write_text(
             json.dumps(summary, indent=2, sort_keys=True) + "\n",

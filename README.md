@@ -300,8 +300,11 @@ scanner commands, or provide decoded-PCM client subscriptions. The local API
 supports documented `hold`, `next`, `previous`, and bounded `reconnect`
 operations. Reconnect is available only when the daemon directly owns the SDS200
 UDP control transport; fallback or serial control returns
-`unsupported_operation`. Existing CLI and TUI workflows remain standalone. The
-initial router has no attached destinations. See the
+`unsupported_operation`. The complete safe-control sequence has been physically
+validated while API, event, PSI, RTSP/RTP, decoded-audio, and two PCMU clients
+remained active, followed by clean `SIGTERM` shutdown and socket removal.
+Existing CLI and TUI workflows remain standalone. The initial router has no
+attached destinations. See the
 [daemon runtime and process guide](docs/daemon-runtime.md),
 [local daemon API guide](docs/daemon-api.md),
 [local daemon event stream guide](docs/daemon-events.md),
