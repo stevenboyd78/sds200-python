@@ -22,6 +22,12 @@ class _DaemonApiServerLike(Protocol):
     def stop(self) -> None: ...
 
 
+class _DaemonEventServerLike(Protocol):
+    def start(self) -> None: ...
+
+    def stop(self) -> None: ...
+
+
 class _DaemonSignalControllerLike(Protocol):
     @property
     def last_signal(self) -> int | None: ...
@@ -140,13 +146,14 @@ class DaemonSignalController:
 
 
 class DaemonProcess:
-    """Host one daemon runtime and optional local API until shutdown."""
+    """Host one runtime and optional local API and event servers."""
 
     def __init__(
         self,
         runtime: _DaemonRuntimeLike,
         *,
         api_server: _DaemonApiServerLike | None = None,
+        event_server: _DaemonEventServerLike | None = None,
         signals: _DaemonSignalControllerLike | None = None,
         poll_interval: float = 0.1,
     ) -> None:
@@ -155,15 +162,24 @@ class DaemonProcess:
 
         self.runtime = runtime
         self.api_server = api_server
+        self.event_server = event_server
         self.signals = signals or DaemonSignalController()
         self.poll_interval = poll_interval
 
     def run(self) -> DaemonProcessResult:
         with self.signals:
+            event_server_attempted = False
+            runtime_attempted = False
             api_server_attempted = False
 
             try:
+                if self.event_server is not None:
+                    event_server_attempted = True
+                    self.event_server.start()
+
+                runtime_attempted = True
                 self.runtime.start()
+
                 if self.api_server is not None:
                     api_server_attempted = True
                     self.api_server.start()
@@ -173,6 +189,8 @@ class DaemonProcess:
             except BaseException as process_error:
                 cleanup_failures = self._stop_components(
                     stop_api_server=api_server_attempted,
+                    stop_runtime=runtime_attempted,
+                    stop_event_server=event_server_attempted,
                 )
                 if cleanup_failures:
                     logger.error(
@@ -185,6 +203,8 @@ class DaemonProcess:
             else:
                 cleanup_failures = self._stop_components(
                     stop_api_server=api_server_attempted,
+                    stop_runtime=runtime_attempted,
+                    stop_event_server=event_server_attempted,
                 )
                 if cleanup_failures:
                     if len(cleanup_failures) > 1:
@@ -202,6 +222,8 @@ class DaemonProcess:
         self,
         *,
         stop_api_server: bool,
+        stop_runtime: bool,
+        stop_event_server: bool,
     ) -> list[BaseException]:
         failures: list[BaseException] = []
 
@@ -211,10 +233,17 @@ class DaemonProcess:
             except BaseException as error:
                 failures.append(error)
 
-        try:
-            self.runtime.stop()
-        except BaseException as error:
-            failures.append(error)
+        if stop_runtime:
+            try:
+                self.runtime.stop()
+            except BaseException as error:
+                failures.append(error)
+
+        if stop_event_server and self.event_server is not None:
+            try:
+                self.event_server.stop()
+            except BaseException as error:
+                failures.append(error)
 
         return failures
 

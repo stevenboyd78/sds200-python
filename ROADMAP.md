@@ -11,13 +11,37 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 19.6 — Local event stream
+### Milestone 19.7 — Bounded PCMU client subscriptions
 
-- Publish an initial authoritative snapshot followed by ordered daemon, scanner,
-  PSI, radio-state, audio, and destination-health events.
-- Add sequence numbers, bounded per-client queues, clean unsubscribe behavior,
-  and slow-client isolation.
-- Keep binary audio and scanner controls outside the event-stream contract.
+- **Accepted PCMU packet fanout — planned**
+  - Publish accepted RTP PCMU payloads before decoding rather than re-encoding
+    decoded PCM.
+  - Preserve RTP sequence, timestamp, discontinuity, observation, and endpoint
+    information needed by local clients.
+  - Keep packet acceptance and decoded-PCM routing under one authoritative
+    network-audio session.
+- **Independent bounded subscriptions — planned**
+  - Give every audio subscriber an independent bounded queue and deterministic
+    close and unsubscribe behavior.
+  - Isolate slow, disconnected, malformed, and excess clients without delaying
+    RTP reception, scanner control, PSI, daemon events, or other subscribers.
+  - Expose packet loss, queue overflow, discontinuity, and subscriber-health
+    state through immutable snapshots or transitions.
+- **Private local delivery — planned**
+  - Add a versioned local PCMU subscription contract without changing the
+    existing request-response API or ordered event-stream protocols.
+  - Bound client count, queued packets, payload and frame sizes, write waits, and
+    shutdown deadlines.
+  - Preserve private Unix-socket ownership, safe stale-socket handling, and
+    deterministic daemon-process lifecycle integration.
+- **Regression, documentation, and hardware validation — planned**
+  - Cover packet ordering, sequence wraparound, loss and discontinuity,
+    independent clients, overflow, disconnect races, size limits, and bounded
+    shutdown.
+  - Document framing, capabilities, resynchronization, exclusions, and client
+    behavior.
+  - Validate simultaneous API, event, and PCMU clients against a physical SDS200
+    without interrupting decoded audio or scanner ownership.
 
 ## Deferred hardware validation
 
@@ -41,14 +65,6 @@ fixture-tested, not hardware-validated.
 
 These milestone groups preserve intended future work. Their numbering and release
 assignment may change before implementation begins.
-
-### Milestone 19.7 — Bounded PCMU client subscriptions
-
-- Publish accepted RTP PCMU payloads before decoding rather than re-encoding PCM.
-- Preserve the existing single decoded-PCM path while adding independent bounded
-  PCMU subscriber queues.
-- Report packet sequence, loss, discontinuity, and slow-client state without
-  allowing audio consumers to delay control or event traffic.
 
 ### Milestone 19.8 — Safe daemon controls
 
@@ -267,3 +283,9 @@ fixtures before renderer-specific implementation.
   private Unix-domain socket ownership, safe stale-socket handling, bounded and
   isolated clients, deterministic process integration, CLI server limits, and
   host-independent regression coverage.
+- Milestone 19.6: immutable versioned daemon event envelopes, authoritative
+  snapshot-first subscriptions, one serialized renderer-neutral source
+  aggregator, independent bounded queues with explicit sequence-gap recovery, a
+  separate private `events.sock` endpoint, bounded clients and encoded event
+  sizes, deterministic process lifecycle integration, CLI configuration,
+  documentation, regression coverage, and physical SDS200 validation.

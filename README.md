@@ -68,6 +68,9 @@ information in this image represents a real system.*
   fanout, dynamic PCM destinations, immutable snapshots, and deterministic cleanup
 - Versioned read-only local daemon API over a private Unix-domain socket with
   strict JSON Lines envelopes, bounded clients, and deterministic shutdown
+- Versioned ordered local daemon event stream over a separate private Unix
+  socket with authoritative snapshots, bounded subscriptions, and explicit
+  sequence-gap resynchronization
 - Optional live playback through the local default or selected audio output device
 - Simultaneous local playback and streaming PCM WAV recording from one RTSP session
 - UDP XML fragment validation, statistics, and bounded retries
@@ -259,22 +262,33 @@ The process owns one scanner control session, one PSI stream, one SDS200
 RTSP/RTP session, and one decoded-PCM router. A fallback profile may use serial
 control while its configured network host remains the audio endpoint.
 
-The daemon also exposes a versioned read-only JSON Lines API through a private
-Unix-domain socket. It uses `$XDG_RUNTIME_DIR/sdsctl/daemon.sock` when available
-and otherwise falls back to the resolved user state directory. An explicit
-absolute path may be selected with `--socket-path`.
+The daemon exposes two versioned local services through private Unix-domain
+sockets:
 
-Stop the process with `Ctrl+C` or `SIGTERM`. Both request orderly reverse-order
-shutdown, including closing API clients before stopping scanner ownership.
-`SIGHUP` is reserved for future reload work and is not part of the
-controlled-shutdown contract.
+- `$XDG_RUNTIME_DIR/sdsctl/daemon.sock`, or the user-state fallback, provides the
+  read-only request-response API. Select an explicit absolute path with
+  `--socket-path`.
+- `$XDG_RUNTIME_DIR/sdsctl/events.sock`, or the user-state fallback, provides the
+  ordered JSON Lines event stream. Select an explicit absolute path with
+  `--event-socket-path`.
+
+Every event client first receives an authoritative runtime snapshot at the
+current global sequence boundary, then only later runtime, scanner, PSI,
+radio-state, audio-lifecycle, and destination-health events. Sequence gaps show
+that a subscriber overflowed; reconnect to obtain a new authoritative snapshot.
+
+Stop the process with `Ctrl+C` or `SIGTERM`. Shutdown first closes API clients,
+then stops scanner, PSI, audio, and router ownership while the event service can
+publish final lifecycle transitions, and finally closes event clients and removes
+both owned sockets.
 
 The command remains in the foreground for service-manager ownership. It does not
-fork, create a pidfile, install a service, expose TCP, publish an event stream,
-accept scanner controls, or provide client audio subscriptions. Existing CLI and
-TUI workflows remain standalone. The initial router has no attached
-destinations. See the [daemon runtime and process guide](docs/daemon-runtime.md),
-[local daemon API guide](docs/daemon-api.md), and
+fork, create a pidfile, install a service, expose TCP, accept scanner controls,
+or provide client audio subscriptions. Existing CLI and TUI workflows remain
+standalone. The initial router has no attached destinations. See the
+[daemon runtime and process guide](docs/daemon-runtime.md),
+[local daemon API guide](docs/daemon-api.md),
+[local daemon event stream guide](docs/daemon-events.md), and
 [operational logging](docs/logging.md).
 
 Serial-only profiles, replay captures, and non-SDS200 network-audio selections
@@ -622,6 +636,7 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting and
 - [Textual TUI](docs/tui.md)
 - [Foreground daemon and ownership runtime](docs/daemon-runtime.md)
 - [Local daemon API](docs/daemon-api.md)
+- [Local daemon event stream](docs/daemon-events.md)
 - [Audio subsystem architecture](docs/audio.md)
 - [Acknowledgments](ACKNOWLEDGMENTS.md)
 - [Contributing](CONTRIBUTING.md)

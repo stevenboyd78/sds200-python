@@ -36,11 +36,29 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   timeouts, isolated connection workers, server health snapshots, CLI limit
   options, and process lifecycle integration that stops API clients before the
   ownership runtime.
+- Versioned `sdsctl.daemon.events` JSON Lines envelopes with immutable payloads,
+  authoritative snapshot checkpoints, global sequence numbers, observation
+  timestamps, stable event kinds, and encoded-size enforcement.
+- One serialized daemon event stream aggregating runtime lifecycle, scanner
+  connection, PSI, radio-state, audio lifecycle, and decoded-PCM destination
+  health without publishing packet-rate audio data.
+- A separate private `events.sock` Unix-domain endpoint with one bounded
+  subscription per admitted client, independent overflow, explicit sequence-gap
+  resynchronization, slow-client isolation, deterministic cleanup, and process
+  lifecycle integration.
+- Foreground daemon options for event socket location, subscriber queue depth,
+  concurrent event clients, maximum encoded event size, send timeout, and worker
+  shutdown deadline.
 - Physical SDS200 validation of foreground startup, live PSI and RTSP/RTP
   reception, private API socket permissions, all read-only operations,
   malformed-request recovery, an independent second client, controlled
   `SIGINT` and systemd-style `SIGTERM` shutdown, socket removal, reverse-order
   cleanup, and successful process exit.
+- Physical SDS200 validation of the private local event endpoint with two
+  independent snapshot-first clients, excess-client rejection, uninterrupted
+  API ping, 76 continuous ordered events from sequence 11 through 86, live PSI
+  and radio-state updates, shutdown lifecycle events, 507 received RTP packets,
+  162,240 decoded samples, clean `SIGTERM`, and removal of both owned sockets.
 
 ### Changed
 

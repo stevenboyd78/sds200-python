@@ -40,7 +40,22 @@ from .configuration import (
     load_application_configuration,
 )
 from .daemon_api import DaemonReadOnlyApi
-from .daemon_ipc import DaemonSocketListener, resolve_daemon_socket_location
+from .daemon_event_server import (
+    DAEMON_EVENT_DEFAULT_MAX_CLIENTS,
+    DAEMON_EVENT_DEFAULT_SEND_TIMEOUT,
+    DAEMON_EVENT_DEFAULT_SHUTDOWN_TIMEOUT,
+    DaemonEventServer,
+)
+from .daemon_event_stream import DaemonEventStream
+from .daemon_events import (
+    DAEMON_EVENT_DEFAULT_MAX_BYTES,
+    DAEMON_EVENT_DEFAULT_QUEUE_CAPACITY,
+)
+from .daemon_ipc import (
+    DaemonSocketListener,
+    resolve_daemon_event_socket_location,
+    resolve_daemon_socket_location,
+)
 from .daemon_process import DaemonProcess
 from .daemon_runtime import DaemonRuntime
 from .daemon_server import (
@@ -677,6 +692,65 @@ def build_parser(
         help=(
             "Local API worker shutdown deadline "
             f"(default: {DAEMON_API_DEFAULT_SHUTDOWN_TIMEOUT})"
+        ),
+    )
+    daemon.add_argument(
+        "--event-socket-path",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Explicit absolute Unix event socket path; otherwise use "
+            "XDG_RUNTIME_DIR or the user state directory"
+        ),
+    )
+    daemon.add_argument(
+        "--event-queue-capacity",
+        type=_positive_integer,
+        default=DAEMON_EVENT_DEFAULT_QUEUE_CAPACITY,
+        metavar="COUNT",
+        help=(
+            "Maximum queued events per local subscriber "
+            f"(default: {DAEMON_EVENT_DEFAULT_QUEUE_CAPACITY})"
+        ),
+    )
+    daemon.add_argument(
+        "--event-max-clients",
+        type=_positive_integer,
+        default=DAEMON_EVENT_DEFAULT_MAX_CLIENTS,
+        metavar="COUNT",
+        help=(
+            "Maximum concurrent local event clients "
+            f"(default: {DAEMON_EVENT_DEFAULT_MAX_CLIENTS})"
+        ),
+    )
+    daemon.add_argument(
+        "--event-max-bytes",
+        type=_positive_integer,
+        default=DAEMON_EVENT_DEFAULT_MAX_BYTES,
+        metavar="BYTES",
+        help=(
+            "Maximum encoded local event size "
+            f"(default: {DAEMON_EVENT_DEFAULT_MAX_BYTES})"
+        ),
+    )
+    daemon.add_argument(
+        "--event-send-timeout",
+        type=_positive_float,
+        default=DAEMON_EVENT_DEFAULT_SEND_TIMEOUT,
+        metavar="SECONDS",
+        help=(
+            "Local event client send timeout "
+            f"(default: {DAEMON_EVENT_DEFAULT_SEND_TIMEOUT})"
+        ),
+    )
+    daemon.add_argument(
+        "--event-shutdown-timeout",
+        type=_positive_float,
+        default=DAEMON_EVENT_DEFAULT_SHUTDOWN_TIMEOUT,
+        metavar="SECONDS",
+        help=(
+            "Local event worker shutdown deadline "
+            f"(default: {DAEMON_EVENT_DEFAULT_SHUTDOWN_TIMEOUT})"
         ),
     )
 
@@ -1778,14 +1852,36 @@ def _run_daemon(
         shutdown_timeout=args.api_shutdown_timeout,
     )
 
+    event_socket_location = resolve_daemon_event_socket_location(
+        args.event_socket_path,
+        environ=environ,
+        configuration_paths=configuration_paths,
+    )
+    event_stream = DaemonEventStream(
+        runtime,
+        queue_capacity=args.event_queue_capacity,
+        max_subscribers=args.event_max_clients,
+        max_event_bytes=args.event_max_bytes,
+    )
+    event_server = DaemonEventServer(
+        DaemonSocketListener(event_socket_location),
+        event_stream,
+        max_clients=args.event_max_clients,
+        max_event_bytes=args.event_max_bytes,
+        send_timeout=args.event_send_timeout,
+        shutdown_timeout=args.event_shutdown_timeout,
+    )
+
     result = DaemonProcess(
         runtime,
         api_server=api_server,
+        event_server=event_server,
     ).run()
     logger.info(
-        "foreground daemon stopped host=%s socket=%s signal=%s",
+        "foreground daemon stopped host=%s socket=%s event_socket=%s signal=%s",
         host,
         socket_location.path,
+        event_socket_location.path,
         result.last_signal,
     )
     return 0

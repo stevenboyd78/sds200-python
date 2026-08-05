@@ -12,6 +12,7 @@ from sds200.audio import AudioChunk, AudioChunkHandler, AudioStream
 from sds200.audio_recording import PCM_SAMPLE_WIDTH, PCMU_SAMPLE_RATE, PcmuWavRecorder
 from sds200.audio_sinks import (
     AudioFanoutSession,
+    AudioFanoutSnapshot,
     BufferedPlaybackSink,
     LocalPlaybackAdapter,
     PcmSinkRouter,
@@ -215,6 +216,80 @@ def test_audio_fanout_decodes_once_for_multiple_sinks() -> None:
     assert snapshot.samples == 4
     assert snapshot.audio_duration_seconds == 4 / PCMU_SAMPLE_RATE
     assert not snapshot.running
+
+
+def test_audio_fanout_emits_state_after_start_and_stop() -> None:
+    transport = FakeAudioTransport()
+    sink = CollectingSink("collector")
+    session = AudioFanoutSession(AudioStream(transport), (sink,))
+    observed: list[AudioFanoutSnapshot] = []
+
+    unsubscribe = session.on_state(observed.append)
+
+    session.start()
+    transport.feed(AudioChunk(b"\xff"))
+    session.stop()
+    unsubscribe()
+
+    assert [snapshot.running for snapshot in observed] == [True, False]
+    assert observed[0].packets == 0
+    assert observed[1].packets == 1
+    assert observed[1].samples == 1
+
+
+def test_audio_fanout_unsubscribe_and_repeated_stop_emit_nothing_more() -> None:
+    transport = FakeAudioTransport()
+    sink = CollectingSink("collector")
+    session = AudioFanoutSession(AudioStream(transport), (sink,))
+    observed: list[AudioFanoutSnapshot] = []
+
+    unsubscribe = session.on_state(observed.append)
+    session.start()
+    unsubscribe()
+
+    session.stop()
+    session.stop()
+
+    assert [snapshot.running for snapshot in observed] == [True]
+
+
+def test_audio_fanout_state_listener_failures_are_isolated() -> None:
+    transport = FakeAudioTransport()
+    sink = CollectingSink("collector")
+    session = AudioFanoutSession(AudioStream(transport), (sink,))
+    observed: list[AudioFanoutSnapshot] = []
+
+    def fail_listener(snapshot: AudioFanoutSnapshot) -> None:
+        del snapshot
+        raise RuntimeError("listener failed")
+
+    session.on_state(fail_listener)
+    session.on_state(observed.append)
+
+    session.start()
+    session.stop()
+
+    assert [snapshot.running for snapshot in observed] == [True, False]
+
+
+def test_audio_fanout_emits_stopped_state_after_start_failure() -> None:
+    class FailingStartSink(CollectingSink):
+        def start(self) -> None:
+            raise RuntimeError("audio sink start failed")
+
+    transport = FakeAudioTransport()
+    sink = FailingStartSink("failing")
+    session = AudioFanoutSession(AudioStream(transport), (sink,))
+    observed: list[AudioFanoutSnapshot] = []
+    session.on_state(observed.append)
+
+    with pytest.raises(RuntimeError, match="audio sink start failed"):
+        session.start()
+
+    assert len(observed) == 1
+    assert not observed[0].running
+    assert observed[0].packets == 0
+    assert observed[0].samples == 0
 
 
 def test_buffered_playback_sink_uses_renderer_neutral_adapter() -> None:
