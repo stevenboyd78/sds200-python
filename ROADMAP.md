@@ -11,57 +11,37 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 19.6 — Local event stream
+### Milestone 19.7 — Bounded PCMU client subscriptions
 
-- **Ordered event protocol — implemented**
-  - Immutable JSON-compatible envelopes carry protocol version, global sequence,
-    observation timestamp, event kind, and payload.
-  - Every subscription begins with one authoritative runtime snapshot captured
-    at its sequence boundary, followed only by later ordered events.
-  - Renderer neutrality, immutable payload semantics, and redacted failure
-    information are preserved.
-- **Authoritative source aggregation — implemented**
-  - Runtime lifecycle, scanner connection, PSI updates, radio-state changes,
-    audio lifecycle, and decoded-PCM destination-health transitions feed one
-    serialized publisher.
-  - Existing immutable snapshots and transition models are reused without
-    renderer-specific state.
-  - Packet-rate PCM and PCMU data and scanner controls remain outside the event
-    stream.
-- **Bounded subscriptions — implemented**
-  - Every subscriber has an independent bounded queue with deterministic close
-    and unsubscribe behavior.
-  - Overflow preserves an unread initial snapshot, drops the oldest later event,
-    and exposes the loss through the next observed sequence gap without blocking
-    source callback paths.
-  - Subscriber count, queue depth, encoded event size, client count, send waits,
-    and shutdown waits are bounded.
-- **Private Unix-socket streaming — implemented**
-  - A separate private `events.sock` endpoint streams ordered UTF-8 JSON Lines;
-    the existing `daemon.sock` request-response protocol remains unchanged.
-  - Every admitted client owns one subscription and receives its snapshot before
-    later events. Excess, disconnected, stalled, slow, and oversized-event
-    clients are isolated from other clients and the ownership runtime.
-  - The event listener starts before runtime startup so clients can observe
-    lifecycle transitions and remains active through runtime shutdown.
-- **Regression and documentation — implemented**
-  - Coverage includes initial-snapshot ordering, sequence continuity and gaps,
-    source aggregation, concurrent clients, overflow, unsubscribe and shutdown
-    behavior, encoded-size enforcement, and CLI construction.
-  - Protocol framing, event kinds, limits, resynchronization, lifecycle, socket
-    resolution, and current exclusions are documented.
-- **Physical SDS200 validation — completed**
-  - Validated private `0700` directory and `0600` socket permissions, two
-    independent snapshot-first clients at the same sequence boundary, excess
-    client rejection, and unchanged request-response API operation.
-  - Observed 76 ordered events from sequence 11 through 86 without gaps,
-    regressions, malformed lines, or reader errors, including live PSI and
-    radio-state events plus shutdown audio, scanner-connection, and daemon
-    lifecycle transitions.
-  - Controlled `SIGTERM` returned success after 507 RTP packets and 162,240
-    decoded samples, removed both owned sockets, and left no process error.
-    Destination-health transitions remain regression-tested because the initial
-    daemon router has no activated destinations in this milestone.
+- **Accepted PCMU packet fanout — planned**
+  - Publish accepted RTP PCMU payloads before decoding rather than re-encoding
+    decoded PCM.
+  - Preserve RTP sequence, timestamp, discontinuity, observation, and endpoint
+    information needed by local clients.
+  - Keep packet acceptance and decoded-PCM routing under one authoritative
+    network-audio session.
+- **Independent bounded subscriptions — planned**
+  - Give every audio subscriber an independent bounded queue and deterministic
+    close and unsubscribe behavior.
+  - Isolate slow, disconnected, malformed, and excess clients without delaying
+    RTP reception, scanner control, PSI, daemon events, or other subscribers.
+  - Expose packet loss, queue overflow, discontinuity, and subscriber-health
+    state through immutable snapshots or transitions.
+- **Private local delivery — planned**
+  - Add a versioned local PCMU subscription contract without changing the
+    existing request-response API or ordered event-stream protocols.
+  - Bound client count, queued packets, payload and frame sizes, write waits, and
+    shutdown deadlines.
+  - Preserve private Unix-socket ownership, safe stale-socket handling, and
+    deterministic daemon-process lifecycle integration.
+- **Regression, documentation, and hardware validation — planned**
+  - Cover packet ordering, sequence wraparound, loss and discontinuity,
+    independent clients, overflow, disconnect races, size limits, and bounded
+    shutdown.
+  - Document framing, capabilities, resynchronization, exclusions, and client
+    behavior.
+  - Validate simultaneous API, event, and PCMU clients against a physical SDS200
+    without interrupting decoded audio or scanner ownership.
 
 ## Deferred hardware validation
 
@@ -85,14 +65,6 @@ fixture-tested, not hardware-validated.
 
 These milestone groups preserve intended future work. Their numbering and release
 assignment may change before implementation begins.
-
-### Milestone 19.7 — Bounded PCMU client subscriptions
-
-- Publish accepted RTP PCMU payloads before decoding rather than re-encoding PCM.
-- Preserve the existing single decoded-PCM path while adding independent bounded
-  PCMU subscriber queues.
-- Report packet sequence, loss, discontinuity, and slow-client state without
-  allowing audio consumers to delay control or event traffic.
 
 ### Milestone 19.8 — Safe daemon controls
 
@@ -311,3 +283,9 @@ fixtures before renderer-specific implementation.
   private Unix-domain socket ownership, safe stale-socket handling, bounded and
   isolated clients, deterministic process integration, CLI server limits, and
   host-independent regression coverage.
+- Milestone 19.6: immutable versioned daemon event envelopes, authoritative
+  snapshot-first subscriptions, one serialized renderer-neutral source
+  aggregator, independent bounded queues with explicit sequence-gap recovery, a
+  separate private `events.sock` endpoint, bounded clients and encoded event
+  sizes, deterministic process lifecycle integration, CLI configuration,
+  documentation, regression coverage, and physical SDS200 validation.
