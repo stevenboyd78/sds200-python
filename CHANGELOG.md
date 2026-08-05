@@ -49,6 +49,21 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 - Foreground daemon options for event socket location, subscriber queue depth,
   concurrent event clients, maximum encoded event size, send timeout, and worker
   shutdown deadline.
+- Immutable accepted-PCMU packet publication before decoding, preserving RTP
+  sequence, timestamp, SSRC, expected continuity values, missing packet and sample
+  estimates, observation time, marker state, and authoritative audio endpoint.
+- Independent bounded PCMU subscriptions with global publication ordering,
+  drop-oldest queues, cumulative packet, byte, and overflow loss counters,
+  immutable health snapshots, subscriber limits, and deterministic close behavior.
+- Versioned `sdsctl.daemon.pcmu` binary framing with strict magic, version, flags,
+  complete-frame lengths, UTF-8 endpoint encoding, payload and frame bounds, and
+  public encode and decode helpers.
+- A third private `pcmu.sock` endpoint with one isolated subscription per admitted
+  client, bounded send waits and shutdown, excess and disconnected-client
+  isolation, server health snapshots, and foreground daemon lifecycle integration.
+- Foreground daemon options for PCMU socket location, subscriber queue depth,
+  concurrent clients, payload, endpoint, and frame sizes, send timeout, and worker
+  shutdown deadline.
 - Physical SDS200 validation of foreground startup, live PSI and RTSP/RTP
   reception, private API socket permissions, all read-only operations,
   malformed-request recovery, an independent second client, controlled

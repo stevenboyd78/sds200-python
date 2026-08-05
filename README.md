@@ -71,6 +71,8 @@ information in this image represents a real system.*
 - Versioned ordered local daemon event stream over a separate private Unix
   socket with authoritative snapshots, bounded subscriptions, and explicit
   sequence-gap resynchronization
+- Versioned bounded local daemon PCMU stream over a third private Unix socket with
+  accepted RTP payloads, continuity metadata, and independent client-loss counters
 - Optional live playback through the local default or selected audio output device
 - Simultaneous local playback and streaming PCM WAV recording from one RTSP session
 - UDP XML fragment validation, statistics, and bounded retries
@@ -262,7 +264,7 @@ The process owns one scanner control session, one PSI stream, one SDS200
 RTSP/RTP session, and one decoded-PCM router. A fallback profile may use serial
 control while its configured network host remains the audio endpoint.
 
-The daemon exposes two versioned local services through private Unix-domain
+The daemon exposes three versioned local services through private Unix-domain
 sockets:
 
 - `$XDG_RUNTIME_DIR/sdsctl/daemon.sock`, or the user-state fallback, provides the
@@ -271,24 +273,34 @@ sockets:
 - `$XDG_RUNTIME_DIR/sdsctl/events.sock`, or the user-state fallback, provides the
   ordered JSON Lines event stream. Select an explicit absolute path with
   `--event-socket-path`.
+- `$XDG_RUNTIME_DIR/sdsctl/pcmu.sock`, or the user-state fallback, provides
+  accepted RTP PCMU packets through a bounded binary stream. Select an explicit
+  absolute path with `--pcmu-socket-path`.
 
 Every event client first receives an authoritative runtime snapshot at the
 current global sequence boundary, then only later runtime, scanner, PSI,
 radio-state, audio-lifecycle, and destination-health events. Sequence gaps show
-that a subscriber overflowed; reconnect to obtain a new authoritative snapshot.
+that an event subscriber overflowed; reconnect to obtain a new authoritative
+snapshot.
+
+Every PCMU client receives only packets accepted after its independent
+subscription is created. Frames preserve RTP sequence, timestamp, SSRC,
+continuity estimates, observation time, endpoint, raw payload bytes, and
+cumulative loss caused by that client's bounded queue.
 
 Stop the process with `Ctrl+C` or `SIGTERM`. Shutdown first closes API clients,
-then stops scanner, PSI, audio, and router ownership while the event service can
-publish final lifecycle transitions, and finally closes event clients and removes
-both owned sockets.
+then stops scanner, PSI, audio, and router ownership, closes PCMU clients, and
+finally closes event clients after final lifecycle transitions. All three owned
+sockets are removed.
 
 The command remains in the foreground for service-manager ownership. It does not
 fork, create a pidfile, install a service, expose TCP, accept scanner controls,
-or provide client audio subscriptions. Existing CLI and TUI workflows remain
-standalone. The initial router has no attached destinations. See the
+or provide decoded-PCM client subscriptions. Existing CLI and TUI workflows
+remain standalone. The initial router has no attached destinations. See the
 [daemon runtime and process guide](docs/daemon-runtime.md),
 [local daemon API guide](docs/daemon-api.md),
-[local daemon event stream guide](docs/daemon-events.md), and
+[local daemon event stream guide](docs/daemon-events.md),
+[local daemon PCMU stream guide](docs/daemon-pcmu.md), and
 [operational logging](docs/logging.md).
 
 Serial-only profiles, replay captures, and non-SDS200 network-audio selections
@@ -637,6 +649,7 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting and
 - [Foreground daemon and ownership runtime](docs/daemon-runtime.md)
 - [Local daemon API](docs/daemon-api.md)
 - [Local daemon event stream](docs/daemon-events.md)
+- [Local daemon PCMU stream](docs/daemon-pcmu.md)
 - [Audio subsystem architecture](docs/audio.md)
 - [Acknowledgments](ACKNOWLEDGMENTS.md)
 - [Contributing](CONTRIBUTING.md)

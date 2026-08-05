@@ -13,28 +13,28 @@ and ideas that are not ready for scheduling are recorded in
 
 ### Milestone 19.7 — Bounded PCMU client subscriptions
 
-- **Accepted PCMU packet fanout — planned**
+- **Accepted PCMU packet fanout — complete**
   - Publish accepted RTP PCMU payloads before decoding rather than re-encoding
     decoded PCM.
   - Preserve RTP sequence, timestamp, discontinuity, observation, and endpoint
     information needed by local clients.
   - Keep packet acceptance and decoded-PCM routing under one authoritative
     network-audio session.
-- **Independent bounded subscriptions — planned**
+- **Independent bounded subscriptions — complete**
   - Give every audio subscriber an independent bounded queue and deterministic
     close and unsubscribe behavior.
   - Isolate slow, disconnected, malformed, and excess clients without delaying
     RTP reception, scanner control, PSI, daemon events, or other subscribers.
   - Expose packet loss, queue overflow, discontinuity, and subscriber-health
     state through immutable snapshots or transitions.
-- **Private local delivery — planned**
+- **Private local delivery — complete**
   - Add a versioned local PCMU subscription contract without changing the
     existing request-response API or ordered event-stream protocols.
   - Bound client count, queued packets, payload and frame sizes, write waits, and
     shutdown deadlines.
   - Preserve private Unix-socket ownership, safe stale-socket handling, and
     deterministic daemon-process lifecycle integration.
-- **Regression, documentation, and hardware validation — planned**
+- **Regression, documentation, and hardware validation — in progress**
   - Cover packet ordering, sequence wraparound, loss and discontinuity,
     independent clients, overflow, disconnect races, size limits, and bounded
     shutdown.

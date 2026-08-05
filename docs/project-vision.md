@@ -81,14 +81,17 @@ service-manager contract. Milestone 19.5 adds a private local Unix-domain socket
 a versioned read-only protocol, authoritative snapshots, and bounded client
 handling. Milestone 19.6 adds a second private socket with ordered
 snapshot-first runtime events, bounded subscriptions, and sequence-gap
-resynchronization. Audio subscriptions, controls, and client migration remain
-follow-on work.
+resynchronization. Milestone 19.7 adds a third private socket with bounded
+accepted-PCMU packet subscriptions, RTP continuity metadata, and isolated
+per-client loss accounting. Decoded-PCM subscriptions, controls, and client
+migration remain follow-on work.
 
 The SDS200 accepts only one network-audio client at a time. The ownership runtime
-holds that single RTSP/RTP session and decodes accepted audio once. Future daemon
-transports should expose independent bounded PCM or PCMU subscriptions to CLI,
-TUI, web, recording, streaming, and automation clients. A slow or failed
-subscriber must not block RTP reception or another subscriber.
+holds that single RTSP/RTP session, publishes each accepted PCMU packet once, and
+decodes it once. Future daemon transports should expose independent bounded
+decoded-PCM subscriptions to CLI, TUI, web, recording, streaming, and automation
+clients. A slow or failed subscriber must not block RTP reception or another
+subscriber.
 
 CLI, TUI, web, and automation clients should eventually consume the local daemon
 API instead of opening duplicate scanner connections. Standalone operation may
@@ -311,7 +314,7 @@ PortAudio, PipeWire, PulseAudio, and ALSA playback adapters.
 
 Remaining future audio work includes:
 
-- bounded local PCMU client subscriptions and API transports;
+- bounded local decoded-PCM client subscriptions and consumption adapters;
 - layered saved playback configuration and automatic backend selection;
 - continued separation between control and audio failures.
 
