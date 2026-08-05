@@ -128,12 +128,14 @@ from .daemon_events import (
     DaemonEventSubscriptionClosed,
 )
 from .daemon_ipc import (
+    DAEMON_EVENT_SOCKET_FILENAME,
     DAEMON_SOCKET_DIRECTORY_MODE,
     DAEMON_SOCKET_FILENAME,
     DAEMON_SOCKET_MODE,
     DaemonSocketListener,
     DaemonSocketLocation,
     DaemonSocketSource,
+    resolve_daemon_event_socket_location,
     resolve_daemon_socket_location,
 )
 from .daemon_process import (
@@ -468,6 +470,7 @@ __all__ = [
     "DAEMON_EVENT_DEFAULT_SEND_TIMEOUT",
     "DAEMON_EVENT_DEFAULT_SHUTDOWN_TIMEOUT",
     "DAEMON_EVENT_PROTOCOL",
+    "DAEMON_EVENT_SOCKET_FILENAME",
     "DAEMON_EVENT_SUPPORTED_VERSIONS",
     "DAEMON_EVENT_VERSION",
     "DAEMON_SOCKET_DIRECTORY_MODE",
@@ -689,6 +692,7 @@ __all__ = [
     "repair_profile",
     "resolve_application_configuration",
     "resolve_configuration_paths",
+    "resolve_daemon_event_socket_location",
     "resolve_daemon_socket_location",
     "scan_recording_inventory",
     "safe_recording_component",
