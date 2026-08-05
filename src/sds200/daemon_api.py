@@ -12,6 +12,7 @@ from .commands import NAVIGATION_TARGETS
 from .exceptions import (
     CommandRejectedError,
     CommandTimeoutError,
+    DaemonControlBusyError,
     DaemonControlUnavailableError,
     SDS200Error,
     UnsupportedScannerFeatureError,
@@ -23,7 +24,7 @@ DAEMON_API_VERSION = 1
 DAEMON_API_SUPPORTED_VERSIONS = (DAEMON_API_VERSION,)
 DAEMON_API_MAX_REQUEST_ID_LENGTH = 128
 DAEMON_API_DEFAULT_CONTROL_TIMEOUT = 2.0
-DAEMON_API_MAX_CONTROL_TIMEOUT = 10.0
+DAEMON_API_MAX_CONTROL_TIMEOUT = 2.0
 
 
 class DaemonApiOperation(StrEnum):
@@ -65,6 +66,7 @@ class DaemonApiErrorCode(StrEnum):
     UNSUPPORTED_VERSION = "unsupported_version"
     UNKNOWN_OPERATION = "unknown_operation"
     INVALID_PARAMETERS = "invalid_parameters"
+    CONTROL_BUSY = "control_busy"
     CONTROL_UNAVAILABLE = "control_unavailable"
     UNSUPPORTED_OPERATION = "unsupported_operation"
     CONTROL_TIMEOUT = "control_timeout"
@@ -116,7 +118,11 @@ class _ControlRuntimeLike(_RuntimeLike, Protocol):
         timeout: float = DAEMON_API_DEFAULT_CONTROL_TIMEOUT,
     ) -> _ControlResultLike: ...
 
-    def reconnect(self) -> _ControlResultLike: ...
+    def reconnect(
+        self,
+        *,
+        timeout: float = DAEMON_API_DEFAULT_CONTROL_TIMEOUT,
+    ) -> _ControlResultLike: ...
 
 
 class _RequestValidationError(ValueError):
@@ -361,6 +367,10 @@ class DaemonReadOnlyApi:
     def __init__(self, runtime: _RuntimeLike) -> None:
         self.runtime = runtime
 
+    @property
+    def maximum_request_seconds(self) -> float:
+        return DAEMON_API_MAX_CONTROL_TIMEOUT
+
     def handle_payload(self, payload: object) -> DaemonApiResponse:
         try:
             request = DaemonApiRequest.from_payload(payload)
@@ -510,7 +520,14 @@ class DaemonReadOnlyApi:
                     timeout=_control_timeout(params),
                 ).as_dict()
             if operation is DaemonApiOperation.SCANNER_RECONNECT:
-                return runtime.reconnect().as_dict()
+                return runtime.reconnect(
+                    timeout=_control_timeout(params)
+                ).as_dict()
+        except DaemonControlBusyError:
+            raise _ControlDispatchError(
+                DaemonApiErrorCode.CONTROL_BUSY,
+                "Another daemon scanner control is already in progress.",
+            ) from None
         except DaemonControlUnavailableError:
             raise _ControlDispatchError(
                 DaemonApiErrorCode.CONTROL_UNAVAILABLE,
@@ -587,10 +604,13 @@ def _validate_control_params(
     params: Mapping[str, object],
 ) -> None:
     if operation is DaemonApiOperation.SCANNER_RECONNECT:
-        if params:
+        unexpected = sorted(set(params) - {"timeout"})
+        if unexpected:
             raise _ControlParameterError(
-                "scanner.reconnect does not accept parameters."
+                "scanner.reconnect received unexpected parameters: "
+                f"{unexpected!r}."
             )
+        _control_timeout(params)
         return
 
     allowed = {"target", "first", "second", "timeout"}

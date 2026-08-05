@@ -20,6 +20,7 @@ from sds200.daemon_api import (
 from sds200.exceptions import (
     CommandRejectedError,
     CommandTimeoutError,
+    DaemonControlBusyError,
     DaemonControlUnavailableError,
     ProtocolError,
     ScannerConnectionError,
@@ -122,8 +123,15 @@ class FakeControlRuntime:
             timeout=timeout,
         )
 
-    def reconnect(self) -> FakeControlResult:
-        return self._control("scanner.reconnect")
+    def reconnect(
+        self,
+        *,
+        timeout: float = DAEMON_API_DEFAULT_CONTROL_TIMEOUT,
+    ) -> FakeControlResult:
+        return self._control(
+            "scanner.reconnect",
+            timeout=timeout,
+        )
 
     def _control(
         self,
@@ -217,12 +225,12 @@ def test_hold_uses_strict_parameters_and_authoritative_result() -> None:
                 "target": "TGID",
                 "first": 99,
                 "count": 3,
-                "timeout": 2.5,
+                "timeout": 1.75,
             },
             (
                 "scanner.next",
                 ("TGID", 99, None),
-                {"count": 3, "timeout": 2.5},
+                {"count": 3, "timeout": 1.75},
             ),
         ),
         (
@@ -232,12 +240,12 @@ def test_hold_uses_strict_parameters_and_authoritative_result() -> None:
                 "first": 7,
                 "second": 42,
                 "count": 2,
-                "timeout": 2.5,
+                "timeout": 1.75,
             },
             (
                 "scanner.previous",
                 ("DEPT", 7, 42),
-                {"count": 2, "timeout": 2.5},
+                {"count": 2, "timeout": 1.75},
             ),
         ),
     ],
@@ -256,23 +264,28 @@ def test_next_and_previous_dispatch_count_and_timeout(
     assert runtime.calls == [expected]
 
 
-def test_reconnect_accepts_no_parameters() -> None:
+def test_reconnect_accepts_only_a_bounded_timeout() -> None:
     runtime = FakeControlRuntime()
     api = DaemonReadOnlyApi(runtime)
 
     success = api.handle_payload(
-        request_payload(DaemonApiOperation.SCANNER_RECONNECT.value)
+        request_payload(
+            DaemonApiOperation.SCANNER_RECONNECT.value,
+            params={"timeout": 1.5},
+        )
     )
     rejected = api.handle_payload(
         request_payload(
             DaemonApiOperation.SCANNER_RECONNECT.value,
             request_id="control-2",
-            params={"timeout": 1},
+            params={"unexpected": True},
         )
     )
 
     assert success.error is None
-    assert runtime.calls == [("scanner.reconnect", (), {})]
+    assert runtime.calls == [
+        ("scanner.reconnect", (), {"timeout": 1.5})
+    ]
     assert rejected.error is not None
     assert rejected.error.code is DaemonApiErrorCode.INVALID_PARAMETERS
 
@@ -301,6 +314,14 @@ def test_reconnect_accepts_no_parameters() -> None:
             DaemonApiOperation.SCANNER_NEXT,
             {"target": "TGID", "timeout": float("inf")},
         ),
+        (
+            DaemonApiOperation.SCANNER_RECONNECT,
+            {"timeout": 0},
+        ),
+        (
+            DaemonApiOperation.SCANNER_RECONNECT,
+            {"unexpected": True},
+        ),
     ],
 )
 def test_invalid_parameters_are_rejected_before_runtime(
@@ -320,6 +341,10 @@ def test_invalid_parameters_are_rejected_before_runtime(
 @pytest.mark.parametrize(
     ("error", "code"),
     [
+        (
+            DaemonControlBusyError("secret busy detail"),
+            DaemonApiErrorCode.CONTROL_BUSY,
+        ),
         (
             DaemonControlUnavailableError("secret unavailable detail"),
             DaemonApiErrorCode.CONTROL_UNAVAILABLE,

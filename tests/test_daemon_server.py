@@ -119,6 +119,7 @@ def wait_until(
         ("client_timeout", True, TypeError),
         ("client_timeout", 0, ValueError),
         ("accept_poll_interval", 0, ValueError),
+        ("shutdown_timeout", 2.0, ValueError),
         ("shutdown_timeout", float("inf"), ValueError),
     ],
 )

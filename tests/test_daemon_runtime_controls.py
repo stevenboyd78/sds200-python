@@ -9,6 +9,7 @@ import pytest
 from sds200 import (
     AudioFanoutSession,
     AudioStream,
+    DaemonControlBusyError,
     DaemonControlOperation,
     DaemonControlResult,
     DaemonControlUnavailableError,
@@ -16,6 +17,7 @@ from sds200 import (
     DaemonRuntimeState,
     PcmSinkRouter,
     RadioStateSnapshot,
+    UnsupportedScannerFeatureError,
 )
 
 from .fakes import FakeAudioTransport
@@ -38,12 +40,15 @@ class FakeControlScanner:
         *,
         fail_operation: str | None = None,
         block_operation: str | None = None,
+        supports_bounded_reconnect: bool = True,
     ) -> None:
         self.order = order
         self.fail_operation = fail_operation
         self.block_operation = block_operation
+        self._supports_bounded_reconnect = supports_bounded_reconnect
         self.control_started = threading.Event()
         self.release_control = threading.Event()
+        self.reconnect_timeouts: list[float] = []
         self.state = FakeRadioState()
         self._connected = False
         self._psi_active = False
@@ -59,6 +64,10 @@ class FakeControlScanner:
     @property
     def psi_active(self) -> bool:
         return self._psi_active
+
+    @property
+    def supports_bounded_reconnect(self) -> bool:
+        return self._supports_bounded_reconnect
 
     def connect(self) -> None:
         self.order.append("scanner.connect")
@@ -137,7 +146,8 @@ class FakeControlScanner:
             timeout,
         )
 
-    def reconnect(self) -> None:
+    def reconnect(self, *, timeout: float = 2.0) -> None:
+        self.reconnect_timeouts.append(timeout)
         self._control("reconnect")
         self._connected = True
         self._psi_active = True
@@ -175,7 +185,7 @@ def test_runtime_executes_existing_typed_controls_with_ordered_results() -> None
         runtime.hold("SYS", 42, timeout=1.5),
         runtime.next("DEPT", 7, 42, count=2, timeout=1.5),
         runtime.previous("TGID", 99, count=3, timeout=1.5),
-        runtime.reconnect(),
+        runtime.reconnect(timeout=1.5),
     )
 
     assert [result.sequence for result in results] == [1, 2, 3, 4]
@@ -207,12 +217,17 @@ def test_runtime_executes_existing_typed_controls_with_ordered_results() -> None
     assert decoded["operation"] == "scanner.reconnect"
     assert decoded["snapshot"]["state"] == "running"
 
-    assert order[2:] == [
-        "scanner.hold:('SYS', 42, None, 1.5)",
-        "scanner.next:('DEPT', 7, 42, 2, 1.5)",
-        "scanner.previous:('TGID', 99, None, 3, 1.5)",
-        "scanner.reconnect:()",
+    assert [
+        entry.partition(":")[0]
+        for entry in order[2:]
+    ] == [
+        "scanner.hold",
+        "scanner.next",
+        "scanner.previous",
+        "scanner.reconnect",
     ]
+    assert len(scanner.reconnect_timeouts) == 1
+    assert 0 < scanner.reconnect_timeouts[0] <= 1.5
 
     runtime.stop()
 
@@ -249,7 +264,25 @@ def test_controls_require_running_runtime_and_navigation_connection() -> None:
         runtime.reconnect()
 
 
-def test_concurrent_controls_are_serialized() -> None:
+def test_reconnect_rejects_transport_without_bounded_contract() -> None:
+    scanner = FakeControlScanner(
+        [],
+        supports_bounded_reconnect=False,
+    )
+    runtime = make_runtime(scanner)
+
+    runtime.start()
+
+    with pytest.raises(
+        UnsupportedScannerFeatureError,
+        match="bounded network",
+    ):
+        runtime.reconnect(timeout=1.0)
+
+    runtime.stop()
+
+
+def test_concurrent_controls_are_rejected_without_interleaving() -> None:
     scanner = FakeControlScanner(
         [],
         block_operation="hold",
@@ -277,18 +310,18 @@ def test_concurrent_controls_are_serialized() -> None:
     assert scanner.control_started.wait(1.0)
 
     next_thread.start()
-    time.sleep(0.05)
+    next_thread.join(timeout=2.0)
+
+    assert not next_thread.is_alive()
+    assert len(errors) == 1
+    assert isinstance(errors[0], DaemonControlBusyError)
     assert all("scanner.next" not in entry for entry in scanner.order)
 
     scanner.release_control.set()
     hold_thread.join(timeout=2.0)
-    next_thread.join(timeout=2.0)
 
     assert not hold_thread.is_alive()
-    assert not next_thread.is_alive()
-    assert not errors
-    assert [result.sequence for result in results] == [1, 2]
-    assert any("scanner.next" in entry for entry in scanner.order)
+    assert [result.sequence for result in results] == [1]
 
     runtime.stop()
 
