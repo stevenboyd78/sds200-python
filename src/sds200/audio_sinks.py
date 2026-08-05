@@ -94,6 +94,7 @@ class AudioFanoutSession:
         self.sinks = tuple(sinks)
         if not self.sinks:
             raise ValueError("Audio fanout requires at least one PCM sink")
+        self.events = EventBus()
         self._lifecycle_lock = threading.Lock()
         self._state_lock = threading.RLock()
         self._unsubscribe: Callable[[], None] | None = None
@@ -106,6 +107,14 @@ class AudioFanoutSession:
     def running(self) -> bool:
         with self._state_lock:
             return self._started and not self._stopped and self.stream.running
+
+    def on_state(
+        self,
+        callback: Callable[[AudioFanoutSnapshot], None],
+    ) -> Callable[[], None]:
+        """Subscribe to completed audio fanout lifecycle changes."""
+
+        return self.events.subscribe("state", callback)
 
     def snapshot(self) -> AudioFanoutSnapshot:
         with self._state_lock:
@@ -148,10 +157,12 @@ class AudioFanoutSession:
                         logger.exception("Audio sink cleanup failed sink=%s", sink.name)
                 with self._state_lock:
                     self._stopped = True
+                self.events.emit("state", self.snapshot())
                 raise
 
             with self._state_lock:
                 self._unsubscribe = unsubscribe
+            self.events.emit("state", self.snapshot())
             logger.info(
                 "audio fanout started endpoint=%s sinks=%s",
                 self.stream.endpoint,
@@ -183,6 +194,7 @@ class AudioFanoutSession:
                     failures.append(error)
 
             snapshot = self.snapshot()
+            self.events.emit("state", snapshot)
             logger.info(
                 "audio fanout stopped endpoint=%s packets=%d samples=%d",
                 snapshot.endpoint,
