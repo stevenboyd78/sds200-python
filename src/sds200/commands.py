@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, Protocol, TypeVar
 
-from .exceptions import ProtocolError
+from .exceptions import CommandRejectedError, ProtocolError
 from .models import (
     ChargeStatus,
     FirmwareResponse,
@@ -274,7 +274,9 @@ def _parse_acknowledgement(response: object, command: str) -> None:
     if status == "OK":
         return
     if status in {"NG", "ERR", "ERROR"}:
-        raise ProtocolError(f"Scanner rejected {command} command: {response.raw}")
+        raise CommandRejectedError(
+            f"Scanner rejected {command} command: {response.raw}"
+        )
     raise ProtocolError(f"{command} did not return OK: {response.raw}")
 
 

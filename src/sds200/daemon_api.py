@@ -4,17 +4,30 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
+from math import isfinite
 from types import MappingProxyType
-from typing import Protocol
+from typing import Protocol, cast
+
+from .commands import NAVIGATION_TARGETS
+from .exceptions import (
+    CommandRejectedError,
+    CommandTimeoutError,
+    DaemonControlUnavailableError,
+    SDS200Error,
+    UnsupportedScannerFeatureError,
+    UnsupportedScannerModelError,
+)
 
 DAEMON_API_PROTOCOL = "sdsctl.daemon"
 DAEMON_API_VERSION = 1
 DAEMON_API_SUPPORTED_VERSIONS = (DAEMON_API_VERSION,)
 DAEMON_API_MAX_REQUEST_ID_LENGTH = 128
+DAEMON_API_DEFAULT_CONTROL_TIMEOUT = 2.0
+DAEMON_API_MAX_CONTROL_TIMEOUT = 10.0
 
 
 class DaemonApiOperation(StrEnum):
-    """Read-only operations supported by the initial local daemon API."""
+    """Versioned operations supported by the local daemon API."""
 
     HELLO = "hello"
     CAPABILITIES = "daemon.capabilities"
@@ -22,6 +35,26 @@ class DaemonApiOperation(StrEnum):
     RUNTIME_SNAPSHOT = "runtime.snapshot"
     SCANNER_STATE = "scanner.state"
     AUDIO_HEALTH = "audio.health"
+    SCANNER_HOLD = "scanner.hold"
+    SCANNER_NEXT = "scanner.next"
+    SCANNER_PREVIOUS = "scanner.previous"
+    SCANNER_RECONNECT = "scanner.reconnect"
+
+
+DAEMON_API_READ_ONLY_OPERATIONS = (
+    DaemonApiOperation.HELLO,
+    DaemonApiOperation.CAPABILITIES,
+    DaemonApiOperation.PING,
+    DaemonApiOperation.RUNTIME_SNAPSHOT,
+    DaemonApiOperation.SCANNER_STATE,
+    DaemonApiOperation.AUDIO_HEALTH,
+)
+DAEMON_API_CONTROL_OPERATIONS = (
+    DaemonApiOperation.SCANNER_HOLD,
+    DaemonApiOperation.SCANNER_NEXT,
+    DaemonApiOperation.SCANNER_PREVIOUS,
+    DaemonApiOperation.SCANNER_RECONNECT,
+)
 
 
 class DaemonApiErrorCode(StrEnum):
@@ -32,6 +65,11 @@ class DaemonApiErrorCode(StrEnum):
     UNSUPPORTED_VERSION = "unsupported_version"
     UNKNOWN_OPERATION = "unknown_operation"
     INVALID_PARAMETERS = "invalid_parameters"
+    CONTROL_UNAVAILABLE = "control_unavailable"
+    UNSUPPORTED_OPERATION = "unsupported_operation"
+    CONTROL_TIMEOUT = "control_timeout"
+    CONTROL_REJECTED = "control_rejected"
+    CONTROL_FAILED = "control_failed"
     REQUEST_TOO_LARGE = "request_too_large"
     INTERNAL_ERROR = "internal_error"
 
@@ -42,6 +80,43 @@ class _SnapshotLike(Protocol):
 
 class _RuntimeLike(Protocol):
     def snapshot(self) -> _SnapshotLike: ...
+
+
+class _ControlResultLike(Protocol):
+    def as_dict(self) -> dict[str, object]: ...
+
+
+class _ControlRuntimeLike(_RuntimeLike, Protocol):
+    def hold(
+        self,
+        target: str,
+        first: str | int | None = None,
+        second: str | int | None = None,
+        *,
+        timeout: float = DAEMON_API_DEFAULT_CONTROL_TIMEOUT,
+    ) -> _ControlResultLike: ...
+
+    def next(
+        self,
+        target: str,
+        first: str | int | None = None,
+        second: str | int | None = None,
+        *,
+        count: int = 1,
+        timeout: float = DAEMON_API_DEFAULT_CONTROL_TIMEOUT,
+    ) -> _ControlResultLike: ...
+
+    def previous(
+        self,
+        target: str,
+        first: str | int | None = None,
+        second: str | int | None = None,
+        *,
+        count: int = 1,
+        timeout: float = DAEMON_API_DEFAULT_CONTROL_TIMEOUT,
+    ) -> _ControlResultLike: ...
+
+    def reconnect(self) -> _ControlResultLike: ...
 
 
 class _RequestValidationError(ValueError):
@@ -281,7 +356,7 @@ class DaemonApiResponse:
 
 
 class DaemonReadOnlyApi:
-    """Dispatch versioned read-only requests against one daemon runtime."""
+    """Dispatch versioned requests against one daemon ownership runtime."""
 
     def __init__(self, runtime: _RuntimeLike) -> None:
         self.runtime = runtime
@@ -321,7 +396,16 @@ class DaemonReadOnlyApi:
                 f"Unknown daemon API operation: {request.operation!r}.",
             )
 
-        if request.params:
+        if operation in DAEMON_API_CONTROL_OPERATIONS:
+            try:
+                _validate_control_params(operation, request.params)
+            except _ControlParameterError as error:
+                return DaemonApiResponse.failure(
+                    request.request_id,
+                    DaemonApiErrorCode.INVALID_PARAMETERS,
+                    str(error),
+                )
+        elif request.params:
             return DaemonApiResponse.failure(
                 request.request_id,
                 DaemonApiErrorCode.INVALID_PARAMETERS,
@@ -329,7 +413,13 @@ class DaemonReadOnlyApi:
             )
 
         try:
-            result = self._dispatch(operation)
+            result = self._dispatch(operation, request.params)
+        except _ControlDispatchError as error:
+            return DaemonApiResponse.failure(
+                request.request_id,
+                error.code,
+                str(error),
+            )
         except Exception:
             return DaemonApiResponse.failure(
                 request.request_id,
@@ -356,6 +446,7 @@ class DaemonReadOnlyApi:
     def _dispatch(
         self,
         operation: DaemonApiOperation,
+        params: Mapping[str, object],
     ) -> Mapping[str, object]:
         if operation is DaemonApiOperation.HELLO:
             return {
@@ -366,6 +457,8 @@ class DaemonReadOnlyApi:
             return self._capabilities()
         if operation is DaemonApiOperation.PING:
             return {"pong": True}
+        if operation in DAEMON_API_CONTROL_OPERATIONS:
+            return self._dispatch_control(operation, params)
 
         snapshot = self.runtime.snapshot().as_dict()
         if operation is DaemonApiOperation.RUNTIME_SNAPSHOT:
@@ -385,14 +478,207 @@ class DaemonReadOnlyApi:
             }
         raise AssertionError(f"Unhandled daemon API operation: {operation!r}")
 
+    def _dispatch_control(
+        self,
+        operation: DaemonApiOperation,
+        params: Mapping[str, object],
+    ) -> Mapping[str, object]:
+        runtime = cast(_ControlRuntimeLike, self.runtime)
+
+        try:
+            if operation is DaemonApiOperation.SCANNER_HOLD:
+                return runtime.hold(
+                    _control_target(params),
+                    _navigation_value(params.get("first")),
+                    _navigation_value(params.get("second")),
+                    timeout=_control_timeout(params),
+                ).as_dict()
+            if operation is DaemonApiOperation.SCANNER_NEXT:
+                return runtime.next(
+                    _control_target(params),
+                    _navigation_value(params.get("first")),
+                    _navigation_value(params.get("second")),
+                    count=_navigation_count(params),
+                    timeout=_control_timeout(params),
+                ).as_dict()
+            if operation is DaemonApiOperation.SCANNER_PREVIOUS:
+                return runtime.previous(
+                    _control_target(params),
+                    _navigation_value(params.get("first")),
+                    _navigation_value(params.get("second")),
+                    count=_navigation_count(params),
+                    timeout=_control_timeout(params),
+                ).as_dict()
+            if operation is DaemonApiOperation.SCANNER_RECONNECT:
+                return runtime.reconnect().as_dict()
+        except DaemonControlUnavailableError:
+            raise _ControlDispatchError(
+                DaemonApiErrorCode.CONTROL_UNAVAILABLE,
+                "The daemon scanner control is unavailable.",
+            ) from None
+        except (
+            UnsupportedScannerFeatureError,
+            UnsupportedScannerModelError,
+        ):
+            raise _ControlDispatchError(
+                DaemonApiErrorCode.UNSUPPORTED_OPERATION,
+                "The connected scanner does not support this operation.",
+            ) from None
+        except CommandTimeoutError:
+            raise _ControlDispatchError(
+                DaemonApiErrorCode.CONTROL_TIMEOUT,
+                "The scanner control did not complete before its deadline.",
+            ) from None
+        except CommandRejectedError:
+            raise _ControlDispatchError(
+                DaemonApiErrorCode.CONTROL_REJECTED,
+                "The scanner rejected the requested control.",
+            ) from None
+        except ValueError:
+            raise _ControlDispatchError(
+                DaemonApiErrorCode.INVALID_PARAMETERS,
+                "The scanner control parameters are invalid.",
+            ) from None
+        except (OSError, SDS200Error):
+            raise _ControlDispatchError(
+                DaemonApiErrorCode.CONTROL_FAILED,
+                "The scanner control could not be completed.",
+            ) from None
+
+        raise AssertionError(
+            f"Unhandled daemon API control operation: {operation!r}"
+        )
+
     @staticmethod
     def _capabilities() -> dict[str, object]:
         return {
             "protocol": DAEMON_API_PROTOCOL,
             "supported_versions": list(DAEMON_API_SUPPORTED_VERSIONS),
             "operations": [operation.value for operation in DaemonApiOperation],
-            "read_only": True,
+            "read_only": False,
+            "read_only_operations": [
+                operation.value
+                for operation in DAEMON_API_READ_ONLY_OPERATIONS
+            ],
+            "control_operations": [
+                operation.value
+                for operation in DAEMON_API_CONTROL_OPERATIONS
+            ],
+            "max_control_timeout": DAEMON_API_MAX_CONTROL_TIMEOUT,
         }
+
+
+class _ControlParameterError(ValueError):
+    pass
+
+
+class _ControlDispatchError(RuntimeError):
+    def __init__(
+        self,
+        code: DaemonApiErrorCode,
+        message: str,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+def _validate_control_params(
+    operation: DaemonApiOperation,
+    params: Mapping[str, object],
+) -> None:
+    if operation is DaemonApiOperation.SCANNER_RECONNECT:
+        if params:
+            raise _ControlParameterError(
+                "scanner.reconnect does not accept parameters."
+            )
+        return
+
+    allowed = {"target", "first", "second", "timeout"}
+    if operation in {
+        DaemonApiOperation.SCANNER_NEXT,
+        DaemonApiOperation.SCANNER_PREVIOUS,
+    }:
+        allowed.add("count")
+
+    unexpected = sorted(set(params) - allowed)
+    if unexpected:
+        raise _ControlParameterError(
+            f"{operation.value} received unexpected parameters: {unexpected!r}."
+        )
+
+    _control_target(params)
+    for name in ("first", "second"):
+        _validate_navigation_value(name, params.get(name))
+
+    _control_timeout(params)
+    if "count" in allowed:
+        _navigation_count(params)
+
+
+def _control_target(params: Mapping[str, object]) -> str:
+    value = params.get("target")
+    if not isinstance(value, str) or not value.strip():
+        raise _ControlParameterError(
+            "Scanner navigation controls require a non-empty string target."
+        )
+    normalized = value.strip().upper()
+    if normalized not in NAVIGATION_TARGETS:
+        choices = ", ".join(NAVIGATION_TARGETS)
+        raise _ControlParameterError(
+            f"Scanner navigation target must be one of: {choices}."
+        )
+    return normalized
+
+
+def _validate_navigation_value(name: str, value: object) -> None:
+    if value is None:
+        return
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
+        raise _ControlParameterError(
+            f"Navigation parameter {name!r} must be a string, integer, or null."
+        )
+    normalized = str(value).strip()
+    if any(delimiter in normalized for delimiter in (",", "\r", "\n")):
+        raise _ControlParameterError(
+            f"Navigation parameter {name!r} cannot contain commas or line breaks."
+        )
+
+
+def _navigation_value(value: object) -> str | int | None:
+    assert value is None or (
+        not isinstance(value, bool)
+        and isinstance(value, (str, int))
+    )
+    return value
+
+
+def _navigation_count(params: Mapping[str, object]) -> int:
+    value = params.get("count", 1)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise _ControlParameterError("Navigation count must be an integer.")
+    if not 1 <= value <= 8:
+        raise _ControlParameterError(
+            "Navigation count must be between 1 and 8."
+        )
+    return value
+
+
+def _control_timeout(params: Mapping[str, object]) -> float:
+    value = params.get("timeout", DAEMON_API_DEFAULT_CONTROL_TIMEOUT)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise _ControlParameterError("Control timeout must be a number.")
+
+    normalized = float(value)
+    if (
+        not isfinite(normalized)
+        or normalized <= 0
+        or normalized > DAEMON_API_MAX_CONTROL_TIMEOUT
+    ):
+        raise _ControlParameterError(
+            "Control timeout must be finite, greater than zero, and no more "
+            f"than {DAEMON_API_MAX_CONTROL_TIMEOUT:g} seconds."
+        )
+    return normalized
 
 
 def _validate_request_id(value: object) -> None:

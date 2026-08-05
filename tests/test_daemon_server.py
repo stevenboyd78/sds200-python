@@ -172,7 +172,7 @@ def test_connection_can_process_multiple_ordered_requests(
 
         assert first["request_id"] == "ping-1"
         assert second["request_id"] == "capabilities-1"
-        assert second["result"]["read_only"] is True
+        assert second["result"]["read_only"] is False
     finally:
         client.close()
         server.stop()
