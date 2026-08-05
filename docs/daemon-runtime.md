@@ -22,8 +22,15 @@ destination-health events.
 Milestone 19.7 adds a third private Unix-domain socket for accepted RTP PCMU
 packets. Each client owns an independent bounded queue, receives the original
 payload before decode, and observes RTP continuity plus cumulative local queue
-loss. Scanner controls, decoded-PCM subscriptions, and CLI/TUI daemon-client
-migration remain follow-on work. The process does not fork or create a pidfile.
+loss.
+
+Milestone 19.8 adds capability-checked daemon operations for hold, next,
+previous, and bounded reconnect. Mutations are single-owner, concurrent requests
+are rejected rather than queued, completion follows scanner acknowledgement, and
+successful responses include authoritative runtime snapshots. Reconnect is
+limited to the directly owned SDS200 UDP control transport. Decoded-PCM
+subscriptions and CLI/TUI daemon-client migration remain follow-on work. The
+process does not fork or create a pidfile.
 
 ## Foreground process contract
 
@@ -40,9 +47,11 @@ sdsctl --log-level INFO --profile home daemon
 ```
 
 The command constructs exactly one `DaemonRuntime`, one `PcmSinkRouter`, one
-`NetworkAudioTransport`, one `DaemonReadOnlyApi`, one bounded `DaemonApiServer`,
-one `DaemonEventStream`, one bounded `DaemonEventServer`, one `PcmuStream`, and
-one bounded `DaemonPcmuServer`. The PCMU stream subscribes to the same
+`NetworkAudioTransport`, one compatibility-named `DaemonReadOnlyApi`, one
+bounded `DaemonApiServer`, one `DaemonEventStream`, one bounded
+`DaemonEventServer`, one `PcmuStream`, and one bounded `DaemonPcmuServer`. The
+API class retains its historical public name while exposing backward-compatible
+reads and explicit safe controls. The PCMU stream subscribes to the same
 authoritative transport used by the decoded-PCM fanout. The router begins without
 destinations because playback, recording, remote-profile activation, decoded-PCM
 subscriptions, and daemon-client migration remain follow-on work.
@@ -158,6 +167,39 @@ failure so later owners are still released.
 `stop()` is idempotent and serialized across concurrent callers. A successfully
 stopped or failed runtime cannot be restarted; callers must construct a new
 runtime instance.
+
+## Daemon-owned scanner controls
+
+`DaemonRuntime` exposes typed `hold()`, `next()`, `previous()`, and
+`reconnect()` methods for the local API. It does not expose raw scanner command
+strings.
+
+Every control:
+
+- requires a running runtime;
+- requires a connected scanner for navigation operations;
+- validates a positive finite caller deadline;
+- acquires one nonblocking mutation slot;
+- executes under runtime lifecycle ownership;
+- waits for authoritative scanner completion; and
+- returns an immutable `DaemonControlResult` containing sequence, operation,
+  start and completion timestamps, and the completion snapshot.
+
+A second mutation arriving while one is active raises
+`DaemonControlBusyError`. It is not queued, so separate clients cannot build an
+unbounded mutation backlog or interleave scanner command sequences.
+
+Navigation completion requires the scanner's matching `OK` acknowledgement.
+Explicit `NG`, `ERR`, or `ERROR` responses are classified as scanner rejection.
+Timeout and transport failures remain redacted at the daemon API boundary.
+
+Daemon reconnect is available only when `SDSScanner` directly owns an SDS200
+`UdpTransport`. Serial, fallback, replay, and injected transports do not
+advertise the bounded reconnect capability and are rejected before mutation.
+This preserves the two-second control deadline and the API shutdown invariant.
+
+There is no resume operation because the documented scanner protocol used by
+the project has no verified resume or unhold wire contract.
 
 ## Dynamic PCM destinations
 
@@ -314,16 +356,20 @@ The initial daemon router has no activated destinations, so
 `destination.health` was not hardware-exercised. Its aggregation and isolation
 contracts remain covered by hardware-independent regression tests.
 
+Milestone 19.8 safe-control contracts are covered by hardware-independent tests,
+including acknowledgements, rejection, deadlines, unsupported transports,
+concurrent requests, shutdown interaction, and unchanged read-only operations.
+Physical SDS200 validation of the control operations remains pending.
+
 ## Follow-on work
 
 Later Milestone 19 work may:
 
 - add bounded decoded-PCM subscriptions for local clients;
-- add capability-checked scanner controls;
 - activate configured playback, recording, and remote destinations;
 - add daemon discovery and client selection; and
 - allow CLI and TUI clients to consume daemon-owned sessions while preserving an
   explicit standalone mode.
 
-Decoded-PCM subscription, control, destination-activation, reload, discovery,
-and client-selection contracts remain outside Milestone 19.7.
+Decoded-PCM subscription, destination activation, reload, discovery, and
+client-selection contracts remain outside Milestone 19.8.

@@ -66,8 +66,9 @@ information in this image represents a real system.*
   redacted errors, and isolated startup, submission, and shutdown failures
 - Renderer-neutral single-owner runtime for scanner control, PSI, one RTSP/RTP
   fanout, dynamic PCM destinations, immutable snapshots, and deterministic cleanup
-- Versioned read-only local daemon API over a private Unix-domain socket with
-  strict JSON Lines envelopes, bounded clients, and deterministic shutdown
+- Versioned local daemon API over a private Unix-domain socket with
+  backward-compatible snapshots, capability-checked scanner controls, strict
+  JSON Lines envelopes, bounded clients, and deterministic shutdown
 - Versioned ordered local daemon event stream over a separate private Unix
   socket with authoritative snapshots, bounded subscriptions, and explicit
   sequence-gap resynchronization
@@ -268,8 +269,8 @@ The daemon exposes three versioned local services through private Unix-domain
 sockets:
 
 - `$XDG_RUNTIME_DIR/sdsctl/daemon.sock`, or the user-state fallback, provides the
-  read-only request-response API. Select an explicit absolute path with
-  `--socket-path`.
+  request-response API for authoritative snapshots and safe typed scanner
+  controls. Select an explicit absolute path with `--socket-path`.
 - `$XDG_RUNTIME_DIR/sdsctl/events.sock`, or the user-state fallback, provides the
   ordered JSON Lines event stream. Select an explicit absolute path with
   `--event-socket-path`.
@@ -294,9 +295,13 @@ finally closes event clients after final lifecycle transitions. All three owned
 sockets are removed.
 
 The command remains in the foreground for service-manager ownership. It does not
-fork, create a pidfile, install a service, expose TCP, accept scanner controls,
-or provide decoded-PCM client subscriptions. Existing CLI and TUI workflows
-remain standalone. The initial router has no attached destinations. See the
+fork, create a pidfile, install a service, expose TCP, accept unrestricted raw
+scanner commands, or provide decoded-PCM client subscriptions. The local API
+supports documented `hold`, `next`, `previous`, and bounded `reconnect`
+operations. Reconnect is available only when the daemon directly owns the SDS200
+UDP control transport; fallback or serial control returns
+`unsupported_operation`. Existing CLI and TUI workflows remain standalone. The
+initial router has no attached destinations. See the
 [daemon runtime and process guide](docs/daemon-runtime.md),
 [local daemon API guide](docs/daemon-api.md),
 [local daemon event stream guide](docs/daemon-events.md),

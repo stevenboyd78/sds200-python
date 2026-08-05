@@ -13,36 +13,43 @@ and ideas that are not ready for scheduling are recorded in
 
 ### Milestone 19.8 — Safe daemon controls
 
-- **Capability-checked control operations — planned**
-  - Add explicit daemon operations for hold, resume, next, previous, and
-    reconnect without exposing unrestricted raw scanner-command passthrough.
-  - Reuse the existing typed scanner-control contracts and validate operation
-    availability against the connected model and daemon protocol version.
-  - Keep read-only API operations backward-compatible and preserve standalone
-    CLI and TUI behavior.
-- **Serialized execution and authoritative completion — planned**
-  - Serialize conflicting scanner mutations under daemon ownership so clients
-    cannot interleave unsafe command sequences.
-  - Correlate every request with a deterministic success or rejection response
-    after authoritative scanner completion is known.
-  - Define bounded waits, cancellation, disconnect, and shutdown behavior
-    without blocking PSI, RTP reception, daemon events, or other clients.
-- **Safety, isolation, and observability — planned**
-  - Reject malformed, unsupported, stale, concurrent, or unsafe requests with
-    structured redacted errors.
-  - Publish resulting scanner and runtime changes through existing authoritative
-    snapshots and ordered event sources rather than inventing renderer-specific
-    state.
-  - Preserve private Unix-socket permissions, bounded clients, failure
-    isolation, and single-owner scanner lifecycle.
-- **Regression, documentation, and hardware validation — planned**
-  - Cover successful controls, capability rejection, conflicting operations,
-    timeouts, disconnect races, repeated requests, shutdown, and unchanged
-    read-only behavior.
-  - Document operation envelopes, completion semantics, safety exclusions,
-    client responsibilities, and compatibility behavior.
-  - Validate safe controls against a physical SDS200 while API, event, PCMU,
-    PSI, and decoded-audio activity remain healthy.
+- **Capability-checked control operations — implemented**
+  - Added explicit version 1 daemon operations for hold, next, previous, and
+    reconnect without unrestricted raw scanner-command passthrough.
+  - Reused typed scanner navigation contracts, model capability checks, strict
+    targets, bounded counts, and structured scanner acknowledgements.
+  - Preserved every read-only operation and standalone CLI/TUI behavior.
+  - Did not add resume because no documented or verified resume/unhold scanner
+    wire contract exists.
+- **Serialized execution and authoritative completion — implemented**
+  - Added one nonblocking daemon mutation slot so conflicting clients receive
+    `control_busy` instead of interleaving or building a queue.
+  - Successful responses follow scanner acknowledgement and include an ordered
+    `DaemonControlResult` with timestamps and an authoritative runtime snapshot.
+  - Applied one maximum two-second request budget to runtime-lock acquisition and
+    scanner completion.
+  - Raised the default API worker shutdown deadline to three seconds and added
+    rejection of configurations that cannot outlast the maximum request duration.
+  - Limited daemon reconnect to the directly owned bounded SDS200 UDP transport;
+    serial, fallback, replay, and injected transports return
+    `unsupported_operation`.
+- **Safety, isolation, and observability — implemented**
+  - Added structured redacted `control_busy`, `control_unavailable`,
+    `unsupported_operation`, `control_timeout`, `control_rejected`, and
+    `control_failed` responses.
+  - Kept resulting scanner and runtime changes observable through authoritative
+    snapshots and the existing ordered event stream.
+  - Preserved private socket permissions, bounded clients, worker isolation, and
+    the single-owner scanner lifecycle.
+- **Regression, documentation, and hardware validation — in progress**
+  - Added regression coverage for success, strict parameters, scanner rejection,
+    timeouts, unsupported transports, concurrent controls, shutdown, and
+    unchanged read-only behavior.
+  - Documented envelopes, completion semantics, deadlines, exclusions,
+    compatibility, and client responsibilities.
+  - Physical SDS200 validation remains: exercise hold, next, previous, and
+    reconnect while API, event, PCMU, PSI, and decoded-audio activity remain
+    healthy, then confirm controlled shutdown.
 
 ## Deferred hardware validation
 
