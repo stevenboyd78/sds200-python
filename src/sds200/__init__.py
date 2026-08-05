@@ -154,6 +154,11 @@ from .daemon_ipc import (
     resolve_daemon_pcmu_socket_location,
     resolve_daemon_socket_location,
 )
+from .daemon_pcmu_client import (
+    DAEMON_PCMU_CLIENT_DEFAULT_TIMEOUT,
+    DaemonPcmuClient,
+    DaemonPcmuClientSnapshot,
+)
 from .daemon_pcmu_server import (
     DAEMON_PCMU_DEFAULT_ACCEPT_POLL_INTERVAL,
     DAEMON_PCMU_DEFAULT_MAX_CLIENTS,
@@ -546,6 +551,7 @@ __all__ = [
     "DAEMON_EVENT_SOCKET_FILENAME",
     "DAEMON_EVENT_SUPPORTED_VERSIONS",
     "DAEMON_EVENT_VERSION",
+    "DAEMON_PCMU_CLIENT_DEFAULT_TIMEOUT",
     "DAEMON_PCMU_DEFAULT_ACCEPT_POLL_INTERVAL",
     "DAEMON_PCMU_DEFAULT_MAX_CLIENTS",
     "DAEMON_PCMU_DEFAULT_SEND_TIMEOUT",
@@ -577,6 +583,8 @@ __all__ = [
     "DaemonEventSubscription",
     "DaemonEventSubscriptionClosed",
     "DaemonEventStream",
+    "DaemonPcmuClient",
+    "DaemonPcmuClientSnapshot",
     "DaemonPcmuServer",
     "DaemonPcmuServerSnapshot",
     "DaemonProcess",

@@ -73,7 +73,8 @@ information in this image represents a real system.*
   socket with authoritative snapshots, bounded subscriptions, and explicit
   sequence-gap resynchronization
 - Explicit `sdsctl daemon-client` workflows for negotiated status and snapshot
-  reads, safe typed scanner controls, and validated gap-detecting event watches
+  reads, safe typed scanner controls, validated gap-detecting event watches, and
+  daemon-owned PCMU playback or WAV recording
 - Versioned bounded local daemon PCMU stream over a third private Unix socket with
   accepted RTP payloads, continuity metadata, and independent client-loss counters
 - Optional live playback through the local default or selected audio output device
@@ -289,10 +290,15 @@ sdsctl daemon-client hold TGID 12345
 sdsctl daemon-client next TGID 12345 --count 1
 sdsctl daemon-client reconnect
 sdsctl daemon-client events --count 10 --json
+sdsctl daemon-client audio --play
+sdsctl daemon-client audio \
+  --output scanner-audio.wav \
+  --duration 30
 ```
 
 API options such as `--socket-path` precede the client action. Event watching
-uses its separate `--event-socket-path`. The top-level scanner commands remain
+and audio use their separate `--event-socket-path` and `--pcmu-socket-path`
+options after the corresponding action. The top-level scanner commands remain
 the explicit standalone workflows.
 
 Every event client first receives an authoritative runtime snapshot at the
@@ -320,11 +326,19 @@ UDP control transport; fallback or serial control returns
 `unsupported_operation`. The complete safe-control sequence has been physically
 validated while API, event, PSI, RTSP/RTP, decoded-audio, and two PCMU clients
 remained active, followed by clean `SIGTERM` shutdown and socket removal.
-The top-level scanner commands and TUI remain standalone. The explicit
-`sdsctl daemon-client` command now provides daemon-owned status, authoritative
-snapshot, safe-control, and ordered event-watch workflows. PCMU/audio client
-workflows and TUI migration remain follow-on work. The initial router has no
-attached destinations. See the
+The daemon-owned audio client has also been physically validated with
+simultaneous default-device playback and WAV recording. It received 258
+consecutive loss-free PCMU frames, finalized a 10.320-second 8 kHz mono WAV,
+preserved API health, and shut down with all three sockets removed. Its bounded
+local playback queue reported six overflows and 2,088 dropped PCM bytes without
+underflow; the daemon PCMU stream itself remained loss-free.
+
+The top-level scanner commands, direct scanner-audio commands, and TUI remain
+standalone. The explicit `sdsctl daemon-client` command now provides daemon-owned
+status, authoritative snapshot, safe-control, ordered event-watch, and PCMU
+playback or WAV-recording workflows. Decoded-PCM subscriptions, automatic daemon
+selection, destination activation, and TUI migration remain follow-on work. The
+initial router has no attached destinations. See the
 [daemon runtime and process guide](docs/daemon-runtime.md),
 [local daemon API guide](docs/daemon-api.md),
 [local daemon event stream guide](docs/daemon-events.md),

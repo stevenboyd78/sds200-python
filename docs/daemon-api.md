@@ -16,9 +16,11 @@ Ordered events and accepted PCMU packets remain separate services:
 
 Milestone 19.9 adds explicit `sdsctl daemon-client` status, snapshot, hold,
 next, previous, and reconnect workflows through the reusable `DaemonApiClient`.
-The top-level scanner commands remain standalone. TUI migration and daemon audio
-client workflows remain follow-on work. Integrations may also use the documented
-socket framing and version contract directly.
+The separate `events` and `audio` actions consume `events.sock` and `pcmu.sock`
+without opening this API connection. The top-level scanner and direct-audio
+commands remain standalone. TUI migration and decoded-PCM client workflows remain
+follow-on work. Integrations may also use the documented socket framing and
+version contract directly.
 
 The Python implementation retains the historical public class name
 `DaemonReadOnlyApi` for compatibility even though version 1 now advertises both
@@ -420,10 +422,11 @@ The `daemon.sock` protocol intentionally excludes:
 - TCP or remote-network exposure;
 - daemon discovery or automatic client selection;
 - TUI daemon-client migration;
-- PCMU or decoded-PCM CLI client workflows; and
+- decoded-PCM CLI client workflows; and
 - destination activation or configuration reload.
 
 Ordered events are available through their dedicated socket and
-`sdsctl daemon-client events`. PCMU audio remains available through its dedicated
-socket, but PCMU and decoded-PCM CLI workflows, discovery, TUI migration, and
-destination activation remain assigned to later Milestone 19 work.
+`sdsctl daemon-client events`. Daemon-owned PCMU audio is available through
+`pcmu.sock` and `sdsctl daemon-client audio`. Decoded-PCM CLI workflows,
+discovery, TUI migration, and destination activation remain assigned to later
+Milestone 19 work.

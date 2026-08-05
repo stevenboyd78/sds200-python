@@ -31,10 +31,11 @@ successful responses include authoritative runtime snapshots. Reconnect is
 limited to the directly owned SDS200 UDP control transport.
 
 Milestone 19.9 adds explicit CLI daemon-client status, authoritative snapshot,
-safe-control, and ordered event-watch workflows while preserving the standalone
-top-level scanner commands. Decoded-PCM and PCMU/audio CLI subscriptions,
-automatic daemon discovery and selection, and TUI migration remain follow-on
-work. The process does not fork or create a pidfile.
+safe-control, ordered event-watch, and PCMU playback or WAV-recording workflows
+while preserving the standalone top-level scanner and direct-audio commands.
+Decoded-PCM CLI subscriptions, automatic daemon discovery and selection,
+destination activation, and TUI migration remain follow-on work. The process
+does not fork or create a pidfile.
 
 ## Foreground process contract
 
@@ -57,9 +58,9 @@ bounded `DaemonApiServer`, one `DaemonEventStream`, one bounded
 API class retains its historical public name while exposing backward-compatible
 reads and explicit safe controls. The PCMU stream subscribes to the same
 authoritative transport used by the decoded-PCM fanout. The router begins without
-destinations because playback, recording, remote-profile activation,
-decoded-PCM subscriptions, PCMU/audio CLI workflows, and TUI migration remain
-follow-on work.
+destinations because daemon-client audio consumes PCMU on the client side.
+Daemon-owned destination activation, remote-profile activation, decoded-PCM
+subscriptions, and TUI migration remain follow-on work.
 
 The audio endpoint must come from either `--host` or a network-capable SDS200
 profile. A fallback profile may select serial control at runtime, but its saved
@@ -382,6 +383,19 @@ against the same SDS200:
 - controlled `SIGTERM` returned exit status 0 and removed all three local
   sockets.
 
+### CLI daemon audio client validation
+
+A separate 2026-08-05 physical run exercised `sdsctl daemon-client audio`
+through the private PCMU socket with simultaneous default-device playback and
+WAV recording. The client received 258 consecutive frames from sequence 16
+through 273 and 82,560 samples without PCMU stream gaps, daemon queue loss,
+RTP loss, missing samples, or timestamp reversal. The WAV finalized as 8 kHz
+mono signed 16-bit PCM with a duration of 10.320 seconds. The independent
+bounded playback queue wrote 159,942 bytes and reported six overflows dropping
+2,088 PCM bytes without underflow. API health remained authoritative after the
+client exited, and controlled `SIGTERM` removed all three sockets with exit
+status 0.
+
 ## Follow-on work
 
 Later Milestone 19 work may:
@@ -389,10 +403,9 @@ Later Milestone 19 work may:
 - add bounded decoded-PCM subscriptions for local clients;
 - activate configured playback, recording, and remote destinations;
 - add daemon discovery and automatic client selection;
-- add PCMU and decoded-PCM CLI client workflows; and
+- add decoded-PCM CLI client workflows; and
 - allow the TUI to consume daemon-owned sessions while preserving an explicit
   standalone mode.
 
 Decoded-PCM subscription, destination activation, reload, discovery, automatic
-selection, daemon audio clients, and TUI migration remain outside Milestone
-19.9.
+selection, and TUI migration remain outside Milestone 19.9.

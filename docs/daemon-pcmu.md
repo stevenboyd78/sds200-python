@@ -178,6 +178,54 @@ Listener, client, subscription, encoding, unsubscribe, and cleanup failures
 are isolated where possible. Operational snapshots expose counts and
 redacted error types without transmitting exception messages.
 
+## CLI audio client
+
+Milestone 19.9 adds the reusable `DaemonPcmuClient` and an explicit CLI consumer
+for daemon-owned audio. It connects directly to `pcmu.sock`; it does not open the
+request-response API socket, scanner control, PSI, or another scanner RTSP/RTP
+session.
+
+Play through the local default output device:
+
+```bash
+sdsctl daemon-client audio --play
+```
+
+Record daemon-owned audio as an 8 kHz mono signed 16-bit PCM WAV file:
+
+```bash
+sdsctl daemon-client audio \
+  --output scanner-audio.wav \
+  --duration 30
+```
+
+Playback and recording may share the same PCMU connection:
+
+```bash
+sdsctl daemon-client --timeout 2 audio \
+  --pcmu-socket-path /run/user/1000/sdsctl/pcmu.sock \
+  --play \
+  --device 2 \
+  --output scanner-audio.wav
+```
+
+The parent `--timeout` option bounds connection establishment and must precede
+the `audio` action. `--pcmu-socket-path`, `--max-endpoint-bytes`, and
+`--max-frame-bytes` belong to the audio action. Omit `--duration` to run until
+`Ctrl+C`. Existing files are protected unless `--force` is explicit.
+
+Every complete frame is decoded through the public PCMU codec before its payload
+is converted once to PCM and submitted to the existing bounded playback and WAV
+sinks. The client rejects incompatible framing, non-monotonic stream sequences,
+and regressing cumulative queue-loss counters. Stream-sequence gaps are counted
+rather than rejected because they represent the per-client bounded queue loss
+described by the frame counters.
+
+The completion summary reports received packets and samples, first and last
+stream sequences, skipped publications, cumulative queue drops and overflows,
+RTP missing-packet and missing-sample observations, backwards RTP timestamps,
+playback statistics when selected, and the WAV path when recorded.
+
 ## Minimal Python client
 
 This example resolves the default socket, reads complete frames, and uses
@@ -238,16 +286,36 @@ Use the explicit path instead when the daemon was started with
 
 The PCMU service still does not add:
 
-- decoded-PCM subscriptions;
+- daemon-side decoded-PCM subscriptions or decoded-PCM CLI workflows;
 - client negotiation, filtering, replay, or seek operations;
 - audio delivery through `daemon.sock` or `events.sock`;
 - scanner-control operations;
 - TCP transport or remote authentication;
 - daemon discovery or automatic client selection;
-- CLI or TUI PCMU/audio daemon-client workflows; or
+- TUI daemon-audio client workflows; or
 - destination activation and configuration reload.
 
 ## Physical SDS200 validation
+
+Validated on 2026-08-05 with `sdsctl daemon-client audio` and a physical
+SDS200:
+
+- an explicit private `pcmu.sock` supplied simultaneous default-device
+  playback and WAV recording without opening another scanner RTSP/RTP
+  session;
+- the client received 258 consecutive frames from stream sequence 16 through
+  273 and 82,560 samples without a stream gap, daemon PCMU queue drop,
+  daemon PCMU overflow, RTP missing packet, RTP missing sample, or backwards
+  timestamp;
+- the local PortAudio sink wrote 159,942 PCM bytes, reported zero underflows
+  and zero callback statuses, and recorded six bounded-queue overflows that
+  dropped 2,088 PCM bytes;
+- the WAV sink finalized one-channel signed 16-bit PCM at 8 kHz with 82,560
+  frames and a duration of 10.320 seconds;
+- a subsequent daemon API status request still reported a running runtime,
+  connected scanner, active PSI and audio, and a running router; and
+- controlled `SIGTERM` returned exit status 0 and removed `daemon.sock`,
+  `events.sock`, and `pcmu.sock`.
 
 Validated on 2026-08-05 against a physical SDS200 at `192.168.0.251`
 with `scripts/validate_daemon_pcmu.py`:

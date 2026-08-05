@@ -61,6 +61,13 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   validated envelope, protocol, version, snapshot, framing, size, and sequence
   validation; clear disconnect diagnostics; bounded matching counts; and
   optional client-side event-kind filtering.
+- Public `DaemonPcmuClient` with bounded binary-frame reads, strict magic,
+  version, header, endpoint, frame, stream-order, and cumulative-loss validation,
+  plus immutable delivery, duration, RTP-continuity, and client-loss snapshots.
+- Explicit `sdsctl daemon-client audio` playback and WAV-recording workflows that
+  consume daemon-owned PCMU without opening scanner hardware or the daemon API,
+  reuse existing bounded PCM sinks, support optional duration and output-device
+  selection, and report stream, queue-loss, RTP, playback, and output summaries.
 - Foreground daemon options for event socket location, subscriber queue depth,
   concurrent event clients, maximum encoded event size, send timeout, and worker
   shutdown deadline.
@@ -106,6 +113,15 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   16 API pings, 82 ordered events without a gap, and two matching loss-free PCMU
   streams of 410 frames and 131,200 payload bytes each. Controlled `SIGTERM`
   returned exit status 0 and removed all three sockets.
+- Physical SDS200 validation of `sdsctl daemon-client audio` with simultaneous
+  default-device playback and WAV recording through the private PCMU socket.
+  The client received 258 consecutive frames from stream sequence 16 through
+  273 and 82,560 samples without stream gaps, PCMU queue loss, RTP loss,
+  missing samples, timestamp reversal, or callback status. It finalized an
+  8 kHz mono signed 16-bit WAV containing 10.320 seconds of audio, preserved
+  API health, and completed clean `SIGTERM` removal of all three sockets. The
+  bounded local playback queue wrote 159,942 bytes and reported six overflows
+  dropping 2,088 PCM bytes without underflow.
 
 ### Changed
 

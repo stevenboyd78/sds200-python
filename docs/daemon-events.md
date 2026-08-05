@@ -251,7 +251,7 @@ The event service and Milestone 19.9 client still do not add:
 - TCP or remote authentication;
 - daemon discovery or automatic client selection;
 - TUI daemon-client migration;
-- PCMU or decoded-PCM CLI client workflows; or
+- decoded-PCM CLI client workflows; or
 - destination activation and configuration reload.
 
 ## Physical SDS200 validation
