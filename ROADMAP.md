@@ -13,39 +13,47 @@ and ideas that are not ready for scheduling are recorded in
 
 ### Milestone 19.6 — Local event stream
 
-- **Ordered event protocol — planned**
-  - Define immutable JSON-compatible event envelopes with a protocol version,
-    monotonic stream sequence, observation timestamp, event kind, and payload.
-  - Begin every subscription with one authoritative runtime snapshot captured
+- **Ordered event protocol — implemented**
+  - Immutable JSON-compatible envelopes carry protocol version, global sequence,
+    observation timestamp, event kind, and payload.
+  - Every subscription begins with one authoritative runtime snapshot captured
     at its sequence boundary, followed only by later ordered events.
-  - Preserve renderer neutrality, immutable snapshot semantics, and redacted
-    failure information.
-- **Authoritative source aggregation — planned**
-  - Aggregate runtime lifecycle, scanner connection, PSI updates, radio-state
-    changes, audio lifecycle, and decoded-PCM destination-health transitions.
-  - Reuse existing immutable snapshots and transition models instead of
-    introducing renderer-specific state.
-  - Keep packet-rate PCM and PCMU data and scanner controls outside the event
+  - Renderer neutrality, immutable payload semantics, and redacted failure
+    information are preserved.
+- **Authoritative source aggregation — implemented**
+  - Runtime lifecycle, scanner connection, PSI updates, radio-state changes,
+    audio lifecycle, and decoded-PCM destination-health transitions feed one
+    serialized publisher.
+  - Existing immutable snapshots and transition models are reused without
+    renderer-specific state.
+  - Packet-rate PCM and PCMU data and scanner controls remain outside the event
     stream.
-- **Bounded subscriptions — planned**
-  - Give every subscriber an independent bounded queue with deterministic close
+- **Bounded subscriptions — implemented**
+  - Every subscriber has an independent bounded queue with deterministic close
     and unsubscribe behavior.
-  - Disconnect only the affected subscriber on overflow, expose the sequence
-    gap explicitly, and never block source callback paths.
-  - Bound subscriber counts, queue depth, encoded event size, and shutdown
-    waits.
-- **Unix-socket streaming — planned**
-  - Add a versioned event-subscription operation to the local daemon API and
-    stream ordered JSON Lines over an admitted client connection.
-  - Preserve existing request-response behavior for non-streaming connections
-    and isolate malformed, stalled, disconnected, and slow clients.
-  - Stop subscriptions and stream workers before ownership-runtime teardown.
-- **Regression, documentation, and hardware validation — planned**
-  - Cover initial-snapshot ordering, sequence continuity, source aggregation,
-    concurrent clients, overflow, unsubscribe races, malformed clients, and
-    bounded shutdown.
-  - Document protocol framing, event kinds, queue limits, resynchronization,
-    current exclusions, and physical SDS200 validation.
+  - Overflow preserves an unread initial snapshot, drops the oldest later event,
+    and exposes the loss through the next observed sequence gap without blocking
+    source callback paths.
+  - Subscriber count, queue depth, encoded event size, client count, send waits,
+    and shutdown waits are bounded.
+- **Private Unix-socket streaming — implemented**
+  - A separate private `events.sock` endpoint streams ordered UTF-8 JSON Lines;
+    the existing `daemon.sock` request-response protocol remains unchanged.
+  - Every admitted client owns one subscription and receives its snapshot before
+    later events. Excess, disconnected, stalled, slow, and oversized-event
+    clients are isolated from other clients and the ownership runtime.
+  - The event listener starts before runtime startup so clients can observe
+    lifecycle transitions and remains active through runtime shutdown.
+- **Regression and documentation — implemented**
+  - Coverage includes initial-snapshot ordering, sequence continuity and gaps,
+    source aggregation, concurrent clients, overflow, unsubscribe and shutdown
+    behavior, encoded-size enforcement, and CLI construction.
+  - Protocol framing, event kinds, limits, resynchronization, lifecycle, socket
+    resolution, and current exclusions are documented.
+- **Physical SDS200 validation — pending**
+  - Validate private socket permissions, startup snapshots, live PSI and
+    radio-state events, audio and destination transitions, independent clients,
+    controlled shutdown events, socket removal, and clean process exit.
 
 ## Deferred hardware validation
 

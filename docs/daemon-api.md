@@ -1,13 +1,17 @@
 # Local daemon API
 
 Milestone 19.5 adds a versioned, renderer-neutral, read-only API to the
-foreground `sdsctl daemon` process. The API is served only through a local
-Unix-domain stream socket. It does not expose TCP, remote authentication,
-scanner controls, event subscriptions, or audio subscriptions.
+foreground `sdsctl daemon` process. The API is served only through the private
+local `daemon.sock` Unix-domain stream socket. It does not expose TCP, remote
+authentication, scanner controls, streaming responses, or audio subscriptions.
 
-CLI and TUI daemon-client workflows remain follow-on work. The protocol can be
-used directly by local integrations that implement the documented framing and
-version contract.
+Milestone 19.6 adds ordered event subscriptions through a separate private
+`events.sock` endpoint. The request-response API described here remains
+unchanged. See the [local daemon event stream guide](daemon-events.md).
+
+CLI and TUI daemon-client workflows remain follow-on work. Both local protocols
+can be used directly by integrations that implement their documented framing and
+version contracts.
 
 ## Starting the API
 
@@ -211,18 +215,22 @@ Validated on 2026-08-04 against a physical SDS200 at
 
 ## Lifecycle and current exclusions
 
-`DaemonProcess` starts the ownership runtime before opening the local API. This
-ensures every admitted read-only request observes an initialized runtime.
-Shutdown reverses that relationship: the API listener and clients stop before
-the scanner, PSI, audio, and router runtime.
+`DaemonProcess` starts the event listener first, then starts the ownership
+runtime, and finally opens the request-response API. This ensures every admitted
+API request observes an initialized runtime while event subscribers may observe
+runtime startup transitions.
 
-If API startup fails, the attempted API component and the runtime are both
-stopped. Cleanup continues after an individual failure, while the primary
-startup or process error remains authoritative.
+Shutdown closes the API listener and clients before stopping scanner, PSI, audio,
+and router ownership. The separate event service remains available during
+runtime teardown and stops last.
 
-Milestone 19.5 intentionally excludes:
+If service startup fails, every attempted component is cleaned up. Cleanup
+continues after an individual failure, while the primary startup or process
+error remains authoritative.
 
-- event or transition subscriptions;
+The `daemon.sock` request-response protocol intentionally excludes:
+
+- streaming event responses on an API connection;
 - binary PCM or PCMU delivery;
 - scanner-control operations;
 - TCP or remote-network exposure;
@@ -230,4 +238,6 @@ Milestone 19.5 intentionally excludes:
 - CLI and TUI daemon-client modes; and
 - destination activation or configuration reload.
 
-Those capabilities remain assigned to later Milestone 19 work.
+Ordered renderer-neutral events are available separately through `events.sock`.
+Audio subscription, controls, discovery, client migration, and destination
+activation remain assigned to later Milestone 19 work.

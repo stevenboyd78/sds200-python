@@ -158,11 +158,14 @@ Milestone 19.4 adds the foreground `sdsctl daemon` process host. It owns one
 runtime and one initially empty decoded-PCM router, handles SIGINT and SIGTERM
 outside the signal callback, and supports systemd `Type=simple` operation.
 Milestone 19.5 exposes read-only audio and router health through the private
-local daemon API, but it does not publish PCM or PCMU audio. The existing
-monitor, TUI, playback, recording, and streaming commands remain standalone
-clients and do not yet consume daemon-owned audio or control. See the
-[daemon runtime and process guide](daemon-runtime.md) and
-[local daemon API guide](daemon-api.md).
+local daemon API. Milestone 19.6 publishes audio lifecycle and decoded-PCM
+destination-health transitions through the separate local event stream, but it
+does not publish packet-rate PCM or PCMU audio. The existing monitor, TUI,
+playback, recording, and streaming commands remain standalone clients and do not
+yet consume daemon-owned audio or control. See the
+[daemon runtime and process guide](daemon-runtime.md),
+[local daemon API guide](daemon-api.md), and
+[local daemon event stream guide](daemon-events.md).
 
 ## Recording metadata foundation
 
