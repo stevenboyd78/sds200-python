@@ -39,7 +39,11 @@ from .configuration import (
     ResolvedApplicationConfiguration,
     load_application_configuration,
 )
-from .daemon_api import DaemonReadOnlyApi
+from .daemon_api import DaemonApiOperation, DaemonReadOnlyApi
+from .daemon_client import (
+    DAEMON_API_CLIENT_DEFAULT_TIMEOUT,
+    DaemonApiClient,
+)
 from .daemon_event_server import (
     DAEMON_EVENT_DEFAULT_MAX_CLIENTS,
     DAEMON_EVENT_DEFAULT_SEND_TIMEOUT,
@@ -80,7 +84,7 @@ from .discovery import (
     DEFAULT_MAX_DISCOVERY_HOSTS,
     discover_network_scanners,
 )
-from .exceptions import SDS200Error
+from .exceptions import DaemonProtocolError, SDS200Error
 from .logging_config import LOG_LEVEL_NAMES, configure_logging
 from .models import HealthSummary, RadioEvent, RadioHealth, StatusResponse
 from .monitor import TerminalMonitor
@@ -847,6 +851,57 @@ def build_parser(
             "Local PCMU worker shutdown deadline "
             f"(default: {DAEMON_PCMU_DEFAULT_SHUTDOWN_TIMEOUT})"
         ),
+    )
+
+    daemon_client = subparsers.add_parser(
+        "daemon-client",
+        help="Query a running local daemon without opening scanner hardware",
+    )
+    daemon_client.add_argument(
+        "--socket-path",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Explicit absolute daemon API socket path; otherwise use "
+            "XDG_RUNTIME_DIR or the user state directory"
+        ),
+    )
+    daemon_client.add_argument(
+        "--timeout",
+        type=_positive_float,
+        default=DAEMON_API_CLIENT_DEFAULT_TIMEOUT,
+        metavar="SECONDS",
+        help=(
+            "Daemon connect and response timeout "
+            f"(default: {DAEMON_API_CLIENT_DEFAULT_TIMEOUT})"
+        ),
+    )
+    daemon_client.add_argument(
+        "--max-response-bytes",
+        type=_positive_integer,
+        default=DAEMON_API_DEFAULT_MAX_RESPONSE_BYTES,
+        metavar="BYTES",
+        help=(
+            "Maximum accepted daemon API response size "
+            f"(default: {DAEMON_API_DEFAULT_MAX_RESPONSE_BYTES})"
+        ),
+    )
+    daemon_client_commands = daemon_client.add_subparsers(
+        dest="daemon_client_action",
+        required=True,
+    )
+    daemon_status = daemon_client_commands.add_parser(
+        "status",
+        help="Show negotiated protocol and current daemon health",
+    )
+    daemon_status.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the negotiated status as JSON",
+    )
+    daemon_client_commands.add_parser(
+        "snapshot",
+        help="Print the complete authoritative runtime snapshot as JSON",
     )
 
     tui = subparsers.add_parser(
@@ -2031,6 +2086,159 @@ def _run_daemon(
     return 0
 
 
+def _reject_daemon_client_scanner_options(args: argparse.Namespace) -> None:
+    if any(
+        value is not None
+        for value in (
+            args.config,
+            args.model,
+            args.port,
+            args.host,
+            args.replay,
+            args.profile,
+            args.connection_preference,
+        )
+    ):
+        raise ValueError(
+            "Scanner connection selectors are not used with daemon-client."
+        )
+    if args.udp_port is not None or args.bind_address or args.bind_port:
+        raise ValueError(
+            "Scanner network socket options are not used with daemon-client."
+        )
+    recovery_options = (
+        args.recover_preferred,
+        args.recovery_probe_interval,
+        args.recovery_probe_timeout,
+        args.recovery_stability_window,
+        args.recovery_cooldown,
+    )
+    if any(value is not None for value in recovery_options):
+        raise ValueError(
+            "Scanner recovery options are not used with daemon-client."
+        )
+    if (
+        args.trace is not None
+        or args.capture is not None
+        or args.redact
+        or args.replay_speed != 0
+    ):
+        raise ValueError(
+            "Scanner trace, capture, and replay options are not used with "
+            "daemon-client."
+        )
+
+
+def _daemon_client_mapping(
+    payload: Mapping[str, object],
+    name: str,
+) -> Mapping[str, object]:
+    value = payload.get(name)
+    if not isinstance(value, Mapping):
+        return {}
+    if any(not isinstance(key, str) for key in value):
+        return {}
+    return cast(Mapping[str, object], value)
+
+
+def _daemon_client_flag(value: object) -> str:
+    if value is True:
+        return "yes"
+    if value is False:
+        return "no"
+    return "-"
+
+
+def _print_daemon_client_status(
+    socket_path: Path,
+    socket_source: str,
+    hello: Mapping[str, object],
+    snapshot: Mapping[str, object],
+) -> None:
+    audio = _daemon_client_mapping(snapshot, "audio")
+    router = _daemon_client_mapping(snapshot, "router")
+
+    print(f"Daemon socket:      {socket_path}")
+    print(f"Socket source:      {socket_source}")
+    print(
+        "Protocol:           "
+        f"{hello.get('protocol', '-')} v{hello.get('selected_version', '-')}"
+    )
+    print(f"Runtime:            {snapshot.get('state', '-')}")
+    print(
+        "Scanner connected:  "
+        f"{_daemon_client_flag(snapshot.get('scanner_connected'))}"
+    )
+    print(f"Scanner endpoint:   {snapshot.get('scanner_endpoint', '-')}")
+    print(f"PSI active:         {_daemon_client_flag(snapshot.get('psi_active'))}")
+    print(f"PSI interval:       {snapshot.get('psi_interval_ms', '-')} ms")
+    print(f"Audio running:      {_daemon_client_flag(audio.get('running'))}")
+    print(f"Router running:     {_daemon_client_flag(router.get('running'))}")
+    print(f"Last error:         {snapshot.get('last_error') or '-'}")
+
+
+def _run_daemon_client(
+    args: argparse.Namespace,
+    *,
+    configuration_paths: ConfigurationPaths | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> int:
+    _reject_daemon_client_scanner_options(args)
+    location = resolve_daemon_socket_location(
+        args.socket_path,
+        environ=environ,
+        configuration_paths=configuration_paths,
+    )
+
+    with DaemonApiClient(
+        location,
+        timeout=args.timeout,
+        max_response_bytes=args.max_response_bytes,
+    ) as client:
+        hello = client.hello()
+        operations = hello["operations"]
+        assert isinstance(operations, list)
+        if DaemonApiOperation.RUNTIME_SNAPSHOT.value not in operations:
+            raise DaemonProtocolError(
+                "The daemon does not advertise runtime.snapshot support."
+            )
+        snapshot = client.runtime_snapshot()
+
+    if args.daemon_client_action == "snapshot":
+        print(json.dumps(snapshot, indent=2, sort_keys=True))
+        return 0
+
+    if args.daemon_client_action != "status":
+        raise ValueError(
+            f"Unsupported daemon-client action: {args.daemon_client_action}"
+        )
+
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "socket": {
+                        "path": str(location.path),
+                        "source": location.source.value,
+                    },
+                    "hello": hello,
+                    "runtime": snapshot,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+
+    _print_daemon_client_status(
+        location.path,
+        location.source.value,
+        hello,
+        snapshot,
+    )
+    return 0
+
+
 def _asterisk_moh_host(args: argparse.Namespace) -> str:
     if args.port is not None:
         raise ValueError("asterisk-moh does not use USB serial control")
@@ -2687,6 +2895,13 @@ def main(
 
         if args.action == "daemon":
             return _run_daemon(
+                args,
+                configuration_paths=configuration_paths,
+                environ=environ,
+            )
+
+        if args.action == "daemon-client":
+            return _run_daemon_client(
                 args,
                 configuration_paths=configuration_paths,
                 environ=environ,
