@@ -292,6 +292,24 @@ The Milestone 19.6 `events.sock` service was physically validated on
 - the runtime received 507 RTP packets and 162,240 decoded samples; and
 - the process returned exit status 0 and removed both owned sockets.
 
+The Milestone 19.7 `pcmu.sock` service was physically validated on
+2026-08-05 against the same SDS200:
+
+- the caller-managed validation directory used mode `0700`, and all three local
+  sockets used mode `0600`;
+- one API client completed 61 successful pings while one event client and two
+  PCMU clients remained connected;
+- the event client received 231 ordered messages from sequence 1 through 231
+  without a gap;
+- both PCMU clients received the same 1,503 frames and 480,960 payload bytes
+  without queue loss, overflow, stream gaps, RTP discontinuity, timestamp
+  reversal, or mismatched overlapping frames;
+- a third PCMU connection above the configured limit was rejected;
+- decoded audio advanced by 1,500 packets and 480,000 samples during the
+  60-second simultaneous-client interval; and
+- controlled `SIGTERM` returned exit status 0 and removed `daemon.sock`,
+  `events.sock`, and `pcmu.sock`.
+
 The initial daemon router has no activated destinations, so
 `destination.health` was not hardware-exercised. Its aggregation and isolation
 contracts remain covered by hardware-independent regression tests.

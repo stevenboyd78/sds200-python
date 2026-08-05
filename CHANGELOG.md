@@ -74,6 +74,14 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   API ping, 76 continuous ordered events from sequence 11 through 86, live PSI
   and radio-state updates, shutdown lifecycle events, 507 received RTP packets,
   162,240 decoded samples, clean `SIGTERM`, and removal of both owned sockets.
+- Physical SDS200 validation of simultaneous API, event, and PCMU clients with
+  private `0700` directory and `0600` socket permissions, 61 successful API
+  pings, 231 continuous ordered events, and two independent PCMU clients that
+  each received 1,503 frames and 480,960 payload bytes without sequence gaps,
+  queue drops, overflows, RTP loss, timestamp reversal, or mismatched overlapping
+  frames. An excess PCMU client was rejected, decoded audio advanced by 1,500
+  packets and 480,000 samples, and controlled `SIGTERM` removed all three sockets
+  with exit status 0.
 
 ### Changed
 

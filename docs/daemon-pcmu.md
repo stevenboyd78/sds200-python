@@ -247,5 +247,31 @@ Milestone 19.7 does not add:
 - CLI or TUI daemon-client modes; or
 - destination activation and configuration reload.
 
-Physical simultaneous API, event, and PCMU client validation remains
-pending before Milestone 19.7 is closed.
+## Physical SDS200 validation
+
+Validated on 2026-08-05 against a physical SDS200 at `192.168.0.251`
+with `scripts/validate_daemon_pcmu.py`:
+
+- the caller-managed validation directory used mode `0700`, and
+  `daemon.sock`, `events.sock`, and `pcmu.sock` each used mode `0600`;
+- one API client completed 61 correlated `ping` operations while the
+  runtime remained `running` with connected scanner control, active PSI,
+  active RTSP/RTP audio, and a running decoded-PCM router;
+- one event client received 231 continuous ordered events from sequence 1
+  through 231 without a gap or reader failure;
+- observed event traffic included authoritative startup state, live PSI
+  and radio-state updates, and final audio, scanner-connection, and daemon
+  lifecycle transitions;
+- two independent PCMU clients each received 1,503 ordered frames from
+  stream sequence 1 through 1,503 and 480,960 raw payload bytes;
+- all 1,503 overlapping frames had identical decoded metadata and payload
+  fingerprints for both clients;
+- neither client reported a stream-sequence gap, packet drop, payload-byte
+  drop, queue overflow, missing RTP packet, missing RTP sample, or
+  backwards timestamp;
+- a third PCMU connection above the configured two-client limit was
+  closed without obtaining a subscription;
+- decoded audio advanced by 1,500 packets and 480,000 samples during the
+  60-second simultaneous-client interval;
+- controlled `SIGTERM` returned exit status 0; and
+- all three owned sockets were removed before process exit.

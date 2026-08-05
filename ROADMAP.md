@@ -34,14 +34,19 @@ and ideas that are not ready for scheduling are recorded in
     shutdown deadlines.
   - Preserve private Unix-socket ownership, safe stale-socket handling, and
     deterministic daemon-process lifecycle integration.
-- **Regression, documentation, and hardware validation — in progress**
-  - Cover packet ordering, sequence wraparound, loss and discontinuity,
-    independent clients, overflow, disconnect races, size limits, and bounded
-    shutdown.
-  - Document framing, capabilities, resynchronization, exclusions, and client
-    behavior.
-  - Validate simultaneous API, event, and PCMU clients against a physical SDS200
-    without interrupting decoded audio or scanner ownership.
+- **Regression, documentation, and hardware validation — complete**
+  - Regression coverage includes packet ordering, sequence wraparound, network
+    discontinuity, independent queues, overflow, disconnect races, size limits,
+    excess clients, lifecycle integration, and bounded shutdown.
+  - Framing, limits, loss interpretation, lifecycle, socket resolution, client
+    behavior, and current exclusions are documented.
+  - Physical validation kept one API client, one event client, and two PCMU
+    clients active simultaneously while scanner control, PSI, RTP reception,
+    decoded audio, and the router remained healthy.
+  - Both PCMU clients received the same 1,503 ordered frames without local queue
+    loss or network discontinuity, an excess client was rejected, 231 event
+    messages remained continuous, 61 API pings succeeded, and controlled
+    `SIGTERM` removed all three private sockets with exit status 0.
 
 ## Deferred hardware validation
 
