@@ -1,8 +1,8 @@
-# Web dashboard foundation
+# Web dashboard
 
-Milestone 20.1 establishes the optional daemon-backed HTTP service and
-loopback-only command that later dashboard milestones will build on. It does not
-yet provide the finished visual browser dashboard.
+Milestone 20.1 established the optional daemon-backed HTTP service and
+loopback-only command. Milestone 20.2 adds the first accessible responsive,
+read-only browser shell over that service.
 
 ## Architecture
 
@@ -64,19 +64,48 @@ The command accepts `localhost`, IPv4 loopback addresses, and IPv6 loopback
 addresses. It rejects wildcard addresses, LAN addresses, public addresses, and
 hostnames other than literal `localhost`.
 
-Milestone 20.1 intentionally provides no authentication, TLS termination,
-trusted-proxy handling, or supported remote-exposure mode. Do not expose this
-service through a public listener or reverse proxy. Authentication and
-transport-security design must be completed before remote access becomes a
+The current web dashboard intentionally provides no authentication, TLS
+termination, trusted-proxy handling, or supported remote-exposure mode. Do not
+expose this service through a public listener or reverse proxy. Authentication
+and transport-security design must be completed before remote access becomes a
 supported workflow.
 
 Uvicorn proxy-header trust and its identifying server header are disabled.
+
+## Browser dashboard
+
+Open the local dashboard after starting the web service:
+
+```text
+http://127.0.0.1:8000/
+```
+
+The shell polls `/api/v1/status` every two seconds while its browser tab is
+visible. It presents:
+
+- scanner connection, model, firmware, and endpoint;
+- active system, channel, mode, screen kind, signal, and RSSI when available;
+- daemon lifecycle and transition sequence;
+- PSI activity and interval;
+- audio and destination-router state; and
+- the local time of the most recent successful update.
+
+The interface uses semantic landmarks, definition lists, a skip link, visible
+keyboard focus, status text that does not rely on color alone, responsive
+single-, two-, and three-column layouts, system light and dark modes, and
+reduced-motion behavior. JavaScript updates text through `textContent`; it does
+not render daemon-provided HTML.
+
+The HTML, CSS, and JavaScript are package resources served with `no-store`,
+a restrictive Content Security Policy, no-referrer behavior, MIME sniffing
+disabled, and framing denied.
 
 ## HTTP endpoints
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/` | Service metadata and endpoint links |
+| `GET` | `/` | Accessible responsive browser dashboard shell |
+| `GET` | `/api/v1` | Service metadata and endpoint links |
 | `GET` | `/healthz` | Web-process health without contacting the daemon |
 | `GET` | `/api/v1/status` | Negotiated daemon capabilities and runtime snapshot |
 | `GET` | `/api/v1/snapshot` | Authoritative daemon runtime snapshot |
@@ -114,18 +143,21 @@ sdsctl web --no-access-log
 
 ## Current scope
 
-Milestone 20.1 includes:
+Milestones 20.1 and 20.2 include:
 
 - the optional `web` package extra;
 - a host-independent FastAPI application factory;
-- versioned health, status, snapshot, and OpenAPI routes;
+- versioned health, status, snapshot, metadata, and OpenAPI routes;
 - redacted daemon-unavailable responses;
 - a loopback-only Uvicorn adapter;
 - the `sdsctl web` command;
-- parser, application, server, packaging, and regression tests.
+- a packaged accessible responsive read-only browser shell;
+- two-second status polling while the browser tab is visible;
+- scanner, radio-activity, daemon, PSI, audio, and router summaries;
+- restrictive static-response security headers; and
+- parser, application, shell, server, packaging, and regression tests.
 
-Later Milestone 20 work remains responsible for the responsive browser
-interface, accessible design system, conventional, LCARS-inspired, and
-Matrix-inspired themes, SVG assets and branding, event-driven live updates,
-audio and recording workflows, logs, safe controls, authentication and secure
-remote-access planning, and Home Assistant integration.
+Later Milestone 20 work remains responsible for event-driven live updates,
+audio and recording workflows, logs, safe controls, optional LCARS-inspired and
+Matrix-inspired themes, expanded SVG assets and branding, authentication and
+secure remote-access planning, and Home Assistant integration.

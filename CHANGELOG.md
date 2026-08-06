@@ -8,6 +8,12 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Added
 
+- Milestone 20.2 accessible responsive browser shell with packaged HTML, CSS,
+  and JavaScript assets; read-only polling of the existing daemon-status API;
+  scanner, activity, PSI, audio, and destination summaries; progressive
+  no-JavaScript messaging; light, dark, compact, keyboard-focus, and
+  reduced-motion behavior; strict browser response headers; and
+  host-independent shell and static-asset regression tests.
 - Milestone 20.1 optional web-service foundation with FastAPI and Uvicorn
   packaging, a loopback-only `sdsctl web` command, versioned process-health,
   daemon-status, authoritative-snapshot, and OpenAPI endpoints, redacted daemon

@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#172033">
+  <title>sdsctl scanner dashboard</title>
+  <link rel="stylesheet" href="/assets/dashboard.css">
+  <script src="/assets/dashboard.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to scanner status</a>
+
+  <header class="site-header">
+    <div class="brand">
+      <p class="eyebrow">sdsctl web</p>
+      <h1>Scanner dashboard</h1>
+      <p class="subtitle">
+        Read-only status from the locally owned scanner daemon
+      </p>
+    </div>
+
+    <div
+      id="status-badge"
+      class="status-badge"
+      data-state="loading"
+      aria-live="polite"
+    >
+      Loading
+    </div>
+  </header>
+
+  <main id="main-content" class="dashboard" tabindex="-1">
+    <section class="overview" aria-labelledby="overview-title">
+      <div>
+        <p class="eyebrow">Milestone 20.2</p>
+        <h2 id="overview-title">Local scanner overview</h2>
+      </div>
+
+      <p id="dashboard-message" class="dashboard-message" role="status">
+        Contacting the scanner daemon.
+      </p>
+    </section>
+
+    <noscript>
+      <p class="notice notice-error">
+        JavaScript is required to refresh scanner status in this browser shell.
+      </p>
+    </noscript>
+
+    <div class="dashboard-grid">
+      <section class="panel" aria-labelledby="scanner-title">
+        <header class="panel-header">
+          <p class="panel-kicker">Connection</p>
+          <h2 id="scanner-title">Scanner</h2>
+        </header>
+
+        <dl class="status-list">
+          <div>
+            <dt>Connection</dt>
+            <dd id="scanner-connected">Checking</dd>
+          </div>
+          <div>
+            <dt>Model</dt>
+            <dd id="scanner-model">Unavailable</dd>
+          </div>
+          <div>
+            <dt>Firmware</dt>
+            <dd id="scanner-firmware">Unavailable</dd>
+          </div>
+          <div>
+            <dt>Endpoint</dt>
+            <dd id="scanner-endpoint" class="technical-value">
+              Unavailable
+            </dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="panel panel-emphasis" aria-labelledby="activity-title">
+        <header class="panel-header">
+          <p class="panel-kicker">Activity</p>
+          <h2 id="activity-title">Now scanning</h2>
+        </header>
+
+        <p id="radio-system" class="primary-value">No active system</p>
+        <p id="radio-channel" class="secondary-value">No active channel</p>
+
+        <dl class="status-list status-list-compact">
+          <div>
+            <dt>Mode</dt>
+            <dd id="radio-mode">Unavailable</dd>
+          </div>
+          <div>
+            <dt>Screen</dt>
+            <dd id="radio-screen">Unavailable</dd>
+          </div>
+          <div>
+            <dt>Signal</dt>
+            <dd id="radio-signal">Unavailable</dd>
+          </div>
+          <div>
+            <dt>RSSI</dt>
+            <dd id="radio-rssi">Unavailable</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="panel" aria-labelledby="runtime-title">
+        <header class="panel-header">
+          <p class="panel-kicker">Services</p>
+          <h2 id="runtime-title">Daemon runtime</h2>
+        </header>
+
+        <dl class="status-list">
+          <div>
+            <dt>State</dt>
+            <dd id="daemon-state">Checking</dd>
+          </div>
+          <div>
+            <dt>PSI updates</dt>
+            <dd id="psi-state">Checking</dd>
+          </div>
+          <div>
+            <dt>Audio</dt>
+            <dd id="audio-state">Checking</dd>
+          </div>
+          <div>
+            <dt>Destinations</dt>
+            <dd id="router-state">Checking</dd>
+          </div>
+          <div>
+            <dt>Transition</dt>
+            <dd id="transition-sequence">Unavailable</dd>
+          </div>
+        </dl>
+      </section>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <p>
+      Last successful update:
+      <time id="last-update">Not yet updated</time>
+    </p>
+    <p class="technical-value">sdsctl.web protocol 1</p>
+  </footer>
+</body>
+</html>
