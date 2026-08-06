@@ -6,6 +6,17 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+### Added
+
+- Milestone 20.1 optional web-service foundation with FastAPI and Uvicorn
+  packaging, a loopback-only `sdsctl web` command, versioned process-health,
+  daemon-status, authoritative-snapshot, and OpenAPI endpoints, redacted daemon
+  failures, disabled interactive documentation, and host-independent application,
+  listener, CLI, packaging, and regression tests.
+- A web dashboard foundation guide covering installation, daemon-client
+  architecture, localhost-only binding, the current HTTP contract, security
+  boundaries, command options, and explicitly deferred browser-dashboard work.
+
 ## [0.19.0] - 2026-08-06
 
 ### Added

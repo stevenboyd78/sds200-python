@@ -164,6 +164,13 @@ from .tui_audio import (
     TuiAudioSession,
 )
 from .tui_logging import TuiLogBuffer, capture_package_logs
+from .web_server import (
+    WEB_DASHBOARD_DEFAULT_HOST,
+    WEB_DASHBOARD_DEFAULT_PORT,
+    WEB_DASHBOARD_INSTALL_ERROR,
+    normalize_web_dashboard_host,
+    run_web_dashboard_server,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -240,6 +247,13 @@ def _local_port(value: str) -> int:
     if not 0 <= parsed <= 65535:
         raise argparse.ArgumentTypeError("port must be between 0 and 65535")
     return parsed
+
+
+def _web_listen_address(value: str) -> str:
+    try:
+        return normalize_web_dashboard_host(value)
+    except (TypeError, ValueError) as error:
+        raise argparse.ArgumentTypeError(str(error)) from error
 
 
 def _audio_device(value: str) -> str | int:
@@ -1126,6 +1140,68 @@ def build_parser(
         "--json",
         action="store_true",
         help="Print the authoritative completion result as JSON",
+    )
+
+    web = subparsers.add_parser(
+        "web",
+        help=(
+            "Serve the optional loopback-only daemon-backed web dashboard"
+        ),
+    )
+    web.add_argument(
+        "--daemon-socket-path",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Explicit absolute daemon API socket path; otherwise use "
+            "XDG_RUNTIME_DIR or the user state directory"
+        ),
+    )
+    web.add_argument(
+        "--daemon-timeout",
+        type=_positive_float,
+        default=DAEMON_API_CLIENT_DEFAULT_TIMEOUT,
+        metavar="SECONDS",
+        help=(
+            "Daemon connection and API response timeout "
+            f"(default: {DAEMON_API_CLIENT_DEFAULT_TIMEOUT})"
+        ),
+    )
+    web.add_argument(
+        "--daemon-max-response-bytes",
+        type=_positive_integer,
+        default=None,
+        metavar="BYTES",
+        help=(
+            "Maximum accepted daemon API response size "
+            f"(default: {DAEMON_API_DEFAULT_MAX_RESPONSE_BYTES})"
+        ),
+    )
+    web.add_argument(
+        "--listen-address",
+        type=_web_listen_address,
+        default=WEB_DASHBOARD_DEFAULT_HOST,
+        metavar="ADDRESS",
+        help=(
+            "Loopback listen address; remote exposure is intentionally "
+            f"unsupported (default: {WEB_DASHBOARD_DEFAULT_HOST})"
+        ),
+    )
+    web.add_argument(
+        "--listen-port",
+        type=_remote_port,
+        default=WEB_DASHBOARD_DEFAULT_PORT,
+        metavar="PORT",
+        help=(
+            "Local web-dashboard TCP port "
+            f"(default: {WEB_DASHBOARD_DEFAULT_PORT})"
+        ),
+    )
+    web.add_argument(
+        "--no-access-log",
+        action="store_false",
+        dest="access_log",
+        help="Disable the HTTP access log",
     )
 
     tui = subparsers.add_parser(
@@ -3244,6 +3320,52 @@ def _reject_daemon_tui_rtsp_options(
         )
 
 
+def _run_web(
+    args: argparse.Namespace,
+    *,
+    configuration_paths: ConfigurationPaths | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> int:
+    _reject_daemon_client_scanner_options(args)
+
+    try:
+        from .web_dashboard import create_web_dashboard_app
+    except ModuleNotFoundError as error:
+        if error.name == "fastapi":
+            raise ValueError(
+                WEB_DASHBOARD_INSTALL_ERROR
+            ) from error
+        raise
+
+    location = resolve_daemon_socket_location(
+        args.daemon_socket_path,
+        environ=environ,
+        configuration_paths=configuration_paths,
+    )
+    timeout = args.daemon_timeout
+    max_response_bytes = (
+        DAEMON_API_DEFAULT_MAX_RESPONSE_BYTES
+        if args.daemon_max_response_bytes is None
+        else args.daemon_max_response_bytes
+    )
+
+    def api_client_factory() -> DaemonApiClient:
+        return DaemonApiClient(
+            location,
+            timeout=timeout,
+            max_response_bytes=max_response_bytes,
+        )
+
+    app = create_web_dashboard_app(api_client_factory)
+
+    return run_web_dashboard_server(
+        app,
+        host=args.listen_address,
+        port=args.listen_port,
+        access_log=args.access_log,
+    )
+
+
 def _run_tui(
     args: argparse.Namespace,
     *,
@@ -3795,6 +3917,13 @@ def main(
 
         if args.action == "daemon-client":
             return _run_daemon_client(
+                args,
+                configuration_paths=configuration_paths,
+                environ=environ,
+            )
+
+        if args.action == "web":
+            return _run_web(
                 args,
                 configuration_paths=configuration_paths,
                 environ=environ,

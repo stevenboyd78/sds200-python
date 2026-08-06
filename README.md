@@ -75,6 +75,8 @@ information in this image represents a real system.*
 - Explicit `sdsctl daemon-client` workflows for negotiated status and snapshot
   reads, safe typed scanner controls, validated gap-detecting event watches, and
   daemon-owned PCMU playback or WAV recording
+- Optional loopback-only daemon-backed HTTP foundation with versioned health,
+  status, snapshot, and OpenAPI endpoints plus redacted daemon failures
 - Versioned bounded local daemon PCMU stream over a third private Unix socket with
   accepted RTP payloads, continuity metadata, and independent client-loss counters
 - Optional live playback through the local default or selected audio output device
@@ -116,6 +118,12 @@ Install the optional full-screen TUI:
 
 ```bash
 python -m pip install "sds200[tui]"
+```
+
+Install the optional loopback-only web service:
+
+```bash
+python -m pip install "sds200[web]"
 ```
 
 Install optional local audio playback support:
@@ -372,6 +380,31 @@ See the
 
 Serial-only profiles, replay captures, and non-SDS200 network-audio selections
 are rejected.
+
+### Loopback web service foundation
+
+Milestone 20.1 adds an optional daemon-backed HTTP foundation without opening
+scanner hardware or a second RTSP/RTP session. Start the foreground daemon, then
+run the web service in another terminal:
+
+```bash
+sdsctl --log-level INFO --host 192.168.0.251 daemon
+sdsctl web
+```
+
+Install it with `python -m pip install "sds200[web]"`. The service listens on
+`127.0.0.1:8000` by default and accepts only `localhost` or explicit loopback IP
+addresses. Wildcard, LAN, public, and non-local hostname bindings are rejected.
+
+The current endpoints provide process health, negotiated daemon status,
+authoritative runtime snapshots, and an OpenAPI schema. This is the HTTP and CLI
+foundation for the later responsive dashboard; it does not yet include the
+visual dashboard, authentication, TLS, live event streaming, audio, recordings,
+logs, controls, themes, or Home Assistant integration.
+
+Remote exposure is intentionally unsupported until authentication and
+transport-security planning is complete. See the
+[web dashboard foundation guide](docs/web-dashboard.md).
 
 ### SDS200 network audio playback and recording
 
@@ -716,6 +749,7 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting and
 - [Daemon deployment and upgrades](docs/daemon-deployment.md)
 - [Foreground daemon and ownership runtime](docs/daemon-runtime.md)
 - [Local daemon API](docs/daemon-api.md)
+- [Web dashboard foundation](docs/web-dashboard.md)
 - [Local daemon event stream](docs/daemon-events.md)
 - [Local daemon PCMU stream](docs/daemon-pcmu.md)
 - [Audio subsystem architecture](docs/audio.md)
