@@ -10,7 +10,7 @@ from textual.widgets import Static
 
 from sds200.commands import NavigationTarget
 from sds200.models import ScannerInfo
-from sds200.state import RadioStateSnapshot
+from sds200.state import RadioStateSnapshot, snapshot_from_scanner_info
 from sds200.transport import TransportDiagnostic
 from sds200.tui import ScannerIdentity, ScannerTuiApp
 from sds200.xml_protocol import ScannerInfoParser
@@ -139,7 +139,7 @@ def _app(radio: FakeControlRadio) -> ScannerTuiApp:
             model="SDS200",
             firmware="Version 1.26.01",
         ),
-        radio.initial,
+        snapshot_from_scanner_info(radio.initial),
         radio=radio,
         interval_ms=250,
     )
@@ -214,7 +214,7 @@ def test_tui_replay_session_does_not_age_into_stale_state() -> None:
                 model="SDS100",
                 firmware="Version 1.26.01",
             ),
-            radio.initial,
+            snapshot_from_scanner_info(radio.initial),
             radio=radio,
             interval_ms=250,
             stale_after=1.0,

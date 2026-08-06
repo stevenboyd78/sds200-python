@@ -398,7 +398,7 @@ class ScannerTuiApp(App[None]):
     def __init__(
         self,
         identity: ScannerIdentity,
-        info: ScannerInfo,
+        snapshot: RadioStateSnapshot,
         *,
         radio: ScannerTuiRadio | None = None,
         audio_session: AudioRecordingSession | TuiAudioSession | None = None,
@@ -424,7 +424,7 @@ class ScannerTuiApp(App[None]):
 
         super().__init__()
         self._identity = identity
-        self._snapshot = snapshot_from_scanner_info(info)
+        self._snapshot = snapshot
         self._capabilities = capabilities_for_model(identity.model)
         self._radio = radio
         self._audio_session = audio_session
@@ -2034,7 +2034,7 @@ def run_tui(
     endpoint: str,
     model: str,
     firmware: str,
-    info: ScannerInfo,
+    snapshot: RadioStateSnapshot,
     radio: ScannerTuiRadio,
     audio_session: AudioRecordingSession | TuiAudioSession | None = None,
     interval_ms: int,
@@ -2046,11 +2046,11 @@ def run_tui(
     palette: ThemePalette,
     log_buffer: TuiLogBuffer | None = None,
 ) -> None:
-    """Launch the live Textual scanner interface and block until it exits."""
+    """Launch the Textual interface from one renderer-neutral initial snapshot."""
 
     app = ScannerTuiApp(
         ScannerIdentity(endpoint=endpoint, model=model, firmware=firmware),
-        info,
+        snapshot,
         radio=radio,
         audio_session=audio_session,
         log_buffer=log_buffer,

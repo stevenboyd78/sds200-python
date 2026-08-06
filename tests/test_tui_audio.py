@@ -17,7 +17,7 @@ from sds200.audio_recording import PcmuWavRecorder
 from sds200.audio_session import AudioRecordingSession, AudioSessionStatus
 from sds200.network_audio import NetworkAudioStatistics
 from sds200.recording_metadata import recording_metadata_path
-from sds200.state import RadioStateSnapshot
+from sds200.state import RadioStateSnapshot, snapshot_from_scanner_info
 from sds200.tui import ScannerIdentity, ScannerTuiApp
 from sds200.tui_audio import RecordingPathPolicy, TuiAudioSession
 from sds200.xml_protocol import ScannerInfoParser
@@ -63,7 +63,7 @@ def _app(
             model="SDS200",
             firmware="Version 1.26.01",
         ),
-        ScannerInfoParser().parse("GSI", XML),
+        snapshot_from_scanner_info(ScannerInfoParser().parse("GSI", XML)),
         audio_session=session,
     )
 

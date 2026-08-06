@@ -145,6 +145,7 @@ from .rich_cli import (
 )
 from .rtsp import DEFAULT_RTSP_PORT
 from .scanner import SUPPORTED_SCANNER_MODELS, ScannerModel, normalize_model_name
+from .state import snapshot_from_scanner_info
 from .tui_audio import (
     DEFAULT_RECORDING_TEMPLATE,
     RecordingPathPolicy,
@@ -3094,7 +3095,7 @@ def _run_tui(
             endpoint=radio.endpoint,
             model=str(radio.get_model()),
             firmware=str(radio.get_firmware()),
-            info=radio.get_scanner_info(),
+            snapshot=snapshot_from_scanner_info(radio.get_scanner_info()),
             radio=radio,
             audio_session=audio_session,
             interval_ms=args.interval,

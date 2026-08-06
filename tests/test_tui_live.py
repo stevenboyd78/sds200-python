@@ -146,7 +146,7 @@ def _app(
             model="SDS200",
             firmware="Version 1.26.01",
         ),
-        radio.initial,
+        snapshot_from_scanner_info(radio.initial),
         radio=radio,
         audio_session=audio_session,
         interval_ms=250,

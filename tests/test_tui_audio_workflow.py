@@ -100,7 +100,7 @@ def test_tui_defers_requested_playback_until_connected_live_psi() -> None:
                 model="SDS200",
                 firmware="Version 1.26.01",
             ),
-            info,
+            snapshot_from_scanner_info(info),
             audio_session=session,
             connected=True,
         )
@@ -151,7 +151,7 @@ def test_tui_short_layout_summarizes_audio_and_status_and_restores_detail(
                 model="SDS200",
                 firmware="Version 1.26.01",
             ),
-            info,
+            snapshot_from_scanner_info(info),
             audio_session=session,
             connected=True,
         )
@@ -228,7 +228,7 @@ def test_tui_manual_playback_toggle_keeps_device_prepared() -> None:
                 model="SDS200",
                 firmware="Version 1.26.01",
             ),
-            ScannerInfoParser().parse("GSI", XML),
+            snapshot_from_scanner_info(ScannerInfoParser().parse("GSI", XML)),
             audio_session=session,
         )
 
@@ -277,7 +277,7 @@ def test_tui_panel_reports_active_device_during_saved_playback() -> None:
                 model="SDS200",
                 firmware="Version 1.26.01",
             ),
-            ScannerInfoParser().parse("GSI", XML),
+            snapshot_from_scanner_info(ScannerInfoParser().parse("GSI", XML)),
             audio_session=session,
         )
 
@@ -318,7 +318,7 @@ def test_tui_creates_consecutive_recordings_and_lists_the_library(
                 model="SDS200",
                 firmware="Version 1.26.01",
             ),
-            ScannerInfoParser().parse("GSI", XML),
+            snapshot_from_scanner_info(ScannerInfoParser().parse("GSI", XML)),
             audio_session=session,
         )
 

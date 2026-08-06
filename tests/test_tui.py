@@ -7,6 +7,7 @@ from pathlib import Path
 from rich.text import Text
 from textual.widgets import Static
 
+from sds200.state import snapshot_from_scanner_info
 from sds200.theme import DEFAULT_DARK_THEME, DEFAULT_LIGHT_THEME
 from sds200.tui import ScannerIdentity, ScannerTuiApp
 from sds200.tui_logging import TuiLogBuffer
@@ -32,7 +33,7 @@ def _app(log_buffer: TuiLogBuffer | None = None) -> ScannerTuiApp:
             model="SDS200",
             firmware="Version 1.26.01",
         ),
-        ScannerInfoParser().parse("GSI", XML),
+        snapshot_from_scanner_info(ScannerInfoParser().parse("GSI", XML)),
         log_buffer=log_buffer,
         palette=DEFAULT_DARK_THEME,
     )
@@ -46,7 +47,7 @@ def _fixture_app(name: str) -> ScannerTuiApp:
             model="SDS200",
             firmware="Version 1.26.01",
         ),
-        ScannerInfoParser().parse("GSI", xml),
+        snapshot_from_scanner_info(ScannerInfoParser().parse("GSI", xml)),
         palette=DEFAULT_DARK_THEME,
     )
 
@@ -359,7 +360,7 @@ def test_tui_status_transitions_include_local_since_timestamps() -> None:
                 model="SDS200",
                 firmware="Version 1.26.01",
             ),
-            ScannerInfoParser().parse("GSI", XML),
+            snapshot_from_scanner_info(ScannerInfoParser().parse("GSI", XML)),
             palette=DEFAULT_DARK_THEME,
             now=lambda: now[0],
         )

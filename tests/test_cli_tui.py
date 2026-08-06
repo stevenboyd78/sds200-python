@@ -9,6 +9,7 @@ import pytest
 from sds200 import cli
 from sds200.models import ScannerInfo
 from sds200.radio import SDSScanner
+from sds200.state import RadioStateSnapshot
 from sds200.theme import DEFAULT_LIGHT_THEME
 from sds200.tui_audio import TuiAudioSession
 from sds200.xml_protocol import ScannerInfoParser
@@ -73,10 +74,10 @@ def test_tui_cli_uses_replay_radio_and_selected_theme(
     radio = captured["radio"]
     assert isinstance(radio, SDSScanner)
     assert radio.endpoint == f"replay://{FIXTURE.resolve()}"
-    info = captured["info"]
-    assert isinstance(info, ScannerInfo)
-    assert info.system == "Example P25 System"
-    assert info.channel == "Example Dispatch"
+    snapshot = captured["snapshot"]
+    assert isinstance(snapshot, RadioStateSnapshot)
+    assert snapshot.system == "Example P25 System"
+    assert snapshot.channel == "Example Dispatch"
 
 
 @pytest.mark.parametrize(
