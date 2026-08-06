@@ -67,7 +67,7 @@ fixture-tested, not hardware-validated.
 These milestone groups preserve intended future work. Their numbering and release
 assignment may change before implementation begins.
 
-### Milestone 20 — Web dashboard and Home Assistant
+### Milestone 20 — Web dashboard, themes, and Home Assistant
 
 - Add a responsive browser dashboard backed by the daemon API.
 - Bind to localhost by default.
@@ -75,6 +75,23 @@ assignment may change before implementation begins.
   exposure.
 - Expose scanner state, connection health, audio state, recordings, logs, and safe
   controls.
+- Establish a reusable design system with shared color, typography, spacing,
+  panel, status-indicator, icon, motion, and responsive-layout tokens.
+- Keep an accessible conventional theme as the baseline, with readable contrast,
+  keyboard navigation, reduced-motion behavior, and state meaning that does not
+  depend on color or decorative styling alone.
+- Add optional LCARS-inspired and futuristic Matrix-inspired themes over the same
+  dashboard structure and behavior rather than maintaining separate interfaces.
+- Create and organize scalable SVG assets for scanner controls, navigation,
+  connection and reliability states, audio and recording states, diagrams,
+  dashboard illustrations, and project branding.
+- Prefer CSS- and token-driven SVG styling so shared assets can adapt across
+  themes without unnecessary duplication.
+- Preserve one canonical project identity while providing coordinated default,
+  LCARS-inspired, and Matrix-inspired logo variants for the dashboard,
+  documentation, and other project presentation surfaces.
+- Reuse shared theme primitives, SVG assets, and branding treatments in other
+  interfaces where practical.
 - Add Home Assistant integration through the daemon API rather than opening a
   second scanner connection.
 - Evaluate HACS distribution after the integration contract stabilizes.
@@ -134,13 +151,27 @@ Research and fixture work must precede public support for:
 Each feature must preserve unknown fields and include captured or synthetic
 fixtures before renderer-specific implementation.
 
-### Milestone 25 — Portability and additional interfaces
+### Milestone 25 — Portability, containers, and additional interfaces
 
 - Continue prioritizing Linux and Raspberry Pi operation.
+- Add a supported container image and Docker Compose examples for daemon,
+  daemon-client, and web-dashboard workflows.
+- Make network-connected SDS100, SDS150, and SDS200 operation the primary
+  container deployment path.
+- Document scanner host addressing, configuration, state, cache, recording, log,
+  destination-manifest, and private-socket mounts; health checks; restart policy;
+  signal handling; and orderly container shutdown.
+- Document Linux USB serial passthrough through stable
+  `/dev/serial/by-id/...` paths, narrowly scoped device access, and required host
+  group permissions without recommending broadly privileged containers.
+- Document host networking versus explicit socket or port exposure and identify
+  platform-specific Docker limitations.
+- Add host-independent container integration tests, followed by separate physical
+  network and USB validation.
+- Preserve native systemd deployment as the preferred production option when
+  direct host-device, local-audio, or operating-system integration is important.
 - Validate Windows and macOS behavior without blocking current releases.
 - Consider a future desktop GUI over the same renderer-neutral services.
-- Preserve the option for an LCARS-inspired interface theme.
-- Prefer scalable SVG assets and responsive layouts.
 - Treat the Raspberry Pi 7-inch 800 by 480 display as a compact reference layout,
   not a universal fixed resolution.
 
