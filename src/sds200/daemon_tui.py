@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import fields
+from dataclasses import dataclass, fields
 from math import isfinite
 from threading import Event, RLock, Thread, current_thread
 from typing import Any, Protocol, Self
@@ -62,6 +62,17 @@ class _DaemonEventClient(Protocol):
     def receive(self) -> DaemonEvent: ...
 
 
+@dataclass(frozen=True, slots=True)
+class DaemonTuiBootstrap:
+    """Validated identity and initial state for one daemon-backed TUI."""
+
+    endpoint: str
+    model: str
+    firmware: str
+    connected: bool
+    snapshot: RadioStateSnapshot
+
+
 class DaemonTuiRadio:
     """Adapt daemon-owned scanner state and controls to the TUI radio contract."""
 
@@ -107,6 +118,16 @@ class DaemonTuiRadio:
         with self._lock:
             thread = self._event_thread
         return thread is not None and thread.is_alive()
+
+    def initialize(
+        self,
+        snapshot: Mapping[str, object],
+    ) -> DaemonTuiBootstrap:
+        """Apply one authoritative API snapshot before launching the TUI."""
+
+        initial = daemon_tui_bootstrap(snapshot)
+        self._set_connected(initial.connected)
+        return initial
 
     def hold(
         self,
@@ -331,20 +352,7 @@ class DaemonTuiRadio:
         self,
         snapshot: Mapping[str, object],
     ) -> RadioStateSnapshot:
-        connected = snapshot.get("scanner_connected")
-        if type(connected) is not bool:
-            raise DaemonProtocolError(
-                "Daemon runtime snapshot omitted a boolean scanner_connected "
-                "field."
-            )
-        state = snapshot.get("radio_state")
-        if not isinstance(state, Mapping):
-            raise DaemonProtocolError(
-                "Daemon runtime snapshot omitted a radio_state object."
-            )
-
-        self._set_connected(connected)
-        return _radio_state_snapshot(state)
+        return self.initialize(snapshot).snapshot
 
     def _set_connected(self, connected: bool) -> None:
         with self._lock:
@@ -462,3 +470,67 @@ def _radio_state_snapshot(
                 ) from error
 
     return RadioStateSnapshot(**values)
+
+
+def _daemon_identity_value(
+    value: object,
+    *,
+    name: str,
+    fallback: str,
+) -> str:
+    if value is None:
+        return fallback
+    if (
+        not isinstance(value, str)
+        or not value
+        or value.strip() != value
+    ):
+        raise DaemonProtocolError(
+            f"Daemon runtime snapshot field {name!r} must be a non-empty "
+            "string or null."
+        )
+    return value
+
+
+def daemon_tui_bootstrap(
+    payload: Mapping[str, object],
+) -> DaemonTuiBootstrap:
+    """Decode one authoritative daemon snapshot for TUI construction."""
+
+    endpoint = payload.get("scanner_endpoint")
+    if (
+        not isinstance(endpoint, str)
+        or not endpoint
+        or endpoint.strip() != endpoint
+    ):
+        raise DaemonProtocolError(
+            "Daemon runtime snapshot omitted a valid scanner_endpoint field."
+        )
+
+    connected = payload.get("scanner_connected")
+    if type(connected) is not bool:
+        raise DaemonProtocolError(
+            "Daemon runtime snapshot omitted a boolean scanner_connected field."
+        )
+
+    state = payload.get("radio_state")
+    if not isinstance(state, Mapping):
+        raise DaemonProtocolError(
+            "Daemon runtime snapshot omitted a radio_state object."
+        )
+
+    return DaemonTuiBootstrap(
+        endpoint=endpoint,
+        model=_daemon_identity_value(
+            payload.get("scanner_model"),
+            name="scanner_model",
+            fallback="Unknown model",
+        ),
+        firmware=_daemon_identity_value(
+            payload.get("scanner_firmware"),
+            name="scanner_firmware",
+            fallback="Unknown firmware",
+        ),
+        connected=connected,
+        snapshot=_radio_state_snapshot(state),
+    )

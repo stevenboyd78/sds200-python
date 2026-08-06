@@ -88,6 +88,7 @@ from .daemon_server import (
     DAEMON_API_DEFAULT_SHUTDOWN_TIMEOUT,
     DaemonApiServer,
 )
+from .daemon_tui import DaemonTuiRadio
 from .device import choose_scanner, discover_scanners
 from .discovery import (
     DEFAULT_DISCOVERY_TIMEOUT,
@@ -1110,6 +1111,62 @@ def build_parser(
     tui = subparsers.add_parser(
         "tui",
         help="Launch the optional full-screen Textual interface",
+    )
+    tui.add_argument(
+        "--daemon-client",
+        action="store_true",
+        help=(
+            "Use a running local daemon without opening scanner hardware; "
+            "standalone scanner ownership remains the default"
+        ),
+    )
+    tui.add_argument(
+        "--daemon-socket-path",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Explicit daemon API socket path used with --daemon-client; "
+            "otherwise use XDG_RUNTIME_DIR or the user state directory"
+        ),
+    )
+    tui.add_argument(
+        "--daemon-event-socket-path",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Explicit daemon event socket path used with --daemon-client; "
+            "otherwise use XDG_RUNTIME_DIR or the user state directory"
+        ),
+    )
+    tui.add_argument(
+        "--daemon-timeout",
+        type=_positive_float,
+        default=None,
+        metavar="SECONDS",
+        help=(
+            "Daemon API and event connection timeout "
+            f"(default: {DAEMON_API_CLIENT_DEFAULT_TIMEOUT})"
+        ),
+    )
+    tui.add_argument(
+        "--daemon-max-response-bytes",
+        type=_positive_integer,
+        default=None,
+        metavar="BYTES",
+        help=(
+            "Maximum accepted daemon API response size "
+            f"(default: {DAEMON_API_DEFAULT_MAX_RESPONSE_BYTES})"
+        ),
+    )
+    tui.add_argument(
+        "--daemon-max-event-bytes",
+        type=_positive_integer,
+        default=None,
+        metavar="BYTES",
+        help=(
+            "Maximum accepted daemon event size "
+            f"(default: {DAEMON_EVENT_DEFAULT_MAX_BYTES})"
+        ),
     )
     tui.add_argument(
         "--interval",
@@ -3008,10 +3065,108 @@ def _run_audio(args: argparse.Namespace) -> int:
     return 0
 
 
+def _reject_standalone_tui_daemon_options(
+    args: argparse.Namespace,
+) -> None:
+    if any(
+        value is not None
+        for value in (
+            args.daemon_socket_path,
+            args.daemon_event_socket_path,
+            args.daemon_timeout,
+            args.daemon_max_response_bytes,
+            args.daemon_max_event_bytes,
+        )
+    ):
+        raise ValueError(
+            "Daemon TUI socket and limit options require --daemon-client."
+        )
+
+
+def _reject_daemon_tui_scanner_options(
+    args: argparse.Namespace,
+) -> None:
+    if any(
+        value is not None
+        for value in (
+            args.config,
+            args.model,
+            args.port,
+            args.host,
+            args.replay,
+            args.profile,
+            args.connection_preference,
+        )
+    ):
+        raise ValueError(
+            "Scanner connection selectors are not used with the "
+            "daemon-backed TUI."
+        )
+
+    if args.udp_port is not None or args.bind_address or args.bind_port:
+        raise ValueError(
+            "Scanner network socket options are not used with the "
+            "daemon-backed TUI."
+        )
+
+    recovery_options = (
+        args.recover_preferred,
+        args.recovery_probe_interval,
+        args.recovery_probe_timeout,
+        args.recovery_stability_window,
+        args.recovery_cooldown,
+    )
+    if any(value is not None for value in recovery_options):
+        raise ValueError(
+            "Scanner recovery options are not used with the daemon-backed TUI."
+        )
+
+    if (
+        args.trace is not None
+        or args.capture is not None
+        or args.redact
+        or args.replay_speed != 0
+    ):
+        raise ValueError(
+            "Scanner trace, capture, and replay options are not used with the "
+            "daemon-backed TUI."
+        )
+
+
+def _reject_daemon_tui_audio_options(
+    args: argparse.Namespace,
+) -> None:
+    audio_requested = any(
+        (
+            args.audio_output is not None,
+            args.audio_directory is not None,
+            args.audio_template is not None,
+            args.audio_organize_by is not None,
+            args.audio_force,
+            args.audio_metadata,
+            args.audio_playback,
+            args.audio_device is not None,
+            args.audio_buffer_ms != 250,
+            args.audio_history_limit != 100,
+            args.audio_rtsp_port != DEFAULT_RTSP_PORT,
+            bool(args.audio_rtp_bind_address),
+            args.audio_rtp_bind_port != 0,
+            args.audio_keepalive_interval != 15.0,
+        )
+    )
+    if audio_requested:
+        raise ValueError(
+            "Daemon-backed TUI audio is not enabled in this client slice; "
+            "omit TUI audio options."
+        )
+
+
 def _run_tui(
     args: argparse.Namespace,
     *,
     log_buffer: TuiLogBuffer | None = None,
+    configuration_paths: ConfigurationPaths | None = None,
+    environ: Mapping[str, str] | None = None,
 ) -> int:
     try:
         from .tui import run_tui
@@ -3023,6 +3178,71 @@ def _run_tui(
                 'python -m pip install "sds200[tui]"'
             ) from exc
         raise
+
+    if args.daemon_client:
+        _reject_daemon_tui_scanner_options(args)
+        _reject_daemon_tui_audio_options(args)
+
+        timeout = (
+            DAEMON_API_CLIENT_DEFAULT_TIMEOUT
+            if args.daemon_timeout is None
+            else args.daemon_timeout
+        )
+        api_location = resolve_daemon_socket_location(
+            args.daemon_socket_path,
+            environ=environ,
+            configuration_paths=configuration_paths,
+        )
+        event_location = resolve_daemon_event_socket_location(
+            args.daemon_event_socket_path,
+            environ=environ,
+            configuration_paths=configuration_paths,
+        )
+        api_client = DaemonApiClient(
+            api_location,
+            timeout=timeout,
+            max_response_bytes=(
+                DAEMON_API_DEFAULT_MAX_RESPONSE_BYTES
+                if args.daemon_max_response_bytes is None
+                else args.daemon_max_response_bytes
+            ),
+        )
+        event_client = DaemonEventClient(
+            event_location,
+            timeout=timeout,
+            max_event_bytes=(
+                DAEMON_EVENT_DEFAULT_MAX_BYTES
+                if args.daemon_max_event_bytes is None
+                else args.daemon_max_event_bytes
+            ),
+        )
+
+        with DaemonTuiRadio(api_client, event_client) as radio:
+            hello = api_client.hello()
+            _require_daemon_client_operation(
+                hello,
+                DaemonApiOperation.RUNTIME_SNAPSHOT,
+            )
+            initial = radio.initialize(api_client.runtime_snapshot())
+            run_tui(
+                endpoint=initial.endpoint,
+                model=initial.model,
+                firmware=initial.firmware,
+                snapshot=initial.snapshot,
+                radio=radio,
+                audio_session=None,
+                interval_ms=args.interval,
+                stale_after=args.stale_after,
+                psi_auto_recover=args.psi_auto_recover,
+                psi_recover_after=args.psi_recover_after,
+                psi_recovery_cooldown=args.psi_recovery_cooldown,
+                connected=initial.connected,
+                palette=palette_for_name(args.theme),
+                log_buffer=log_buffer,
+            )
+        return 0
+
+    _reject_standalone_tui_daemon_options(args)
 
     if args.audio_force and args.audio_output is None:
         raise ValueError("--audio-force requires --audio-output")
@@ -3110,12 +3330,22 @@ def _run_tui(
     return 0
 
 
-def _run_tui_with_logging(args: argparse.Namespace) -> int:
+def _run_tui_with_logging(
+    args: argparse.Namespace,
+    *,
+    configuration_paths: ConfigurationPaths | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> int:
     log_buffer = TuiLogBuffer()
     with capture_package_logs(log_buffer):
         logger.info("sdsctl starting version=%s action=%s", __version__, args.action)
         try:
-            return _run_tui(args, log_buffer=log_buffer)
+            return _run_tui(
+                args,
+                log_buffer=log_buffer,
+                configuration_paths=configuration_paths,
+                environ=environ,
+            )
         finally:
             logger.info("sdsctl stopped action=%s", args.action)
 
@@ -3399,7 +3629,11 @@ def main(
 
     if args.action == "tui":
         try:
-            return _run_tui_with_logging(args)
+            return _run_tui_with_logging(
+                args,
+                configuration_paths=configuration_paths,
+                environ=environ,
+            )
         except (SDS200Error, OSError, ValueError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2

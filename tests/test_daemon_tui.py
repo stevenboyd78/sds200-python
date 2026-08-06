@@ -25,6 +25,9 @@ def runtime_snapshot(
     channel: str = "Initial Dispatch",
 ) -> dict[str, object]:
     return {
+        "scanner_endpoint": "udp://192.0.2.25:50536",
+        "scanner_model": "SDS200",
+        "scanner_firmware": "Version 1.26.01",
         "scanner_connected": connected,
         "radio_state": {
             "mode": "Trunk Scan",
@@ -292,6 +295,9 @@ def test_daemon_tui_radio_rejects_malformed_radio_state(
             0,
             DaemonEventKind.SNAPSHOT,
             {
+                "scanner_endpoint": "udp://192.0.2.25:50536",
+                "scanner_model": "SDS200",
+                "scanner_firmware": "Version 1.26.01",
                 "scanner_connected": True,
                 "radio_state": state,
             },
@@ -311,3 +317,28 @@ def test_daemon_tui_radio_close_is_idempotent() -> None:
 
     assert api.close_calls == 1
     assert events.close_calls == 1
+
+
+def test_daemon_tui_radio_initializes_from_authoritative_api_snapshot() -> None:
+    radio, _, _ = make_radio()
+
+    initial = radio.initialize(runtime_snapshot(channel="API Dispatch"))
+
+    assert initial.endpoint == "udp://192.0.2.25:50536"
+    assert initial.model == "SDS200"
+    assert initial.firmware == "Version 1.26.01"
+    assert initial.connected is True
+    assert initial.snapshot.channel == "API Dispatch"
+    assert radio.connected is True
+
+
+def test_daemon_tui_radio_uses_identity_fallbacks_for_older_daemons() -> None:
+    radio, _, _ = make_radio()
+    snapshot = runtime_snapshot()
+    snapshot.pop("scanner_model")
+    snapshot.pop("scanner_firmware")
+
+    initial = radio.initialize(snapshot)
+
+    assert initial.model == "Unknown model"
+    assert initial.firmware == "Unknown firmware"

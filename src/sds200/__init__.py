@@ -190,7 +190,11 @@ from .daemon_server import (
     DaemonApiServer,
     DaemonApiServerSnapshot,
 )
-from .daemon_tui import DaemonTuiRadio
+from .daemon_tui import (
+    DaemonTuiBootstrap,
+    DaemonTuiRadio,
+    daemon_tui_bootstrap,
+)
 from .device import (
     DEFAULT_SDS200_PATTERN,
     DEFAULT_SDS_PATTERN,
@@ -584,6 +588,7 @@ __all__ = [
     "DaemonEventSubscription",
     "DaemonEventSubscriptionClosed",
     "DaemonEventStream",
+    "DaemonTuiBootstrap",
     "DaemonTuiRadio",
     "DaemonPcmuClient",
     "DaemonPcmuClientSnapshot",
@@ -792,6 +797,7 @@ __all__ = [
     "decode_mulaw",
     "decode_pcmu_delivery",
     "decode_mulaw_sample",
+    "daemon_tui_bootstrap",
     "discover_legacy_configuration",
     "discover_network_scanners",
     "discover_scanners",
