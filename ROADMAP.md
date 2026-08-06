@@ -73,7 +73,11 @@ assignment may change before implementation begins.
   loopback-only `sdsctl web` command, versioned health, daemon-status,
   authoritative-snapshot, and OpenAPI routes, redacted daemon errors, package
   extras, documentation, and host-independent regression coverage.
-- Add a responsive browser dashboard backed by the daemon API.
+- Milestone 20.2 completed the first accessible responsive read-only browser
+  shell, packaged HTML, CSS, and JavaScript assets, two-second daemon-status
+  polling, scanner and runtime summaries, restrictive browser response headers,
+  light and dark presentation, compact layouts, reduced-motion behavior, and
+  host-independent shell and static-asset tests.
 - Bind to localhost by default.
 - Require explicit authentication and transport-security planning before remote
   exposure.

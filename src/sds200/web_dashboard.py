@@ -1,12 +1,15 @@
-"""Daemon-backed HTTP application foundation for the web dashboard."""
+"""Daemon-backed HTTP application and browser dashboard shell."""
 
 from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Mapping
+from functools import cache
+from importlib.resources import files
 from typing import Protocol, TypeAlias
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse, Response
 
 from . import __version__
 from .exceptions import SDS200Error
@@ -14,6 +17,25 @@ from .exceptions import SDS200Error
 WEB_DASHBOARD_API_PROTOCOL = "sdsctl.web"
 WEB_DASHBOARD_API_VERSION = 1
 WEB_DASHBOARD_UNAVAILABLE_DETAIL = "The scanner daemon is unavailable."
+
+_WEB_ASSET_PACKAGE = "sds200.web_assets"
+_WEB_RESPONSE_HEADERS = {
+    "Cache-Control": "no-store",
+    "Content-Security-Policy": (
+        "default-src 'none'; "
+        "style-src 'self'; "
+        "script-src 'self'; "
+        "connect-src 'self'; "
+        "img-src 'self'; "
+        "font-src 'self'; "
+        "base-uri 'none'; "
+        "form-action 'none'; "
+        "frame-ancestors 'none'"
+    ),
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+}
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +66,10 @@ class DaemonApiClientContext(Protocol):
 
 
 DaemonApiClientFactory: TypeAlias = Callable[[], DaemonApiClientContext]
-_DaemonQuery: TypeAlias = Callable[[DaemonApiClientLike], Mapping[str, object]]
+_DaemonQuery: TypeAlias = Callable[
+    [DaemonApiClientLike],
+    Mapping[str, object],
+]
 
 
 def create_web_dashboard_app(
@@ -63,11 +88,45 @@ def create_web_dashboard_app(
         openapi_url="/api/v1/openapi.json",
     )
 
-    @app.get("/", include_in_schema=False)
-    def index() -> dict[str, object]:
+    @app.get(
+        "/",
+        include_in_schema=False,
+        response_class=HTMLResponse,
+    )
+    def index() -> HTMLResponse:
+        return HTMLResponse(
+            content=_read_web_asset("dashboard.html"),
+            headers=dict(_WEB_RESPONSE_HEADERS),
+        )
+
+    @app.get(
+        "/assets/dashboard.css",
+        include_in_schema=False,
+        response_class=Response,
+    )
+    def stylesheet() -> Response:
+        return _asset_response(
+            "dashboard.css",
+            media_type="text/css",
+        )
+
+    @app.get(
+        "/assets/dashboard.js",
+        include_in_schema=False,
+        response_class=Response,
+    )
+    def script() -> Response:
+        return _asset_response(
+            "dashboard.js",
+            media_type="application/javascript",
+        )
+
+    @app.get("/api/v1")
+    def api_index() -> dict[str, object]:
         return {
             "service": _service_metadata(),
             "links": {
+                "dashboard": "/",
                 "health": "/healthz",
                 "snapshot": "/api/v1/snapshot",
                 "status": "/api/v1/status",
@@ -102,6 +161,27 @@ def create_web_dashboard_app(
         }
 
     return app
+
+
+@cache
+def _read_web_asset(name: str) -> str:
+    return (
+        files(_WEB_ASSET_PACKAGE)
+        .joinpath(name)
+        .read_text(encoding="utf-8")
+    )
+
+
+def _asset_response(
+    name: str,
+    *,
+    media_type: str,
+) -> Response:
+    return Response(
+        content=_read_web_asset(name),
+        media_type=media_type,
+        headers=dict(_WEB_RESPONSE_HEADERS),
+    )
 
 
 def _service_metadata() -> dict[str, object]:

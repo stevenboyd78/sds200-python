@@ -66,6 +66,59 @@ def test_web_dashboard_requires_callable_client_factory() -> None:
         create_web_dashboard_app(None)  # type: ignore[arg-type]
 
 
+def test_web_dashboard_shell_does_not_connect_to_daemon() -> None:
+    def forbidden_factory() -> FakeDaemonApiClient:
+        raise AssertionError("dashboard shell must not connect to the daemon")
+
+    app = create_web_dashboard_app(forbidden_factory)
+
+    with TestClient(app) as client:
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert "default-src 'none'" in response.headers[
+        "content-security-policy"
+    ]
+    assert "<title>sdsctl scanner dashboard</title>" in response.text
+    assert 'id="main-content"' in response.text
+    assert 'id="status-badge"' in response.text
+    assert 'href="/assets/dashboard.css"' in response.text
+    assert 'src="/assets/dashboard.js"' in response.text
+    assert "<style" not in response.text
+    assert "<script>" not in response.text
+
+
+def test_web_dashboard_serves_packaged_static_assets() -> None:
+    def forbidden_factory() -> FakeDaemonApiClient:
+        raise AssertionError("static assets must not connect to the daemon")
+
+    app = create_web_dashboard_app(forbidden_factory)
+
+    with TestClient(app) as client:
+        stylesheet = client.get("/assets/dashboard.css")
+        script = client.get("/assets/dashboard.js")
+
+    assert stylesheet.status_code == 200
+    assert stylesheet.headers["content-type"].startswith("text/css")
+    assert stylesheet.headers["cache-control"] == "no-store"
+    assert "--content-width:" in stylesheet.text
+    assert "@media (prefers-reduced-motion: reduce)" in stylesheet.text
+
+    assert script.status_code == 200
+    assert script.headers["content-type"].startswith(
+        "application/javascript"
+    )
+    assert script.headers["cache-control"] == "no-store"
+    assert 'fetch("/api/v1/status"' in script.text
+    assert "textContent" in script.text
+    assert "innerHTML" not in script.text
+
+
 def test_web_dashboard_health_does_not_connect_to_daemon() -> None:
     def forbidden_factory() -> FakeDaemonApiClient:
         raise AssertionError("health endpoint must not connect to the daemon")
@@ -87,14 +140,15 @@ def test_web_dashboard_health_does_not_connect_to_daemon() -> None:
     }
 
 
-def test_web_dashboard_index_advertises_foundation_endpoints() -> None:
+def test_web_dashboard_api_index_advertises_endpoints() -> None:
     app = create_web_dashboard_app(FakeDaemonApiClient)
 
     with TestClient(app) as client:
-        response = client.get("/")
+        response = client.get("/api/v1")
 
     assert response.status_code == 200
     assert response.json()["links"] == {
+        "dashboard": "/",
         "health": "/healthz",
         "snapshot": "/api/v1/snapshot",
         "status": "/api/v1/status",
