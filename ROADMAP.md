@@ -23,9 +23,10 @@ and ideas that are not ready for scheduling are recorded in
     and excess clients plus shutdown fault injection.
   - Completed preliminary source and wheel builds, Twine checks, artifact
     inspection, clean installation, and public-to-local upgrade validation.
-  - Added Python CodeQL analysis; repeat package validation against `0.19.0`,
-    run full Python 3.11–3.14 CI and CodeQL, and complete final physical SDS200
-    daemon-owned CLI and TUI client validation.
+  - Validated the repository's existing GitHub CodeQL default setup for Actions
+    and Python; repeat package validation against `0.19.0`, run the full Python
+    3.11–3.14 CI matrix, and complete final physical SDS200 daemon-owned CLI and
+    TUI client validation.
 - **Publication — pending**
   - Merge release preparation only after CI and CodeQL pass.
   - Publish `v0.19.0` through trusted PyPI publishing and create the GitHub

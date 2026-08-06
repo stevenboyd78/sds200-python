@@ -149,8 +149,8 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   compatibility, dedicated service accounts, systemd supervision, private socket
   access, destination manifests, transactional reload, migration, clean
   installation, upgrades, and rollback.
-- A GitHub CodeQL workflow that analyzes Python changes on main-branch pushes,
-  pull requests, and a weekly schedule.
+- Validated the repository's existing GitHub CodeQL default setup for Actions
+  and Python against the release pull-request head with no analysis errors.
 
 ### Changed
 
