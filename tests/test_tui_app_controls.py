@@ -114,15 +114,15 @@ class FakeControlRadio:
         return lambda: None
 
     @contextmanager
-    def scanner_info_push(
+    def radio_state_push(
         self,
         interval_ms: int = 500,
         *,
         timeout: float = 3.0,
-    ) -> Iterator[ScannerInfo]:
+    ) -> Iterator[RadioStateSnapshot]:
         del interval_ms, timeout
         self.started.set()
-        yield self.initial
+        yield snapshot_from_scanner_info(self.initial)
 
     def emit_connection(self, connected: bool) -> None:
         self.connected = connected

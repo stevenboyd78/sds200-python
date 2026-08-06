@@ -76,17 +76,17 @@ class FakeLiveRadio:
         return self._subscribe(self._diagnostic_callbacks, callback)
 
     @contextmanager
-    def scanner_info_push(
+    def radio_state_push(
         self,
         interval_ms: int = 500,
         *,
         timeout: float = 3.0,
-    ) -> Iterator[ScannerInfo]:
+    ) -> Iterator[RadioStateSnapshot]:
         del timeout
         self.interval_ms = interval_ms
         self.started.set()
         try:
-            yield self.initial
+            yield snapshot_from_scanner_info(self.initial)
         finally:
             self.stopped.set()
 
@@ -376,7 +376,8 @@ def test_replay_fixture_streams_multiple_live_psi_states() -> None:
         assert radio.get_firmware() == "Version 1.26.01"
         assert radio.get_scanner_info().channel == "Initial Dispatch"
         unsubscribe = radio.on_state(states.append)
-        with radio.scanner_info_push(100) as first:
+        with radio.radio_state_push(100) as first:
+            assert isinstance(first, RadioStateSnapshot)
             assert first.channel == "First Dispatch"
         unsubscribe()
 
