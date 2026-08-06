@@ -112,8 +112,10 @@ returns success, so `Restart=on-failure` does not restart an intentionally
 stopped service. Startup or shutdown errors use a nonzero exit status and are
 eligible for restart.
 
-`SIGHUP` is not a graceful-stop or reload signal in this milestone. Do not use it
-for controlled service termination.
+`SIGHUP` requests a validated reload of the daemon destination manifest
+without stopping the scanner, audio runtime, or local services. Use `SIGTERM`,
+not `SIGHUP`, for controlled service termination. A failed reload leaves the
+previous committed destinations active and is reported through the service log.
 
 Inspect the service log with:
 

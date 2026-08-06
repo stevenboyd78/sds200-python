@@ -54,6 +54,7 @@ from .daemon_destination_activation import (
     DaemonDestinationCoordinator,
     DaemonDestinationFactory,
 )
+from .daemon_destination_reload import DaemonDestinationReloader
 from .daemon_destinations import (
     load_daemon_destination_configuration,
 )
@@ -2277,13 +2278,14 @@ def _run_daemon(
         if configuration_paths is not None
         else resolve_configuration_paths(environ=environ)
     )
+    destination_manifest_path = (
+        args.destination_config
+        if args.destination_config is not None
+        else resolved_paths.daemon_destination_config_file
+    )
     destination_configuration = (
         load_daemon_destination_configuration(
-            args.destination_config,
-        )
-        if args.destination_config is not None
-        else load_daemon_destination_configuration(
-            paths=resolved_paths,
+            destination_manifest_path,
         )
     )
 
@@ -2381,6 +2383,10 @@ def _run_daemon(
             factory=destination_factory,
             initial_configuration=destination_configuration,
         )
+        destination_reloader = DaemonDestinationReloader(
+            destination_coordinator,
+            destination_manifest_path,
+        )
     except BaseException as construction_error:
         cleanup_errors: list[BaseException] = []
 
@@ -2413,6 +2419,7 @@ def _run_daemon(
     result = DaemonProcess(
         runtime,
         destination_coordinator=destination_coordinator,
+        destination_reloader=destination_reloader,
         api_server=api_server,
         event_server=event_server,
         pcmu_server=pcmu_server,

@@ -292,12 +292,14 @@ def test_daemon_cli_constructs_one_runtime_and_process(
             runtime: object,
             *,
             destination_coordinator: object,
+            destination_reloader: object,
             api_server: object,
             event_server: object,
             pcmu_server: object,
         ) -> None:
             self.runtime = runtime
             self.destination_coordinator = destination_coordinator
+            self.destination_reloader = destination_reloader
             self.api_server = api_server
             self.event_server = event_server
             self.pcmu_server = pcmu_server
@@ -378,6 +380,17 @@ def test_daemon_cli_constructs_one_runtime_and_process(
     assert destination_coordinator.factory.remote_profile_store.path == (
         paths.legacy_remote_audio_profiles_file
     )
+
+    destination_reloader = process.destination_reloader
+    assert isinstance(
+        destination_reloader,
+        cli.DaemonDestinationReloader,
+    )
+    assert destination_reloader.coordinator is destination_coordinator
+    assert destination_reloader.path == (
+        paths.daemon_destination_config_file
+    )
+
     assert runtime.scanner is scanner
     assert runtime.psi_interval_ms == 750
     assert runtime.psi_timeout == 4.0
@@ -449,6 +462,7 @@ def test_daemon_cli_loads_explicit_destination_manifest(
         encoding="utf-8",
     )
     observed: list[FakeDaemonDestinationCoordinator] = []
+    observed_reload_paths: list[Path] = []
 
     monkeypatch.setattr(
         cli,
@@ -486,6 +500,7 @@ def test_daemon_cli_loads_explicit_destination_manifest(
             runtime: object,
             *,
             destination_coordinator: object,
+            destination_reloader: object,
             api_server: object,
             event_server: object,
             pcmu_server: object,
@@ -496,6 +511,9 @@ def test_daemon_cli_loads_explicit_destination_manifest(
                 api_server,
                 event_server,
                 pcmu_server,
+            )
+            observed_reload_paths.append(
+                destination_reloader.path  # type: ignore[attr-defined]
             )
 
         def run(self) -> DaemonProcessResult:
@@ -530,6 +548,7 @@ def test_daemon_cli_loads_explicit_destination_manifest(
     )
     assert destination.kind == "playback"
     assert destination.backend == "sounddevice"
+    assert observed_reload_paths == [manifest]
 
 
 def test_daemon_cli_rejects_invalid_destination_manifest_before_scanner(
@@ -606,6 +625,7 @@ def test_daemon_cli_reports_process_os_error(
             runtime: object,
             *,
             destination_coordinator: object,
+            destination_reloader: object,
             api_server: object,
             event_server: object,
             pcmu_server: object,
@@ -613,6 +633,7 @@ def test_daemon_cli_reports_process_os_error(
             del (
                 runtime,
                 destination_coordinator,
+                destination_reloader,
                 api_server,
                 event_server,
                 pcmu_server,
@@ -660,11 +681,12 @@ def test_daemon_cli_explicit_socket_path_overrides_runtime_environment(
             runtime: object,
             *,
             destination_coordinator: object,
+            destination_reloader: object,
             api_server: object,
             event_server: object,
             pcmu_server: object,
         ) -> None:
-            del runtime, destination_coordinator
+            del runtime, destination_coordinator, destination_reloader
             observed.append((api_server, event_server, pcmu_server))
 
         def run(self) -> DaemonProcessResult:
