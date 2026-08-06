@@ -20,6 +20,8 @@ preferred recovery.
   `NetworkAudioTransport` and publishes them through independent bounded queues.
 - `DaemonPcmuServer` serves one versioned binary PCMU subscription per admitted
   private Unix-domain client without owning the shared transport lifecycle.
+- `DaemonPcmuClient` validates and receives that bounded binary stream for local
+  playback or WAV recording without opening another scanner audio session.
 - `AudioChunk.data` contains the raw payload type 0 G.711 mu-law bytes from one
   accepted RTP packet.
 - `AudioFanoutSession` decodes each accepted packet once and submits 8 kHz mono
@@ -91,6 +93,20 @@ Use `--device DEVICE` to select a PortAudio output device and `--buffer-ms` to
 change the bounded playback queue. Omit `--duration` to run until `Ctrl+C`. Use
 `--force` to replace an existing output file. At least one of `--play` or
 `--output` is required.
+
+When the foreground daemon already owns the scanner audio session, consume its
+PCMU stream instead of opening another RTSP/RTP session:
+
+```bash
+sdsctl daemon-client audio \
+  --play \
+  --output scanner-audio.wav
+```
+
+This explicit workflow connects only to the private `pcmu.sock` service, decodes
+each accepted payload locally, and reuses the same bounded playback and WAV
+sinks. See the [local daemon PCMU stream guide](daemon-pcmu.md) for framing,
+loss, socket, and option details.
 
 Overflow drops the oldest queued playback audio to preserve live latency.
 Underflow fills the device request with silence. Both conditions are counted in
@@ -165,13 +181,16 @@ outside the signal callback, and supports systemd `Type=simple` operation.
 Milestone 19.5 exposes read-only audio and router health through the private
 local daemon API. Milestone 19.6 publishes audio lifecycle and decoded-PCM
 destination-health transitions through the separate local event stream, but it
-does not publish packet-rate PCM or PCMU audio. The separate daemon PCMU
-socket publishes accepted packet payloads without changing the event protocol.
-The existing monitor, TUI,
-playback, recording, and streaming commands remain standalone clients and do not
-yet consume daemon-owned audio or control. See the
+does not publish packet-rate PCM or PCMU audio. The separate daemon PCMU socket
+publishes accepted packet payloads without changing the event protocol.
+Milestone 19.9 adds explicit `sdsctl daemon-client audio`, which consumes that
+daemon-owned PCMU stream, decodes each accepted payload locally, and reuses the
+existing playback and WAV sinks without opening another scanner RTSP/RTP session
+or daemon API connection. The top-level `audio`, `asterisk-moh`, monitor, and TUI
+workflows remain standalone. TUI daemon migration and decoded-PCM daemon
+subscriptions remain follow-on work. See the
 [daemon runtime and process guide](daemon-runtime.md),
-[local daemon API guide](daemon-api.md), and
+[local daemon API guide](daemon-api.md),
 [local daemon event stream guide](daemon-events.md), and
 [local daemon PCMU stream guide](daemon-pcmu.md).
 

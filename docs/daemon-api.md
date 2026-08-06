@@ -14,8 +14,13 @@ Ordered events and accepted PCMU packets remain separate services:
 - [local daemon event stream](daemon-events.md) through `events.sock`;
 - [local daemon PCMU stream](daemon-pcmu.md) through `pcmu.sock`.
 
-CLI and TUI daemon-client workflows remain follow-on work. Integrations may use
-the documented socket framing and version contract directly.
+Milestone 19.9 adds explicit `sdsctl daemon-client` status, snapshot, hold,
+next, previous, and reconnect workflows through the reusable `DaemonApiClient`.
+The separate `events` and `audio` actions consume `events.sock` and `pcmu.sock`
+without opening this API connection. The top-level scanner and direct-audio
+commands remain standalone. TUI migration and decoded-PCM client workflows remain
+follow-on work. Integrations may also use the documented socket framing and
+version contract directly.
 
 The Python implementation retains the historical public class name
 `DaemonReadOnlyApi` for compatibility even though version 1 now advertises both
@@ -293,6 +298,28 @@ Important control classifications are:
 
 Clients should branch on `error.code`, not the human-readable message.
 
+## CLI client
+
+The explicit CLI client uses the daemon API without opening scanner hardware:
+
+```bash
+sdsctl daemon-client status
+sdsctl daemon-client snapshot
+sdsctl daemon-client hold TGID 12345
+sdsctl daemon-client next TGID 12345 --count 1
+sdsctl daemon-client previous TGID 12345 --count 1
+sdsctl daemon-client reconnect
+```
+
+Use `--socket-path PATH` before the action when the daemon owns a non-default API
+socket. `--timeout` bounds connection and API response waits.
+`--max-response-bytes` limits one accepted response. Status and control
+workflows negotiate advertised operations before use, and successful controls
+print or return the authoritative completion result.
+
+The daemon client is always explicit. It does not silently replace the existing
+standalone scanner commands.
+
 ## Minimal Python client
 
 This example uses the default XDG runtime socket and sends one `ping` request:
@@ -393,10 +420,13 @@ The `daemon.sock` protocol intentionally excludes:
 - streaming event responses on an API connection;
 - binary PCM or PCMU delivery on the API connection;
 - TCP or remote-network exposure;
-- daemon discovery and automatic client selection;
-- CLI and TUI daemon-client modes; and
+- daemon discovery or automatic client selection;
+- TUI daemon-client migration;
+- decoded-PCM CLI client workflows; and
 - destination activation or configuration reload.
 
-Ordered events and PCMU audio are available through their dedicated sockets.
-Decoded-PCM subscription, discovery, client migration, and destination
-activation remain assigned to later Milestone 19 work.
+Ordered events are available through their dedicated socket and
+`sdsctl daemon-client events`. Daemon-owned PCMU audio is available through
+`pcmu.sock` and `sdsctl daemon-client audio`. Decoded-PCM CLI workflows,
+discovery, TUI migration, and destination activation remain assigned to later
+Milestone 19 work.

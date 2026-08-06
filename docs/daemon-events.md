@@ -212,17 +212,46 @@ with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
 Use the explicit path instead when the daemon was started with
 `--event-socket-path`.
 
+## CLI event client
+
+Milestone 19.9 adds a reusable `DaemonEventClient` and an explicit CLI event
+watch that never opens scanner hardware or the request-response API socket:
+
+```bash
+sdsctl daemon-client events --count 10 --json
+sdsctl daemon-client events \
+  --kind scanner.connection \
+  --kind radio.state \
+  --count 20
+```
+
+The client validates every received envelope, requires the initial authoritative
+`stream.snapshot`, and enforces strictly increasing gap-free sequence delivery.
+A malformed frame, incompatible protocol or version, repeated snapshot,
+regression, or sequence gap closes the client connection and reports a protocol
+error. Reconnect to obtain a new authoritative checkpoint after a true gap.
+
+`--kind` is a local output filter; the server still sends the complete stream and
+the client still validates every event. Therefore filtered output may skip
+sequence values without indicating loss. `--count` counts matching printed
+events, including the initial snapshot only when it matches the filter.
+
+Use `--event-socket-path PATH` for an explicit event socket and
+`--max-event-bytes BYTES` to bound one accepted JSON Lines event. The parent
+`--timeout` bounds connection establishment; an established event watch waits
+for later events until its count is reached or the user interrupts it.
+
 ## Current exclusions
 
-Milestone 19.6 does not add:
+The event service and Milestone 19.9 client still do not add:
 
 - event replay or server-side filtering;
-- client-selected event kinds;
 - binary PCM delivery or PCMU delivery on the event socket;
-- scanner-control operations;
+- scanner-control operations on the event socket;
 - TCP or remote authentication;
 - daemon discovery or automatic client selection;
-- CLI or TUI daemon-client modes; or
+- TUI daemon-client migration;
+- decoded-PCM CLI client workflows; or
 - destination activation and configuration reload.
 
 ## Physical SDS200 validation

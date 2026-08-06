@@ -5,6 +5,7 @@ import argparse
 import json
 import logging
 import sys
+import threading
 from collections.abc import Callable, Mapping
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -15,7 +16,7 @@ from typing import BinaryIO, Protocol, cast
 from . import __version__
 from .asterisk_moh import AsteriskMohSignalController, PcmStreamSink
 from .audio import AudioStream
-from .audio_recording import PcmuWavRecorder
+from .audio_recording import PcmuWavRecorder, decode_mulaw
 from .audio_sinks import (
     AudioFanoutSession,
     PcmSink,
@@ -39,7 +40,18 @@ from .configuration import (
     ResolvedApplicationConfiguration,
     load_application_configuration,
 )
-from .daemon_api import DaemonReadOnlyApi
+from .daemon_api import (
+    DAEMON_API_DEFAULT_CONTROL_TIMEOUT,
+    DaemonApiOperation,
+    DaemonReadOnlyApi,
+)
+from .daemon_client import (
+    DAEMON_API_CLIENT_DEFAULT_TIMEOUT,
+    DaemonApiClient,
+)
+from .daemon_event_client import (
+    DaemonEventClient,
+)
 from .daemon_event_server import (
     DAEMON_EVENT_DEFAULT_MAX_CLIENTS,
     DAEMON_EVENT_DEFAULT_SEND_TIMEOUT,
@@ -50,6 +62,8 @@ from .daemon_event_stream import DaemonEventStream
 from .daemon_events import (
     DAEMON_EVENT_DEFAULT_MAX_BYTES,
     DAEMON_EVENT_DEFAULT_QUEUE_CAPACITY,
+    DaemonEvent,
+    DaemonEventKind,
 )
 from .daemon_ipc import (
     DaemonSocketListener,
@@ -57,6 +71,7 @@ from .daemon_ipc import (
     resolve_daemon_pcmu_socket_location,
     resolve_daemon_socket_location,
 )
+from .daemon_pcmu_client import DaemonPcmuClient
 from .daemon_pcmu_server import (
     DAEMON_PCMU_DEFAULT_MAX_CLIENTS,
     DAEMON_PCMU_DEFAULT_SEND_TIMEOUT,
@@ -80,7 +95,11 @@ from .discovery import (
     DEFAULT_MAX_DISCOVERY_HOSTS,
     discover_network_scanners,
 )
-from .exceptions import SDS200Error
+from .exceptions import (
+    DaemonDisconnectedError,
+    DaemonProtocolError,
+    SDS200Error,
+)
 from .logging_config import LOG_LEVEL_NAMES, configure_logging
 from .models import HealthSummary, RadioEvent, RadioHealth, StatusResponse
 from .monitor import TerminalMonitor
@@ -847,6 +866,244 @@ def build_parser(
             "Local PCMU worker shutdown deadline "
             f"(default: {DAEMON_PCMU_DEFAULT_SHUTDOWN_TIMEOUT})"
         ),
+    )
+
+    daemon_client = subparsers.add_parser(
+        "daemon-client",
+        help="Query a running local daemon without opening scanner hardware",
+    )
+    daemon_client.add_argument(
+        "--socket-path",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Explicit absolute daemon API socket path; otherwise use "
+            "XDG_RUNTIME_DIR or the user state directory"
+        ),
+    )
+    daemon_client.add_argument(
+        "--timeout",
+        type=_positive_float,
+        default=DAEMON_API_CLIENT_DEFAULT_TIMEOUT,
+        metavar="SECONDS",
+        help=(
+            "Daemon connection timeout; also bounds API responses "
+            f"(default: {DAEMON_API_CLIENT_DEFAULT_TIMEOUT})"
+        ),
+    )
+    daemon_client.add_argument(
+        "--max-response-bytes",
+        type=_positive_integer,
+        default=None,
+        metavar="BYTES",
+        help=(
+            "Maximum accepted daemon API response size "
+            f"(default: {DAEMON_API_DEFAULT_MAX_RESPONSE_BYTES})"
+        ),
+    )
+    daemon_client_commands = daemon_client.add_subparsers(
+        dest="daemon_client_action",
+        required=True,
+    )
+    daemon_status = daemon_client_commands.add_parser(
+        "status",
+        help="Show negotiated protocol and current daemon health",
+    )
+    daemon_status.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the negotiated status as JSON",
+    )
+    daemon_client_commands.add_parser(
+        "snapshot",
+        help="Print the complete authoritative runtime snapshot as JSON",
+    )
+    daemon_audio = daemon_client_commands.add_parser(
+        "audio",
+        help="Play and/or record audio from the daemon-owned PCMU stream",
+    )
+    daemon_audio.add_argument(
+        "--pcmu-socket-path",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Explicit absolute daemon PCMU socket path; otherwise use "
+            "XDG_RUNTIME_DIR or the user state directory"
+        ),
+    )
+    daemon_audio.add_argument(
+        "--max-endpoint-bytes",
+        type=_positive_integer,
+        default=PCMU_STREAM_DEFAULT_MAX_ENDPOINT_BYTES,
+        metavar="BYTES",
+        help=(
+            "Maximum accepted encoded PCMU endpoint size "
+            f"(default: {PCMU_STREAM_DEFAULT_MAX_ENDPOINT_BYTES})"
+        ),
+    )
+    daemon_audio.add_argument(
+        "--max-frame-bytes",
+        type=_positive_integer,
+        default=PCMU_STREAM_DEFAULT_MAX_FRAME_BYTES,
+        metavar="BYTES",
+        help=(
+            "Maximum accepted complete PCMU frame size "
+            f"(default: {PCMU_STREAM_DEFAULT_MAX_FRAME_BYTES})"
+        ),
+    )
+    daemon_audio.add_argument(
+        "--output",
+        type=Path,
+        metavar="FILE",
+        help="Destination 8 kHz mono signed 16-bit PCM WAV file",
+    )
+    daemon_audio.add_argument(
+        "--play",
+        action="store_true",
+        help="Play daemon-owned live audio through a local output device",
+    )
+    daemon_audio.add_argument(
+        "--device",
+        type=_audio_device,
+        metavar="DEVICE",
+        help="PortAudio output device name or index (default: system output)",
+    )
+    daemon_audio.add_argument(
+        "--buffer-ms",
+        type=_positive_integer,
+        default=250,
+        metavar="MS",
+        help="Bounded local-playback queue in milliseconds (default: 250)",
+    )
+    daemon_audio.add_argument(
+        "--duration",
+        type=_positive_float,
+        metavar="SECONDS",
+        help="Stop after this many seconds; otherwise run until interrupted",
+    )
+    daemon_audio.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite an existing output file",
+    )
+
+    daemon_events = daemon_client_commands.add_parser(
+        "events",
+        help="Watch the ordered daemon event stream without scanner hardware",
+    )
+    daemon_events.add_argument(
+        "--event-socket-path",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Explicit absolute daemon event socket path; otherwise use "
+            "XDG_RUNTIME_DIR or the user state directory"
+        ),
+    )
+    daemon_events.add_argument(
+        "--max-event-bytes",
+        type=_positive_integer,
+        default=DAEMON_EVENT_DEFAULT_MAX_BYTES,
+        metavar="BYTES",
+        help=(
+            "Maximum accepted encoded daemon event size "
+            f"(default: {DAEMON_EVENT_DEFAULT_MAX_BYTES})"
+        ),
+    )
+    daemon_events.add_argument(
+        "--kind",
+        action="append",
+        choices=[kind.value for kind in DaemonEventKind],
+        metavar="KIND",
+        help=(
+            "Only print this event kind locally; repeat for multiple kinds. "
+            "Filtered output may skip sequence values"
+        ),
+    )
+    daemon_events.add_argument(
+        "--count",
+        type=_positive_integer,
+        metavar="COUNT",
+        help="Stop after printing this many matching events",
+    )
+    daemon_events.add_argument(
+        "--json",
+        action="store_true",
+        help="Print validated daemon events as JSON Lines",
+    )
+
+    for action_name, action_help in (
+        ("hold", "Hold a documented scanner selection through the daemon"),
+        (
+            "next",
+            "Move forward through a documented daemon-owned selection list",
+        ),
+        (
+            "previous",
+            "Move backward through a documented daemon-owned selection list",
+        ),
+    ):
+        daemon_control = daemon_client_commands.add_parser(
+            action_name,
+            help=action_help,
+        )
+        daemon_control.add_argument(
+            "target",
+            type=str.upper,
+            choices=NAVIGATION_TARGETS,
+        )
+        daemon_control.add_argument(
+            "first",
+            nargs="?",
+            help="Primary protocol index or frequency",
+        )
+        daemon_control.add_argument(
+            "second",
+            nargs="?",
+            help="Optional parent index required by some targets",
+        )
+        if action_name != "hold":
+            daemon_control.add_argument(
+                "--count",
+                type=_positive_integer,
+                default=1,
+                choices=range(1, 9),
+                help="Number of selections to move (1-8)",
+            )
+        daemon_control.add_argument(
+            "--control-timeout",
+            type=_positive_float,
+            default=DAEMON_API_DEFAULT_CONTROL_TIMEOUT,
+            metavar="SECONDS",
+            help=(
+                "Bounded daemon scanner-control timeout "
+                f"(default: {DAEMON_API_DEFAULT_CONTROL_TIMEOUT})"
+            ),
+        )
+        daemon_control.add_argument(
+            "--json",
+            action="store_true",
+            help="Print the authoritative completion result as JSON",
+        )
+
+    daemon_reconnect = daemon_client_commands.add_parser(
+        "reconnect",
+        help="Request one bounded daemon-owned scanner reconnect",
+    )
+    daemon_reconnect.add_argument(
+        "--control-timeout",
+        type=_positive_float,
+        default=DAEMON_API_DEFAULT_CONTROL_TIMEOUT,
+        metavar="SECONDS",
+        help=(
+            "Bounded daemon scanner-control timeout "
+            f"(default: {DAEMON_API_DEFAULT_CONTROL_TIMEOUT})"
+        ),
+    )
+    daemon_reconnect.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the authoritative completion result as JSON",
     )
 
     tui = subparsers.add_parser(
@@ -2031,6 +2288,483 @@ def _run_daemon(
     return 0
 
 
+def _reject_daemon_client_scanner_options(args: argparse.Namespace) -> None:
+    if any(
+        value is not None
+        for value in (
+            args.config,
+            args.model,
+            args.port,
+            args.host,
+            args.replay,
+            args.profile,
+            args.connection_preference,
+        )
+    ):
+        raise ValueError(
+            "Scanner connection selectors are not used with daemon-client."
+        )
+    if args.udp_port is not None or args.bind_address or args.bind_port:
+        raise ValueError(
+            "Scanner network socket options are not used with daemon-client."
+        )
+    recovery_options = (
+        args.recover_preferred,
+        args.recovery_probe_interval,
+        args.recovery_probe_timeout,
+        args.recovery_stability_window,
+        args.recovery_cooldown,
+    )
+    if any(value is not None for value in recovery_options):
+        raise ValueError(
+            "Scanner recovery options are not used with daemon-client."
+        )
+    if (
+        args.trace is not None
+        or args.capture is not None
+        or args.redact
+        or args.replay_speed != 0
+    ):
+        raise ValueError(
+            "Scanner trace, capture, and replay options are not used with "
+            "daemon-client."
+        )
+
+
+def _daemon_client_mapping(
+    payload: Mapping[str, object],
+    name: str,
+) -> Mapping[str, object]:
+    value = payload.get(name)
+    if not isinstance(value, Mapping):
+        return {}
+    if any(not isinstance(key, str) for key in value):
+        return {}
+    return cast(Mapping[str, object], value)
+
+
+def _daemon_client_flag(value: object) -> str:
+    if value is True:
+        return "yes"
+    if value is False:
+        return "no"
+    return "-"
+
+
+def _require_daemon_client_operation(
+    hello: Mapping[str, object],
+    operation: DaemonApiOperation,
+    *,
+    control: bool = False,
+) -> None:
+    if control:
+        if hello.get("read_only") is True:
+            raise DaemonProtocolError(
+                "The connected daemon is read-only and does not support "
+                f"{operation.value}."
+            )
+
+        control_operations = hello.get("control_operations")
+        if (
+            not isinstance(control_operations, list)
+            or operation.value not in control_operations
+        ):
+            raise DaemonProtocolError(
+                "The daemon does not advertise "
+                f"{operation.value} control support."
+            )
+
+    operations = hello.get("operations")
+    if not isinstance(operations, list) or operation.value not in operations:
+        raise DaemonProtocolError(
+            f"The daemon does not advertise {operation.value} support."
+        )
+
+
+def _reject_daemon_stream_api_options(
+    args: argparse.Namespace,
+    *,
+    action: str,
+    socket_option: str,
+) -> None:
+    if args.socket_path is not None:
+        raise ValueError(
+            f"--socket-path is not used with daemon-client {action}; "
+            f"use {socket_option}."
+        )
+    if args.max_response_bytes is not None:
+        raise ValueError(
+            f"--max-response-bytes is not used with daemon-client {action}."
+        )
+
+
+def _run_daemon_client_audio(
+    args: argparse.Namespace,
+    *,
+    configuration_paths: ConfigurationPaths | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> int:
+    _reject_daemon_stream_api_options(
+        args,
+        action="audio",
+        socket_option="--pcmu-socket-path",
+    )
+    if args.force and args.output is None:
+        raise ValueError("--force requires --output")
+    if args.device is not None and not args.play:
+        raise ValueError("--device requires --play")
+    if args.output is None and not args.play:
+        raise ValueError(
+            "daemon-client audio requires --play, --output, or both"
+        )
+
+    output = args.output.expanduser() if args.output is not None else None
+    location = resolve_daemon_pcmu_socket_location(
+        args.pcmu_socket_path,
+        environ=environ,
+        configuration_paths=configuration_paths,
+    )
+    client = DaemonPcmuClient(
+        location,
+        timeout=args.timeout,
+        max_endpoint_bytes=args.max_endpoint_bytes,
+        max_frame_bytes=args.max_frame_bytes,
+    )
+
+    sinks: list[PcmSink] = []
+    playback: SoundDevicePlaybackSink | None = None
+    if args.play:
+        playback = SoundDevicePlaybackSink(
+            device=args.device,
+            buffer_ms=args.buffer_ms,
+        )
+        sinks.append(playback)
+    if output is not None:
+        sinks.append(
+            PcmWavSink(
+                PcmuWavRecorder(
+                    output,
+                    overwrite=args.force,
+                )
+            )
+        )
+
+    started_sinks: list[PcmSink] = []
+    expired = threading.Event()
+    timer: threading.Timer | None = None
+    failure: BaseException | None = None
+
+    try:
+        client.connect()
+        for sink in sinks:
+            started_sinks.append(sink)
+            sink.start()
+
+        if args.duration is not None:
+            def expire() -> None:
+                expired.set()
+                client.close()
+
+            timer = threading.Timer(args.duration, expire)
+            timer.daemon = True
+            timer.start()
+
+        while not expired.is_set():
+            try:
+                delivery = client.receive()
+            except DaemonDisconnectedError:
+                if expired.is_set():
+                    break
+                raise
+
+            payload = delivery.packet.payload
+            if not payload:
+                continue
+            pcm = decode_mulaw(payload)
+            for sink in sinks:
+                try:
+                    sink.submit_pcm(pcm)
+                except Exception:
+                    logger.exception(
+                        "Daemon PCMU audio sink rejected PCM sink=%s",
+                        sink.name,
+                    )
+    except KeyboardInterrupt:
+        pass
+    except BaseException as error:
+        failure = error
+    finally:
+        if timer is not None:
+            timer.cancel()
+        client.close()
+        for sink in reversed(started_sinks):
+            try:
+                sink.stop()
+            except BaseException as error:
+                if failure is None:
+                    failure = error
+
+    if failure is not None:
+        raise failure
+
+    snapshot = client.snapshot()
+    print(f"Streamed {snapshot.audio_duration_seconds:.1f} seconds")
+    print(f"Packets: {snapshot.packets_received}")
+    print(f"Audio samples: {snapshot.samples_received}")
+    print(
+        "PCMU first stream sequence: "
+        f"{snapshot.first_stream_sequence or '-'}"
+    )
+    print(
+        "PCMU last stream sequence: "
+        f"{snapshot.last_stream_sequence or '-'}"
+    )
+    print(f"PCMU stream packets skipped: {snapshot.stream_packets_skipped}")
+    print(f"PCMU queue packets dropped: {snapshot.packets_dropped}")
+    print(
+        "PCMU queue payload bytes dropped: "
+        f"{snapshot.payload_bytes_dropped}"
+    )
+    print(f"PCMU queue overflows: {snapshot.overflows}")
+    print(f"RTP missing packets: {snapshot.rtp_missing_packets}")
+    print(f"RTP missing samples: {snapshot.rtp_missing_samples}")
+    print(
+        "RTP timestamp backwards: "
+        f"{snapshot.rtp_timestamp_backwards}"
+    )
+    if playback is not None:
+        statistics = playback.statistics
+        print(f"Playback device: {args.device or 'default'}")
+        print(f"Playback written bytes: {statistics.bytes_written}")
+        print(f"Playback dropped bytes: {statistics.bytes_dropped}")
+        print(f"Playback underflows: {statistics.underflows}")
+        print(f"Playback overflows: {statistics.overflows}")
+        print(
+            "Playback callback statuses: "
+            f"{statistics.callback_statuses}"
+        )
+    if output is not None:
+        print(f"Output: {output}")
+    return 0
+
+
+def _print_daemon_event(event: DaemonEvent, *, as_json: bool) -> None:
+    if as_json:
+        print(json.dumps(event.as_dict(), sort_keys=True), flush=True)
+        return
+
+    payload = json.dumps(
+        event.as_dict()["payload"],
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    print(
+        f"{event.observed_at.isoformat()} "
+        f"#{event.sequence} {event.kind}: {payload}",
+        flush=True,
+    )
+
+
+def _print_daemon_control_result(result: Mapping[str, object]) -> None:
+    snapshot = _daemon_client_mapping(result, "snapshot")
+    print(f"Control:            {result.get('operation', '-')}")
+    print(f"Sequence:           {result.get('sequence', '-')}")
+    print(f"Started:            {result.get('started_at', '-')}")
+    print(f"Completed:          {result.get('completed_at', '-')}")
+    print(f"Runtime:            {snapshot.get('state', '-')}")
+    print(
+        "Scanner connected:  "
+        f"{_daemon_client_flag(snapshot.get('scanner_connected'))}"
+    )
+    print(f"Scanner endpoint:   {snapshot.get('scanner_endpoint', '-')}")
+
+
+def _print_daemon_client_status(
+    socket_path: Path,
+    socket_source: str,
+    hello: Mapping[str, object],
+    snapshot: Mapping[str, object],
+) -> None:
+    audio = _daemon_client_mapping(snapshot, "audio")
+    router = _daemon_client_mapping(snapshot, "router")
+
+    print(f"Daemon socket:      {socket_path}")
+    print(f"Socket source:      {socket_source}")
+    print(
+        "Protocol:           "
+        f"{hello.get('protocol', '-')} v{hello.get('selected_version', '-')}"
+    )
+    print(f"Runtime:            {snapshot.get('state', '-')}")
+    print(
+        "Scanner connected:  "
+        f"{_daemon_client_flag(snapshot.get('scanner_connected'))}"
+    )
+    print(f"Scanner endpoint:   {snapshot.get('scanner_endpoint', '-')}")
+    print(f"PSI active:         {_daemon_client_flag(snapshot.get('psi_active'))}")
+    print(f"PSI interval:       {snapshot.get('psi_interval_ms', '-')} ms")
+    print(f"Audio running:      {_daemon_client_flag(audio.get('running'))}")
+    print(f"Router running:     {_daemon_client_flag(router.get('running'))}")
+    print(f"Last error:         {snapshot.get('last_error') or '-'}")
+
+
+def _run_daemon_client(
+    args: argparse.Namespace,
+    *,
+    configuration_paths: ConfigurationPaths | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> int:
+    _reject_daemon_client_scanner_options(args)
+    action = args.daemon_client_action
+    if action == "audio":
+        return _run_daemon_client_audio(
+            args,
+            configuration_paths=configuration_paths,
+            environ=environ,
+        )
+
+    if action == "events":
+        _reject_daemon_stream_api_options(
+            args,
+            action="events",
+            socket_option="--event-socket-path",
+        )
+
+        event_location = resolve_daemon_event_socket_location(
+            args.event_socket_path,
+            environ=environ,
+            configuration_paths=configuration_paths,
+        )
+        with DaemonEventClient(
+            event_location,
+            timeout=args.timeout,
+            max_event_bytes=args.max_event_bytes,
+        ) as event_client:
+            try:
+                for event in event_client.watch(
+                    kinds=args.kind,
+                    count=args.count,
+                ):
+                    _print_daemon_event(event, as_json=args.json)
+            except KeyboardInterrupt:
+                return 0
+        return 0
+
+    location = resolve_daemon_socket_location(
+        args.socket_path,
+        environ=environ,
+        configuration_paths=configuration_paths,
+    )
+
+    snapshot: dict[str, object] | None = None
+    control_result: dict[str, object] | None = None
+
+    with DaemonApiClient(
+        location,
+        timeout=args.timeout,
+        max_response_bytes=(
+            DAEMON_API_DEFAULT_MAX_RESPONSE_BYTES
+            if args.max_response_bytes is None
+            else args.max_response_bytes
+        ),
+    ) as client:
+        hello = client.hello()
+
+        if action in {"status", "snapshot"}:
+            _require_daemon_client_operation(
+                hello,
+                DaemonApiOperation.RUNTIME_SNAPSHOT,
+            )
+            snapshot = client.runtime_snapshot()
+        elif action == "hold":
+            _require_daemon_client_operation(
+                hello,
+                DaemonApiOperation.SCANNER_HOLD,
+                control=True,
+            )
+            control_result = client.hold(
+                args.target,
+                args.first,
+                args.second,
+                timeout=args.control_timeout,
+            )
+        elif action == "next":
+            _require_daemon_client_operation(
+                hello,
+                DaemonApiOperation.SCANNER_NEXT,
+                control=True,
+            )
+            control_result = client.next(
+                args.target,
+                args.first,
+                args.second,
+                count=args.count,
+                timeout=args.control_timeout,
+            )
+        elif action == "previous":
+            _require_daemon_client_operation(
+                hello,
+                DaemonApiOperation.SCANNER_PREVIOUS,
+                control=True,
+            )
+            control_result = client.previous(
+                args.target,
+                args.first,
+                args.second,
+                count=args.count,
+                timeout=args.control_timeout,
+            )
+        elif action == "reconnect":
+            _require_daemon_client_operation(
+                hello,
+                DaemonApiOperation.SCANNER_RECONNECT,
+                control=True,
+            )
+            control_result = client.reconnect(
+                timeout=args.control_timeout,
+            )
+        else:
+            raise ValueError(f"Unsupported daemon-client action: {action}")
+
+    if action == "snapshot":
+        assert snapshot is not None
+        print(json.dumps(snapshot, indent=2, sort_keys=True))
+        return 0
+
+    if control_result is not None:
+        if args.json:
+            print(json.dumps(control_result, indent=2, sort_keys=True))
+        else:
+            _print_daemon_control_result(control_result)
+        return 0
+
+    assert action == "status"
+    assert snapshot is not None
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "socket": {
+                        "path": str(location.path),
+                        "source": location.source.value,
+                    },
+                    "hello": hello,
+                    "runtime": snapshot,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+
+    _print_daemon_client_status(
+        location.path,
+        location.source.value,
+        hello,
+        snapshot,
+    )
+    return 0
+
+
 def _asterisk_moh_host(args: argparse.Namespace) -> str:
     if args.port is not None:
         raise ValueError("asterisk-moh does not use USB serial control")
@@ -2687,6 +3421,13 @@ def main(
 
         if args.action == "daemon":
             return _run_daemon(
+                args,
+                configuration_paths=configuration_paths,
+                environ=environ,
+            )
+
+        if args.action == "daemon-client":
+            return _run_daemon_client(
                 args,
                 configuration_paths=configuration_paths,
                 environ=environ,

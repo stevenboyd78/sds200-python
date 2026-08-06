@@ -54,6 +54,38 @@ class DaemonIpcError(SDS200Error):
     """The local daemon IPC endpoint could not be owned or operated safely."""
 
 
+class DaemonClientError(SDS200Error):
+    """A local daemon client operation could not be completed."""
+
+
+class DaemonUnavailableError(DaemonClientError):
+    """The configured local daemon endpoint is absent or unavailable."""
+
+
+class DaemonDisconnectedError(DaemonClientError):
+    """A connected daemon endpoint closed or stopped responding."""
+
+
+class DaemonProtocolError(DaemonClientError):
+    """A daemon endpoint returned an incompatible or malformed response."""
+
+
+class DaemonRequestError(DaemonClientError):
+    """The daemon rejected one valid correlated client request."""
+
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        request_id: str,
+    ) -> None:
+        super().__init__(f"Daemon request failed ({code}): {message}")
+        self.code = code
+        self.message = message
+        self.request_id = request_id
+
+
 class UnsupportedScannerModelError(SDS200Error):
     """A connected scanner is not a supported SDS-series model."""
 
