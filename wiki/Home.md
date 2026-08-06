@@ -25,6 +25,8 @@ The project is not affiliated with or endorsed by Uniden.
   — full-screen monitoring, controls, recording, and playback.
 - [Network audio guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/audio.md)
   — SDS200 playback, recording, Broadcastify, and Asterisk integration.
+- [Daemon deployment and upgrade guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/daemon-deployment.md)
+  — systemd, destination manifests, local clients, migration, and upgrades.
 
 ## Supported scanners
 
@@ -82,6 +84,7 @@ sdsctl --host SCANNER_IP audio \
 - [Roadmap](https://github.com/stevenboyd78/sds200-python/blob/main/ROADMAP.md)
 - [Changelog](https://github.com/stevenboyd78/sds200-python/blob/main/CHANGELOG.md)
 - [Operational logging](https://github.com/stevenboyd78/sds200-python/blob/main/docs/logging.md)
+- [Daemon deployment and upgrades](https://github.com/stevenboyd78/sds200-python/blob/main/docs/daemon-deployment.md)
 - [Layered application configuration](https://github.com/stevenboyd78/sds200-python/blob/main/docs/configuration.md)
 - [Capture and replay](https://github.com/stevenboyd78/sds200-python/blob/main/docs/replay-and-capture.md)
 - [Linux udev rule](https://github.com/stevenboyd78/sds200-python/blob/main/docs/udev.md)

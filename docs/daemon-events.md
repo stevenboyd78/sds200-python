@@ -285,7 +285,7 @@ Validated on 2026-08-05 against a physical SDS200 at `192.168.0.251`:
 - the daemon returned exit status 0; and
 - both `daemon.sock` and `events.sock` were removed before process exit.
 
-The initial daemon router contains no activated destinations, so
-`destination.health` was not exercised by this hardware run. Destination
-aggregation, overflow, unsubscribe, size, concurrency, and failure-isolation
-behavior remain covered by hardware-independent regression tests.
+Daemon-owned playback, recording, and remote-profile destinations now
+participate in the shared router. Active destination lifecycle and health
+changes are published through the existing `destination.health` event contract.
+An empty destination set legitimately produces no destination-health events.

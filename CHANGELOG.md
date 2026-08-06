@@ -6,6 +6,8 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-08-06
+
 ### Added
 
 - Immutable renderer-neutral application configuration values with validated
@@ -142,6 +144,13 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   playback with `A`, and finalized a 53.120-second 8 kHz mono WAV plus metadata.
   Quitting the TUI left scanner, PSI, RTSP/RTP audio, router, and daemon
   ownership running. Controlled `SIGTERM` then removed all three sockets.
+
+- A daemon deployment and upgrade guide covering preserved naming
+  compatibility, dedicated service accounts, systemd supervision, private socket
+  access, destination manifests, transactional reload, migration, clean
+  installation, upgrades, and rollback.
+- Validated the repository's existing GitHub CodeQL default setup for Actions
+  and Python against the release pull-request head with no analysis errors.
 
 ### Changed
 
@@ -701,7 +710,8 @@ First planned GitHub prerelease.
 - Added serial discovery, transport, packet framing, core responses, CLI tools,
   examples, tests, and CI.
 
-[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.16.1...v0.17.0
 [0.16.1]: https://github.com/stevenboyd78/sds200-python/compare/v0.16.0...v0.16.1

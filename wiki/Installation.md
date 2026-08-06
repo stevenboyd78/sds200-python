@@ -132,6 +132,38 @@ sdsctl --host SCANNER_IP info
 
 Only scan networks you own or are authorized to probe.
 
+## Upgrade from v0.18.x
+
+The v0.19.0 release keeps the distribution and Python import package named
+`sds200` and keeps the executable named `sdsctl`. Application and service paths
+use the `sdsctl` namespace, while existing scanner and remote-audio profiles
+remain under the legacy `sds200` configuration root.
+
+No file is moved or rewritten automatically. Before upgrading, back up system
+and user configuration, legacy profile files, destination manifests, recordings,
+and metadata. Upgrade the package, verify `sdsctl --version` and
+`sds200.__version__`, then exercise both standalone and daemon-backed workflows.
+
+See the canonical
+[daemon deployment and upgrade guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/daemon-deployment.md)
+for a complete systemd unit, destination manifest, reload, client, upgrade, and
+rollback procedure.
+
+## Run the SDS200 daemon
+
+The foreground daemon is intended for process-manager ownership. It exposes
+private local API, event, and PCMU sockets and can activate saved playback,
+recording, and remote-profile destinations.
+
+```bash
+sdsctl --log-level INFO --host SCANNER_IP daemon
+sdsctl daemon-client status
+sdsctl tui --daemon-client
+```
+
+Standalone scanner commands and the standalone TUI remain the default. Daemon
+client mode is explicit.
+
 ## Next steps
 
 - Launch the terminal monitor with `sdsctl monitor`.

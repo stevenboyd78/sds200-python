@@ -436,5 +436,7 @@ Ordered events are available through their dedicated socket and
 `pcmu.sock` and `sdsctl daemon-client audio`. The daemon-backed TUI obtains its
 authoritative initial state and safe-control results through this API while
 ordered updates and PCMU audio remain on their dedicated sockets. Decoded-PCM
-CLI workflows, discovery, and destination activation remain assigned to later
-Milestone 19 work.
+Automatic daemon discovery and decoded-PCM client workflows remain
+follow-on work. Explicit CLI and TUI daemon clients, saved destination
+activation, and transactional `SIGHUP` destination reload are part of the
+current daemon contract.

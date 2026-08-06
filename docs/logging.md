@@ -74,10 +74,10 @@ delay.
 ## systemd and journald
 
 `sdsctl daemon` remains in the foreground so systemd can own process creation,
-restart policy, termination, and log collection directly. Use `Type=simple`;
-`Type=forking` and pidfiles are not part of the daemon contract.
+restart policy, termination, reload, and log collection directly. Use
+`Type=simple`; `Type=forking` and pidfiles are not part of the daemon contract.
 
-A minimal unit using an explicit SDS200 network host is:
+A minimal unit using explicit service paths is:
 
 ```ini
 [Unit]
@@ -89,22 +89,25 @@ Wants=network-online.target
 Type=simple
 User=sdsctl
 Group=sdsctl
-ExecStart=/opt/sdsctl/bin/sdsctl --log-level INFO --host 192.168.0.251 daemon
+EnvironmentFile=-/etc/sdsctl/sdsctl.env
+ExecStart=/opt/sdsctl/bin/sdsctl --log-level INFO --host 192.168.0.251 daemon --destination-config /etc/sdsctl/daemon-destinations.toml --socket-path /run/sdsctl/daemon.sock --event-socket-path /run/sdsctl/events.sock --pcmu-socket-path /run/sdsctl/pcmu.sock
+ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=5
 KillSignal=SIGTERM
 TimeoutStopSec=20
+RuntimeDirectory=sdsctl
+RuntimeDirectoryMode=0700
+StateDirectory=sdsctl
+StateDirectoryMode=0700
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target
 ```
 
 Global connection and logging options precede the `daemon` subcommand. A saved
-network-capable SDS200 profile may be used instead:
-
-```ini
-ExecStart=/opt/sdsctl/bin/sdsctl --log-level INFO --profile home daemon
-```
+network-capable SDS200 profile may replace the explicit host.
 
 No `--log-file` option is required for journald. Standard error is captured by
 the service manager. `SIGTERM` requests orderly runtime shutdown and normally
@@ -112,10 +115,11 @@ returns success, so `Restart=on-failure` does not restart an intentionally
 stopped service. Startup or shutdown errors use a nonzero exit status and are
 eligible for restart.
 
-`SIGHUP` requests a validated reload of the daemon destination manifest
-without stopping the scanner, audio runtime, or local services. Use `SIGTERM`,
-not `SIGHUP`, for controlled service termination. A failed reload leaves the
-previous committed destinations active and is reported through the service log.
+`SIGHUP` requests a validated reload of the exact daemon destination manifest
+selected at startup without stopping scanner, audio, or local services. A failed
+reload leaves the previous committed destinations active and is reported through
+the service log. `systemctl reload sdsctl.service` uses `ExecReload` to send that
+signal.
 
 Inspect the service log with:
 
@@ -125,8 +129,9 @@ journalctl -u sdsctl.service --since today
 journalctl -u sdsctl.service -f
 ```
 
-Service installation, account creation, privilege changes, hardening directives,
-and distribution-specific packaging remain administrator responsibilities.
+Service account creation, installation, explicit socket access, destination
+configuration, hardening, migration, upgrades, and rollback are covered by the
+[daemon deployment and upgrade guide](daemon-deployment.md).
 
 ## `/var/log/sdsctl.log`
 

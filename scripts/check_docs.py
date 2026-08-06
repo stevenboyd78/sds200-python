@@ -17,6 +17,7 @@ REQUIRED_FILES = (
     Path("SECURITY.md"),
     Path("SUPPORT.md"),
     Path("docs/configuration.md"),
+    Path("docs/daemon-deployment.md"),
     Path("docs/releasing.md"),
     Path("docs/supported-models.md"),
     Path("wiki/Home.md"),
