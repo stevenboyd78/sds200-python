@@ -9,50 +9,28 @@ The broader product direction, architectural constraints, deferred capabilities,
 and ideas that are not ready for scheduling are recorded in
 [the project vision](docs/project-vision.md).
 
-## Recently completed milestone
+## Active milestone
 
-### Milestone 19.8 — Safe daemon controls
+### Milestone 19.12 — v0.19.0 release
 
-- **Capability-checked control operations — implemented**
-  - Added explicit version 1 daemon operations for hold, next, previous, and
-    reconnect without unrestricted raw scanner-command passthrough.
-  - Reused typed scanner navigation contracts, model capability checks, strict
-    targets, bounded counts, and structured scanner acknowledgements.
-  - Preserved every read-only operation and standalone CLI/TUI behavior.
-  - Did not add resume because no documented or verified resume/unhold scanner
-    wire contract exists.
-- **Serialized execution and authoritative completion — implemented**
-  - Added one nonblocking daemon mutation slot so conflicting clients receive
-    `control_busy` instead of interleaving or building a queue.
-  - Successful responses follow scanner acknowledgement and include an ordered
-    `DaemonControlResult` with timestamps and an authoritative runtime snapshot.
-  - Applied one maximum two-second request budget to runtime-lock acquisition and
-    scanner completion.
-  - Raised the default API worker shutdown deadline to three seconds and added
-    rejection of configurations that cannot outlast the maximum request duration.
-  - Limited daemon reconnect to the directly owned bounded SDS200 UDP transport;
-    serial, fallback, replay, and injected transports return
-    `unsupported_operation`.
-- **Safety, isolation, and observability — implemented**
-  - Added structured redacted `control_busy`, `control_unavailable`,
-    `unsupported_operation`, `control_timeout`, `control_rejected`, and
-    `control_failed` responses.
-  - Kept resulting scanner and runtime changes observable through authoritative
-    snapshots and the existing ordered event stream.
-  - Preserved private socket permissions, bounded clients, worker isolation, and
-    the single-owner scanner lifecycle.
-- **Regression, documentation, and hardware validation — complete**
-  - Added regression coverage for success, strict parameters, scanner rejection,
-    timeouts, unsupported transports, concurrent controls, shutdown, and
-    unchanged read-only behavior.
-  - Documented envelopes, completion semantics, deadlines, exclusions,
-    compatibility, and client responsibilities.
-  - Physically validated TGID hold, next, previous, hold release, and bounded
-    reconnect against an SDS200 while API, event, PSI, RTSP/RTP, decoded-audio,
-    and two PCMU clients remained healthy.
-  - Confirmed ordered control sequences, reversible hold state, reconnect
-    connection transitions, loss-free matching PCMU delivery, controlled
-    `SIGTERM`, successful process exit, and removal of all owned sockets.
+- **Compatibility, migration, deployment, and systemd documentation — active**
+  - Document preserved distribution, import-package, executable, and legacy
+    profile compatibility.
+  - Document explicit destination manifests, service accounts, private sockets,
+    `SIGHUP` reload, systemd operation, upgrades, and rollback.
+- **Acceptance validation — pending**
+  - Validate multiple clients, slow and malformed clients, shutdown fault
+    injection, clean installation, and upgrade behavior.
+  - Run the full static, test, documentation, packaging, and distribution suite.
+  - Complete physical SDS200 daemon-owned CLI and TUI client validation.
+- **Publication — pending**
+  - Merge release preparation only after CI and CodeQL pass.
+  - Publish `v0.19.0` through trusted PyPI publishing and create the GitHub
+    release.
+  - Verify a clean installation from public PyPI.
+
+Keep the existing Python distribution and import package compatible until a
+separate migration plan justifies a rename.
 
 ## Deferred hardware validation
 
@@ -76,42 +54,6 @@ fixture-tested, not hardware-validated.
 
 These milestone groups preserve intended future work. Their numbering and release
 assignment may change before implementation begins.
-
-### Milestone 19.9 — CLI daemon client
-
-- Add daemon status, snapshot, event-watch, safe-control, and optional audio
-  client workflows.
-- Preserve explicit daemon and standalone selection with clear absent,
-  incompatible, and disconnected daemon diagnostics.
-- Use the CLI migration to validate protocol compatibility before TUI adoption.
-
-### Milestone 19.10 — TUI daemon client
-
-- Consume daemon snapshots, ordered events, controls, and daemon-owned audio.
-- Preserve an explicit standalone mode and show daemon protocol, connection,
-  reconnect, and degraded-state information.
-- Ensure closing or reconnecting the TUI never stops the daemon-owned scanner
-  session.
-
-### Milestone 19.11 — Destination activation and reload
-
-- Activate saved playback, recording, and remote-stream destinations under daemon
-  ownership.
-- Define validated, previewable configuration replacement and failure-isolated
-  destination updates.
-- Use `SIGHUP` to load, validate, and transactionally replace the selected
-  destination manifest while preserving the previous committed set on failure.
-
-### Milestone 19.12 — v0.19.0 release
-
-- Complete compatibility, migration, deployment, and systemd documentation.
-- Validate multiple clients, slow and malformed clients, shutdown fault
-  injection, clean installation, and upgrade behavior.
-- Run full Python 3.11–3.14 CI and CodeQL validation plus physical SDS200
-  daemon-owned CLI and TUI client testing.
-
-Keep the existing Python import package compatible until a separate migration
-plan justifies a rename.
 
 ### Milestone 20 — Web dashboard and Home Assistant
 
@@ -305,3 +247,16 @@ fixtures before renderer-specific implementation.
   helpers, documentation, extensive regression coverage, a reusable hardware
   validator, and physical SDS200 validation with simultaneous API, event, and
   dual-PCMU clients.
+- Milestone 19.8: capability-checked hold, next, previous, and bounded reconnect
+  controls; serialized mutation ownership; scanner-acknowledged completion;
+  stable redacted failures; regression coverage; and physical SDS200 validation.
+- Milestone 19.9: explicit daemon CLI status, snapshots, safe controls, ordered
+  event watching, PCMU playback and WAV recording, protocol compatibility, and
+  physical SDS200 validation.
+- Milestone 19.10: explicit daemon-backed TUI state, events, controls, playback,
+  recording, and saved-recording workflows without opening scanner hardware or
+  stopping daemon ownership, plus physical SDS200 validation.
+- Milestone 19.11: validated playback, recording, and remote-profile destination
+  manifests; deterministic activation resources; transactional replacement;
+  failure-isolated reload; daemon lifecycle ownership; `SIGHUP`; regression
+  coverage; and physical SDS200 validation.

@@ -35,8 +35,9 @@ safe-control, ordered event-watch, and PCMU playback or WAV-recording workflows
 while preserving the standalone top-level scanner and direct-audio commands.
 Milestone 19.10 adds explicit daemon-backed TUI operation using the API, event,
 and PCMU services while preserving standalone TUI ownership as the default.
-Decoded-PCM CLI subscriptions, automatic daemon discovery and selection, and
-destination activation remain follow-on work. The process does not fork or
+Milestone 19.11 adds validated saved-destination activation and transactional
+`SIGHUP` replacement. Decoded-PCM CLI subscriptions and automatic daemon
+discovery and selection remain follow-on work. The process does not fork or
 create a pidfile.
 
 ## Foreground process contract
@@ -56,12 +57,13 @@ sdsctl --log-level INFO --profile home daemon
 The command constructs exactly one `DaemonRuntime`, one `PcmSinkRouter`, one
 `NetworkAudioTransport`, one compatibility-named `DaemonReadOnlyApi`, one
 bounded `DaemonApiServer`, one `DaemonEventStream`, one bounded
-`DaemonEventServer`, one `PcmuStream`, and one bounded `DaemonPcmuServer`. The
-API class retains its historical public name while exposing backward-compatible
+`DaemonEventServer`, one `PcmuStream`, one bounded `DaemonPcmuServer`, one
+`DaemonDestinationCoordinator`, and one `DaemonDestinationReloader`. The API
+class retains its historical public name while exposing backward-compatible
 reads and explicit safe controls. The PCMU stream subscribes to the same
-authoritative transport used by the decoded-PCM fanout. The router begins without
-destinations because daemon-client audio consumes PCMU on the client side.
-Daemon-owned destination activation, remote-profile activation, decoded-PCM
+authoritative transport used by the decoded-PCM fanout. The coordinator activates
+the validated startup destination set against the shared decoded-PCM router.
+Daemon-client audio continues to consume PCMU independently. Decoded-PCM client
 subscriptions remain follow-on work.
 
 The audio endpoint must come from either `--host` or a network-capable SDS200
@@ -373,9 +375,16 @@ The Milestone 19.7 `pcmu.sock` service was physically validated on
 - controlled `SIGTERM` returned exit status 0 and removed `daemon.sock`,
   `events.sock`, and `pcmu.sock`.
 
-The initial daemon router has no activated destinations, so
-`destination.health` was not hardware-exercised. Its aggregation and isolation
-contracts remain covered by hardware-independent regression tests.
+Milestone 19.11 destination activation and reload were physically validated on
+2026-08-06 against the same SDS200:
+
+- startup activated an initial recording destination;
+- `SIGHUP` transactionally replaced it with recording plus audible playback;
+- an invalid version 2 manifest failed with `ConfigurationError` while the
+  committed destinations and daemon runtime continued;
+- a valid empty manifest removed all active destinations;
+- finalized recordings remained valid 8 kHz mono signed 16-bit WAV files; and
+- controlled `SIGTERM` returned exit status 0 and removed all three sockets.
 
 Milestone 19.8 safe-control contracts are covered by hardware-independent tests,
 including acknowledgements, rejection, deadlines, unsupported transports,
@@ -423,12 +432,16 @@ running. Controlled `SIGTERM` subsequently removed all three sockets.
 
 ## Follow-on work
 
-Later Milestone 19 work may:
+Later work may:
 
 - add bounded decoded-PCM subscriptions for local clients;
 - add daemon discovery and automatic client selection; and
 - add decoded-PCM CLI client workflows.
 
 Decoded-PCM subscription, discovery, and automatic selection remain follow-on
-work. Milestone 19.11 owns saved destination activation and validated `SIGHUP`
-replacement.
+work. Saved destination activation and validated `SIGHUP` replacement are part
+of the current daemon contract.
+
+See [Daemon deployment and upgrade guide](daemon-deployment.md) for service
+installation, explicit socket paths, destination manifests, reload, migration,
+and upgrade procedures.

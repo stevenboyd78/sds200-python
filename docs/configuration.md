@@ -34,7 +34,11 @@ The optional application configuration files are:
 - system: `/etc/sdsctl/config.toml`;
 - user: `${XDG_CONFIG_HOME:-~/.config}/sdsctl/config.toml`.
 
-Path resolution also defines these locations for future persistent services:
+The default daemon destination manifest is:
+
+- `${XDG_CONFIG_HOME:-~/.config}/sdsctl/daemon-destinations.toml`.
+
+Path resolution also defines persistent service locations:
 
 - state: `${XDG_STATE_HOME:-~/.local/state}/sdsctl/`;
 - cache: `${XDG_CACHE_HOME:-~/.cache}/sdsctl/`.
@@ -154,6 +158,10 @@ The version 1 application schema contains no credential-bearing fields. Unknown
 fields are reported by name and source, not by value.
 
 Saved remote-audio destinations continue to store environment-variable secret
-references rather than resolved passwords. Resolved credentials must not be
-written to application configuration, logs, exceptions, traces, or serialized
-output.
+references rather than resolved passwords. The daemon destination manifest
+selects those profiles by name and never stores resolved credentials. Resolved
+credentials must not be written to application configuration, destination
+configuration, logs, exceptions, traces, or serialized output.
+
+See [Daemon deployment and upgrade guide](daemon-deployment.md) for systemd,
+destination-manifest, service-account, migration, and upgrade examples.

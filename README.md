@@ -316,7 +316,7 @@ subscription is created. Frames preserve RTP sequence, timestamp, SSRC,
 continuity estimates, observation time, endpoint, raw payload bytes, and
 cumulative loss caused by that client's bounded queue.
 
-Stop the process with `Ctrl+C` or `SIGTERM`. Shutdown first closes API clients,
+Stop the process with `Ctrl+C` or `SIGTERM`. Shutdown first closes API clients, then stops daemon-owned destinations,
 then stops scanner, PSI, audio, and router ownership, closes PCMU clients, and
 finally closes event clients after final lifecycle transitions. All three owned
 sockets are removed.
@@ -355,9 +355,15 @@ a valid 53.120-second 8 kHz mono WAV with an adjacent metadata sidecar. Quitting
 the TUI left scanner, PSI, audio, router, and daemon ownership healthy. A later
 controlled `SIGTERM` removed `daemon.sock`, `events.sock`, and `pcmu.sock`.
 
-Decoded-PCM subscriptions, automatic daemon selection, and destination
-activation remain follow-on work. The initial daemon router has no attached
-destinations. See the
+The daemon loads the explicit `--destination-config` path or
+`${XDG_CONFIG_HOME:-~/.config}/sdsctl/daemon-destinations.toml` before opening
+scanner hardware. Saved playback, recording, and remote-profile destinations are
+activated under daemon ownership. `SIGHUP` transactionally reloads that exact
+manifest while preserving the previous committed set on failure.
+
+Decoded-PCM subscriptions and automatic daemon selection remain follow-on work.
+See the
+[daemon deployment and upgrade guide](docs/daemon-deployment.md),
 [daemon runtime and process guide](docs/daemon-runtime.md),
 [local daemon API guide](docs/daemon-api.md),
 [local daemon event stream guide](docs/daemon-events.md),
@@ -707,6 +713,7 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting and
 - [Reliability and observability](docs/reliability.md)
 - [Operational logging](docs/logging.md)
 - [Textual TUI](docs/tui.md)
+- [Daemon deployment and upgrades](docs/daemon-deployment.md)
 - [Foreground daemon and ownership runtime](docs/daemon-runtime.md)
 - [Local daemon API](docs/daemon-api.md)
 - [Local daemon event stream](docs/daemon-events.md)
