@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from types import FrameType
 from typing import Any, Protocol, Self, cast
 
+from .daemon_destination_reload import DaemonDestinationReloadResult
+
 logger = logging.getLogger(__name__)
 
 
@@ -14,6 +16,16 @@ class _DaemonRuntimeLike(Protocol):
     def start(self) -> None: ...
 
     def stop(self) -> None: ...
+
+
+class _DaemonDestinationCoordinatorLike(Protocol):
+    def start(self) -> object: ...
+
+    def stop(self) -> None: ...
+
+
+class _DaemonDestinationReloaderLike(Protocol):
+    def reload(self) -> DaemonDestinationReloadResult: ...
 
 
 class _DaemonApiServerLike(Protocol):
@@ -38,6 +50,11 @@ class _DaemonSignalControllerLike(Protocol):
     @property
     def last_signal(self) -> int | None: ...
 
+    @property
+    def stop_requested(self) -> bool: ...
+
+    def consume_reload_request(self) -> bool: ...
+
     def wait(self, timeout: float | None = None) -> bool: ...
 
     def __enter__(self) -> Self: ...
@@ -58,23 +75,45 @@ class DaemonProcessResult:
 
 
 class DaemonSignalController:
-    """Translate SIGINT and SIGTERM into one foreground-process stop event."""
+    """Translate stop and reload signals into process-loop wake-ups."""
 
     def __init__(self) -> None:
         self._event = threading.Event()
         self._previous: dict[int, object] = {}
         self._active = False
         self._last_signal: int | None = None
+        self._stop_requested = False
+        self._reload_requested = False
 
     @property
     def last_signal(self) -> int | None:
         return self._last_signal
 
+    @property
+    def stop_requested(self) -> bool:
+        return self._stop_requested
+
     def request_stop(self) -> None:
+        self._stop_requested = True
         self._event.set()
 
+    def request_reload(self) -> None:
+        if self._stop_requested:
+            return
+        self._reload_requested = True
+        self._event.set()
+
+    def consume_reload_request(self) -> bool:
+        if not self._reload_requested:
+            return False
+        self._reload_requested = False
+        return True
+
     def wait(self, timeout: float | None = None) -> bool:
-        return self._event.wait(timeout)
+        triggered = self._event.wait(timeout)
+        if triggered:
+            self._event.clear()
+        return triggered
 
     def __enter__(self) -> DaemonSignalController:
         if self._active:
@@ -82,10 +121,12 @@ class DaemonSignalController:
 
         self._event.clear()
         self._last_signal = None
+        self._stop_requested = False
+        self._reload_requested = False
         installed: list[int] = []
 
         try:
-            for signum in _daemon_stop_signals():
+            for signum in _daemon_managed_signals():
                 self._previous[signum] = signal.getsignal(signum)
                 signal.signal(signum, self._handle)
                 installed.append(signum)
@@ -147,17 +188,28 @@ class DaemonSignalController:
 
     def _handle(self, signum: int, frame: FrameType | None) -> None:
         del frame
+
+        if signum == _daemon_reload_signal():
+            self.request_reload()
+            return
+
         self._last_signal = signum
-        self._event.set()
+        self.request_stop()
 
 
 class DaemonProcess:
-    """Host one runtime and optional local API, event, and PCMU servers."""
+    """Host one runtime, local services, and destination reload behavior."""
 
     def __init__(
         self,
         runtime: _DaemonRuntimeLike,
         *,
+        destination_coordinator: (
+            _DaemonDestinationCoordinatorLike | None
+        ) = None,
+        destination_reloader: (
+            _DaemonDestinationReloaderLike | None
+        ) = None,
         api_server: _DaemonApiServerLike | None = None,
         event_server: _DaemonEventServerLike | None = None,
         pcmu_server: _DaemonPcmuServerLike | None = None,
@@ -165,9 +217,21 @@ class DaemonProcess:
         poll_interval: float = 0.1,
     ) -> None:
         if poll_interval <= 0:
-            raise ValueError("Daemon process poll interval must be greater than zero.")
+            raise ValueError(
+                "Daemon process poll interval must be greater than zero."
+            )
+        if (
+            destination_reloader is not None
+            and destination_coordinator is None
+        ):
+            raise ValueError(
+                "Daemon destination reload requires a destination "
+                "coordinator."
+            )
 
         self.runtime = runtime
+        self.destination_coordinator = destination_coordinator
+        self.destination_reloader = destination_reloader
         self.api_server = api_server
         self.event_server = event_server
         self.pcmu_server = pcmu_server
@@ -179,6 +243,7 @@ class DaemonProcess:
             event_server_attempted = False
             pcmu_server_attempted = False
             runtime_attempted = False
+            destination_coordinator_attempted = False
             api_server_attempted = False
 
             try:
@@ -193,15 +258,28 @@ class DaemonProcess:
                 runtime_attempted = True
                 self.runtime.start()
 
+                if self.destination_coordinator is not None:
+                    destination_coordinator_attempted = True
+                    self.destination_coordinator.start()
+
                 if self.api_server is not None:
                     api_server_attempted = True
                     self.api_server.start()
 
-                while not self.signals.wait(self.poll_interval):
-                    pass
+                while True:
+                    self.signals.wait(self.poll_interval)
+
+                    if self.signals.stop_requested:
+                        break
+
+                    if self.signals.consume_reload_request():
+                        self._reload_destinations()
             except BaseException as process_error:
                 cleanup_failures = self._stop_components(
                     stop_api_server=api_server_attempted,
+                    stop_destination_coordinator=(
+                        destination_coordinator_attempted
+                    ),
                     stop_runtime=runtime_attempted,
                     stop_pcmu_server=pcmu_server_attempted,
                     stop_event_server=event_server_attempted,
@@ -217,6 +295,9 @@ class DaemonProcess:
             else:
                 cleanup_failures = self._stop_components(
                     stop_api_server=api_server_attempted,
+                    stop_destination_coordinator=(
+                        destination_coordinator_attempted
+                    ),
                     stop_runtime=runtime_attempted,
                     stop_pcmu_server=pcmu_server_attempted,
                     stop_event_server=event_server_attempted,
@@ -224,8 +305,8 @@ class DaemonProcess:
                 if cleanup_failures:
                     if len(cleanup_failures) > 1:
                         logger.error(
-                            "daemon process cleanup encountered multiple failures "
-                            "primary_error=%s cleanup_error=%s",
+                            "daemon process cleanup encountered multiple "
+                            "failures primary_error=%s cleanup_error=%s",
                             cleanup_failures[0].__class__.__name__,
                             cleanup_failures[1].__class__.__name__,
                         )
@@ -233,10 +314,44 @@ class DaemonProcess:
 
         return DaemonProcessResult(last_signal=self.signals.last_signal)
 
+    def _reload_destinations(self) -> None:
+        if self.destination_reloader is None:
+            logger.warning(
+                "daemon destination reload requested without a configured "
+                "reloader"
+            )
+            return
+
+        try:
+            result = self.destination_reloader.reload()
+        except Exception as error:
+            logger.error(
+                "daemon destination reload failed error=%s",
+                error.__class__.__name__,
+            )
+            return
+
+        if result.clean:
+            logger.info(
+                "daemon destination reload completed changed=%s",
+                result.changed,
+            )
+            return
+
+        logger.warning(
+            "daemon destination reload committed with cleanup failures "
+            "cleanup_errors=%s",
+            ",".join(
+                failure.error_type
+                for failure in result.cleanup_failures
+            ),
+        )
+
     def _stop_components(
         self,
         *,
         stop_api_server: bool,
+        stop_destination_coordinator: bool,
         stop_runtime: bool,
         stop_pcmu_server: bool,
         stop_event_server: bool,
@@ -246,6 +361,15 @@ class DaemonProcess:
         if stop_api_server and self.api_server is not None:
             try:
                 self.api_server.stop()
+            except BaseException as error:
+                failures.append(error)
+
+        if (
+            stop_destination_coordinator
+            and self.destination_coordinator is not None
+        ):
+            try:
+                self.destination_coordinator.stop()
             except BaseException as error:
                 failures.append(error)
 
@@ -270,10 +394,23 @@ class DaemonProcess:
         return failures
 
 
+def _daemon_reload_signal() -> int | None:
+    value = getattr(signal, "SIGHUP", None)
+    return int(value) if isinstance(value, int) else None
+
+
 def _daemon_stop_signals() -> tuple[int, ...]:
     signals: list[int] = []
     for name in ("SIGINT", "SIGTERM"):
         value = getattr(signal, name, None)
         if isinstance(value, int) and value not in signals:
-            signals.append(value)
+            signals.append(int(value))
+    return tuple(signals)
+
+
+def _daemon_managed_signals() -> tuple[int, ...]:
+    signals = list(_daemon_stop_signals())
+    reload_signal = _daemon_reload_signal()
+    if reload_signal is not None and reload_signal not in signals:
+        signals.append(reload_signal)
     return tuple(signals)

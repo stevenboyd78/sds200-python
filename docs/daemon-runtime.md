@@ -79,9 +79,11 @@ runtime has started successfully.
 
 ### Signals and exit behavior
 
-`DaemonSignalController` installs handlers only for `SIGINT` and `SIGTERM`.
-Those handlers record the signal and set a thread-safe stop event; runtime
-teardown occurs in normal process flow rather than inside the signal handler.
+`DaemonSignalController` installs stop handlers for `SIGINT` and `SIGTERM`
+and, where available, a reload handler for `SIGHUP`. Stop handlers record the
+terminating signal and wake the normal process loop. `SIGHUP` records a pending
+destination reload without requesting shutdown. No runtime or destination work
+occurs inside a signal handler.
 
 Previous signal handlers are restored after the process loop exits. Partial
 signal-installation failures roll back handlers that were already replaced.
@@ -93,9 +95,12 @@ normal `sdsctl` error path. When process work and cleanup both fail, the primary
 process failure remains authoritative and the cleanup failure is logged by type
 without exposing its message.
 
-`SIGHUP` is deliberately outside this graceful-shutdown contract so a future
-milestone can define reload behavior. Service managers should use `SIGTERM` for
-orderly termination.
+`SIGHUP` reloads the same destination manifest selected during daemon startup.
+The manifest is loaded and validated before the coordinator transaction begins.
+Loader and activation failures are logged by exception type and leave the
+previous committed destination set running. Post-commit cleanup failures are
+reported without rolling back the successfully activated replacement. A stop
+request takes priority over a pending reload.
 
 ### Local service process lifecycle
 
@@ -104,8 +109,9 @@ At the process-host level, startup occurs in this order:
 1. bind and start the local `DaemonEventServer`;
 2. bind and start the local `DaemonPcmuServer`;
 3. start `DaemonRuntime`;
-4. bind and start the local `DaemonApiServer`; and
-5. wait for `SIGINT`, `SIGTERM`, or another process-loop failure.
+4. activate the validated daemon destination configuration;
+5. bind and start the local `DaemonApiServer`; and
+6. wait for `SIGHUP`, `SIGINT`, `SIGTERM`, or another process-loop failure.
 
 Starting the event service first allows an already connected client to observe
 runtime startup transitions. Starting the PCMU service before the runtime allows
@@ -117,12 +123,13 @@ Shutdown occurs in this order:
 
 1. close the API listener and connected request-response clients;
 2. wait for bounded API worker completion;
-3. stop the daemon runtime while the event service remains available for final
+3. stop all daemon-owned destinations;
+4. stop the daemon runtime while the event service remains available for final
    lifecycle transitions;
-4. close the PCMU listener, publisher subscription, and connected clients;
-5. wait for bounded PCMU worker completion;
-6. close the event listener and connected subscribers; and
-7. wait for bounded event-worker completion.
+5. close the PCMU listener, publisher subscription, and connected clients;
+6. wait for bounded PCMU worker completion;
+7. close the event listener and connected subscribers; and
+8. wait for bounded event-worker completion.
 
 If any component startup fails, cleanup is attempted for every component whose
 startup was attempted. Cleanup continues after an individual failure, while the
@@ -419,9 +426,9 @@ running. Controlled `SIGTERM` subsequently removed all three sockets.
 Later Milestone 19 work may:
 
 - add bounded decoded-PCM subscriptions for local clients;
-- activate configured playback, recording, and remote destinations;
 - add daemon discovery and automatic client selection; and
 - add decoded-PCM CLI client workflows.
 
-Decoded-PCM subscription, destination activation, reload, discovery, and
-automatic selection remain outside Milestone 19.10.
+Decoded-PCM subscription, discovery, and automatic selection remain follow-on
+work. Milestone 19.11 owns saved destination activation and validated `SIGHUP`
+replacement.

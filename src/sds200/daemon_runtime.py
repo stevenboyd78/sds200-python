@@ -71,6 +71,16 @@ class _ScannerLike(Protocol):
     @property
     def state(self) -> _RadioStateLike: ...
 
+    def on_state(
+        self,
+        callback: Callable[[RadioStateSnapshot], None],
+    ) -> Callable[[], None]: ...
+
+    def on_connection(
+        self,
+        callback: Callable[[bool], None],
+    ) -> Callable[[], None]: ...
+
     def get_model(self, *, timeout: float = 2.0) -> str: ...
 
     def get_firmware(self, *, timeout: float = 2.0) -> str: ...

@@ -47,6 +47,31 @@ class FakeAudioTransport:
         self._running = False
 
 
+class FakeDaemonDestinationCoordinator:
+    def __init__(
+        self,
+        runtime: object,
+        *,
+        factory: object,
+        initial_configuration: object,
+    ) -> None:
+        self.runtime = runtime
+        self.factory = factory
+        self.initial_configuration = initial_configuration
+        self.start_calls = 0
+        self.stop_calls = 0
+
+    def start(self) -> object:
+        self.start_calls += 1
+        return object()
+
+    def stop(self) -> None:
+        self.stop_calls += 1
+
+    def close(self) -> None:
+        self.stop()
+
+
 class FakeDaemonEventStream:
     def __init__(
         self,
@@ -95,6 +120,8 @@ def test_daemon_parser_accepts_process_and_audio_options() -> None:
             "40000",
             "--keepalive-interval",
             "20",
+            "--destination-config",
+            "/tmp/sdsctl-destinations.toml",
             "--socket-path",
             "/tmp/sdsctl-test.sock",
             "--api-max-clients",
@@ -145,6 +172,9 @@ def test_daemon_parser_accepts_process_and_audio_options() -> None:
     assert args.rtp_bind_address == "192.0.2.10"
     assert args.rtp_bind_port == 40000
     assert args.keepalive_interval == 20.0
+    assert args.destination_config == Path(
+        "/tmp/sdsctl-destinations.toml"
+    )
     assert args.socket_path == Path("/tmp/sdsctl-test.sock")
     assert args.api_max_clients == 4
     assert args.api_max_request_bytes == 8192
@@ -261,11 +291,15 @@ def test_daemon_cli_constructs_one_runtime_and_process(
             self,
             runtime: object,
             *,
+            destination_coordinator: object,
+            destination_reloader: object,
             api_server: object,
             event_server: object,
             pcmu_server: object,
         ) -> None:
             self.runtime = runtime
+            self.destination_coordinator = destination_coordinator
+            self.destination_reloader = destination_reloader
             self.api_server = api_server
             self.event_server = event_server
             self.pcmu_server = pcmu_server
@@ -276,6 +310,11 @@ def test_daemon_cli_constructs_one_runtime_and_process(
 
     monkeypatch.setattr(cli, "selected_radio", select_radio)
     monkeypatch.setattr(cli, "NetworkAudioTransport", transport_factory)
+    monkeypatch.setattr(
+        cli,
+        "DaemonDestinationCoordinator",
+        FakeDaemonDestinationCoordinator,
+    )
     monkeypatch.setattr(cli, "DaemonEventStream", FakeDaemonEventStream)
     monkeypatch.setattr(cli, "DaemonProcess", FakeProcess)
 
@@ -328,6 +367,30 @@ def test_daemon_cli_constructs_one_runtime_and_process(
 
     process = processes[0]
     runtime = process.runtime
+    destination_coordinator = process.destination_coordinator
+    assert isinstance(
+        destination_coordinator,
+        FakeDaemonDestinationCoordinator,
+    )
+    assert destination_coordinator.runtime is runtime
+    assert (
+        destination_coordinator.initial_configuration.destinations
+        == ()
+    )
+    assert destination_coordinator.factory.remote_profile_store.path == (
+        paths.legacy_remote_audio_profiles_file
+    )
+
+    destination_reloader = process.destination_reloader
+    assert isinstance(
+        destination_reloader,
+        cli.DaemonDestinationReloader,
+    )
+    assert destination_reloader.coordinator is destination_coordinator
+    assert destination_reloader.path == (
+        paths.daemon_destination_config_file
+    )
+
     assert runtime.scanner is scanner
     assert runtime.psi_interval_ms == 750
     assert runtime.psi_timeout == 4.0
@@ -386,6 +449,144 @@ def test_daemon_cli_constructs_one_runtime_and_process(
     assert capsys.readouterr().out == ""
 
 
+def test_daemon_cli_loads_explicit_destination_manifest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest = tmp_path / "daemon-destinations.toml"
+    manifest.write_text(
+        "version = 1\n"
+        "[destinations.speakers]\n"
+        'kind = "playback"\n'
+        'backend = "sounddevice"\n',
+        encoding="utf-8",
+    )
+    observed: list[FakeDaemonDestinationCoordinator] = []
+    observed_reload_paths: list[Path] = []
+
+    monkeypatch.setattr(
+        cli,
+        "selected_radio",
+        lambda args, **kwargs: object(),
+    )
+    monkeypatch.setattr(
+        cli,
+        "NetworkAudioTransport",
+        lambda *args, **kwargs: FakeAudioTransport(),
+    )
+    monkeypatch.setattr(
+        cli,
+        "DaemonEventStream",
+        FakeDaemonEventStream,
+    )
+
+    def coordinator_factory(
+        runtime: object,
+        *,
+        factory: object,
+        initial_configuration: object,
+    ) -> FakeDaemonDestinationCoordinator:
+        coordinator = FakeDaemonDestinationCoordinator(
+            runtime,
+            factory=factory,
+            initial_configuration=initial_configuration,
+        )
+        observed.append(coordinator)
+        return coordinator
+
+    class FakeProcess:
+        def __init__(
+            self,
+            runtime: object,
+            *,
+            destination_coordinator: object,
+            destination_reloader: object,
+            api_server: object,
+            event_server: object,
+            pcmu_server: object,
+        ) -> None:
+            del (
+                runtime,
+                destination_coordinator,
+                api_server,
+                event_server,
+                pcmu_server,
+            )
+            observed_reload_paths.append(
+                destination_reloader.path  # type: ignore[attr-defined]
+            )
+
+        def run(self) -> DaemonProcessResult:
+            return DaemonProcessResult(
+                last_signal=int(signal.SIGTERM)
+            )
+
+    monkeypatch.setattr(
+        cli,
+        "DaemonDestinationCoordinator",
+        coordinator_factory,
+    )
+    monkeypatch.setattr(cli, "DaemonProcess", FakeProcess)
+
+    result = cli.main(
+        [
+            "--host",
+            "192.0.2.25",
+            "daemon",
+            "--destination-config",
+            str(manifest),
+        ],
+        environ={},
+    )
+
+    assert result == 0
+    assert len(observed) == 1
+    destination = (
+        observed[0]
+        .initial_configuration
+        .destination("speakers")
+    )
+    assert destination.kind == "playback"
+    assert destination.backend == "sounddevice"
+    assert observed_reload_paths == [manifest]
+
+
+def test_daemon_cli_rejects_invalid_destination_manifest_before_scanner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest = tmp_path / "daemon-destinations.toml"
+    manifest.write_text(
+        "version = 2\n",
+        encoding="utf-8",
+    )
+    selections = 0
+
+    def select_radio(*args: object, **kwargs: object) -> object:
+        nonlocal selections
+        del args, kwargs
+        selections += 1
+        return object()
+
+    monkeypatch.setattr(cli, "selected_radio", select_radio)
+
+    result = cli.main(
+        [
+            "--host",
+            "192.0.2.25",
+            "daemon",
+            "--destination-config",
+            str(manifest),
+        ],
+        environ={},
+    )
+
+    assert result == 2
+    assert selections == 0
+    assert "version must be 1" in capsys.readouterr().err
+
+
 def test_daemon_cli_reports_profile_validation_error(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -423,15 +624,29 @@ def test_daemon_cli_reports_process_os_error(
             self,
             runtime: object,
             *,
+            destination_coordinator: object,
+            destination_reloader: object,
             api_server: object,
             event_server: object,
             pcmu_server: object,
         ) -> None:
-            del runtime, api_server, event_server, pcmu_server
+            del (
+                runtime,
+                destination_coordinator,
+                destination_reloader,
+                api_server,
+                event_server,
+                pcmu_server,
+            )
 
         def run(self) -> DaemonProcessResult:
             raise OSError("process startup failed")
 
+    monkeypatch.setattr(
+        cli,
+        "DaemonDestinationCoordinator",
+        FakeDaemonDestinationCoordinator,
+    )
     monkeypatch.setattr(cli, "DaemonEventStream", FakeDaemonEventStream)
     monkeypatch.setattr(cli, "DaemonProcess", FailingProcess)
 
@@ -465,16 +680,23 @@ def test_daemon_cli_explicit_socket_path_overrides_runtime_environment(
             self,
             runtime: object,
             *,
+            destination_coordinator: object,
+            destination_reloader: object,
             api_server: object,
             event_server: object,
             pcmu_server: object,
         ) -> None:
-            del runtime
+            del runtime, destination_coordinator, destination_reloader
             observed.append((api_server, event_server, pcmu_server))
 
         def run(self) -> DaemonProcessResult:
             return DaemonProcessResult(last_signal=int(signal.SIGTERM))
 
+    monkeypatch.setattr(
+        cli,
+        "DaemonDestinationCoordinator",
+        FakeDaemonDestinationCoordinator,
+    )
     monkeypatch.setattr(cli, "DaemonEventStream", FakeDaemonEventStream)
     monkeypatch.setattr(cli, "DaemonProcess", FakeProcess)
 

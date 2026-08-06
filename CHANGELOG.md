@@ -25,6 +25,9 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   `DaemonProcessResult` contracts for foreground process ownership, SIGINT and
   SIGTERM stop requests, handler restoration, and deterministic cleanup that
   preserves primary failures.
+- Validated `SIGHUP` destination-manifest reload using the startup path,
+  transactional activation, stop-request priority, redacted failure isolation,
+  and committed replacement results that retain post-commit cleanup reporting.
 - Foreground `sdsctl daemon` construction of one scanner, PSI, RTSP/RTP audio,
   decoded-PCM router, and `DaemonRuntime` from an explicit SDS200 host or
   network-capable saved profile.

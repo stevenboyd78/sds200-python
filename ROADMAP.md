@@ -99,8 +99,8 @@ assignment may change before implementation begins.
   ownership.
 - Define validated, previewable configuration replacement and failure-isolated
   destination updates.
-- Assign `SIGHUP` reload behavior only after deterministic reload and rollback
-  contracts exist.
+- Use `SIGHUP` to load, validate, and transactionally replace the selected
+  destination manifest while preserving the previous committed set on failure.
 
 ### Milestone 19.12 — v0.19.0 release
 
