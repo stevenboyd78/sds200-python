@@ -17,6 +17,7 @@ APPLICATION_CONFIG_FILENAME = "config.toml"
 APPLICATION_CONFIGURATION_VERSION = 1
 CONFIG_DIRECTORY_NAME = "sdsctl"
 CONNECTION_PROFILE_FILENAME = "profiles.toml"
+DAEMON_DESTINATION_CONFIG_FILENAME = "daemon-destinations.toml"
 DEFAULT_SYSTEM_CONFIG_DIR = Path("/etc/sdsctl")
 LEGACY_CONFIG_DIRECTORY_NAME = "sds200"
 REMOTE_AUDIO_PROFILE_FILENAME = "remote-audio-profiles.toml"
@@ -84,6 +85,10 @@ class ConfigurationPaths:
     @property
     def user_config_file(self) -> Path:
         return self.user_config_dir / APPLICATION_CONFIG_FILENAME
+
+    @property
+    def daemon_destination_config_file(self) -> Path:
+        return self.user_config_dir / DAEMON_DESTINATION_CONFIG_FILENAME
 
     @property
     def legacy_connection_profiles_file(self) -> Path:
