@@ -18,15 +18,21 @@ and ideas that are not ready for scheduling are recorded in
     profile compatibility.
   - Documented explicit destination manifests, service accounts, private
     sockets, `SIGHUP` reload, systemd operation, upgrades, and rollback.
-- **Acceptance validation — active**
-  - Completed adversarial regression validation for multiple, slow, malformed,
-    and excess clients plus shutdown fault injection.
-  - Completed preliminary source and wheel builds, Twine checks, artifact
-    inspection, clean installation, and public-to-local upgrade validation.
-  - Validated the repository's existing GitHub CodeQL default setup for Actions
-    and Python; repeat package validation against `0.19.0`, run the full Python
-    3.11–3.14 CI matrix, and complete final physical SDS200 daemon-owned CLI and
-    TUI client validation.
+- **Acceptance validation — complete**
+  - Passed adversarial regression validation for multiple, slow, malformed, and
+    excess clients plus shutdown fault injection.
+  - Passed final Ruff, MyPy for 74 source files, all 1,267 tests on Python
+    3.14.4, documentation checks for 34 Markdown files, version `0.19.0` source
+    and wheel builds, Twine checks, artifact inspection, clean installation, and
+    public PyPI `0.18.0` to local `0.19.0` upgrade validation.
+  - Passed the full Python 3.11–3.14 GitHub Actions matrix and the repository's
+    existing CodeQL default setup for Actions and Python with zero findings and
+    no analysis errors.
+  - Completed physical SDS200 daemon-owned CLI and TUI validation against
+    firmware `1.26.01`, including private sockets, simultaneous clients,
+    canonical `stream.snapshot` delivery, loss-free PCMU reception, valid WAV
+    and metadata output, daemon-owned reconnect, retained ownership after TUI
+    exit, and orderly shutdown with all sockets removed.
 - **Publication — pending**
   - Merge release preparation only after CI and CodeQL pass.
   - Publish `v0.19.0` through trusted PyPI publishing and create the GitHub
