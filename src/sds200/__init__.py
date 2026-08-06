@@ -124,6 +124,11 @@ from .daemon_destination_activation import (
     DaemonDestinationReplacementResult,
     DaemonDestinationResources,
 )
+from .daemon_destination_reload import (
+    DaemonDestinationReloader,
+    DaemonDestinationReloadPreview,
+    DaemonDestinationReloadResult,
+)
 from .daemon_destinations import (
     DAEMON_DESTINATION_CONFIG_VERSION,
     DAEMON_PLAYBACK_BACKENDS,
@@ -619,6 +624,9 @@ __all__ = [
     "DaemonDestinationCoordinator",
     "DaemonDestinationFactory",
     "DaemonDestinationKind",
+    "DaemonDestinationReloader",
+    "DaemonDestinationReloadPreview",
+    "DaemonDestinationReloadResult",
     "DaemonDestinationReplacementResult",
     "DaemonDestinationResources",
     "DaemonDestinationReplacementPreview",
