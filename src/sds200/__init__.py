@@ -190,6 +190,7 @@ from .daemon_server import (
     DaemonApiServer,
     DaemonApiServerSnapshot,
 )
+from .daemon_tui import DaemonTuiRadio
 from .device import (
     DEFAULT_SDS200_PATTERN,
     DEFAULT_SDS_PATTERN,
@@ -583,6 +584,7 @@ __all__ = [
     "DaemonEventSubscription",
     "DaemonEventSubscriptionClosed",
     "DaemonEventStream",
+    "DaemonTuiRadio",
     "DaemonPcmuClient",
     "DaemonPcmuClientSnapshot",
     "DaemonPcmuServer",
