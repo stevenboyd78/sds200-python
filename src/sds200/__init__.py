@@ -117,6 +117,10 @@ from .daemon_client import (
     DAEMON_API_CLIENT_DEFAULT_TIMEOUT,
     DaemonApiClient,
 )
+from .daemon_destination_activation import (
+    DaemonDestinationFactory,
+    DaemonDestinationResources,
+)
 from .daemon_destinations import (
     DAEMON_DESTINATION_CONFIG_VERSION,
     DAEMON_PLAYBACK_BACKENDS,
@@ -608,7 +612,9 @@ __all__ = [
     "DaemonDestinationChange",
     "DaemonDestinationChangeAction",
     "DaemonDestinationConfiguration",
+    "DaemonDestinationFactory",
     "DaemonDestinationKind",
+    "DaemonDestinationResources",
     "DaemonDestinationReplacementPreview",
     "DaemonEvent",
     "DaemonEventClient",
