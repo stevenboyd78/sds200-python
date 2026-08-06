@@ -23,15 +23,10 @@ from .audio_session import (
     AudioSessionStatus,
 )
 from .commands import NavigationTarget
-from .models import ScannerInfo
 from .presentation import ScannerPresentation, present_radio_state
 from .rich_cli import rich_style
 from .scanner import capabilities_for_model
-from .state import (
-    RadioStateSnapshot,
-    ScannerScreenKind,
-    snapshot_from_scanner_info,
-)
+from .state import RadioStateSnapshot, ScannerScreenKind
 from .theme import (
     DEFAULT_DARK_THEME,
     DEFAULT_LIGHT_THEME,
@@ -143,12 +138,12 @@ class ScannerTuiRadio(Protocol):
         callback: Callable[[TransportDiagnostic], None],
     ) -> Unsubscribe: ...
 
-    def scanner_info_push(
+    def radio_state_push(
         self,
         interval_ms: int = 500,
         *,
         timeout: float = 3.0,
-    ) -> AbstractContextManager[ScannerInfo]: ...
+    ) -> AbstractContextManager[RadioStateSnapshot]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -398,7 +393,7 @@ class ScannerTuiApp(App[None]):
     def __init__(
         self,
         identity: ScannerIdentity,
-        info: ScannerInfo,
+        snapshot: RadioStateSnapshot,
         *,
         radio: ScannerTuiRadio | None = None,
         audio_session: AudioRecordingSession | TuiAudioSession | None = None,
@@ -424,7 +419,7 @@ class ScannerTuiApp(App[None]):
 
         super().__init__()
         self._identity = identity
-        self._snapshot = snapshot_from_scanner_info(info)
+        self._snapshot = snapshot
         self._capabilities = capabilities_for_model(identity.model)
         self._radio = radio
         self._audio_session = audio_session
@@ -1082,8 +1077,8 @@ class ScannerTuiApp(App[None]):
     def _run_psi_stream(self) -> None:
         assert self._radio is not None
         try:
-            with self._radio.scanner_info_push(self._interval_ms) as first:
-                self._dispatch_from_radio(self._apply_scanner_info, first)
+            with self._radio.radio_state_push(self._interval_ms) as first:
+                self._dispatch_from_radio(self._apply_radio_state, first)
                 self._psi_stop.wait()
         except Exception as exc:
             if not self._psi_stop.is_set():
@@ -1325,9 +1320,6 @@ class ScannerTuiApp(App[None]):
             self._snapshot = replace(self._snapshot, mode=mode, site_hold="On")
         else:
             self._snapshot = replace(self._snapshot, mode=mode, channel_hold="On")
-
-    def _apply_scanner_info(self, info: ScannerInfo) -> None:
-        self._apply_radio_state(snapshot_from_scanner_info(info))
 
     def _apply_radio_state(self, snapshot: RadioStateSnapshot) -> None:
         self._received_live_psi = True
@@ -2034,7 +2026,7 @@ def run_tui(
     endpoint: str,
     model: str,
     firmware: str,
-    info: ScannerInfo,
+    snapshot: RadioStateSnapshot,
     radio: ScannerTuiRadio,
     audio_session: AudioRecordingSession | TuiAudioSession | None = None,
     interval_ms: int,
@@ -2046,11 +2038,11 @@ def run_tui(
     palette: ThemePalette,
     log_buffer: TuiLogBuffer | None = None,
 ) -> None:
-    """Launch the live Textual scanner interface and block until it exits."""
+    """Launch the Textual interface from one renderer-neutral initial snapshot."""
 
     app = ScannerTuiApp(
         ScannerIdentity(endpoint=endpoint, model=model, firmware=firmware),
-        info,
+        snapshot,
         radio=radio,
         audio_session=audio_session,
         log_buffer=log_buffer,

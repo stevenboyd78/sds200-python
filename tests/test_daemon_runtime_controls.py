@@ -73,6 +73,14 @@ class FakeControlScanner:
         self.order.append("scanner.connect")
         self._connected = True
 
+    def get_model(self, *, timeout: float = 2.0) -> str:
+        assert timeout == 2.0
+        return "SDS200"
+
+    def get_firmware(self, *, timeout: float = 2.0) -> str:
+        assert timeout == 2.0
+        return "Version 1.26.01"
+
     def start_scanner_info_push(
         self,
         interval_ms: int = 500,

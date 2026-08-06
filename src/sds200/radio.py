@@ -66,7 +66,12 @@ from .scanner import (
     capabilities_for_model,
     normalize_model_name,
 )
-from .state import RadioState, RadioStateSnapshot, StateChange
+from .state import (
+    RadioState,
+    RadioStateSnapshot,
+    StateChange,
+    snapshot_from_scanner_info,
+)
 from .trace import TrafficTrace
 from .transport import (
     ControlTransport,
@@ -839,6 +844,18 @@ class SDSScanner:
             yield first
         finally:
             self.stop_scanner_info_push()
+
+    @contextmanager
+    def radio_state_push(
+        self,
+        interval_ms: int = 500,
+        *,
+        timeout: float = 3.0,
+    ) -> Iterator[RadioStateSnapshot]:
+        """Yield the first renderer-neutral state while PSI remains active."""
+
+        with self.scanner_info_push(interval_ms, timeout=timeout) as first:
+            yield snapshot_from_scanner_info(first)
 
     def _recovery_idle(self) -> bool:
         with self._response_lock:

@@ -71,6 +71,7 @@ from .daemon_ipc import (
     resolve_daemon_pcmu_socket_location,
     resolve_daemon_socket_location,
 )
+from .daemon_pcmu_audio import DaemonPcmuAudioTransport
 from .daemon_pcmu_client import DaemonPcmuClient
 from .daemon_pcmu_server import (
     DAEMON_PCMU_DEFAULT_MAX_CLIENTS,
@@ -88,6 +89,7 @@ from .daemon_server import (
     DAEMON_API_DEFAULT_SHUTDOWN_TIMEOUT,
     DaemonApiServer,
 )
+from .daemon_tui import DaemonTuiRadio
 from .device import choose_scanner, discover_scanners
 from .discovery import (
     DEFAULT_DISCOVERY_TIMEOUT,
@@ -145,6 +147,7 @@ from .rich_cli import (
 )
 from .rtsp import DEFAULT_RTSP_PORT
 from .scanner import SUPPORTED_SCANNER_MODELS, ScannerModel, normalize_model_name
+from .state import snapshot_from_scanner_info
 from .tui_audio import (
     DEFAULT_RECORDING_TEMPLATE,
     RecordingPathPolicy,
@@ -1109,6 +1112,91 @@ def build_parser(
     tui = subparsers.add_parser(
         "tui",
         help="Launch the optional full-screen Textual interface",
+    )
+    tui.add_argument(
+        "--daemon-client",
+        action="store_true",
+        help=(
+            "Use a running local daemon without opening scanner hardware; "
+            "standalone scanner ownership remains the default"
+        ),
+    )
+    tui.add_argument(
+        "--daemon-socket-path",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Explicit daemon API socket path used with --daemon-client; "
+            "otherwise use XDG_RUNTIME_DIR or the user state directory"
+        ),
+    )
+    tui.add_argument(
+        "--daemon-event-socket-path",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Explicit daemon event socket path used with --daemon-client; "
+            "otherwise use XDG_RUNTIME_DIR or the user state directory"
+        ),
+    )
+    tui.add_argument(
+        "--daemon-timeout",
+        type=_positive_float,
+        default=None,
+        metavar="SECONDS",
+        help=(
+            "Daemon API, event, and PCMU connection timeout "
+            f"(default: {DAEMON_API_CLIENT_DEFAULT_TIMEOUT})"
+        ),
+    )
+    tui.add_argument(
+        "--daemon-max-response-bytes",
+        type=_positive_integer,
+        default=None,
+        metavar="BYTES",
+        help=(
+            "Maximum accepted daemon API response size "
+            f"(default: {DAEMON_API_DEFAULT_MAX_RESPONSE_BYTES})"
+        ),
+    )
+    tui.add_argument(
+        "--daemon-max-event-bytes",
+        type=_positive_integer,
+        default=None,
+        metavar="BYTES",
+        help=(
+            "Maximum accepted daemon event size "
+            f"(default: {DAEMON_EVENT_DEFAULT_MAX_BYTES})"
+        ),
+    )
+    tui.add_argument(
+        "--daemon-pcmu-socket-path",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Explicit daemon PCMU socket path used with --daemon-client; "
+            "otherwise use XDG_RUNTIME_DIR or the user state directory"
+        ),
+    )
+    tui.add_argument(
+        "--daemon-pcmu-max-endpoint-bytes",
+        type=_positive_integer,
+        default=None,
+        metavar="BYTES",
+        help=(
+            "Maximum accepted daemon PCMU endpoint size "
+            f"(default: {PCMU_STREAM_DEFAULT_MAX_ENDPOINT_BYTES})"
+        ),
+    )
+    tui.add_argument(
+        "--daemon-pcmu-max-frame-bytes",
+        type=_positive_integer,
+        default=None,
+        metavar="BYTES",
+        help=(
+            "Maximum accepted daemon PCMU frame size "
+            f"(default: {PCMU_STREAM_DEFAULT_MAX_FRAME_BYTES})"
+        ),
     )
     tui.add_argument(
         "--interval",
@@ -3007,10 +3095,101 @@ def _run_audio(args: argparse.Namespace) -> int:
     return 0
 
 
+def _reject_standalone_tui_daemon_options(
+    args: argparse.Namespace,
+) -> None:
+    if any(
+        value is not None
+        for value in (
+            args.daemon_socket_path,
+            args.daemon_event_socket_path,
+            args.daemon_timeout,
+            args.daemon_max_response_bytes,
+            args.daemon_max_event_bytes,
+            args.daemon_pcmu_socket_path,
+            args.daemon_pcmu_max_endpoint_bytes,
+            args.daemon_pcmu_max_frame_bytes,
+        )
+    ):
+        raise ValueError(
+            "Daemon TUI socket and limit options require --daemon-client."
+        )
+
+
+def _reject_daemon_tui_scanner_options(
+    args: argparse.Namespace,
+) -> None:
+    if any(
+        value is not None
+        for value in (
+            args.config,
+            args.model,
+            args.port,
+            args.host,
+            args.replay,
+            args.profile,
+            args.connection_preference,
+        )
+    ):
+        raise ValueError(
+            "Scanner connection selectors are not used with the "
+            "daemon-backed TUI."
+        )
+
+    if args.udp_port is not None or args.bind_address or args.bind_port:
+        raise ValueError(
+            "Scanner network socket options are not used with the "
+            "daemon-backed TUI."
+        )
+
+    recovery_options = (
+        args.recover_preferred,
+        args.recovery_probe_interval,
+        args.recovery_probe_timeout,
+        args.recovery_stability_window,
+        args.recovery_cooldown,
+    )
+    if any(value is not None for value in recovery_options):
+        raise ValueError(
+            "Scanner recovery options are not used with the daemon-backed TUI."
+        )
+
+    if (
+        args.trace is not None
+        or args.capture is not None
+        or args.redact
+        or args.replay_speed != 0
+    ):
+        raise ValueError(
+            "Scanner trace, capture, and replay options are not used with the "
+            "daemon-backed TUI."
+        )
+
+
+def _reject_daemon_tui_rtsp_options(
+    args: argparse.Namespace,
+) -> None:
+    direct_rtsp_requested = any(
+        (
+            args.audio_rtsp_port != DEFAULT_RTSP_PORT,
+            bool(args.audio_rtp_bind_address),
+            args.audio_rtp_bind_port != 0,
+            args.audio_keepalive_interval != 15.0,
+        )
+    )
+    if direct_rtsp_requested:
+        raise ValueError(
+            "Daemon-backed TUI audio consumes the daemon PCMU socket; "
+            "direct RTSP/RTP audio options are not used."
+        )
+
+
 def _run_tui(
     args: argparse.Namespace,
     *,
     log_buffer: TuiLogBuffer | None = None,
+    configuration_paths: ConfigurationPaths | None = None,
+    environ: Mapping[str, str] | None = None,
 ) -> int:
     try:
         from .tui import run_tui
@@ -3037,6 +3216,120 @@ def _run_tui(
         raise ValueError(
             "--audio-metadata requires --audio-output or --audio-directory"
         )
+
+    if args.daemon_client:
+        _reject_daemon_tui_scanner_options(args)
+        _reject_daemon_tui_rtsp_options(args)
+
+        timeout = (
+            DAEMON_API_CLIENT_DEFAULT_TIMEOUT
+            if args.daemon_timeout is None
+            else args.daemon_timeout
+        )
+        api_location = resolve_daemon_socket_location(
+            args.daemon_socket_path,
+            environ=environ,
+            configuration_paths=configuration_paths,
+        )
+        event_location = resolve_daemon_event_socket_location(
+            args.daemon_event_socket_path,
+            environ=environ,
+            configuration_paths=configuration_paths,
+        )
+        pcmu_location = resolve_daemon_pcmu_socket_location(
+            args.daemon_pcmu_socket_path,
+            environ=environ,
+            configuration_paths=configuration_paths,
+        )
+        api_client = DaemonApiClient(
+            api_location,
+            timeout=timeout,
+            max_response_bytes=(
+                DAEMON_API_DEFAULT_MAX_RESPONSE_BYTES
+                if args.daemon_max_response_bytes is None
+                else args.daemon_max_response_bytes
+            ),
+        )
+        event_client = DaemonEventClient(
+            event_location,
+            timeout=timeout,
+            max_event_bytes=(
+                DAEMON_EVENT_DEFAULT_MAX_BYTES
+                if args.daemon_max_event_bytes is None
+                else args.daemon_max_event_bytes
+            ),
+        )
+        pcmu_client = DaemonPcmuClient(
+            pcmu_location,
+            timeout=timeout,
+            max_endpoint_bytes=(
+                PCMU_STREAM_DEFAULT_MAX_ENDPOINT_BYTES
+                if args.daemon_pcmu_max_endpoint_bytes is None
+                else args.daemon_pcmu_max_endpoint_bytes
+            ),
+            max_frame_bytes=(
+                PCMU_STREAM_DEFAULT_MAX_FRAME_BYTES
+                if args.daemon_pcmu_max_frame_bytes is None
+                else args.daemon_pcmu_max_frame_bytes
+            ),
+        )
+
+        with DaemonTuiRadio(api_client, event_client) as radio:
+            hello = api_client.hello()
+            _require_daemon_client_operation(
+                hello,
+                DaemonApiOperation.RUNTIME_SNAPSHOT,
+            )
+            initial = radio.initialize(api_client.runtime_snapshot())
+            daemon_audio_session = TuiAudioSession(
+                AudioStream(DaemonPcmuAudioTransport(pcmu_client)),
+                RecordingPathPolicy(
+                    output=(
+                        args.audio_output.expanduser()
+                        if args.audio_output is not None
+                        else None
+                    ),
+                    directory=(
+                        args.audio_directory.expanduser()
+                        if args.audio_directory is not None
+                        else None
+                    ),
+                    template=(
+                        args.audio_template or DEFAULT_RECORDING_TEMPLATE
+                    ),
+                    overwrite=args.audio_force,
+                    organization=(
+                        args.audio_organize_by
+                        or RecordingOrganizationPolicy()
+                    ),
+                ),
+                live_playback=args.audio_playback,
+                device=args.audio_device,
+                buffer_ms=args.audio_buffer_ms,
+                history_limit=args.audio_history_limit,
+                metadata=args.audio_metadata,
+                scanner=initial.model,
+            )
+            run_tui(
+                endpoint=initial.endpoint,
+                model=initial.model,
+                firmware=initial.firmware,
+                snapshot=initial.snapshot,
+                radio=radio,
+                audio_session=daemon_audio_session,
+                interval_ms=args.interval,
+                stale_after=args.stale_after,
+                psi_auto_recover=args.psi_auto_recover,
+                psi_recover_after=args.psi_recover_after,
+                psi_recovery_cooldown=args.psi_recovery_cooldown,
+                connected=initial.connected,
+                palette=palette_for_name(args.theme),
+                log_buffer=log_buffer,
+            )
+        return 0
+
+    _reject_standalone_tui_daemon_options(args)
+
     audio_requested = args.host is not None or any(
         (
             args.audio_output is not None,
@@ -3094,7 +3387,7 @@ def _run_tui(
             endpoint=radio.endpoint,
             model=str(radio.get_model()),
             firmware=str(radio.get_firmware()),
-            info=radio.get_scanner_info(),
+            snapshot=snapshot_from_scanner_info(radio.get_scanner_info()),
             radio=radio,
             audio_session=audio_session,
             interval_ms=args.interval,
@@ -3109,12 +3402,22 @@ def _run_tui(
     return 0
 
 
-def _run_tui_with_logging(args: argparse.Namespace) -> int:
+def _run_tui_with_logging(
+    args: argparse.Namespace,
+    *,
+    configuration_paths: ConfigurationPaths | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> int:
     log_buffer = TuiLogBuffer()
     with capture_package_logs(log_buffer):
         logger.info("sdsctl starting version=%s action=%s", __version__, args.action)
         try:
-            return _run_tui(args, log_buffer=log_buffer)
+            return _run_tui(
+                args,
+                log_buffer=log_buffer,
+                configuration_paths=configuration_paths,
+                environ=environ,
+            )
         finally:
             logger.info("sdsctl stopped action=%s", args.action)
 
@@ -3398,7 +3701,11 @@ def main(
 
     if args.action == "tui":
         try:
-            return _run_tui_with_logging(args)
+            return _run_tui_with_logging(
+                args,
+                configuration_paths=configuration_paths,
+                environ=environ,
+            )
         except (SDS200Error, OSError, ValueError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2

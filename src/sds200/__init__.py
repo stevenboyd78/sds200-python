@@ -154,6 +154,10 @@ from .daemon_ipc import (
     resolve_daemon_pcmu_socket_location,
     resolve_daemon_socket_location,
 )
+from .daemon_pcmu_audio import (
+    DaemonPcmuAudioStatistics,
+    DaemonPcmuAudioTransport,
+)
 from .daemon_pcmu_client import (
     DAEMON_PCMU_CLIENT_DEFAULT_TIMEOUT,
     DaemonPcmuClient,
@@ -189,6 +193,11 @@ from .daemon_server import (
     DAEMON_API_DEFAULT_SHUTDOWN_TIMEOUT,
     DaemonApiServer,
     DaemonApiServerSnapshot,
+)
+from .daemon_tui import (
+    DaemonTuiBootstrap,
+    DaemonTuiRadio,
+    daemon_tui_bootstrap,
 )
 from .device import (
     DEFAULT_SDS200_PATTERN,
@@ -583,6 +592,10 @@ __all__ = [
     "DaemonEventSubscription",
     "DaemonEventSubscriptionClosed",
     "DaemonEventStream",
+    "DaemonTuiBootstrap",
+    "DaemonTuiRadio",
+    "DaemonPcmuAudioStatistics",
+    "DaemonPcmuAudioTransport",
     "DaemonPcmuClient",
     "DaemonPcmuClientSnapshot",
     "DaemonPcmuServer",
@@ -790,6 +803,7 @@ __all__ = [
     "decode_mulaw",
     "decode_pcmu_delivery",
     "decode_mulaw_sample",
+    "daemon_tui_bootstrap",
     "discover_legacy_configuration",
     "discover_network_scanners",
     "discover_scanners",

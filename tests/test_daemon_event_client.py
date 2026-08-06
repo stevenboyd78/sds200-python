@@ -29,6 +29,8 @@ from sds200 import (
 SNAPSHOT = {
     "state": "running",
     "scanner_endpoint": "udp://192.0.2.25:50536",
+    "scanner_model": "SDS200",
+    "scanner_firmware": "Version 1.26.01",
     "scanner_connected": True,
     "psi_interval_ms": 500,
     "psi_active": True,
@@ -418,6 +420,69 @@ def test_event_client_validates_snapshot_payload(tmp_path: Path) -> None:
     )
 
     with pytest.raises(DaemonProtocolError, match="runtime fields"):
+        client.receive()
+
+    thread.join(timeout=1.0)
+    assert client.connected is False
+
+
+@pytest.mark.parametrize(
+    "identity",
+    [
+        {},
+        {"scanner_model": None, "scanner_firmware": None},
+    ],
+)
+def test_event_client_accepts_optional_snapshot_identity(
+    tmp_path: Path,
+    identity: dict[str, object],
+) -> None:
+    path = tmp_path / "optional-identity.sock"
+    snapshot = dict(SNAPSHOT)
+    snapshot.pop("scanner_model")
+    snapshot.pop("scanner_firmware")
+    snapshot.update(identity)
+    thread = start_scripted_server(
+        path,
+        event_line(0, DaemonEventKind.SNAPSHOT, snapshot),
+    )
+    client = DaemonEventClient(
+        DaemonSocketLocation(path, DaemonSocketSource.EXPLICIT)
+    )
+
+    event = client.receive()
+
+    assert event.payload == snapshot
+    client.close()
+    thread.join(timeout=1.0)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("scanner_model", ""),
+        ("scanner_model", 200),
+        ("scanner_firmware", ""),
+        ("scanner_firmware", False),
+    ],
+)
+def test_event_client_rejects_malformed_snapshot_identity(
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
+    path = tmp_path / f"malformed-{field}.sock"
+    snapshot = dict(SNAPSHOT)
+    snapshot[field] = value
+    thread = start_scripted_server(
+        path,
+        event_line(0, DaemonEventKind.SNAPSHOT, snapshot),
+    )
+    client = DaemonEventClient(
+        DaemonSocketLocation(path, DaemonSocketSource.EXPLICIT)
+    )
+
+    with pytest.raises(DaemonProtocolError, match=field):
         client.receive()
 
     thread.join(timeout=1.0)

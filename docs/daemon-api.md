@@ -18,8 +18,9 @@ Milestone 19.9 adds explicit `sdsctl daemon-client` status, snapshot, hold,
 next, previous, and reconnect workflows through the reusable `DaemonApiClient`.
 The separate `events` and `audio` actions consume `events.sock` and `pcmu.sock`
 without opening this API connection. The top-level scanner and direct-audio
-commands remain standalone. TUI migration and decoded-PCM client workflows remain
-follow-on work. Integrations may also use the documented socket framing and
+commands remain standalone. Milestone 19.10 adds explicit daemon-backed TUI
+operation, while decoded-PCM client workflows remain follow-on work.
+Integrations may also use the documented socket framing and
 version contract directly.
 
 The Python implementation retains the historical public class name
@@ -175,11 +176,17 @@ historical Python class name.
 | `daemon.capabilities` | Supported versions, operations, operation groups, and limits |
 | `ping` | `{"pong": true}` |
 | `runtime.snapshot` | Complete authoritative `DaemonRuntimeSnapshot.as_dict()` payload |
-| `scanner.state` | Endpoint, connection and PSI state, and current radio state |
+| `scanner.state` | Endpoint, optional model and firmware identity, connection and PSI state, and current radio state |
 | `audio.health` | Audio-session and decoded-PCM router snapshots |
 
 `hello`, `daemon.capabilities`, and `ping` do not read the runtime snapshot.
 The remaining operations obtain one authoritative snapshot for that request.
+
+New daemon snapshots include `scanner_model` and `scanner_firmware` as
+non-empty strings when identity probes succeed, or `null` when an individual
+probe fails. Version 1 clients continue accepting older snapshots that omit
+these additive fields. A failed identity probe does not stop daemon-owned
+scanner control, PSI, or audio.
 
 ## Scanner control operations
 
@@ -421,12 +428,13 @@ The `daemon.sock` protocol intentionally excludes:
 - binary PCM or PCMU delivery on the API connection;
 - TCP or remote-network exposure;
 - daemon discovery or automatic client selection;
-- TUI daemon-client migration;
 - decoded-PCM CLI client workflows; and
 - destination activation or configuration reload.
 
 Ordered events are available through their dedicated socket and
 `sdsctl daemon-client events`. Daemon-owned PCMU audio is available through
-`pcmu.sock` and `sdsctl daemon-client audio`. Decoded-PCM CLI workflows,
-discovery, TUI migration, and destination activation remain assigned to later
+`pcmu.sock` and `sdsctl daemon-client audio`. The daemon-backed TUI obtains its
+authoritative initial state and safe-control results through this API while
+ordered updates and PCMU audio remain on their dedicated sockets. Decoded-PCM
+CLI workflows, discovery, and destination activation remain assigned to later
 Milestone 19 work.

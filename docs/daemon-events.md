@@ -113,6 +113,11 @@ The snapshot does not increment the sequence. The first later event uses the
 next global value. A client connecting after sequence 25 therefore receives a
 snapshot at sequence 25, followed by event 26 or later.
 
+Current snapshots include optional `scanner_model` and `scanner_firmware`
+identity values. Either may be `null` when its daemon startup probe failed.
+Version 1 event clients remain compatible with older snapshot checkpoints
+that omit these additive fields.
+
 All source callbacks are serialized through the composed event stream before
 publication, so every healthy subscriber observes the same global ordering.
 
@@ -250,9 +255,12 @@ The event service and Milestone 19.9 client still do not add:
 - scanner-control operations on the event socket;
 - TCP or remote authentication;
 - daemon discovery or automatic client selection;
-- TUI daemon-client migration;
 - decoded-PCM CLI client workflows; or
 - destination activation and configuration reload.
+
+Milestone 19.10 uses this ordered event stream for daemon-backed TUI
+radio-state and connection updates. Closing the TUI closes its event client
+without stopping the daemon event service or scanner ownership.
 
 ## Physical SDS200 validation
 

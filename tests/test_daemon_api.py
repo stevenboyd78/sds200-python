@@ -53,6 +53,8 @@ def snapshot_payload() -> dict[str, object]:
     return {
         "state": "running",
         "scanner_endpoint": "udp://192.0.2.25:50536",
+        "scanner_model": "SDS200",
+        "scanner_firmware": "Version 1.26.01",
         "scanner_connected": True,
         "psi_interval_ms": 500,
         "psi_active": True,
@@ -268,6 +270,8 @@ def test_scanner_state_returns_only_scanner_and_psi_fields(
 
     assert response.result == {
         "scanner_endpoint": "udp://192.0.2.25:50536",
+        "scanner_model": "SDS200",
+        "scanner_firmware": "Version 1.26.01",
         "scanner_connected": True,
         "psi_interval_ms": 500,
         "psi_active": True,

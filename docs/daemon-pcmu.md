@@ -226,6 +226,34 @@ stream sequences, skipped publications, cumulative queue drops and overflows,
 RTP missing-packet and missing-sample observations, backwards RTP timestamps,
 playback statistics when selected, and the WAV path when recorded.
 
+## Daemon-backed TUI audio
+
+Milestone 19.10 adds an `AudioTransport` adapter around `DaemonPcmuClient`.
+The explicit daemon-backed TUI uses that adapter rather than opening another
+scanner RTSP/RTP session:
+
+```bash
+sdsctl tui --daemon-client \
+  --audio-playback \
+  --audio-directory ~/recordings \
+  --audio-metadata
+```
+
+The TUI resolves `pcmu.sock` independently from `daemon.sock` and `events.sock`.
+Use `--daemon-pcmu-socket-path` for an explicit PCMU socket and
+`--daemon-pcmu-max-endpoint-bytes` or `--daemon-pcmu-max-frame-bytes` to change
+accepted frame limits. The shared `--daemon-timeout` bounds API, event, and PCMU
+connection establishment.
+
+Accepted PCMU payloads are exposed as normal `AudioChunk` values, so existing
+TUI playback, recording, metadata, and saved-recording behavior is retained.
+The adapter reports daemon queue drops, stream-sequence gaps, RTP missing
+packets and samples, backwards timestamps, receive failures, and callback
+failures through the existing renderer-neutral reliability model.
+
+Closing the TUI closes only its PCMU client. It does not stop the daemon-owned
+scanner, PSI, RTSP/RTP session, decoded-PCM router, or other PCMU subscribers.
+
 ## Minimal Python client
 
 This example resolves the default socket, reads complete frames, and uses
@@ -292,10 +320,21 @@ The PCMU service still does not add:
 - scanner-control operations;
 - TCP transport or remote authentication;
 - daemon discovery or automatic client selection;
-- TUI daemon-audio client workflows; or
 - destination activation and configuration reload.
 
 ## Physical SDS200 validation
+
+### Daemon-backed TUI
+
+A separate Milestone 19.10 run on August 5, 2026, validated the daemon-backed
+TUI against a physical SDS200. It consumed explicit API, event, and PCMU
+sockets, automatically started playback, toggled playback with `A`, and recorded
+424,960 frames of 8 kHz mono signed 16-bit PCM for 53.120 seconds with a valid
+adjacent metadata sidecar. Quitting the TUI left the original daemon and its
+scanner, PSI, audio, and router ownership running. Controlled `SIGTERM` then
+removed all three sockets.
+
+### Explicit CLI audio client
 
 Validated on 2026-08-05 with `sdsctl daemon-client audio` and a physical
 SDS200:
