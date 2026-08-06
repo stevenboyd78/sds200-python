@@ -13,16 +13,19 @@ and ideas that are not ready for scheduling are recorded in
 
 ### Milestone 19.12 — v0.19.0 release
 
-- **Compatibility, migration, deployment, and systemd documentation — active**
-  - Document preserved distribution, import-package, executable, and legacy
+- **Compatibility, migration, deployment, and systemd documentation — complete**
+  - Documented preserved distribution, import-package, executable, and legacy
     profile compatibility.
-  - Document explicit destination manifests, service accounts, private sockets,
-    `SIGHUP` reload, systemd operation, upgrades, and rollback.
-- **Acceptance validation — pending**
-  - Validate multiple clients, slow and malformed clients, shutdown fault
-    injection, clean installation, and upgrade behavior.
-  - Run the full static, test, documentation, packaging, and distribution suite.
-  - Complete physical SDS200 daemon-owned CLI and TUI client validation.
+  - Documented explicit destination manifests, service accounts, private
+    sockets, `SIGHUP` reload, systemd operation, upgrades, and rollback.
+- **Acceptance validation — active**
+  - Completed adversarial regression validation for multiple, slow, malformed,
+    and excess clients plus shutdown fault injection.
+  - Completed preliminary source and wheel builds, Twine checks, artifact
+    inspection, clean installation, and public-to-local upgrade validation.
+  - Added Python CodeQL analysis; repeat package validation against `0.19.0`,
+    run full Python 3.11–3.14 CI and CodeQL, and complete final physical SDS200
+    daemon-owned CLI and TUI client validation.
 - **Publication — pending**
   - Merge release preparation only after CI and CodeQL pass.
   - Publish `v0.19.0` through trusted PyPI publishing and create the GitHub
