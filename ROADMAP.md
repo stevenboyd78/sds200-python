@@ -33,11 +33,13 @@ and ideas that are not ready for scheduling are recorded in
     canonical `stream.snapshot` delivery, loss-free PCMU reception, valid WAV
     and metadata output, daemon-owned reconnect, retained ownership after TUI
     exit, and orderly shutdown with all sockets removed.
-- **Publication — pending**
-  - Merge release preparation only after CI and CodeQL pass.
-  - Publish `v0.19.0` through trusted PyPI publishing and create the GitHub
-    release.
-  - Verify a clean installation from public PyPI.
+- **Publication — complete**
+  - Merged release preparation after the full Python 3.11–3.14 CI matrix and
+    CodeQL Actions and Python analyses passed.
+  - Published annotated tag `v0.19.0`, completed trusted PyPI publishing, and
+    published the latest stable GitHub release.
+  - Verified public PyPI metadata, the wheel and source distribution, and a
+    clean Python 3.14 installation with `sdsctl 0.19.0`.
 
 Keep the existing Python distribution and import package compatible until a
 separate migration plan justifies a rename.
@@ -270,3 +272,8 @@ fixtures before renderer-specific implementation.
   manifests; deterministic activation resources; transactional replacement;
   failure-isolated reload; daemon lifecycle ownership; `SIGHUP`; regression
   coverage; and physical SDS200 validation.
+- Milestone 19.12: compatibility, migration, deployment, and systemd
+  documentation; adversarial client and shutdown validation; full Python
+  3.11–3.14 CI and CodeQL validation; physical daemon-owned CLI and TUI
+  validation; v0.19.0 trusted PyPI and GitHub publication; and clean Python 3.14
+  installation verification from public PyPI.
