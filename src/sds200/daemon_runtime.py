@@ -71,6 +71,10 @@ class _ScannerLike(Protocol):
     @property
     def state(self) -> _RadioStateLike: ...
 
+    def get_model(self, *, timeout: float = 2.0) -> str: ...
+
+    def get_firmware(self, *, timeout: float = 2.0) -> str: ...
+
     def hold(
         self,
         target: str,
@@ -122,6 +126,8 @@ class DaemonRuntimeSnapshot:
 
     state: DaemonRuntimeState
     scanner_endpoint: str
+    scanner_model: str | None
+    scanner_firmware: str | None
     scanner_connected: bool
     psi_interval_ms: int
     psi_active: bool
@@ -147,6 +153,8 @@ class DaemonRuntimeSnapshot:
         return {
             "state": self.state.value,
             "scanner_endpoint": self.scanner_endpoint,
+            "scanner_model": self.scanner_model,
+            "scanner_firmware": self.scanner_firmware,
             "scanner_connected": self.scanner_connected,
             "psi_interval_ms": self.psi_interval_ms,
             "psi_active": self.psi_active,
@@ -278,6 +286,8 @@ class DaemonRuntime:
         self.psi_interval_ms = psi_interval_ms
         self.psi_timeout = psi_timeout
         self._now = now
+        self._scanner_model: str | None = None
+        self._scanner_firmware: str | None = None
 
         self.events = EventBus()
         self._lifecycle_lock = threading.RLock()
@@ -413,6 +423,7 @@ class DaemonRuntime:
             try:
                 scanner_attempted = True
                 self.scanner.connect()
+                self._probe_scanner_identity()
 
                 psi_attempted = True
                 self.scanner.start_scanner_info_push(
@@ -474,6 +485,45 @@ class DaemonRuntime:
             self.audio.snapshot().endpoint,
             self.psi_interval_ms,
         )
+
+    def _probe_scanner_identity(self) -> None:
+        model = self._probe_scanner_identity_value(
+            "model",
+            self.scanner.get_model,
+        )
+        firmware = self._probe_scanner_identity_value(
+            "firmware",
+            self.scanner.get_firmware,
+        )
+        with self._state_lock:
+            self._scanner_model = model
+            self._scanner_firmware = firmware
+
+    def _probe_scanner_identity_value(
+        self,
+        name: str,
+        operation: Callable[..., object],
+    ) -> str | None:
+        try:
+            value = str(operation()).strip()
+        except Exception as error:
+            logger.warning(
+                "daemon scanner identity probe failed scanner=%s "
+                "field=%s error=%s",
+                self.scanner.endpoint,
+                name,
+                error.__class__.__name__,
+            )
+            return None
+        if value:
+            return value
+        logger.warning(
+            "daemon scanner identity probe returned an empty value "
+            "scanner=%s field=%s",
+            self.scanner.endpoint,
+            name,
+        )
+        return None
 
     def stop(self) -> None:
         failures: list[BaseException] = []
@@ -666,6 +716,8 @@ class DaemonRuntime:
         return DaemonRuntimeSnapshot(
             state=self._state,
             scanner_endpoint=self.scanner.endpoint,
+            scanner_model=self._scanner_model,
+            scanner_firmware=self._scanner_firmware,
             scanner_connected=self.scanner.connected,
             psi_interval_ms=self.psi_interval_ms,
             psi_active=self.scanner.psi_active,

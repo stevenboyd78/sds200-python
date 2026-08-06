@@ -175,11 +175,17 @@ historical Python class name.
 | `daemon.capabilities` | Supported versions, operations, operation groups, and limits |
 | `ping` | `{"pong": true}` |
 | `runtime.snapshot` | Complete authoritative `DaemonRuntimeSnapshot.as_dict()` payload |
-| `scanner.state` | Endpoint, connection and PSI state, and current radio state |
+| `scanner.state` | Endpoint, optional model and firmware identity, connection and PSI state, and current radio state |
 | `audio.health` | Audio-session and decoded-PCM router snapshots |
 
 `hello`, `daemon.capabilities`, and `ping` do not read the runtime snapshot.
 The remaining operations obtain one authoritative snapshot for that request.
+
+New daemon snapshots include `scanner_model` and `scanner_firmware` as
+non-empty strings when identity probes succeed, or `null` when an individual
+probe fails. Version 1 clients continue accepting older snapshots that omit
+these additive fields. A failed identity probe does not stop daemon-owned
+scanner control, PSI, or audio.
 
 ## Scanner control operations
 

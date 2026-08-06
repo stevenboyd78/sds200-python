@@ -697,6 +697,9 @@ def _validate_runtime_snapshot(result: Mapping[str, object]) -> None:
 
     _non_empty_string(result["state"], "state")
     _non_empty_string(result["scanner_endpoint"], "scanner_endpoint")
+    for name in ("scanner_model", "scanner_firmware"):
+        if name in result:
+            _optional_string(result[name], name)
     _boolean(result["scanner_connected"], "scanner_connected")
     _positive_integer(result["psi_interval_ms"], "psi_interval_ms")
     _boolean(result["psi_active"], "psi_active")

@@ -18,6 +18,9 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   RTSP/RTP decoded-PCM fanout, and dynamic destinations, with immutable snapshots,
   ordered transitions, partial-start cleanup, reverse-order shutdown, isolated
   listeners, and redacted failures.
+- Additive daemon snapshot identity fields for scanner model and firmware,
+  populated by independent nonfatal startup probes and accepted as optional by
+  version 1 API and event clients for backward compatibility.
 - Public `DaemonSignalController`, `DaemonProcess`, and immutable
   `DaemonProcessResult` contracts for foreground process ownership, SIGINT and
   SIGTERM stop requests, handler restoration, and deterministic cleanup that

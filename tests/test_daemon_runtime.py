@@ -38,7 +38,7 @@ class FakeScanner:
         self,
         order: list[str],
         *,
-        fail_at: Literal["connect", "psi"] | None = None,
+        fail_at: Literal["connect", "model", "firmware", "psi"] | None = None,
     ) -> None:
         self.order = order
         self.fail_at = fail_at
@@ -64,6 +64,20 @@ class FakeScanner:
         if self.fail_at == "connect":
             raise RuntimeError("secret scanner connection detail")
         self._connected = True
+
+    def get_model(self, *, timeout: float = 2.0) -> str:
+        assert timeout == 2.0
+        self.order.append("scanner.model")
+        if self.fail_at == "model":
+            raise RuntimeError("secret scanner model detail")
+        return "SDS200"
+
+    def get_firmware(self, *, timeout: float = 2.0) -> str:
+        assert timeout == 2.0
+        self.order.append("scanner.firmware")
+        if self.fail_at == "firmware":
+            raise RuntimeError("secret scanner firmware detail")
+        return "Version 1.26.01"
 
     def start_scanner_info_push(
         self,
@@ -206,12 +220,16 @@ def test_runtime_owns_startup_and_reverse_order_shutdown() -> None:
 
     assert order == [
         "scanner.connect",
+        "scanner.model",
+        "scanner.firmware",
         "psi.start",
         "router.start",
         "audio.start",
     ]
     running = runtime.snapshot()
     assert running.state is DaemonRuntimeState.RUNNING
+    assert running.scanner_model == "SDS200"
+    assert running.scanner_firmware == "Version 1.26.01"
     assert running.scanner_connected
     assert running.psi_active
     assert running.audio.running
@@ -222,6 +240,8 @@ def test_runtime_owns_startup_and_reverse_order_shutdown() -> None:
 
     assert order == [
         "scanner.connect",
+        "scanner.model",
+        "scanner.firmware",
         "psi.start",
         "router.start",
         "audio.start",
@@ -250,9 +270,35 @@ def test_runtime_owns_startup_and_reverse_order_shutdown() -> None:
 
     payload = stopped.as_dict()
     assert payload["state"] == "stopped"
+    assert payload["scanner_model"] == "SDS200"
+    assert payload["scanner_firmware"] == "Version 1.26.01"
     assert payload["radio_state"]["channel"] == "Primary"
     assert payload["audio"]["endpoint"] == "audio://scanner"
     assert json.loads(json.dumps(payload))["state"] == "stopped"
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_model", "expected_firmware"),
+    [
+        ("model", None, "Version 1.26.01"),
+        ("firmware", "SDS200", None),
+    ],
+)
+def test_runtime_identity_probe_failure_is_nonfatal(
+    failure: str,
+    expected_model: str | None,
+    expected_firmware: str | None,
+) -> None:
+    runtime, _, _, _, _ = make_runtime(scanner_fail_at=failure)
+
+    runtime.start()
+    snapshot = runtime.snapshot()
+
+    assert snapshot.state is DaemonRuntimeState.RUNNING
+    assert snapshot.scanner_model == expected_model
+    assert snapshot.scanner_firmware == expected_firmware
+
+    runtime.stop()
 
 
 @pytest.mark.parametrize("failure", ["connect", "psi", "audio"])

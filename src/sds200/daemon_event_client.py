@@ -391,6 +391,9 @@ def _validate_snapshot_payload(payload: Mapping[str, object]) -> None:
 
     _non_empty_string(payload["state"], "state")
     _non_empty_string(payload["scanner_endpoint"], "scanner_endpoint")
+    for name in ("scanner_model", "scanner_firmware"):
+        if name in payload:
+            _optional_string(payload[name], name)
     _boolean(payload["scanner_connected"], "scanner_connected")
     _positive_integer(payload["psi_interval_ms"], "psi_interval_ms")
     _boolean(payload["psi_active"], "psi_active")

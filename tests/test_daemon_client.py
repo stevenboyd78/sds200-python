@@ -30,6 +30,8 @@ class FakeSnapshot:
         return {
             "state": "running",
             "scanner_endpoint": "udp://192.0.2.25:50536",
+            "scanner_model": "SDS200",
+            "scanner_firmware": "Version 1.26.01",
             "scanner_connected": True,
             "psi_interval_ms": 500,
             "psi_active": True,
@@ -704,6 +706,86 @@ def test_client_rejects_malformed_runtime_snapshot(tmp_path: Path) -> None:
     )
 
     with pytest.raises(DaemonProtocolError, match="omitted required fields"):
+        client.runtime_snapshot()
+
+    thread.join(timeout=1.0)
+    assert client.connected is False
+
+
+@pytest.mark.parametrize(
+    "identity",
+    [
+        {},
+        {"scanner_model": None, "scanner_firmware": None},
+    ],
+)
+def test_client_accepts_optional_runtime_identity(
+    tmp_path: Path,
+    identity: dict[str, object],
+) -> None:
+    path = tmp_path / "optional-identity.sock"
+    snapshot = FakeSnapshot().as_dict()
+    snapshot.pop("scanner_model")
+    snapshot.pop("scanner_firmware")
+    snapshot.update(identity)
+    response = (
+        json.dumps(
+            {
+                "protocol": DAEMON_API_PROTOCOL,
+                "version": DAEMON_API_VERSION,
+                "request_id": "sdsctl-1",
+                "ok": True,
+                "result": snapshot,
+            }
+        )
+        + "\n"
+    ).encode("utf-8")
+    thread = start_scripted_server(path, response)
+    client = DaemonApiClient(
+        DaemonSocketLocation(path, DaemonSocketSource.EXPLICIT)
+    )
+
+    assert client.runtime_snapshot() == snapshot
+
+    client.close()
+    thread.join(timeout=1.0)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("scanner_model", ""),
+        ("scanner_model", 200),
+        ("scanner_firmware", ""),
+        ("scanner_firmware", False),
+    ],
+)
+def test_client_rejects_malformed_runtime_identity(
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
+    path = tmp_path / f"malformed-{field}.sock"
+    snapshot = FakeSnapshot().as_dict()
+    snapshot[field] = value
+    response = (
+        json.dumps(
+            {
+                "protocol": DAEMON_API_PROTOCOL,
+                "version": DAEMON_API_VERSION,
+                "request_id": "sdsctl-1",
+                "ok": True,
+                "result": snapshot,
+            }
+        )
+        + "\n"
+    ).encode("utf-8")
+    thread = start_scripted_server(path, response)
+    client = DaemonApiClient(
+        DaemonSocketLocation(path, DaemonSocketSource.EXPLICIT)
+    )
+
+    with pytest.raises(DaemonProtocolError, match=field):
         client.runtime_snapshot()
 
     thread.join(timeout=1.0)

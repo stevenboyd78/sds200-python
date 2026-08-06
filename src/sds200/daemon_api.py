@@ -476,6 +476,8 @@ class DaemonReadOnlyApi:
         if operation is DaemonApiOperation.SCANNER_STATE:
             return {
                 "scanner_endpoint": snapshot["scanner_endpoint"],
+                "scanner_model": snapshot["scanner_model"],
+                "scanner_firmware": snapshot["scanner_firmware"],
                 "scanner_connected": snapshot["scanner_connected"],
                 "psi_interval_ms": snapshot["psi_interval_ms"],
                 "psi_active": snapshot["psi_active"],

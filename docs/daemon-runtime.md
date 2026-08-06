@@ -140,6 +140,12 @@ One runtime owns:
 5. any playback, recording, streaming, or integration sinks attached to the
    router.
 
+After acquiring the scanner connection, the runtime probes model and firmware
+once before starting PSI. Each probe is bounded by the scanner command timeout
+and is independently nonfatal. Authoritative snapshots retain successful
+values and serialize a failed or empty probe as `null`, without surrendering
+scanner ownership or interrupting PSI and audio startup.
+
 The scanner's PCMU audio is accepted once. Each accepted packet is first
 published to the bounded PCMU stream with its original payload and RTP continuity
 metadata, then decoded once and submitted to the router as 8 kHz mono signed
