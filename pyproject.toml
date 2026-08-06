@@ -52,8 +52,15 @@ tui = [
   "textual>=8.2,<9",
 ]
 
+web = [
+  "fastapi>=0.139,<1",
+  "uvicorn>=0.51,<1",
+]
+
 dev = [
   "build>=1.2",
+  "fastapi>=0.139,<1",
+  "httpx2>=2.7,<3",
   "mypy>=1.10",
   "pytest>=8.0",
   "pytest-cov>=5.0",
@@ -61,6 +68,7 @@ dev = [
   "textual>=8.2,<9",
   "twine>=6.0",
   "types-pyserial>=3.5.0.20250326",
+  "uvicorn>=0.51,<1",
 ]
 
 [project.urls]

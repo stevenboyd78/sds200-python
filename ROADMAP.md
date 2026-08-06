@@ -69,6 +69,10 @@ assignment may change before implementation begins.
 
 ### Milestone 20 — Web dashboard, themes, and Home Assistant
 
+- Milestone 20.1 completed the optional FastAPI and Uvicorn service foundation,
+  loopback-only `sdsctl web` command, versioned health, daemon-status,
+  authoritative-snapshot, and OpenAPI routes, redacted daemon errors, package
+  extras, documentation, and host-independent regression coverage.
 - Add a responsive browser dashboard backed by the daemon API.
 - Bind to localhost by default.
 - Require explicit authentication and transport-security planning before remote
