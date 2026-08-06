@@ -103,10 +103,25 @@ sdsctl daemon-client audio \
   --output scanner-audio.wav
 ```
 
-This explicit workflow connects only to the private `pcmu.sock` service, decodes
-each accepted payload locally, and reuses the same bounded playback and WAV
-sinks. See the [local daemon PCMU stream guide](daemon-pcmu.md) for framing,
-loss, socket, and option details.
+This explicit CLI workflow connects only to the private `pcmu.sock` service,
+decodes each accepted payload locally, and reuses the same bounded playback and
+WAV sinks.
+
+The TUI can consume the same daemon-owned stream while retaining its playback,
+recording, metadata, organization, and saved-recording library behavior:
+
+```bash
+sdsctl tui --daemon-client \
+  --audio-playback \
+  --audio-directory ~/recordings \
+  --audio-metadata
+```
+
+The daemon-backed TUI also uses `daemon.sock` for capability negotiation,
+authoritative snapshots, and safe controls, plus `events.sock` for ordered live
+state. It does not open scanner hardware or another RTSP/RTP session. See the
+[local daemon PCMU stream guide](daemon-pcmu.md) for framing, loss, socket, and
+option details.
 
 Overflow drops the oldest queued playback audio to preserve live latency.
 Underflow fills the device request with silence. Both conditions are counted in
@@ -186,9 +201,14 @@ publishes accepted packet payloads without changing the event protocol.
 Milestone 19.9 adds explicit `sdsctl daemon-client audio`, which consumes that
 daemon-owned PCMU stream, decodes each accepted payload locally, and reuses the
 existing playback and WAV sinks without opening another scanner RTSP/RTP session
-or daemon API connection. The top-level `audio`, `asterisk-moh`, monitor, and TUI
-workflows remain standalone. TUI daemon migration and decoded-PCM daemon
-subscriptions remain follow-on work. See the
+or daemon API connection. Milestone 19.10 adds explicit
+`sdsctl tui --daemon-client` operation using the same PCMU stream together with
+the authoritative daemon API and ordered event service. Live playback,
+recording, metadata, saved-recording playback, and safe scanner controls remain
+local TUI features, while scanner, PSI, and RTSP/RTP ownership remain in the
+daemon. The top-level `audio`, `asterisk-moh`, monitor, and standalone TUI
+workflows are unchanged. Decoded-PCM daemon subscriptions remain follow-on work.
+See the
 [daemon runtime and process guide](daemon-runtime.md),
 [local daemon API guide](daemon-api.md),
 [local daemon event stream guide](daemon-events.md), and

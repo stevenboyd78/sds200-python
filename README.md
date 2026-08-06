@@ -294,6 +294,10 @@ sdsctl daemon-client audio --play
 sdsctl daemon-client audio \
   --output scanner-audio.wav \
   --duration 30
+sdsctl tui --daemon-client
+sdsctl tui --daemon-client \
+  --audio-playback \
+  --audio-directory ~/recordings
 ```
 
 API options such as `--socket-path` precede the client action. Event watching
@@ -333,12 +337,27 @@ preserved API health, and shut down with all three sockets removed. Its bounded
 local playback queue reported six overflows and 2,088 dropped PCM bytes without
 underflow; the daemon PCMU stream itself remained loss-free.
 
-The top-level scanner commands, direct scanner-audio commands, and TUI remain
-standalone. The explicit `sdsctl daemon-client` command now provides daemon-owned
-status, authoritative snapshot, safe-control, ordered event-watch, and PCMU
-playback or WAV-recording workflows. Decoded-PCM subscriptions, automatic daemon
-selection, destination activation, and TUI migration remain follow-on work. The
-initial router has no attached destinations. See the
+The top-level scanner commands and direct scanner-audio commands remain
+standalone. The TUI also remains standalone by default; add `--daemon-client` to
+explicitly use a foreground daemon. In daemon mode, the TUI reads identity and
+authoritative initial state from `daemon.sock`, follows ordered updates from
+`events.sock`, delegates safe controls through the daemon API, and consumes
+daemon-owned PCMU from `pcmu.sock` for live playback, recording, metadata, and
+the saved-recording library. It does not open scanner hardware or a second
+RTSP/RTP session. Closing the TUI closes only its local clients and leaves
+daemon ownership running. Reconnect requests are delegated through the daemon
+API. Direct TUI RTSP/RTP options are rejected in daemon mode.
+
+This path was physically validated on August 5, 2026, with a physical SDS200.
+The daemon-backed TUI rendered cleanly, followed live state, completed a safe
+control, automatically started playback, toggled playback with `A`, and produced
+a valid 53.120-second 8 kHz mono WAV with an adjacent metadata sidecar. Quitting
+the TUI left scanner, PSI, audio, router, and daemon ownership healthy. A later
+controlled `SIGTERM` removed `daemon.sock`, `events.sock`, and `pcmu.sock`.
+
+Decoded-PCM subscriptions, automatic daemon selection, and destination
+activation remain follow-on work. The initial daemon router has no attached
+destinations. See the
 [daemon runtime and process guide](docs/daemon-runtime.md),
 [local daemon API guide](docs/daemon-api.md),
 [local daemon event stream guide](docs/daemon-events.md),

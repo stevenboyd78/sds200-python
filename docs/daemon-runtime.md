@@ -33,9 +33,11 @@ limited to the directly owned SDS200 UDP control transport.
 Milestone 19.9 adds explicit CLI daemon-client status, authoritative snapshot,
 safe-control, ordered event-watch, and PCMU playback or WAV-recording workflows
 while preserving the standalone top-level scanner and direct-audio commands.
-Decoded-PCM CLI subscriptions, automatic daemon discovery and selection,
-destination activation, and TUI migration remain follow-on work. The process
-does not fork or create a pidfile.
+Milestone 19.10 adds explicit daemon-backed TUI operation using the API, event,
+and PCMU services while preserving standalone TUI ownership as the default.
+Decoded-PCM CLI subscriptions, automatic daemon discovery and selection, and
+destination activation remain follow-on work. The process does not fork or
+create a pidfile.
 
 ## Foreground process contract
 
@@ -60,7 +62,7 @@ reads and explicit safe controls. The PCMU stream subscribes to the same
 authoritative transport used by the decoded-PCM fanout. The router begins without
 destinations because daemon-client audio consumes PCMU on the client side.
 Daemon-owned destination activation, remote-profile activation, decoded-PCM
-subscriptions, and TUI migration remain follow-on work.
+subscriptions remain follow-on work.
 
 The audio endpoint must come from either `--host` or a network-capable SDS200
 profile. A fallback profile may select serial control at runtime, but its saved
@@ -402,16 +404,24 @@ bounded playback queue wrote 159,942 bytes and reported six overflows dropping
 client exited, and controlled `SIGTERM` removed all three sockets with exit
 status 0.
 
+### Daemon-backed TUI validation
+
+A physical SDS200 run on August 5, 2026, exercised
+`sdsctl tui --daemon-client` through explicit API, event, and PCMU sockets. The
+TUI rendered cleanly, followed live scanner state, completed a safe control,
+automatically started playback, toggled playback with `A`, and finalized a
+53.120-second 8 kHz mono WAV plus metadata. Quitting the TUI left the original
+daemon process, scanner connection, PSI, RTSP/RTP audio, and decoded-PCM router
+running. Controlled `SIGTERM` subsequently removed all three sockets.
+
 ## Follow-on work
 
 Later Milestone 19 work may:
 
 - add bounded decoded-PCM subscriptions for local clients;
 - activate configured playback, recording, and remote destinations;
-- add daemon discovery and automatic client selection;
-- add decoded-PCM CLI client workflows; and
-- allow the TUI to consume daemon-owned sessions while preserving an explicit
-  standalone mode.
+- add daemon discovery and automatic client selection; and
+- add decoded-PCM CLI client workflows.
 
-Decoded-PCM subscription, destination activation, reload, discovery, automatic
-selection, and TUI migration remain outside Milestone 19.9.
+Decoded-PCM subscription, destination activation, reload, discovery, and
+automatic selection remain outside Milestone 19.10.

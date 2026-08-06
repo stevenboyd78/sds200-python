@@ -5,8 +5,9 @@ scanners, and version 0.14 added integrated SDS200 network-audio recording.
 Version 0.16 adds immediate live playback, repeatable recordings, a saved
 recording library, recording metadata sidecars, a bounded in-app operational log
 panel, and mode-aware Quick Search, Close Call, Weather, and Tone Out panels.
-Textual and PortAudio remain optional so the core installation
-stays lightweight.
+Milestone 19.10 adds explicit daemon-backed operation while preserving
+standalone scanner ownership as the default. Textual and PortAudio remain
+optional so the core installation stays lightweight.
 
 ## Interface previews
 
@@ -58,9 +59,25 @@ sdsctl --profile home tui
 sdsctl --replay tests/fixtures/replay/sds100-tui-live.jsonl tui
 ```
 
-The TUI starts continuous PSI scanner-information updates after loading the model,
-firmware, and initial GSI snapshot. The default 500 ms update interval and 3 second
-freshness threshold may be adjusted independently:
+When a foreground daemon already owns the SDS200, explicitly select daemon mode:
+
+```bash
+sdsctl tui --daemon-client
+sdsctl tui --daemon-client \
+  --audio-playback \
+  --audio-directory ~/recordings \
+  --audio-metadata
+```
+
+Standalone mode starts continuous PSI scanner-information updates after loading
+the model, firmware, and initial GSI snapshot. Daemon mode obtains authoritative
+identity and initial state from `daemon.sock`, follows ordered state and
+connection updates from `events.sock`, delegates safe controls through the API,
+and consumes audio from `pcmu.sock`. It does not open scanner hardware or
+another RTSP/RTP session.
+
+The default 500 ms update interval and 3 second freshness threshold may be
+adjusted independently:
 
 ```bash
 sdsctl --host 192.168.0.251 tui --interval 250 --stale-after 2
@@ -135,9 +152,11 @@ coverage rather than claimed physical validation.
 
 Keyboard shortcuts:
 
-- `Q`: exit, stop PSI, unsubscribe callbacks, and close the connection
+- `Q`: exit and close only resources owned by this TUI; daemon mode leaves the
+  foreground daemon running
 - `T`: toggle between the built-in dark and light semantic palettes
-- `C`: restart the control transport and resume the active PSI interval
+- `C`: request bounded daemon reconnect in daemon mode, or restart the
+  standalone control transport
 - `R`: start or stop an SDS200 network-audio WAV recording
 - `A`: toggle live scanner playback without stopping the RTSP/RTP stream
 - `L`: show or hide the newest compatible recordings
@@ -214,9 +233,10 @@ remained usable; and the TUI exited cleanly.
 
 ## Network audio playback, recording, and library
 
-TUI audio requires an explicit SDS200 network host. Every such TUI session exposes
-manual live and saved playback controls. Request automatic live playback and create
-repeatable timestamped recordings in one directory:
+Standalone TUI audio requires an explicit SDS200 network host. Daemon-backed TUI
+audio instead consumes the daemon-owned PCMU socket. Both modes expose the same
+manual live and saved playback controls. Request automatic live playback and
+create repeatable timestamped recordings in one directory:
 
 ```bash
 sdsctl --host 192.168.0.251 tui \
@@ -244,9 +264,11 @@ Press `A` to start live playback manually, even when `--audio-playback` was not
 provided. The output device opens only when playback first starts and remains
 prepared while playback is muted, avoiding repeated PortAudio initialization.
 
-Use `--audio-playback` to request automatic startup after the scanner is connected
-and the first live PSI update has been displayed. Select a different output with
-`--audio-device`, and adjust the bounded playback queue with `--audio-buffer-ms`.
+Use `--audio-playback` to request automatic startup after connected live state is
+available. In standalone mode this follows the first live PSI update; in daemon
+mode it follows the authoritative snapshot and ordered event stream. Select a
+different output with `--audio-device`, and adjust the bounded playback queue
+with `--audio-buffer-ms`.
 
 Press `R` to start and stop recordings. Directory mode generates local-time names
 such as `sds200-20260729-025501.wav`; collisions add `-2`, `-3`, and later suffixes.
@@ -272,9 +294,18 @@ active recording. Previously enabled live playback resumes automatically.
 The audio panel reports live and saved playback state, active output, elapsed time,
 packet and sample totals, completed-session count, last completed file, recording
 history, playback underflows and drops, and RTP reliability counters. TUI shutdown
-finalizes an active WAV, stops saved playback, closes the output device, and tears
-down the shared RTSP/RTP stream. Advanced transport options remain available as
-`--audio-rtsp-port`, `--audio-rtp-bind-address`, `--audio-rtp-bind-port`, and
-`--audio-keepalive-interval`.
+finalizes an active WAV, stops saved playback, closes the output device, and closes
+the TUI-owned audio client. Standalone mode also tears down its RTSP/RTP stream;
+daemon mode leaves the daemon-owned scanner, PSI, RTSP/RTP audio, router, and
+other clients running. Advanced RTSP/RTP options remain available only in
+standalone mode as `--audio-rtsp-port`, `--audio-rtp-bind-address`,
+`--audio-rtp-bind-port`, and `--audio-keepalive-interval`.
+
+Daemon-backed operation was physically validated on August 5, 2026, with a
+physical SDS200. The initial display rendered cleanly, live scanner state and a
+safe control flowed through the daemon, automatic playback and `A`-key toggling
+worked, and `R` finalized a valid 53.120-second 8 kHz mono WAV with metadata.
+Quitting the TUI left the original daemon and its scanner, PSI, audio, and router
+ownership running. Controlled `SIGTERM` later removed all three daemon sockets.
 
 Project authorship and AI-assisted development are documented in [Acknowledgments](../ACKNOWLEDGMENTS.md).

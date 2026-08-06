@@ -255,9 +255,12 @@ The event service and Milestone 19.9 client still do not add:
 - scanner-control operations on the event socket;
 - TCP or remote authentication;
 - daemon discovery or automatic client selection;
-- TUI daemon-client migration;
 - decoded-PCM CLI client workflows; or
 - destination activation and configuration reload.
+
+Milestone 19.10 uses this ordered event stream for daemon-backed TUI
+radio-state and connection updates. Closing the TUI closes its event client
+without stopping the daemon event service or scanner ownership.
 
 ## Physical SDS200 validation
 

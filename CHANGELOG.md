@@ -71,6 +71,14 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   consume daemon-owned PCMU without opening scanner hardware or the daemon API,
   reuse existing bounded PCM sinks, support optional duration and output-device
   selection, and report stream, queue-loss, RTP, playback, and output summaries.
+- Public `DaemonPcmuAudioTransport` adaptation of daemon-owned PCMU to the
+  renderer-neutral audio-stream contract, preserving observation timestamps,
+  daemon queue and RTP continuity statistics, bounded lifecycle, and isolated
+  receive and callback failures.
+- Explicit `sdsctl tui --daemon-client` operation using authoritative daemon
+  snapshots, ordered events, safe controls, and daemon-owned PCMU audio without
+  opening scanner hardware or a second RTSP/RTP session. Standalone TUI
+  ownership remains the default, and closing the TUI leaves the daemon running.
 - Foreground daemon options for event socket location, subscriber queue depth,
   concurrent event clients, maximum encoded event size, send timeout, and worker
   shutdown deadline.
@@ -125,6 +133,12 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   API health, and completed clean `SIGTERM` removal of all three sockets. The
   bounded local playback queue wrote 159,942 bytes and reported six overflows
   dropping 2,088 PCM bytes without underflow.
+- Physical SDS200 validation of `sdsctl tui --daemon-client` using explicit
+  API, event, and PCMU sockets. The TUI rendered cleanly, followed live state,
+  completed a safe scanner control, automatically started playback, toggled
+  playback with `A`, and finalized a 53.120-second 8 kHz mono WAV plus metadata.
+  Quitting the TUI left scanner, PSI, RTSP/RTP audio, router, and daemon
+  ownership running. Controlled `SIGTERM` then removed all three sockets.
 
 ### Changed
 
