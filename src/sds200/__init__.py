@@ -118,7 +118,10 @@ from .daemon_client import (
     DaemonApiClient,
 )
 from .daemon_destination_activation import (
+    DaemonDestinationCleanupFailure,
+    DaemonDestinationCoordinator,
     DaemonDestinationFactory,
+    DaemonDestinationReplacementResult,
     DaemonDestinationResources,
 )
 from .daemon_destinations import (
@@ -611,9 +614,12 @@ __all__ = [
     "DaemonDestination",
     "DaemonDestinationChange",
     "DaemonDestinationChangeAction",
+    "DaemonDestinationCleanupFailure",
     "DaemonDestinationConfiguration",
+    "DaemonDestinationCoordinator",
     "DaemonDestinationFactory",
     "DaemonDestinationKind",
+    "DaemonDestinationReplacementResult",
     "DaemonDestinationResources",
     "DaemonDestinationReplacementPreview",
     "DaemonEvent",
