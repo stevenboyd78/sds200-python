@@ -6,7 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from sds200 import DaemonTuiRadio, cli
+from sds200 import (
+    DaemonPcmuAudioTransport,
+    DaemonTuiRadio,
+    cli,
+)
 from sds200.models import ScannerInfo
 from sds200.radio import SDSScanner
 from sds200.state import RadioStateSnapshot
@@ -127,6 +131,12 @@ def test_tui_parser_accepts_explicit_daemon_client_options() -> None:
             "8192",
             "--daemon-max-event-bytes",
             "4096",
+            "--daemon-pcmu-socket-path",
+            "/tmp/sdsctl-pcmu.sock",
+            "--daemon-pcmu-max-endpoint-bytes",
+            "2048",
+            "--daemon-pcmu-max-frame-bytes",
+            "16384",
         ]
     )
 
@@ -136,12 +146,17 @@ def test_tui_parser_accepts_explicit_daemon_client_options() -> None:
     assert args.daemon_timeout == 1.5
     assert args.daemon_max_response_bytes == 8192
     assert args.daemon_max_event_bytes == 4096
+    assert args.daemon_pcmu_socket_path == Path("/tmp/sdsctl-pcmu.sock")
+    assert args.daemon_pcmu_max_endpoint_bytes == 2048
+    assert args.daemon_pcmu_max_frame_bytes == 16384
 
 
 def test_tui_cli_uses_daemon_without_opening_scanner_or_rtsp(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     captured: dict[str, object] = {}
+    output = tmp_path / "daemon-tui.wav"
 
     class FakeApiClient:
         instances: list[FakeApiClient] = []
@@ -208,6 +223,35 @@ def test_tui_cli_uses_daemon_without_opening_scanner_or_rtsp(
         def close(self) -> None:
             self.closed = True
 
+    class FakePcmuClient:
+        instances: list[FakePcmuClient] = []
+
+        def __init__(
+            self,
+            location: object,
+            *,
+            timeout: float,
+            max_endpoint_bytes: int,
+            max_frame_bytes: int,
+        ) -> None:
+            self.location = location
+            self.timeout = timeout
+            self.max_endpoint_bytes = max_endpoint_bytes
+            self.max_frame_bytes = max_frame_bytes
+            self.connected = False
+            self.close_calls = 0
+            self.instances.append(self)
+
+        def connect(self) -> object:
+            pytest.fail("run_tui stub must not connect to daemon PCMU")
+
+        def receive(self) -> object:
+            pytest.fail("run_tui stub must not receive daemon PCMU")
+
+        def close(self) -> None:
+            self.close_calls += 1
+            self.connected = False
+
     def unexpected_selected_radio(
         *args: object,
         **kwargs: object,
@@ -227,6 +271,7 @@ def test_tui_cli_uses_daemon_without_opening_scanner_or_rtsp(
 
     monkeypatch.setattr(cli, "DaemonApiClient", FakeApiClient)
     monkeypatch.setattr(cli, "DaemonEventClient", FakeEventClient)
+    monkeypatch.setattr(cli, "DaemonPcmuClient", FakePcmuClient)
     monkeypatch.setattr(cli, "selected_radio", unexpected_selected_radio)
     monkeypatch.setattr(
         cli,
@@ -244,12 +289,25 @@ def test_tui_cli_uses_daemon_without_opening_scanner_or_rtsp(
                 "/tmp/sdsctl-daemon.sock",
                 "--daemon-event-socket-path",
                 "/tmp/sdsctl-events.sock",
+                "--daemon-pcmu-socket-path",
+                "/tmp/sdsctl-pcmu.sock",
                 "--daemon-timeout",
                 "1.5",
                 "--daemon-max-response-bytes",
                 "8192",
                 "--daemon-max-event-bytes",
                 "4096",
+                "--daemon-pcmu-max-endpoint-bytes",
+                "2048",
+                "--daemon-pcmu-max-frame-bytes",
+                "16384",
+                "--audio-output",
+                str(output),
+                "--audio-playback",
+                "--audio-device",
+                "3",
+                "--audio-buffer-ms",
+                "400",
             ],
             environ={},
         )
@@ -260,7 +318,6 @@ def test_tui_cli_uses_daemon_without_opening_scanner_or_rtsp(
     assert captured["model"] == "SDS200"
     assert captured["firmware"] == "Version 1.26.01"
     assert captured["connected"] is True
-    assert captured["audio_session"] is None
     assert isinstance(captured["radio"], DaemonTuiRadio)
 
     snapshot = captured["snapshot"]
@@ -268,8 +325,18 @@ def test_tui_cli_uses_daemon_without_opening_scanner_or_rtsp(
     assert snapshot.channel == "Primary"
     assert snapshot.rssi == -74.0
 
+    session = captured["audio_session"]
+    assert isinstance(session, TuiAudioSession)
+    assert session.path_policy.output == output
+    assert session.live_playback_enabled is True
+
+    transport = session.stream.transport
+    assert isinstance(transport, DaemonPcmuAudioTransport)
+
     api_client = FakeApiClient.instances[0]
     event_client = FakeEventClient.instances[0]
+    pcmu_client = FakePcmuClient.instances[0]
+
     assert api_client.location.path == Path("/tmp/sdsctl-daemon.sock")
     assert api_client.timeout == 1.5
     assert api_client.max_response_bytes == 8192
@@ -282,6 +349,14 @@ def test_tui_cli_uses_daemon_without_opening_scanner_or_rtsp(
     assert event_client.max_event_bytes == 4096
     assert event_client.receive_calls == 0
     assert event_client.closed is True
+
+    assert transport.client is pcmu_client
+    assert pcmu_client.location.path == Path("/tmp/sdsctl-pcmu.sock")
+    assert pcmu_client.timeout == 1.5
+    assert pcmu_client.max_endpoint_bytes == 2048
+    assert pcmu_client.max_frame_bytes == 16384
+    assert pcmu_client.connected is False
+    assert pcmu_client.close_calls == 0
 
 
 @pytest.mark.parametrize(
@@ -300,14 +375,23 @@ def test_tui_daemon_client_rejects_scanner_selectors(
     assert "not used with the daemon-backed TUI" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    "option",
+    [
+        "--daemon-socket-path",
+        "--daemon-event-socket-path",
+        "--daemon-pcmu-socket-path",
+    ],
+)
 def test_tui_daemon_options_require_explicit_mode(
+    option: str,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     assert (
         cli.main(
             [
                 "tui",
-                "--daemon-socket-path",
+                option,
                 "/tmp/sdsctl-daemon.sock",
             ],
             environ={},
@@ -317,7 +401,16 @@ def test_tui_daemon_options_require_explicit_mode(
     assert "require --daemon-client" in capsys.readouterr().err
 
 
-def test_tui_daemon_client_rejects_direct_audio_options(
+@pytest.mark.parametrize(
+    "options",
+    [
+        ["--audio-rtsp-port", "8554"],
+        ["--audio-rtp-bind-port", "40000"],
+        ["--audio-keepalive-interval", "10"],
+    ],
+)
+def test_tui_daemon_client_rejects_direct_rtsp_audio_options(
+    options: list[str],
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     assert (
@@ -325,10 +418,10 @@ def test_tui_daemon_client_rejects_direct_audio_options(
             [
                 "tui",
                 "--daemon-client",
-                "--audio-playback",
+                *options,
             ],
             environ={},
         )
         == 2
     )
-    assert "Daemon-backed TUI audio is not enabled" in capsys.readouterr().err
+    assert "direct RTSP/RTP audio options" in capsys.readouterr().err

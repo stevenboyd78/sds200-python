@@ -71,6 +71,7 @@ from .daemon_ipc import (
     resolve_daemon_pcmu_socket_location,
     resolve_daemon_socket_location,
 )
+from .daemon_pcmu_audio import DaemonPcmuAudioTransport
 from .daemon_pcmu_client import DaemonPcmuClient
 from .daemon_pcmu_server import (
     DAEMON_PCMU_DEFAULT_MAX_CLIENTS,
@@ -1144,7 +1145,7 @@ def build_parser(
         default=None,
         metavar="SECONDS",
         help=(
-            "Daemon API and event connection timeout "
+            "Daemon API, event, and PCMU connection timeout "
             f"(default: {DAEMON_API_CLIENT_DEFAULT_TIMEOUT})"
         ),
     )
@@ -1166,6 +1167,35 @@ def build_parser(
         help=(
             "Maximum accepted daemon event size "
             f"(default: {DAEMON_EVENT_DEFAULT_MAX_BYTES})"
+        ),
+    )
+    tui.add_argument(
+        "--daemon-pcmu-socket-path",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Explicit daemon PCMU socket path used with --daemon-client; "
+            "otherwise use XDG_RUNTIME_DIR or the user state directory"
+        ),
+    )
+    tui.add_argument(
+        "--daemon-pcmu-max-endpoint-bytes",
+        type=_positive_integer,
+        default=None,
+        metavar="BYTES",
+        help=(
+            "Maximum accepted daemon PCMU endpoint size "
+            f"(default: {PCMU_STREAM_DEFAULT_MAX_ENDPOINT_BYTES})"
+        ),
+    )
+    tui.add_argument(
+        "--daemon-pcmu-max-frame-bytes",
+        type=_positive_integer,
+        default=None,
+        metavar="BYTES",
+        help=(
+            "Maximum accepted daemon PCMU frame size "
+            f"(default: {PCMU_STREAM_DEFAULT_MAX_FRAME_BYTES})"
         ),
     )
     tui.add_argument(
@@ -3076,6 +3106,9 @@ def _reject_standalone_tui_daemon_options(
             args.daemon_timeout,
             args.daemon_max_response_bytes,
             args.daemon_max_event_bytes,
+            args.daemon_pcmu_socket_path,
+            args.daemon_pcmu_max_endpoint_bytes,
+            args.daemon_pcmu_max_frame_bytes,
         )
     ):
         raise ValueError(
@@ -3133,31 +3166,21 @@ def _reject_daemon_tui_scanner_options(
         )
 
 
-def _reject_daemon_tui_audio_options(
+def _reject_daemon_tui_rtsp_options(
     args: argparse.Namespace,
 ) -> None:
-    audio_requested = any(
+    direct_rtsp_requested = any(
         (
-            args.audio_output is not None,
-            args.audio_directory is not None,
-            args.audio_template is not None,
-            args.audio_organize_by is not None,
-            args.audio_force,
-            args.audio_metadata,
-            args.audio_playback,
-            args.audio_device is not None,
-            args.audio_buffer_ms != 250,
-            args.audio_history_limit != 100,
             args.audio_rtsp_port != DEFAULT_RTSP_PORT,
             bool(args.audio_rtp_bind_address),
             args.audio_rtp_bind_port != 0,
             args.audio_keepalive_interval != 15.0,
         )
     )
-    if audio_requested:
+    if direct_rtsp_requested:
         raise ValueError(
-            "Daemon-backed TUI audio is not enabled in this client slice; "
-            "omit TUI audio options."
+            "Daemon-backed TUI audio consumes the daemon PCMU socket; "
+            "direct RTSP/RTP audio options are not used."
         )
 
 
@@ -3179,9 +3202,24 @@ def _run_tui(
             ) from exc
         raise
 
+    if args.audio_force and args.audio_output is None:
+        raise ValueError("--audio-force requires --audio-output")
+    if args.audio_template is not None and args.audio_directory is None:
+        raise ValueError("--audio-template requires --audio-directory")
+    if args.audio_organize_by is not None and args.audio_directory is None:
+        raise ValueError("--audio-organize-by requires --audio-directory")
+    if (
+        args.audio_metadata
+        and args.audio_output is None
+        and args.audio_directory is None
+    ):
+        raise ValueError(
+            "--audio-metadata requires --audio-output or --audio-directory"
+        )
+
     if args.daemon_client:
         _reject_daemon_tui_scanner_options(args)
-        _reject_daemon_tui_audio_options(args)
+        _reject_daemon_tui_rtsp_options(args)
 
         timeout = (
             DAEMON_API_CLIENT_DEFAULT_TIMEOUT
@@ -3195,6 +3233,11 @@ def _run_tui(
         )
         event_location = resolve_daemon_event_socket_location(
             args.daemon_event_socket_path,
+            environ=environ,
+            configuration_paths=configuration_paths,
+        )
+        pcmu_location = resolve_daemon_pcmu_socket_location(
+            args.daemon_pcmu_socket_path,
             environ=environ,
             configuration_paths=configuration_paths,
         )
@@ -3216,6 +3259,20 @@ def _run_tui(
                 else args.daemon_max_event_bytes
             ),
         )
+        pcmu_client = DaemonPcmuClient(
+            pcmu_location,
+            timeout=timeout,
+            max_endpoint_bytes=(
+                PCMU_STREAM_DEFAULT_MAX_ENDPOINT_BYTES
+                if args.daemon_pcmu_max_endpoint_bytes is None
+                else args.daemon_pcmu_max_endpoint_bytes
+            ),
+            max_frame_bytes=(
+                PCMU_STREAM_DEFAULT_MAX_FRAME_BYTES
+                if args.daemon_pcmu_max_frame_bytes is None
+                else args.daemon_pcmu_max_frame_bytes
+            ),
+        )
 
         with DaemonTuiRadio(api_client, event_client) as radio:
             hello = api_client.hello()
@@ -3224,13 +3281,42 @@ def _run_tui(
                 DaemonApiOperation.RUNTIME_SNAPSHOT,
             )
             initial = radio.initialize(api_client.runtime_snapshot())
+            daemon_audio_session = TuiAudioSession(
+                AudioStream(DaemonPcmuAudioTransport(pcmu_client)),
+                RecordingPathPolicy(
+                    output=(
+                        args.audio_output.expanduser()
+                        if args.audio_output is not None
+                        else None
+                    ),
+                    directory=(
+                        args.audio_directory.expanduser()
+                        if args.audio_directory is not None
+                        else None
+                    ),
+                    template=(
+                        args.audio_template or DEFAULT_RECORDING_TEMPLATE
+                    ),
+                    overwrite=args.audio_force,
+                    organization=(
+                        args.audio_organize_by
+                        or RecordingOrganizationPolicy()
+                    ),
+                ),
+                live_playback=args.audio_playback,
+                device=args.audio_device,
+                buffer_ms=args.audio_buffer_ms,
+                history_limit=args.audio_history_limit,
+                metadata=args.audio_metadata,
+                scanner=initial.model,
+            )
             run_tui(
                 endpoint=initial.endpoint,
                 model=initial.model,
                 firmware=initial.firmware,
                 snapshot=initial.snapshot,
                 radio=radio,
-                audio_session=None,
+                audio_session=daemon_audio_session,
                 interval_ms=args.interval,
                 stale_after=args.stale_after,
                 psi_auto_recover=args.psi_auto_recover,
@@ -3244,20 +3330,6 @@ def _run_tui(
 
     _reject_standalone_tui_daemon_options(args)
 
-    if args.audio_force and args.audio_output is None:
-        raise ValueError("--audio-force requires --audio-output")
-    if args.audio_template is not None and args.audio_directory is None:
-        raise ValueError("--audio-template requires --audio-directory")
-    if args.audio_organize_by is not None and args.audio_directory is None:
-        raise ValueError("--audio-organize-by requires --audio-directory")
-    if (
-        args.audio_metadata
-        and args.audio_output is None
-        and args.audio_directory is None
-    ):
-        raise ValueError(
-            "--audio-metadata requires --audio-output or --audio-directory"
-        )
     audio_requested = args.host is not None or any(
         (
             args.audio_output is not None,

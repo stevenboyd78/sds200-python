@@ -154,6 +154,10 @@ from .daemon_ipc import (
     resolve_daemon_pcmu_socket_location,
     resolve_daemon_socket_location,
 )
+from .daemon_pcmu_audio import (
+    DaemonPcmuAudioStatistics,
+    DaemonPcmuAudioTransport,
+)
 from .daemon_pcmu_client import (
     DAEMON_PCMU_CLIENT_DEFAULT_TIMEOUT,
     DaemonPcmuClient,
@@ -590,6 +594,8 @@ __all__ = [
     "DaemonEventStream",
     "DaemonTuiBootstrap",
     "DaemonTuiRadio",
+    "DaemonPcmuAudioStatistics",
+    "DaemonPcmuAudioTransport",
     "DaemonPcmuClient",
     "DaemonPcmuClientSnapshot",
     "DaemonPcmuServer",
