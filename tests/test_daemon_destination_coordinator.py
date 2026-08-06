@@ -232,6 +232,73 @@ def resources(
     )
 
 
+def test_coordinator_start_activates_initial_configuration_once() -> None:
+    order: list[str] = []
+    runtime = FakeRuntime(order)
+    factory = FakeFactory()
+    destination = playback("speakers")
+    sink = FakeSink("daemon:speakers", order)
+    factory.entries["speakers"] = resources(destination, sink)
+
+    coordinator = DaemonDestinationCoordinator(
+        runtime,  # type: ignore[arg-type]
+        factory=factory,
+        initial_configuration=configuration(destination),
+    )
+
+    first = coordinator.start()
+    second = coordinator.start()
+
+    assert first.changed
+    assert second.changed is False
+    assert factory.builds == ["speakers"]
+    assert runtime.attached == [sink]
+    assert sink.start_calls == 1
+
+    coordinator.stop()
+    assert coordinator.closed
+    assert not sink.running
+
+
+def test_coordinator_start_can_retry_after_activation_failure() -> None:
+    order: list[str] = []
+    runtime = FakeRuntime(order)
+    factory = FakeFactory()
+    destination = playback("speakers")
+    failing_sink = FakeSink(
+        "daemon:speakers-failing",
+        order,
+        fail_start=True,
+    )
+    factory.entries["speakers"] = resources(
+        destination,
+        failing_sink,
+    )
+    coordinator = DaemonDestinationCoordinator(
+        runtime,  # type: ignore[arg-type]
+        factory=factory,
+        initial_configuration=configuration(destination),
+    )
+
+    with pytest.raises(RuntimeError, match="secret sink startup"):
+        coordinator.start()
+
+    healthy_sink = FakeSink("daemon:speakers", order)
+    factory.entries["speakers"] = resources(
+        destination,
+        healthy_sink,
+    )
+
+    result = coordinator.start()
+
+    assert result.changed
+    assert factory.builds == ["speakers", "speakers"]
+    assert runtime.attached == [healthy_sink]
+    assert healthy_sink.running
+
+    coordinator.close()
+
+
 def test_coordinator_activates_sorted_resources_and_initial_metadata() -> None:
     order: list[str] = []
     runtime = FakeRuntime(order)

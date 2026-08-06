@@ -348,7 +348,22 @@ class DaemonDestinationCoordinator:
         runtime: _DestinationRuntimeLike,
         *,
         factory: _DaemonDestinationFactoryLike | None = None,
+        initial_configuration: (
+            DaemonDestinationConfiguration | None
+        ) = None,
     ) -> None:
+        if (
+            initial_configuration is not None
+            and not isinstance(
+                initial_configuration,
+                DaemonDestinationConfiguration,
+            )
+        ):
+            raise TypeError(
+                "Initial daemon destinations must be a "
+                "DaemonDestinationConfiguration."
+            )
+
         self.runtime = runtime
         self.factory = (
             DaemonDestinationFactory()
@@ -356,8 +371,14 @@ class DaemonDestinationCoordinator:
             else factory
         )
         self._lock = threading.RLock()
+        self._initial_configuration = (
+            DaemonDestinationConfiguration()
+            if initial_configuration is None
+            else initial_configuration
+        )
         self._configuration = DaemonDestinationConfiguration()
         self._resources: dict[str, DaemonDestinationResources] = {}
+        self._started = False
         self._closed = False
         self._unsubscribes: tuple[Callable[[], None], ...] = ()
 
@@ -392,6 +413,25 @@ class DaemonDestinationCoordinator:
     def closed(self) -> bool:
         with self._lock:
             return self._closed
+
+    def start(self) -> DaemonDestinationReplacementResult:
+        with self._lock:
+            self._require_open_locked()
+            if self._started:
+                return DaemonDestinationReplacementResult(
+                    preview_daemon_destination_replacement(
+                        self._configuration,
+                        self._configuration,
+                    ),
+                    self._configuration,
+                )
+
+            result = self.replace(self._initial_configuration)
+            self._started = True
+            return result
+
+    def stop(self) -> None:
+        self.close()
 
     def preview(
         self,
@@ -524,6 +564,7 @@ class DaemonDestinationCoordinator:
             )
             self._resources = {}
             self._configuration = DaemonDestinationConfiguration()
+            self._started = False
 
             for unsubscribe in reversed(unsubscribes):
                 try:

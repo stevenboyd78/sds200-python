@@ -39,6 +39,7 @@ from .configuration import (
     ConfigurationPaths,
     ResolvedApplicationConfiguration,
     load_application_configuration,
+    resolve_configuration_paths,
 )
 from .daemon_api import (
     DAEMON_API_DEFAULT_CONTROL_TIMEOUT,
@@ -48,6 +49,13 @@ from .daemon_api import (
 from .daemon_client import (
     DAEMON_API_CLIENT_DEFAULT_TIMEOUT,
     DaemonApiClient,
+)
+from .daemon_destination_activation import (
+    DaemonDestinationCoordinator,
+    DaemonDestinationFactory,
+)
+from .daemon_destinations import (
+    load_daemon_destination_configuration,
 )
 from .daemon_event_client import (
     DaemonEventClient,
@@ -139,6 +147,7 @@ from .recording_retention_execution import (
     recording_retention_confirmation_token,
 )
 from .reliability import ReconnectPolicy
+from .remote_audio_profiles import RemoteAudioProfileStore
 from .rich_cli import (
     COLOR_MODES,
     THEME_NAMES,
@@ -672,6 +681,15 @@ def build_parser(
         default=15.0,
         metavar="SECONDS",
         help="RTSP GET_PARAMETER interval (default: 15.0)",
+    )
+    daemon.add_argument(
+        "--destination-config",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Explicit daemon destination manifest; otherwise use "
+            "the user configuration directory"
+        ),
     )
     daemon.add_argument(
         "--socket-path",
@@ -2254,6 +2272,21 @@ def _run_daemon(
     configuration_paths: ConfigurationPaths | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> int:
+    resolved_paths = (
+        configuration_paths
+        if configuration_paths is not None
+        else resolve_configuration_paths(environ=environ)
+    )
+    destination_configuration = (
+        load_daemon_destination_configuration(
+            args.destination_config,
+        )
+        if args.destination_config is not None
+        else load_daemon_destination_configuration(
+            paths=resolved_paths,
+        )
+    )
+
     profile_store = ProfileStore(args.config) if args.profile is not None else None
     host = _daemon_host(args, profile_store=profile_store)
     scanner = selected_radio(args, profile_store=profile_store)
@@ -2261,17 +2294,17 @@ def _run_daemon(
     socket_location = resolve_daemon_socket_location(
         args.socket_path,
         environ=environ,
-        configuration_paths=configuration_paths,
+        configuration_paths=resolved_paths,
     )
     event_socket_location = resolve_daemon_event_socket_location(
         args.event_socket_path,
         environ=environ,
-        configuration_paths=configuration_paths,
+        configuration_paths=resolved_paths,
     )
     pcmu_socket_location = resolve_daemon_pcmu_socket_location(
         args.pcmu_socket_path,
         environ=environ,
-        configuration_paths=configuration_paths,
+        configuration_paths=resolved_paths,
     )
 
     router = PcmSinkRouter(name="daemon-pcm")
@@ -2319,6 +2352,7 @@ def _run_daemon(
     )
 
     pcmu_stream: PcmuStream | None = None
+    destination_coordinator: DaemonDestinationCoordinator | None = None
     try:
         pcmu_stream = PcmuStream(
             transport,
@@ -2335,8 +2369,26 @@ def _run_daemon(
             send_timeout=args.pcmu_send_timeout,
             shutdown_timeout=args.pcmu_shutdown_timeout,
         )
+
+        destination_factory = DaemonDestinationFactory(
+            remote_profile_store=RemoteAudioProfileStore(
+                resolved_paths.legacy_remote_audio_profiles_file
+            ),
+            environ=environ,
+        )
+        destination_coordinator = DaemonDestinationCoordinator(
+            runtime,
+            factory=destination_factory,
+            initial_configuration=destination_configuration,
+        )
     except BaseException as construction_error:
         cleanup_errors: list[BaseException] = []
+
+        if destination_coordinator is not None:
+            try:
+                destination_coordinator.close()
+            except BaseException as cleanup_error:
+                cleanup_errors.append(cleanup_error)
 
         if pcmu_stream is not None:
             try:
@@ -2360,6 +2412,7 @@ def _run_daemon(
 
     result = DaemonProcess(
         runtime,
+        destination_coordinator=destination_coordinator,
         api_server=api_server,
         event_server=event_server,
         pcmu_server=pcmu_server,

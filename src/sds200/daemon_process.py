@@ -16,6 +16,12 @@ class _DaemonRuntimeLike(Protocol):
     def stop(self) -> None: ...
 
 
+class _DaemonDestinationCoordinatorLike(Protocol):
+    def start(self) -> object: ...
+
+    def stop(self) -> None: ...
+
+
 class _DaemonApiServerLike(Protocol):
     def start(self) -> None: ...
 
@@ -158,6 +164,9 @@ class DaemonProcess:
         self,
         runtime: _DaemonRuntimeLike,
         *,
+        destination_coordinator: (
+            _DaemonDestinationCoordinatorLike | None
+        ) = None,
         api_server: _DaemonApiServerLike | None = None,
         event_server: _DaemonEventServerLike | None = None,
         pcmu_server: _DaemonPcmuServerLike | None = None,
@@ -168,6 +177,7 @@ class DaemonProcess:
             raise ValueError("Daemon process poll interval must be greater than zero.")
 
         self.runtime = runtime
+        self.destination_coordinator = destination_coordinator
         self.api_server = api_server
         self.event_server = event_server
         self.pcmu_server = pcmu_server
@@ -179,6 +189,7 @@ class DaemonProcess:
             event_server_attempted = False
             pcmu_server_attempted = False
             runtime_attempted = False
+            destination_coordinator_attempted = False
             api_server_attempted = False
 
             try:
@@ -193,6 +204,10 @@ class DaemonProcess:
                 runtime_attempted = True
                 self.runtime.start()
 
+                if self.destination_coordinator is not None:
+                    destination_coordinator_attempted = True
+                    self.destination_coordinator.start()
+
                 if self.api_server is not None:
                     api_server_attempted = True
                     self.api_server.start()
@@ -202,6 +217,9 @@ class DaemonProcess:
             except BaseException as process_error:
                 cleanup_failures = self._stop_components(
                     stop_api_server=api_server_attempted,
+                    stop_destination_coordinator=(
+                        destination_coordinator_attempted
+                    ),
                     stop_runtime=runtime_attempted,
                     stop_pcmu_server=pcmu_server_attempted,
                     stop_event_server=event_server_attempted,
@@ -217,6 +235,9 @@ class DaemonProcess:
             else:
                 cleanup_failures = self._stop_components(
                     stop_api_server=api_server_attempted,
+                    stop_destination_coordinator=(
+                        destination_coordinator_attempted
+                    ),
                     stop_runtime=runtime_attempted,
                     stop_pcmu_server=pcmu_server_attempted,
                     stop_event_server=event_server_attempted,
@@ -237,6 +258,7 @@ class DaemonProcess:
         self,
         *,
         stop_api_server: bool,
+        stop_destination_coordinator: bool,
         stop_runtime: bool,
         stop_pcmu_server: bool,
         stop_event_server: bool,
@@ -246,6 +268,15 @@ class DaemonProcess:
         if stop_api_server and self.api_server is not None:
             try:
                 self.api_server.stop()
+            except BaseException as error:
+                failures.append(error)
+
+        if (
+            stop_destination_coordinator
+            and self.destination_coordinator is not None
+        ):
+            try:
+                self.destination_coordinator.stop()
             except BaseException as error:
                 failures.append(error)
 

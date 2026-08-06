@@ -39,6 +39,34 @@ class FakeRuntime:
             raise self.stop_error
 
 
+class FakeDestinationCoordinator:
+    def __init__(
+        self,
+        order: list[str],
+        *,
+        start_error: BaseException | None = None,
+        stop_error: BaseException | None = None,
+    ) -> None:
+        self.order = order
+        self.start_error = start_error
+        self.stop_error = stop_error
+        self.start_calls = 0
+        self.stop_calls = 0
+
+    def start(self) -> object:
+        self.order.append("destinations.start")
+        self.start_calls += 1
+        if self.start_error is not None:
+            raise self.start_error
+        return object()
+
+    def stop(self) -> None:
+        self.order.append("destinations.stop")
+        self.stop_calls += 1
+        if self.stop_error is not None:
+            raise self.stop_error
+
+
 class FakeApiServer:
     def __init__(
         self,
@@ -418,6 +446,107 @@ def test_process_propagates_clean_shutdown_failure() -> None:
 def test_process_requires_positive_poll_interval(poll_interval: float) -> None:
     with pytest.raises(ValueError, match="greater than zero"):
         DaemonProcess(FakeRuntime([]), poll_interval=poll_interval)
+
+
+def test_process_owns_destinations_between_runtime_and_api() -> None:
+    order: list[str] = []
+    runtime = FakeRuntime(order)
+    destinations = FakeDestinationCoordinator(order)
+    api_server = FakeApiServer(order)
+    signals = FakeSignalController(
+        order,
+        (True,),
+        last_signal=int(signal.SIGTERM),
+    )
+
+    result = DaemonProcess(
+        runtime,
+        destination_coordinator=destinations,
+        api_server=api_server,
+        signals=signals,
+        poll_interval=0.25,
+    ).run()
+
+    assert result.last_signal == int(signal.SIGTERM)
+    assert order == [
+        "signals.enter",
+        "runtime.start",
+        "destinations.start",
+        "api.start",
+        "signals.wait",
+        "api.stop",
+        "destinations.stop",
+        "runtime.stop",
+        "signals.exit",
+    ]
+
+
+def test_destination_startup_failure_stops_destinations_and_runtime() -> None:
+    order: list[str] = []
+    startup_error = RuntimeError(
+        "secret destination startup failure"
+    )
+    runtime = FakeRuntime(order)
+    destinations = FakeDestinationCoordinator(
+        order,
+        start_error=startup_error,
+    )
+    api_server = FakeApiServer(order)
+    signals = FakeSignalController(order, ())
+
+    with pytest.raises(RuntimeError) as raised:
+        DaemonProcess(
+            runtime,
+            destination_coordinator=destinations,
+            api_server=api_server,
+            signals=signals,
+            poll_interval=0.25,
+        ).run()
+
+    assert raised.value is startup_error
+    assert order == [
+        "signals.enter",
+        "runtime.start",
+        "destinations.start",
+        "destinations.stop",
+        "runtime.stop",
+        "signals.exit",
+    ]
+    assert api_server.start_calls == 0
+    assert api_server.stop_calls == 0
+
+
+def test_destination_shutdown_failure_does_not_skip_runtime_cleanup() -> None:
+    order: list[str] = []
+    shutdown_error = RuntimeError(
+        "secret destination shutdown failure"
+    )
+    runtime = FakeRuntime(order)
+    destinations = FakeDestinationCoordinator(
+        order,
+        stop_error=shutdown_error,
+    )
+    signals = FakeSignalController(order, (True,))
+
+    with pytest.raises(RuntimeError) as raised:
+        DaemonProcess(
+            runtime,
+            destination_coordinator=destinations,
+            signals=signals,
+            poll_interval=0.25,
+        ).run()
+
+    assert raised.value is shutdown_error
+    assert order == [
+        "signals.enter",
+        "runtime.start",
+        "destinations.start",
+        "signals.wait",
+        "destinations.stop",
+        "runtime.stop",
+        "signals.exit",
+    ]
+    assert runtime.stop_calls == 1
 
 
 def test_process_starts_api_after_runtime_and_stops_it_first() -> None:
