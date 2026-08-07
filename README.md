@@ -383,10 +383,11 @@ are rejected.
 
 ### Loopback web dashboard
 
-Milestone 20.3 adds live same-origin Server-Sent Events to the accessible
-responsive browser shell without opening scanner hardware or a second RTSP/RTP
-session. Start the foreground daemon, then run the web service in another
-terminal:
+Milestone 20.4 adds explicit browser audio playback to the accessible
+responsive dashboard on top of Milestone 20.3 live same-origin Server-Sent
+Events. The web service remains a daemon client: it does not open scanner
+hardware or a second RTSP/RTP session. Start the foreground daemon, then run the
+web service in another terminal:
 
 ```bash
 sdsctl --log-level INFO --host 192.168.0.251 daemon
@@ -400,6 +401,13 @@ update incrementally. Two-second status polling remains active when live events
 are unavailable, and a periodic authoritative status read reconciles the
 browser with daemon state.
 
+Press **Play audio** to create one independent browser PCMU subscription. The
+browser receives the daemon's validated PCMU v1 frames unchanged, decodes G.711
+mu-law in an AudioWorklet, and reports packet totals plus daemon queue loss and
+RTP loss. **Stop** closes only that browser audio subscription. Audio continues
+while the dashboard is hidden, while closing or navigating away from the page
+stops playback and releases the stream.
+
 The interface retains keyboard focus, responsive compact behavior, system light
 and dark modes, reduced-motion support, and text-only rendering of daemon
 values.
@@ -408,8 +416,8 @@ Install it with `python -m pip install "sds200[web]"`. The service listens on
 `127.0.0.1:8000` by default and accepts only `localhost` or explicit loopback IP
 addresses. Wildcard, LAN, public, and non-local hostname bindings are rejected.
 
-Authentication, TLS, browser audio, recordings, logs, controls, optional themes,
-and Home Assistant integration remain deferred. Remote exposure is
+Authentication, TLS, browser recordings, logs, controls, optional themes, and
+Home Assistant integration remain deferred. Remote exposure is
 intentionally unsupported until authentication and transport-security planning
 is complete. See the [web dashboard guide](docs/web-dashboard.md).
 

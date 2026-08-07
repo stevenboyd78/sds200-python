@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import queue
+import select
 import socket as socket_module
 import threading
 from contextlib import suppress
@@ -347,6 +348,8 @@ class DaemonEventServer:
                         timeout=self.accept_poll_interval,
                     )
                 except queue.Empty:
+                    if _client_disconnected(client):
+                        return
                     continue
                 except DaemonEventSubscriptionClosed:
                     return
@@ -377,6 +380,23 @@ class DaemonEventServer:
     def _record_error(self, error: BaseException) -> None:
         with self._state_lock:
             self._last_error = error.__class__.__name__
+
+
+def _client_disconnected(client: socket_module.socket) -> bool:
+    try:
+        readable, _, _ = select.select((client,), (), (), 0.0)
+    except (OSError, ValueError):
+        return True
+
+    if not readable:
+        return False
+
+    try:
+        return client.recv(1, socket_module.MSG_PEEK) == b""
+    except (BlockingIOError, TimeoutError):
+        return False
+    except OSError:
+        return True
 
 
 def _require_positive_integer(value: int, *, label: str) -> None:

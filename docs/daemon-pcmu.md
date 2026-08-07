@@ -226,6 +226,31 @@ stream sequences, skipped publications, cumulative queue drops and overflows,
 RTP missing-packet and missing-sample observations, backwards RTP timestamps,
 playback statistics when selected, and the WAV path when recorded.
 
+## Browser dashboard audio
+
+Milestone 20.4 adds the web dashboard as another independent consumer of this
+same daemon-owned PCMU service. `GET /api/v1/audio` creates one
+`DaemonPcmuClient` per active browser playback stream and forwards each validated
+frame using the existing `encode_pcmu_delivery` representation. The web bridge
+does not decode, re-encode, or open another scanner RTSP/RTP session.
+
+The browser validates stream ordering and cumulative queue-loss counters before
+passing raw PCMU payloads to an AudioWorklet for G.711 mu-law decoding, bounded
+buffering, silence insertion for reported gaps, and output-rate resampling. The
+dashboard exposes daemon queue drops and overflows separately from RTP missing
+packets.
+
+The web command resolves `pcmu.sock` independently through
+`--daemon-pcmu-socket-path`. Its `--daemon-pcmu-max-endpoint-bytes` and
+`--daemon-pcmu-max-frame-bytes` options configure accepted frame bounds, while
+the shared `--daemon-timeout` covers PCMU connection establishment. Browser
+frames retain the protocol's fixed 82-byte minimum header and 131,072-byte
+maximum stream-frame contract.
+
+Stopping playback or leaving the page closes only that browser PCMU client.
+Hiding the page suspends its SSE state stream but intentionally keeps active
+audio playing.
+
 ## Daemon-backed TUI audio
 
 Milestone 19.10 adds an `AudioTransport` adapter around `DaemonPcmuClient`.

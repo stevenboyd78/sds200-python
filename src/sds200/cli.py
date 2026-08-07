@@ -119,6 +119,7 @@ from .network_audio import NetworkAudioTransport
 from .pcmu_protocol import (
     PCMU_STREAM_DEFAULT_MAX_ENDPOINT_BYTES,
     PCMU_STREAM_DEFAULT_MAX_FRAME_BYTES,
+    PCMU_STREAM_HEADER_BYTES,
 )
 from .pcmu_stream import PcmuStream
 from .pcmu_subscriptions import (
@@ -1167,12 +1168,21 @@ def build_parser(
         ),
     )
     web.add_argument(
+        "--daemon-pcmu-socket-path",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Explicit daemon PCMU socket path; otherwise use "
+            "XDG_RUNTIME_DIR or the user state directory"
+        ),
+    )
+    web.add_argument(
         "--daemon-timeout",
         type=_positive_float,
         default=DAEMON_API_CLIENT_DEFAULT_TIMEOUT,
         metavar="SECONDS",
         help=(
-            "Daemon API and event connection timeout "
+            "Daemon API, event, and PCMU connection timeout "
             f"(default: {DAEMON_API_CLIENT_DEFAULT_TIMEOUT})"
         ),
     )
@@ -1194,6 +1204,26 @@ def build_parser(
         help=(
             "Maximum accepted daemon event size "
             f"(default: {DAEMON_EVENT_DEFAULT_MAX_BYTES})"
+        ),
+    )
+    web.add_argument(
+        "--daemon-pcmu-max-endpoint-bytes",
+        type=_positive_integer,
+        default=None,
+        metavar="BYTES",
+        help=(
+            "Maximum accepted daemon PCMU endpoint size "
+            f"(default: {PCMU_STREAM_DEFAULT_MAX_ENDPOINT_BYTES})"
+        ),
+    )
+    web.add_argument(
+        "--daemon-pcmu-max-frame-bytes",
+        type=_positive_integer,
+        default=None,
+        metavar="BYTES",
+        help=(
+            "Maximum accepted daemon PCMU frame size "
+            f"(default: {PCMU_STREAM_DEFAULT_MAX_FRAME_BYTES})"
         ),
     )
     web.add_argument(
@@ -3366,6 +3396,11 @@ def _run_web(
         environ=environ,
         configuration_paths=configuration_paths,
     )
+    pcmu_location = resolve_daemon_pcmu_socket_location(
+        args.daemon_pcmu_socket_path,
+        environ=environ,
+        configuration_paths=configuration_paths,
+    )
     timeout = args.daemon_timeout
     max_response_bytes = (
         DAEMON_API_DEFAULT_MAX_RESPONSE_BYTES
@@ -3377,6 +3412,26 @@ def _run_web(
         if args.daemon_max_event_bytes is None
         else args.daemon_max_event_bytes
     )
+    max_pcmu_endpoint_bytes = (
+        PCMU_STREAM_DEFAULT_MAX_ENDPOINT_BYTES
+        if args.daemon_pcmu_max_endpoint_bytes is None
+        else args.daemon_pcmu_max_endpoint_bytes
+    )
+    max_pcmu_frame_bytes = (
+        PCMU_STREAM_DEFAULT_MAX_FRAME_BYTES
+        if args.daemon_pcmu_max_frame_bytes is None
+        else args.daemon_pcmu_max_frame_bytes
+    )
+    if max_pcmu_frame_bytes < PCMU_STREAM_HEADER_BYTES:
+        raise ValueError(
+            "--daemon-pcmu-max-frame-bytes must be at least "
+            f"{PCMU_STREAM_HEADER_BYTES}."
+        )
+    if max_pcmu_frame_bytes > PCMU_STREAM_DEFAULT_MAX_FRAME_BYTES:
+        raise ValueError(
+            "--daemon-pcmu-max-frame-bytes must not exceed the browser "
+            f"stream limit of {PCMU_STREAM_DEFAULT_MAX_FRAME_BYTES}."
+        )
 
     def api_client_factory() -> DaemonApiClient:
         return DaemonApiClient(
@@ -3392,9 +3447,18 @@ def _run_web(
             max_event_bytes=max_event_bytes,
         )
 
+    def pcmu_client_factory() -> DaemonPcmuClient:
+        return DaemonPcmuClient(
+            pcmu_location,
+            timeout=timeout,
+            max_endpoint_bytes=max_pcmu_endpoint_bytes,
+            max_frame_bytes=max_pcmu_frame_bytes,
+        )
+
     app = create_web_dashboard_app(
         api_client_factory,
         event_client_factory,
+        pcmu_client_factory,
     )
 
     return run_web_dashboard_server(

@@ -246,6 +246,28 @@ def test_event_server_stop_closes_clients_and_owned_stream(
 
 
 
+def test_event_server_reaps_idle_client_disconnect_without_publish(
+    tmp_path: Path,
+) -> None:
+    stream = FakeEventStream()
+    server, path = make_server(tmp_path, stream)
+    server.start()
+    client = connect(path)
+
+    try:
+        json.loads(read_line(client))
+        wait_until(lambda: server.connected_clients == 1)
+
+        client.shutdown(socket.SHUT_RDWR)
+        client.close()
+
+        wait_until(lambda: server.connected_clients == 0)
+        assert server.snapshot().last_error is None
+    finally:
+        client.close()
+        server.stop()
+
+
 def test_event_server_client_disconnect_is_not_an_operational_error(
     tmp_path: Path,
 ) -> None:
