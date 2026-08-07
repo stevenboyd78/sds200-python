@@ -105,7 +105,8 @@ The publisher owns one global sequence counter.
 When a client subscribes:
 
 1. the publisher captures the current global sequence;
-2. it obtains one authoritative `DaemonRuntimeSnapshot.as_dict()` payload;
+2. it obtains one authoritative runtime snapshot and augments it with the
+   daemon recording snapshot when recording ownership is configured;
 3. it emits that payload as `stream.snapshot` using the captured sequence; and
 4. the subscription then receives only events with later sequence values.
 
@@ -115,8 +116,9 @@ snapshot at sequence 25, followed by event 26 or later.
 
 Current snapshots include optional `scanner_model` and `scanner_firmware`
 identity values. Either may be `null` when its daemon startup probe failed.
-Version 1 event clients remain compatible with older snapshot checkpoints
-that omit these additive fields.
+Milestone 20.5 daemon snapshots also include a `recording` object containing the
+current daemon-owned recording workflow state. Version 1 event clients remain
+compatible with older snapshot checkpoints that omit these additive fields.
 
 All source callbacks are serialized through the composed event stream before
 publication, so every healthy subscriber observes the same global ordering.
@@ -131,11 +133,14 @@ publication, so every healthy subscriber observes the same global ordering.
 | `scanner.psi` | PSI command, receive timestamp, and current radio-state snapshot |
 | `radio.state` | Changed fields plus previous and current radio-state snapshots |
 | `audio.state` | Immutable audio-fanout lifecycle snapshot |
+| `recording.state` | Complete daemon-owned recording workflow snapshot |
 | `destination.health` | Decoded-PCM subscriber transition and health data |
 
 PSI events represent parsed scanner-information updates. Radio-state events are
-published only for actual state changes. Audio packets and decoded samples are
-not events.
+published only for actual state changes. Recording events are emitted for
+recording lifecycle transitions; packet-rate recording telemetry remains
+available through snapshots and the recording API rather than event-per-packet
+updates. Audio packets and decoded samples are not events.
 
 ## Overflow and resynchronization
 
@@ -161,23 +166,32 @@ sequence boundary.
 
 1. event listener and accept worker;
 2. PCMU listener and accept worker;
-3. ownership runtime; and
-4. request-response API.
+3. ownership runtime;
+4. decoded-PCM destinations;
+5. recording-file listener and accept worker; and
+6. request-response API.
 
 This allows an already connected event client to observe runtime startup
-transitions, prepares PCMU subscriptions before authoritative audio starts, and
-keeps API requests unavailable until runtime startup succeeds.
+transitions, prepares PCMU subscriptions before authoritative audio starts,
+starts file serving only after the runtime and destinations are available, and
+keeps API requests unavailable until daemon ownership startup succeeds.
 
 Shutdown occurs in this order:
 
 1. request-response API;
-2. ownership runtime;
-3. PCMU service; and
-4. event service.
+2. recording-file service;
+3. daemon recording manager;
+4. decoded-PCM destinations;
+5. ownership runtime;
+6. PCMU service; and
+7. event service.
 
-The event service therefore remains available while the runtime emits final
-shutdown transitions. Stopping the event service closes the listener, closes the
-composed publisher, wakes blocked subscribers, closes clients, and waits only
+Stopping the API prevents new recording mutations first. Recording-file readers
+then stop before the recording manager finalizes any active WAV and metadata
+while the shared audio runtime is still alive. The event service remains
+available while the runtime emits final shutdown transitions. Stopping the event
+service closes the listener, closes the composed publisher, wakes blocked
+subscribers, closes clients, and waits only
 until the configured worker deadline.
 
 Listener, subscriber, client, source-unsubscribe, and cleanup failures are
@@ -289,3 +303,11 @@ Daemon-owned playback, recording, and remote-profile destinations now
 participate in the shared router. Active destination lifecycle and health
 changes are published through the existing `destination.health` event contract.
 An empty destination set legitimately produces no destination-health events.
+
+Milestone 20.5 adds daemon recording state to the same ordered stream without
+publishing packet-rate audio data. Browser recording validation on 2026-08-07
+confirmed that an active recording survived a complete web-process stop and
+restart, resumed from the same daemon-owned recording state, and finalized
+normally. A separate daemon SIGTERM test finalized an active WAV and metadata
+before audio-runtime teardown, and the restarted daemon rediscovered that entry
+as playable.

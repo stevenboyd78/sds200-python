@@ -407,6 +407,16 @@ def _validate_snapshot_payload(payload: Mapping[str, object]) -> None:
                 f"{name!r} must be a JSON object."
             )
 
+    if "recording" in payload:
+        recording = payload["recording"]
+        if not isinstance(recording, Mapping) or any(
+            not isinstance(key, str) for key in recording
+        ):
+            raise DaemonProtocolError(
+                "The daemon event snapshot field 'recording' "
+                "must be a JSON object."
+            )
+
     _optional_string(payload["started_at"], "started_at")
     _optional_string(payload["stopped_at"], "stopped_at")
     _non_empty_string(payload["state_changed_at"], "state_changed_at")

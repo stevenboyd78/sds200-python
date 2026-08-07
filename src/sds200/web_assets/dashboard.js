@@ -2,6 +2,7 @@
 
 const FALLBACK_REFRESH_INTERVAL_MS = 2000;
 const RECONCILE_INTERVAL_MS = 30000;
+const RECORDING_REFRESH_INTERVAL_MS = 1000;
 const PCMU_HEADER_BYTES = 82;
 const PCMU_MAX_FRAME_BYTES = 128 * 1024;
 const PCMU_VERSION = 1;
@@ -16,6 +17,11 @@ let eventSource = null;
 let eventStreamConnected = false;
 let lastEventSequence = null;
 let refreshInProgress = false;
+let currentRecording = {};
+let recordingStatusAvailable = false;
+let recordingRefreshInProgress = false;
+let recordingsRefreshInProgress = false;
+let recordingMutationInProgress = false;
 
 let audioPlaybackGeneration = 0;
 let audioPlaybackActive = false;
@@ -78,6 +84,364 @@ function signalLabel(value) {
   return "Unavailable";
 }
 
+function finiteNumber(value, fallback = 0) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  return fallback;
+}
+
+function wholeNumber(value, fallback = 0) {
+  const number = finiteNumber(value, fallback);
+  return Math.max(0, Math.trunc(number));
+}
+
+function formatDuration(value) {
+  const seconds = Math.max(0, finiteNumber(value));
+  const wholeSeconds = Math.floor(seconds);
+  const hours = Math.floor(wholeSeconds / 3600);
+  const minutes = Math.floor((wholeSeconds % 3600) / 60);
+  const remainder = wholeSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(
+      remainder,
+    ).padStart(2, "0")}`;
+  }
+  return `${minutes}:${String(remainder).padStart(2, "0")}`;
+}
+
+function formatBytes(value) {
+  const bytes = wholeNumber(value);
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KiB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
+function formatRecordedAt(value) {
+  if (typeof value !== "string" || value === "") {
+    return "Unknown time";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "Unknown time";
+  }
+  return parsed.toLocaleString();
+}
+
+function recordingName(identifier) {
+  const parts = identifier.split("/");
+  return parts[parts.length - 1] || identifier;
+}
+
+function recordingFileUrl(identifier) {
+  const encoded = identifier
+    .split("/")
+    .map((component) => encodeURIComponent(component))
+    .join("/");
+  return `/api/v1/recordings/file/${encoded}`;
+}
+
+function setRecordingControls(recording) {
+  const status = displayValue(recording.status, "unavailable").toLowerCase();
+  const active = recording.active === true;
+  const canStart =
+    recordingStatusAvailable &&
+    !recordingMutationInProgress &&
+    recording.closed !== true &&
+    !active &&
+    ["idle", "stopped", "failed"].includes(status);
+  const canStop =
+    recordingStatusAvailable &&
+    !recordingMutationInProgress &&
+    active &&
+    status === "recording";
+
+  element("recording-start").disabled = !canStart;
+  element("recording-stop").disabled = !canStop;
+  element("recordings-refresh").disabled = recordingsRefreshInProgress;
+}
+
+function renderRecording(recording, available = true) {
+  currentRecording = record(recording);
+  recordingStatusAvailable = available;
+  const reliability = record(currentRecording.reliability);
+  const status = displayValue(currentRecording.status, "Unavailable");
+
+  element("recording-status").textContent = status;
+  setText(
+    "recording-elapsed",
+    formatDuration(currentRecording.elapsed_seconds),
+    "0:00",
+  );
+  setText("recording-packets", wholeNumber(currentRecording.packets), "0");
+  setText("recording-samples", wholeNumber(currentRecording.samples), "0");
+  setText(
+    "recording-audio-duration",
+    formatDuration(currentRecording.audio_duration_seconds),
+    "0:00",
+  );
+  setText(
+    "recording-rtp-loss",
+    `${wholeNumber(reliability.packets_lost)} packets`,
+  );
+  setText(
+    "recording-rtp-order",
+    `${wholeNumber(reliability.duplicate_packets)} / ${wholeNumber(
+      reliability.late_packets,
+    )}`,
+  );
+  setText(
+    "recording-rtp-invalid",
+    `${wholeNumber(reliability.malformed_packets)} / ${wholeNumber(
+      reliability.unexpected_source_packets,
+    )}`,
+  );
+  setText(
+    "recording-discontinuities",
+    wholeNumber(reliability.timestamp_discontinuities),
+    "0",
+  );
+  setText("recording-file", currentRecording.recording, "None");
+  setRecordingControls(currentRecording);
+}
+
+function clearChildren(node) {
+  while (node.firstChild !== null) {
+    node.removeChild(node.firstChild);
+  }
+}
+
+function makeRecordingActionLink(label, identifier, download = false) {
+  const link = document.createElement("a");
+  link.className = "recording-action";
+  link.textContent = label;
+  link.href = recordingFileUrl(identifier);
+  if (download) {
+    link.download = recordingName(identifier);
+  }
+  return link;
+}
+
+function playSavedRecording(identifier) {
+  const player = element("saved-recording-player");
+  const name = recordingName(identifier);
+  player.src = recordingFileUrl(identifier);
+  player.load();
+  element("saved-playback-status").textContent = `Loading ${name}.`;
+  void player.play().catch((error) => {
+    const message =
+      error instanceof Error ? error.message : "Saved recording playback failed.";
+    element("saved-playback-status").textContent = message;
+  });
+}
+
+function renderRecordings(inventory) {
+  const list = element("recordings-list");
+  clearChildren(list);
+
+  const entries = Array.isArray(inventory.entries) ? inventory.entries : [];
+  const total = wholeNumber(inventory.total_entries);
+
+  if (entries.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "recording-empty";
+    empty.textContent = "No finalized recordings are available.";
+    list.appendChild(empty);
+    element("recordings-message").textContent = "No finalized recordings.";
+    return;
+  }
+
+  element("recordings-message").textContent =
+    `${entries.length} recent of ${total} finalized recording${
+      total === 1 ? "" : "s"
+    }.`;
+
+  for (const rawEntry of entries) {
+    const entry = record(rawEntry);
+    const identifier =
+      typeof entry.audio === "string" ? entry.audio : "";
+    if (identifier === "") {
+      continue;
+    }
+
+    const item = document.createElement("li");
+    item.className = "recording-item";
+
+    const details = document.createElement("div");
+    details.className = "recording-item-details";
+
+    const name = document.createElement("strong");
+    name.className = "technical-value";
+    name.textContent = recordingName(identifier);
+    details.appendChild(name);
+
+    const metadata = document.createElement("span");
+    metadata.className = "recording-item-meta";
+    metadata.textContent =
+      `${formatRecordedAt(entry.recorded_at)} · ${
+        entry.duration_seconds === null ||
+        entry.duration_seconds === undefined
+          ? "Unknown duration"
+          : formatDuration(entry.duration_seconds)
+      } · ${formatBytes(entry.audio_size_bytes)}`;
+    details.appendChild(metadata);
+    item.appendChild(details);
+
+    const actions = document.createElement("div");
+    actions.className = "recording-item-actions";
+
+    if (entry.playable === true) {
+      const play = document.createElement("button");
+      play.type = "button";
+      play.className = "recording-action";
+      play.textContent = "Play";
+      play.addEventListener("click", () => {
+        playSavedRecording(identifier);
+      });
+      actions.appendChild(play);
+      actions.appendChild(
+        makeRecordingActionLink("Download", identifier, true),
+      );
+    } else {
+      const unavailable = document.createElement("span");
+      unavailable.className = "recording-unavailable";
+      unavailable.textContent = "Not playable";
+      actions.appendChild(unavailable);
+    }
+
+    item.appendChild(actions);
+    list.appendChild(item);
+  }
+}
+
+async function refreshRecordingStatus() {
+  if (recordingRefreshInProgress || document.hidden) {
+    return;
+  }
+
+  recordingRefreshInProgress = true;
+  try {
+    const response = await fetch("/api/v1/recording", {
+      method: "GET",
+      headers: {Accept: "application/json"},
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+
+    let payload = {};
+    try {
+      payload = await response.json();
+    } catch {
+      payload = {};
+    }
+    if (!response.ok) {
+      throw new Error(errorMessage(payload, response));
+    }
+    renderRecording(record(payload).recording);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Daemon recording status is unavailable.";
+    element("recording-status").textContent = message;
+    recordingStatusAvailable = false;
+    setRecordingControls(currentRecording);
+  } finally {
+    recordingRefreshInProgress = false;
+  }
+}
+
+async function refreshRecordings() {
+  if (recordingsRefreshInProgress || document.hidden) {
+    return;
+  }
+
+  recordingsRefreshInProgress = true;
+  setRecordingControls(currentRecording);
+  try {
+    const response = await fetch("/api/v1/recordings", {
+      method: "GET",
+      headers: {Accept: "application/json"},
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+
+    let payload = {};
+    try {
+      payload = await response.json();
+    } catch {
+      payload = {};
+    }
+    if (!response.ok) {
+      throw new Error(errorMessage(payload, response));
+    }
+    renderRecordings(record(payload).recordings);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Finalized recordings are unavailable.";
+    element("recordings-message").textContent = message;
+  } finally {
+    recordingsRefreshInProgress = false;
+    setRecordingControls(currentRecording);
+  }
+}
+
+async function performRecordingAction(action) {
+  if (recordingMutationInProgress) {
+    return;
+  }
+
+  recordingMutationInProgress = true;
+  setRecordingControls(currentRecording);
+  element("recording-status").textContent =
+    action === "start" ? "Starting…" : "Stopping…";
+
+  try {
+    const response = await fetch(`/api/v1/recording/${action}`, {
+      method: "POST",
+      headers: {Accept: "application/json"},
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+
+    let payload = {};
+    try {
+      payload = await response.json();
+    } catch {
+      payload = {};
+    }
+    if (!response.ok) {
+      throw new Error(errorMessage(payload, response));
+    }
+
+    const wasActive = currentRecording.active === true;
+    renderRecording(record(payload).recording);
+    if (
+      action === "stop" ||
+      (wasActive && currentRecording.active !== true)
+    ) {
+      await refreshRecordings();
+    }
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Daemon recording operation failed.";
+    element("recording-status").textContent = message;
+    await refreshRecordingStatus();
+  } finally {
+    recordingMutationInProgress = false;
+    setRecordingControls(currentRecording);
+  }
+}
+
 function rssiLabel(value) {
   if (typeof value === "number" && Number.isFinite(value)) {
     return `${value} dBm`;
@@ -107,6 +471,7 @@ function renderSnapshot(snapshot, message = null) {
   const radio = record(snapshot.radio_state);
   const audio = record(snapshot.audio);
   const router = record(snapshot.router);
+  const recording = record(snapshot.recording);
 
   const connected = snapshot.scanner_connected === true;
   const defaultMessage = connected
@@ -139,6 +504,10 @@ function renderSnapshot(snapshot, message = null) {
   setText("audio-state", booleanLabel(audio.running, "Running", "Stopped"));
   setText("router-state", booleanLabel(router.running, "Running", "Stopped"));
   setText("transition-sequence", snapshot.transition_sequence);
+
+  if (Object.keys(recording).length > 0) {
+    renderRecording(recording);
+  }
 
   const updatedAt = new Date();
   const updateNode = element("last-update");
@@ -213,6 +582,17 @@ function applyDaemonEvent(envelope, message) {
       ...currentSnapshot,
       audio: payload,
     };
+  } else if (kind === "recording.state") {
+    const wasActive = currentRecording.active === true;
+    currentSnapshot = {
+      ...currentSnapshot,
+      recording: payload,
+    };
+    renderRecording(payload);
+    if (wasActive && currentRecording.active !== true) {
+      void refreshRecordings();
+    }
+    return;
   } else if (kind === "destination.health") {
     void refreshStatus();
     return;
@@ -760,21 +1140,50 @@ document.addEventListener("visibilitychange", () => {
   }
 
   void refreshStatus();
+  void refreshRecordingStatus();
+  void refreshRecordings();
   startEventStream();
 });
 
 window.addEventListener("pagehide", () => {
   stopEventStream();
   stopAudioPlayback();
+  element("saved-recording-player").pause();
 });
 
 element("audio-play").addEventListener("click", () => {
   void startAudioPlayback();
 });
 element("audio-stop").addEventListener("click", stopAudioPlayback);
+element("recording-start").addEventListener("click", () => {
+  void performRecordingAction("start");
+});
+element("recording-stop").addEventListener("click", () => {
+  void performRecordingAction("stop");
+});
+element("recordings-refresh").addEventListener("click", () => {
+  void refreshRecordings();
+});
+
+const savedRecordingPlayer = element("saved-recording-player");
+savedRecordingPlayer.addEventListener("play", () => {
+  element("saved-playback-status").textContent =
+    "Playing finalized recording.";
+});
+savedRecordingPlayer.addEventListener("ended", () => {
+  element("saved-playback-status").textContent =
+    "Saved recording playback finished.";
+});
+savedRecordingPlayer.addEventListener("error", () => {
+  element("saved-playback-status").textContent =
+    "Saved recording playback failed.";
+});
 
 initializeAudioPlayback();
+renderRecording({}, false);
 void refreshStatus();
+void refreshRecordingStatus();
+void refreshRecordings();
 startEventStream();
 
 window.setInterval(() => {
@@ -785,4 +1194,13 @@ window.setInterval(() => {
 
 window.setInterval(() => {
   void refreshStatus();
+  if (currentRecording.active !== true) {
+    void refreshRecordingStatus();
+  }
 }, RECONCILE_INTERVAL_MS);
+
+window.setInterval(() => {
+  if (currentRecording.active === true) {
+    void refreshRecordingStatus();
+  }
+}, RECORDING_REFRESH_INTERVAL_MS);

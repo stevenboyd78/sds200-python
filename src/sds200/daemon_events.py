@@ -29,6 +29,7 @@ class DaemonEventKind(StrEnum):
     PSI_STATE = "scanner.psi"
     RADIO_STATE = "radio.state"
     AUDIO_STATE = "audio.state"
+    RECORDING_STATE = "recording.state"
     DESTINATION_HEALTH = "destination.health"
 
 

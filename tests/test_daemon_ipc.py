@@ -8,6 +8,7 @@ from sds200 import (
     CONFIG_DIRECTORY_NAME,
     DAEMON_EVENT_SOCKET_FILENAME,
     DAEMON_PCMU_SOCKET_FILENAME,
+    DAEMON_RECORDING_FILE_SOCKET_FILENAME,
     DAEMON_SOCKET_DIRECTORY_MODE,
     DAEMON_SOCKET_FILENAME,
     DAEMON_SOCKET_MODE,
@@ -17,6 +18,7 @@ from sds200 import (
     resolve_configuration_paths,
     resolve_daemon_event_socket_location,
     resolve_daemon_pcmu_socket_location,
+    resolve_daemon_recording_file_socket_location,
     resolve_daemon_socket_location,
 )
 
@@ -275,5 +277,69 @@ def test_pcmu_socket_location_uses_user_state_fallback(
 
     assert location.path == (
         paths.user_state_dir / DAEMON_PCMU_SOCKET_FILENAME
+    )
+    assert location.source is DaemonSocketSource.USER_STATE
+
+
+def test_recording_file_socket_location_uses_explicit_absolute_path(
+    tmp_path: Path,
+) -> None:
+    explicit = tmp_path / "custom" / "recordings.sock"
+
+    location = resolve_daemon_recording_file_socket_location(explicit)
+
+    assert location.path == explicit
+    assert location.source is DaemonSocketSource.EXPLICIT
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+def test_recording_file_socket_location_rejects_empty_explicit_path(
+    value: str,
+) -> None:
+    with pytest.raises(ValueError, match="recording-file socket path"):
+        resolve_daemon_recording_file_socket_location(value)
+
+
+def test_recording_file_socket_location_rejects_relative_explicit_path() -> None:
+    with pytest.raises(ValueError, match="must be absolute"):
+        resolve_daemon_recording_file_socket_location(
+            "relative/recordings.sock"
+        )
+
+
+def test_recording_file_socket_location_prefers_xdg_runtime(
+    tmp_path: Path,
+) -> None:
+    runtime_root = tmp_path / "runtime"
+
+    location = resolve_daemon_recording_file_socket_location(
+        environ={"XDG_RUNTIME_DIR": str(runtime_root)},
+        home=tmp_path / "home",
+    )
+
+    assert location.path == (
+        runtime_root
+        / "sdsctl"
+        / DAEMON_RECORDING_FILE_SOCKET_FILENAME
+    )
+    assert location.source is DaemonSocketSource.XDG_RUNTIME
+
+
+def test_recording_file_socket_location_uses_user_state_fallback(
+    tmp_path: Path,
+) -> None:
+    paths = resolve_configuration_paths(
+        environ={},
+        home=tmp_path / "home",
+        system_config_dir=tmp_path / "etc" / "sdsctl",
+    )
+
+    location = resolve_daemon_recording_file_socket_location(
+        environ={},
+        configuration_paths=paths,
+    )
+
+    assert location.path == (
+        paths.user_state_dir / DAEMON_RECORDING_FILE_SOCKET_FILENAME
     )
     assert location.source is DaemonSocketSource.USER_STATE

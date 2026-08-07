@@ -77,11 +77,13 @@ class FakeDaemonEventStream:
         self,
         runtime: object,
         *,
+        recording_manager: object,
         queue_capacity: int,
         max_subscribers: int,
         max_event_bytes: int,
     ) -> None:
         self.runtime = runtime
+        self.recording_manager = recording_manager
         self.queue_capacity = queue_capacity
         self.max_subscribers = max_subscribers
         self.max_event_bytes = max_event_bytes
@@ -122,6 +124,18 @@ def test_daemon_parser_accepts_process_and_audio_options() -> None:
             "20",
             "--destination-config",
             "/tmp/sdsctl-destinations.toml",
+            "--recording-directory",
+            "/tmp/sdsctl-recordings",
+            "--recording-file-socket-path",
+            "/tmp/sdsctl-recording-files-test.sock",
+            "--recording-file-max-clients",
+            "9",
+            "--recording-file-max-identifier-bytes",
+            "3072",
+            "--recording-file-client-timeout",
+            "12",
+            "--recording-file-shutdown-timeout",
+            "7",
             "--socket-path",
             "/tmp/sdsctl-test.sock",
             "--api-max-clients",
@@ -175,6 +189,14 @@ def test_daemon_parser_accepts_process_and_audio_options() -> None:
     assert args.destination_config == Path(
         "/tmp/sdsctl-destinations.toml"
     )
+    assert args.recording_directory == Path("/tmp/sdsctl-recordings")
+    assert args.recording_file_socket_path == Path(
+        "/tmp/sdsctl-recording-files-test.sock"
+    )
+    assert args.recording_file_max_clients == 9
+    assert args.recording_file_max_identifier_bytes == 3072
+    assert args.recording_file_client_timeout == 12.0
+    assert args.recording_file_shutdown_timeout == 7.0
     assert args.socket_path == Path("/tmp/sdsctl-test.sock")
     assert args.api_max_clients == 4
     assert args.api_max_request_bytes == 8192
@@ -293,6 +315,8 @@ def test_daemon_cli_constructs_one_runtime_and_process(
             *,
             destination_coordinator: object,
             destination_reloader: object,
+            recording_manager: object,
+            recording_file_server: object,
             api_server: object,
             event_server: object,
             pcmu_server: object,
@@ -300,6 +324,8 @@ def test_daemon_cli_constructs_one_runtime_and_process(
             self.runtime = runtime
             self.destination_coordinator = destination_coordinator
             self.destination_reloader = destination_reloader
+            self.recording_manager = recording_manager
+            self.recording_file_server = recording_file_server
             self.api_server = api_server
             self.event_server = event_server
             self.pcmu_server = pcmu_server
@@ -391,6 +417,28 @@ def test_daemon_cli_constructs_one_runtime_and_process(
         paths.daemon_destination_config_file
     )
 
+    recording_manager = process.recording_manager
+    assert isinstance(recording_manager, cli.DaemonRecordingManager)
+    assert recording_manager.runtime is runtime
+    assert recording_manager.directory == paths.daemon_recording_dir
+
+    recording_file_server = process.recording_file_server
+    assert isinstance(
+        recording_file_server,
+        cli.DaemonRecordingFileServer,
+    )
+    assert recording_file_server.recording_manager is recording_manager
+    assert recording_file_server.max_clients == 8
+    assert recording_file_server.max_identifier_bytes == 4096
+    assert recording_file_server.client_timeout == 5.0
+    assert recording_file_server.shutdown_timeout == 2.0
+    assert recording_file_server.listener.location.source is (
+        DaemonSocketSource.USER_STATE
+    )
+    assert recording_file_server.listener.location.path == (
+        paths.user_state_dir / "recordings.sock"
+    )
+
     assert runtime.scanner is scanner
     assert runtime.psi_interval_ms == 750
     assert runtime.psi_timeout == 4.0
@@ -401,6 +449,7 @@ def test_daemon_cli_constructs_one_runtime_and_process(
     assert isinstance(api_server, cli.DaemonApiServer)
     assert isinstance(api_server.api, cli.DaemonReadOnlyApi)
     assert api_server.api.runtime is runtime
+    assert api_server.api.recording_manager is recording_manager
     assert api_server.max_clients == 8
     assert api_server.max_request_bytes == 64 * 1024
     assert api_server.max_response_bytes == 1024 * 1024
@@ -415,6 +464,7 @@ def test_daemon_cli_constructs_one_runtime_and_process(
     assert isinstance(event_server, cli.DaemonEventServer)
     assert isinstance(event_server.stream, cli.DaemonEventStream)
     assert event_server.stream.runtime is runtime
+    assert event_server.stream.recording_manager is recording_manager
     assert event_server.stream.queue_capacity == 64
     assert event_server.stream.max_subscribers == 8
     assert event_server.stream.max_event_bytes == 1024 * 1024
@@ -501,6 +551,8 @@ def test_daemon_cli_loads_explicit_destination_manifest(
             *,
             destination_coordinator: object,
             destination_reloader: object,
+            recording_manager: object,
+            recording_file_server: object,
             api_server: object,
             event_server: object,
             pcmu_server: object,
@@ -626,6 +678,8 @@ def test_daemon_cli_reports_process_os_error(
             *,
             destination_coordinator: object,
             destination_reloader: object,
+            recording_manager: object,
+            recording_file_server: object,
             api_server: object,
             event_server: object,
             pcmu_server: object,
@@ -661,8 +715,10 @@ def test_daemon_cli_explicit_socket_path_overrides_runtime_environment(
     explicit = tmp_path / "explicit" / "daemon.sock"
     explicit_events = tmp_path / "explicit" / "events.sock"
     explicit_pcmu = tmp_path / "explicit" / "pcmu.sock"
+    explicit_recording_files = tmp_path / "explicit" / "recordings.sock"
+    explicit_recordings = tmp_path / "recordings"
     explicit.parent.mkdir()
-    observed: list[tuple[object, object, object]] = []
+    observed: list[tuple[object, object, object, object, object]] = []
 
     monkeypatch.setattr(
         cli,
@@ -682,12 +738,22 @@ def test_daemon_cli_explicit_socket_path_overrides_runtime_environment(
             *,
             destination_coordinator: object,
             destination_reloader: object,
+            recording_manager: object,
+            recording_file_server: object,
             api_server: object,
             event_server: object,
             pcmu_server: object,
         ) -> None:
             del runtime, destination_coordinator, destination_reloader
-            observed.append((api_server, event_server, pcmu_server))
+            observed.append(
+                (
+                    recording_manager,
+                    recording_file_server,
+                    api_server,
+                    event_server,
+                    pcmu_server,
+                )
+            )
 
         def run(self) -> DaemonProcessResult:
             return DaemonProcessResult(last_signal=int(signal.SIGTERM))
@@ -707,6 +773,18 @@ def test_daemon_cli_explicit_socket_path_overrides_runtime_environment(
             "daemon",
             "--socket-path",
             str(explicit),
+            "--recording-directory",
+            str(explicit_recordings),
+            "--recording-file-socket-path",
+            str(explicit_recording_files),
+            "--recording-file-max-clients",
+            "4",
+            "--recording-file-max-identifier-bytes",
+            "1536",
+            "--recording-file-client-timeout",
+            "13",
+            "--recording-file-shutdown-timeout",
+            "8",
             "--api-max-clients",
             "3",
             "--api-max-request-bytes",
@@ -753,7 +831,33 @@ def test_daemon_cli_explicit_socket_path_overrides_runtime_environment(
 
     assert result == 0
     assert len(observed) == 1
-    api_server, event_server, pcmu_server = observed[0]
+    (
+        recording_manager,
+        recording_file_server,
+        api_server,
+        event_server,
+        pcmu_server,
+    ) = observed[0]
+    assert isinstance(recording_manager, cli.DaemonRecordingManager)
+    assert recording_manager.directory == explicit_recordings
+
+    assert isinstance(
+        recording_file_server,
+        cli.DaemonRecordingFileServer,
+    )
+    assert recording_file_server.recording_manager is recording_manager
+    assert recording_file_server.listener.location.source is (
+        DaemonSocketSource.EXPLICIT
+    )
+    assert (
+        recording_file_server.listener.location.path
+        == explicit_recording_files
+    )
+    assert recording_file_server.max_clients == 4
+    assert recording_file_server.max_identifier_bytes == 1536
+    assert recording_file_server.client_timeout == 13.0
+    assert recording_file_server.shutdown_timeout == 8.0
+
     assert isinstance(api_server, cli.DaemonApiServer)
     assert api_server.listener.location.source is DaemonSocketSource.EXPLICIT
     assert api_server.listener.location.path == explicit
@@ -911,12 +1015,14 @@ def test_daemon_cli_closes_pcmu_stream_after_server_validation_failure(
     def event_stream_factory(
         runtime: object,
         *,
+        recording_manager: object,
         queue_capacity: int,
         max_subscribers: int,
         max_event_bytes: int,
     ) -> FakeDaemonEventStream:
         stream = FakeDaemonEventStream(
             runtime,
+            recording_manager=recording_manager,
             queue_capacity=queue_capacity,
             max_subscribers=max_subscribers,
             max_event_bytes=max_event_bytes,

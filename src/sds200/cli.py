@@ -78,6 +78,7 @@ from .daemon_ipc import (
     DaemonSocketListener,
     resolve_daemon_event_socket_location,
     resolve_daemon_pcmu_socket_location,
+    resolve_daemon_recording_file_socket_location,
     resolve_daemon_socket_location,
 )
 from .daemon_pcmu_audio import DaemonPcmuAudioTransport
@@ -89,6 +90,20 @@ from .daemon_pcmu_server import (
     DaemonPcmuServer,
 )
 from .daemon_process import DaemonProcess
+from .daemon_recording import DaemonRecordingManager
+from .daemon_recording_file_client import (
+    DAEMON_RECORDING_FILE_CLIENT_DEFAULT_MAX_CONTENT_BYTES,
+    DaemonRecordingFileClient,
+)
+from .daemon_recording_file_protocol import (
+    RECORDING_FILE_DEFAULT_MAX_IDENTIFIER_BYTES,
+)
+from .daemon_recording_file_server import (
+    DAEMON_RECORDING_FILE_DEFAULT_CLIENT_TIMEOUT,
+    DAEMON_RECORDING_FILE_DEFAULT_MAX_CLIENTS,
+    DAEMON_RECORDING_FILE_DEFAULT_SHUTDOWN_TIMEOUT,
+    DaemonRecordingFileServer,
+)
 from .daemon_runtime import DaemonRuntime
 from .daemon_server import (
     DAEMON_API_DEFAULT_CLIENT_TIMEOUT,
@@ -138,6 +153,7 @@ from .profiles import (
 from .radio import SDSScanner
 from .recording_inventory import scan_recording_inventory
 from .recording_organization import RecordingOrganizationPolicy
+from .recording_paths import DEFAULT_RECORDING_TEMPLATE, RecordingPathPolicy
 from .recording_retention import (
     RecordingRetentionPlan,
     RecordingRetentionPolicy,
@@ -159,11 +175,7 @@ from .rich_cli import (
 from .rtsp import DEFAULT_RTSP_PORT
 from .scanner import SUPPORTED_SCANNER_MODELS, ScannerModel, normalize_model_name
 from .state import snapshot_from_scanner_info
-from .tui_audio import (
-    DEFAULT_RECORDING_TEMPLATE,
-    RecordingPathPolicy,
-    TuiAudioSession,
-)
+from .tui_audio import TuiAudioSession
 from .tui_logging import TuiLogBuffer, capture_package_logs
 from .web_server import (
     WEB_DASHBOARD_DEFAULT_HOST,
@@ -708,6 +720,64 @@ def build_parser(
         ),
     )
     daemon.add_argument(
+        "--recording-directory",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Directory for daemon-owned WAV recordings; otherwise use "
+            "the user state directory"
+        ),
+    )
+    daemon.add_argument(
+        "--recording-file-socket-path",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Explicit absolute Unix recording-file socket path; otherwise "
+            "use XDG_RUNTIME_DIR or the user state directory"
+        ),
+    )
+    daemon.add_argument(
+        "--recording-file-max-clients",
+        type=_positive_integer,
+        default=DAEMON_RECORDING_FILE_DEFAULT_MAX_CLIENTS,
+        metavar="COUNT",
+        help=(
+            "Maximum concurrent local recording-file clients "
+            f"(default: {DAEMON_RECORDING_FILE_DEFAULT_MAX_CLIENTS})"
+        ),
+    )
+    daemon.add_argument(
+        "--recording-file-max-identifier-bytes",
+        type=_positive_integer,
+        default=RECORDING_FILE_DEFAULT_MAX_IDENTIFIER_BYTES,
+        metavar="BYTES",
+        help=(
+            "Maximum encoded recording inventory identifier size "
+            f"(default: {RECORDING_FILE_DEFAULT_MAX_IDENTIFIER_BYTES})"
+        ),
+    )
+    daemon.add_argument(
+        "--recording-file-client-timeout",
+        type=_positive_float,
+        default=DAEMON_RECORDING_FILE_DEFAULT_CLIENT_TIMEOUT,
+        metavar="SECONDS",
+        help=(
+            "Local recording-file client timeout "
+            f"(default: {DAEMON_RECORDING_FILE_DEFAULT_CLIENT_TIMEOUT})"
+        ),
+    )
+    daemon.add_argument(
+        "--recording-file-shutdown-timeout",
+        type=_positive_float,
+        default=DAEMON_RECORDING_FILE_DEFAULT_SHUTDOWN_TIMEOUT,
+        metavar="SECONDS",
+        help=(
+            "Local recording-file worker shutdown deadline "
+            f"(default: {DAEMON_RECORDING_FILE_DEFAULT_SHUTDOWN_TIMEOUT})"
+        ),
+    )
+    daemon.add_argument(
         "--socket-path",
         type=Path,
         metavar="PATH",
@@ -1177,13 +1247,22 @@ def build_parser(
         ),
     )
     web.add_argument(
+        "--daemon-recording-file-socket-path",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Explicit daemon recording-file socket path; otherwise use "
+            "XDG_RUNTIME_DIR or the user state directory"
+        ),
+    )
+    web.add_argument(
         "--daemon-timeout",
         type=_positive_float,
         default=DAEMON_API_CLIENT_DEFAULT_TIMEOUT,
         metavar="SECONDS",
         help=(
-            "Daemon API, event, and PCMU connection timeout "
-            f"(default: {DAEMON_API_CLIENT_DEFAULT_TIMEOUT})"
+            "Daemon API, event, PCMU, and recording-file connection "
+            f"timeout (default: {DAEMON_API_CLIENT_DEFAULT_TIMEOUT})"
         ),
     )
     web.add_argument(
@@ -1224,6 +1303,16 @@ def build_parser(
         help=(
             "Maximum accepted daemon PCMU frame size "
             f"(default: {PCMU_STREAM_DEFAULT_MAX_FRAME_BYTES})"
+        ),
+    )
+    web.add_argument(
+        "--daemon-recording-file-max-content-bytes",
+        type=_positive_integer,
+        default=None,
+        metavar="BYTES",
+        help=(
+            "Maximum accepted completed recording size "
+            f"(default: {DAEMON_RECORDING_FILE_CLIENT_DEFAULT_MAX_CONTENT_BYTES})"
         ),
     )
     web.add_argument(
@@ -2413,6 +2502,11 @@ def _run_daemon(
             destination_manifest_path,
         )
     )
+    recording_directory = (
+        args.recording_directory
+        if args.recording_directory is not None
+        else resolved_paths.daemon_recording_dir
+    )
 
     profile_store = ProfileStore(args.config) if args.profile is not None else None
     host = _daemon_host(args, profile_store=profile_store)
@@ -2433,6 +2527,13 @@ def _run_daemon(
         environ=environ,
         configuration_paths=resolved_paths,
     )
+    recording_file_socket_location = (
+        resolve_daemon_recording_file_socket_location(
+            args.recording_file_socket_path,
+            environ=environ,
+            configuration_paths=resolved_paths,
+        )
+    )
 
     router = PcmSinkRouter(name="daemon-pcm")
     transport = NetworkAudioTransport(
@@ -2451,11 +2552,26 @@ def _run_daemon(
         psi_interval_ms=args.interval,
         psi_timeout=args.psi_timeout,
     )
+    recording_manager = DaemonRecordingManager(
+        runtime,
+        recording_directory,
+    )
+    recording_file_server = DaemonRecordingFileServer(
+        DaemonSocketListener(recording_file_socket_location),
+        recording_manager,
+        max_clients=args.recording_file_max_clients,
+        max_identifier_bytes=args.recording_file_max_identifier_bytes,
+        client_timeout=args.recording_file_client_timeout,
+        shutdown_timeout=args.recording_file_shutdown_timeout,
+    )
 
     listener = DaemonSocketListener(socket_location)
     api_server = DaemonApiServer(
         listener,
-        DaemonReadOnlyApi(runtime),
+        DaemonReadOnlyApi(
+            runtime,
+            recording_manager=recording_manager,
+        ),
         max_clients=args.api_max_clients,
         max_request_bytes=args.api_max_request_bytes,
         max_response_bytes=args.api_max_response_bytes,
@@ -2465,6 +2581,7 @@ def _run_daemon(
 
     event_stream = DaemonEventStream(
         runtime,
+        recording_manager=recording_manager,
         queue_capacity=args.event_queue_capacity,
         max_subscribers=args.event_max_clients,
         max_event_bytes=args.event_max_bytes,
@@ -2545,17 +2662,20 @@ def _run_daemon(
         runtime,
         destination_coordinator=destination_coordinator,
         destination_reloader=destination_reloader,
+        recording_manager=recording_manager,
+        recording_file_server=recording_file_server,
         api_server=api_server,
         event_server=event_server,
         pcmu_server=pcmu_server,
     ).run()
     logger.info(
         "foreground daemon stopped host=%s socket=%s event_socket=%s "
-        "pcmu_socket=%s signal=%s",
+        "pcmu_socket=%s recording_file_socket=%s signal=%s",
         host,
         socket_location.path,
         event_socket_location.path,
         pcmu_socket_location.path,
+        recording_file_socket_location.path,
         result.last_signal,
     )
     return 0
@@ -3401,6 +3521,11 @@ def _run_web(
         environ=environ,
         configuration_paths=configuration_paths,
     )
+    recording_file_location = resolve_daemon_recording_file_socket_location(
+        args.daemon_recording_file_socket_path,
+        environ=environ,
+        configuration_paths=configuration_paths,
+    )
     timeout = args.daemon_timeout
     max_response_bytes = (
         DAEMON_API_DEFAULT_MAX_RESPONSE_BYTES
@@ -3421,6 +3546,11 @@ def _run_web(
         PCMU_STREAM_DEFAULT_MAX_FRAME_BYTES
         if args.daemon_pcmu_max_frame_bytes is None
         else args.daemon_pcmu_max_frame_bytes
+    )
+    max_recording_file_content_bytes = (
+        DAEMON_RECORDING_FILE_CLIENT_DEFAULT_MAX_CONTENT_BYTES
+        if args.daemon_recording_file_max_content_bytes is None
+        else args.daemon_recording_file_max_content_bytes
     )
     if max_pcmu_frame_bytes < PCMU_STREAM_HEADER_BYTES:
         raise ValueError(
@@ -3455,10 +3585,18 @@ def _run_web(
             max_frame_bytes=max_pcmu_frame_bytes,
         )
 
+    def recording_file_client_factory() -> DaemonRecordingFileClient:
+        return DaemonRecordingFileClient(
+            recording_file_location,
+            timeout=timeout,
+            max_content_bytes=max_recording_file_content_bytes,
+        )
+
     app = create_web_dashboard_app(
         api_client_factory,
         event_client_factory,
         pcmu_client_factory,
+        recording_file_client_factory,
     )
 
     return run_web_dashboard_server(

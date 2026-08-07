@@ -11,6 +11,7 @@ from sds200.daemon_api import (
     DAEMON_API_MAX_CONTROL_TIMEOUT,
     DAEMON_API_PROTOCOL,
     DAEMON_API_READ_ONLY_OPERATIONS,
+    DAEMON_API_RECORDING_OPERATIONS,
     DAEMON_API_SUPPORTED_VERSIONS,
     DAEMON_API_VERSION,
     DaemonApiErrorCode,
@@ -172,11 +173,16 @@ def test_capabilities_preserve_reads_and_advertise_controls() -> None:
     assert response.result == {
         "protocol": DAEMON_API_PROTOCOL,
         "supported_versions": list(DAEMON_API_SUPPORTED_VERSIONS),
-        "operations": [operation.value for operation in DaemonApiOperation],
+        "operations": [
+            operation.value
+            for operation in DaemonApiOperation
+            if operation not in DAEMON_API_RECORDING_OPERATIONS
+        ],
         "read_only": False,
         "read_only_operations": [
             operation.value
             for operation in DAEMON_API_READ_ONLY_OPERATIONS
+            if operation not in DAEMON_API_RECORDING_OPERATIONS
         ],
         "control_operations": [
             operation.value

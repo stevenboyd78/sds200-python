@@ -13,7 +13,13 @@ from fastapi.testclient import TestClient
 import sds200.web_dashboard as web_dashboard
 from sds200 import __version__
 from sds200.daemon_events import DaemonEvent, DaemonEventKind
-from sds200.exceptions import DaemonDisconnectedError, DaemonUnavailableError
+from sds200.daemon_recording_file_client import DaemonRecordingFileRequestError
+from sds200.daemon_recording_file_protocol import RecordingFileResponseStatus
+from sds200.exceptions import (
+    DaemonDisconnectedError,
+    DaemonRequestError,
+    DaemonUnavailableError,
+)
 from sds200.pcmu import PcmuPacket
 from sds200.pcmu_protocol import encode_pcmu_delivery
 from sds200.pcmu_subscriptions import PcmuPacketDelivery, PcmuPublication
@@ -32,14 +38,20 @@ class FakeDaemonApiClient:
         hello: Mapping[str, object] | None = None,
         snapshot: Mapping[str, object] | None = None,
         error: BaseException | None = None,
+        recording_error: BaseException | None = None,
     ) -> None:
         self.hello_result = dict(hello or {})
         self.snapshot_result = dict(snapshot or {})
         self.error = error
+        self.recording_error = recording_error
         self.entered = False
         self.closed = False
         self.hello_calls = 0
         self.snapshot_calls = 0
+        self.recording_status_calls = 0
+        self.recording_start_calls = 0
+        self.recording_stop_calls = 0
+        self.recordings_list_calls = 0
 
     def __enter__(self) -> Self:
         self.entered = True
@@ -65,6 +77,80 @@ class FakeDaemonApiClient:
         if self.error is not None:
             raise self.error
         return dict(self.snapshot_result)
+
+    def recording_status(self) -> dict[str, object]:
+        self.recording_status_calls += 1
+        self._raise_recording_error()
+        return {"status": "idle", "active": False}
+
+    def recording_start(self) -> dict[str, object]:
+        self.recording_start_calls += 1
+        self._raise_recording_error()
+        return {"status": "recording", "active": True}
+
+    def recording_stop(self) -> dict[str, object]:
+        self.recording_stop_calls += 1
+        self._raise_recording_error()
+        return {"status": "stopped", "active": False}
+
+    def recordings_list(self) -> dict[str, object]:
+        self.recordings_list_calls += 1
+        self._raise_recording_error()
+        return {
+            "limit": 50,
+            "total_entries": 1,
+            "summary": {"managed_units": 1},
+            "issues": [],
+            "entries": [{"audio": "2026/test.wav"}],
+        }
+
+    def _raise_recording_error(self) -> None:
+        if self.recording_error is not None:
+            raise self.recording_error
+
+
+class FakeDaemonRecordingFileDownload:
+    def __init__(self, payload: bytes) -> None:
+        self.content_length = len(payload)
+        self._payload = payload
+        self._offset = 0
+        self.closed = False
+
+    def read(self, size: int = -1) -> bytes:
+        if self.closed:
+            raise ValueError("closed")
+        if size < 0:
+            size = len(self._payload) - self._offset
+        end = min(len(self._payload), self._offset + size)
+        payload = self._payload[self._offset:end]
+        self._offset = end
+        if self._offset == len(self._payload):
+            self.closed = True
+        return payload
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class FakeDaemonRecordingFileClient:
+    def __init__(
+        self,
+        *,
+        payload: bytes = b"RIFFtest",
+        error: BaseException | None = None,
+    ) -> None:
+        self.payload = payload
+        self.error = error
+        self.identifiers: list[str] = []
+        self.downloads: list[FakeDaemonRecordingFileDownload] = []
+
+    def open(self, identifier: str) -> FakeDaemonRecordingFileDownload:
+        self.identifiers.append(identifier)
+        if self.error is not None:
+            raise self.error
+        download = FakeDaemonRecordingFileDownload(self.payload)
+        self.downloads.append(download)
+        return download
 
 
 class FakeDaemonEventClient:
@@ -215,6 +301,19 @@ def test_web_dashboard_requires_callable_pcmu_client_factory() -> None:
         )
 
 
+def test_web_dashboard_requires_callable_recording_file_client_factory() -> None:
+    with pytest.raises(
+        TypeError,
+        match="Daemon recording-file client factory must be callable or None",
+    ):
+        create_web_dashboard_app(
+            FakeDaemonApiClient,
+            FakeDaemonEventClient,
+            FakeDaemonPcmuClient,
+            object(),  # type: ignore[arg-type]
+        )
+
+
 def test_web_dashboard_shell_does_not_connect_to_daemon() -> None:
     def forbidden_factory() -> FakeDaemonApiClient:
         raise AssertionError("dashboard shell must not connect to the daemon")
@@ -236,6 +335,11 @@ def test_web_dashboard_shell_does_not_connect_to_daemon() -> None:
     assert 'id="status-badge"' in response.text
     assert 'id="audio-play"' in response.text
     assert 'id="audio-stop"' in response.text
+    assert 'id="recording-start"' in response.text
+    assert 'id="recording-stop"' in response.text
+    assert 'id="recordings-list"' in response.text
+    assert 'id="saved-recording-player"' in response.text
+    assert "media-src 'self'" in response.headers["content-security-policy"]
     assert "Milestone 20.2" not in response.text
     assert 'href="/assets/favicon.svg"' in response.text
     assert 'type="image/svg+xml"' in response.text
@@ -262,6 +366,9 @@ def test_web_dashboard_serves_packaged_static_assets() -> None:
     assert stylesheet.headers["cache-control"] == "no-store"
     assert "--content-width:" in stylesheet.text
     assert "@media (prefers-reduced-motion: reduce)" in stylesheet.text
+    assert ".recording-panel" in stylesheet.text
+    assert ".recording-list" in stylesheet.text
+    assert ".saved-playback" in stylesheet.text
 
     assert script.status_code == 200
     assert script.headers["content-type"].startswith("application/javascript")
@@ -276,6 +383,19 @@ def test_web_dashboard_serves_packaged_static_assets() -> None:
     assert "new AbortController" in script.text
     assert "getBigUint64" in script.text
     assert "PCMU stream gap does not match daemon queue-loss counters" in script.text
+    assert 'fetch("/api/v1/recording"' in script.text
+    assert 'fetch("/api/v1/recordings"' in script.text
+    assert 'performRecordingAction("start")' in script.text
+    assert 'performRecordingAction("stop")' in script.text
+    assert 'kind === "recording.state"' in script.text
+    assert "recordingStatusAvailable" in script.text
+    assert "recording: payload" in script.text
+    assert '["idle", "stopped", "failed"].includes(status)' in script.text
+    assert "RECORDING_REFRESH_INTERVAL_MS" in script.text
+    assert "recordingFileUrl" in script.text
+    assert "encodeURIComponent" in script.text
+    assert "document.createElement" in script.text
+    assert "saved-recording-player" in script.text
     assert "textContent" in script.text
     assert "innerHTML" not in script.text
 
@@ -329,6 +449,9 @@ def test_web_dashboard_api_index_advertises_endpoints() -> None:
         "dashboard": "/",
         "events": "/api/v1/events",
         "health": "/healthz",
+        "recording": "/api/v1/recording",
+        "recordings": "/api/v1/recordings",
+        "recording_file": "/api/v1/recordings/file/{identifier}",
         "snapshot": "/api/v1/snapshot",
         "status": "/api/v1/status",
     }
@@ -601,6 +724,190 @@ def test_web_dashboard_redacts_daemon_failures() -> None:
     assert daemon_client.closed is True
 
 
+
+def test_web_dashboard_recording_routes_proxy_daemon_api() -> None:
+    daemon_client = FakeDaemonApiClient()
+    app = create_web_dashboard_app(lambda: daemon_client)
+
+    with TestClient(app) as client:
+        status = client.get("/api/v1/recording")
+        started = client.post("/api/v1/recording/start")
+        stopped = client.post("/api/v1/recording/stop")
+        recordings = client.get("/api/v1/recordings")
+
+    assert status.status_code == 200
+    assert status.json()["recording"]["status"] == "idle"
+    assert started.status_code == 200
+    assert started.json()["recording"]["status"] == "recording"
+    assert stopped.status_code == 200
+    assert stopped.json()["recording"]["status"] == "stopped"
+    assert recordings.status_code == 200
+    assert recordings.json()["recordings"]["total_entries"] == 1
+    assert daemon_client.recording_status_calls == 1
+    assert daemon_client.recording_start_calls == 1
+    assert daemon_client.recording_stop_calls == 1
+    assert daemon_client.recordings_list_calls == 1
+
+
+@pytest.mark.parametrize(
+    ("code", "status_code", "detail"),
+    [
+        ("recording_busy", 409, web_dashboard.WEB_DASHBOARD_RECORDING_BUSY_DETAIL),
+        (
+            "recording_unavailable",
+            503,
+            web_dashboard.WEB_DASHBOARD_RECORDING_UNAVAILABLE_DETAIL,
+        ),
+        (
+            "recording_failed",
+            503,
+            web_dashboard.WEB_DASHBOARD_RECORDING_FAILED_DETAIL,
+        ),
+    ],
+)
+def test_web_dashboard_maps_recording_api_errors(
+    code: str,
+    status_code: int,
+    detail: str,
+) -> None:
+    daemon_client = FakeDaemonApiClient(
+        recording_error=DaemonRequestError(
+            code,
+            "secret daemon detail /private/recordings",
+            request_id="recording-web-1",
+        )
+    )
+    app = create_web_dashboard_app(lambda: daemon_client)
+
+    with TestClient(app) as client:
+        response = client.post("/api/v1/recording/start")
+
+    assert response.status_code == status_code
+    assert response.json() == {"detail": detail}
+    assert "secret" not in response.text
+    assert "/private/recordings" not in response.text
+
+
+def test_web_dashboard_streams_recording_via_private_daemon_client() -> None:
+    def forbidden_pcmu_factory() -> FakeDaemonPcmuClient:
+        raise AssertionError("saved recording playback must not open daemon PCMU")
+
+    recording_file_client = FakeDaemonRecordingFileClient(
+        payload=b"RIFF" + (b"\x00" * 32)
+    )
+    app = create_web_dashboard_app(
+        FakeDaemonApiClient,
+        FakeDaemonEventClient,
+        forbidden_pcmu_factory,
+        lambda: recording_file_client,
+    )
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/v1/recordings/file/2026/08/test.wav"
+        )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("audio/wav")
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["content-length"] == "36"
+    assert response.content == b"RIFF" + (b"\x00" * 32)
+    assert recording_file_client.identifiers == ["2026/08/test.wav"]
+    assert recording_file_client.downloads[0].closed is True
+
+
+@pytest.mark.parametrize(
+    ("status", "status_code", "detail"),
+    [
+        (
+            RecordingFileResponseStatus.INVALID_IDENTIFIER,
+            400,
+            web_dashboard.WEB_DASHBOARD_RECORDING_INVALID_IDENTIFIER_DETAIL,
+        ),
+        (
+            RecordingFileResponseStatus.NOT_FOUND,
+            404,
+            web_dashboard.WEB_DASHBOARD_RECORDING_NOT_FOUND_DETAIL,
+        ),
+        (
+            RecordingFileResponseStatus.NOT_PLAYABLE,
+            409,
+            web_dashboard.WEB_DASHBOARD_RECORDING_NOT_PLAYABLE_DETAIL,
+        ),
+        (
+            RecordingFileResponseStatus.UNAVAILABLE,
+            409,
+            web_dashboard.WEB_DASHBOARD_RECORDING_UNAVAILABLE_DETAIL,
+        ),
+        (
+            RecordingFileResponseStatus.FAILED,
+            503,
+            web_dashboard.WEB_DASHBOARD_RECORDING_FAILED_DETAIL,
+        ),
+    ],
+)
+def test_web_dashboard_maps_recording_file_errors(
+    status: RecordingFileResponseStatus,
+    status_code: int,
+    detail: str,
+) -> None:
+    recording_file_client = FakeDaemonRecordingFileClient(
+        error=DaemonRecordingFileRequestError(status)
+    )
+    app = create_web_dashboard_app(
+        FakeDaemonApiClient,
+        FakeDaemonEventClient,
+        FakeDaemonPcmuClient,
+        lambda: recording_file_client,
+    )
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/v1/recordings/file/private/secret.wav"
+        )
+
+    assert response.status_code == status_code
+    assert response.json() == {"detail": detail}
+    assert "private/secret.wav" not in response.text
+
+
+def test_web_dashboard_recording_file_requires_configured_factory() -> None:
+    app = create_web_dashboard_app(FakeDaemonApiClient)
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/recordings/file/test.wav")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": web_dashboard.WEB_DASHBOARD_RECORDING_UNAVAILABLE_DETAIL
+    }
+
+
+def test_web_dashboard_redacts_recording_file_connection_failures() -> None:
+    recording_file_client = FakeDaemonRecordingFileClient(
+        error=DaemonUnavailableError(
+            "Daemon recording-file socket was not found: "
+            "/private/sdsctl/recordings.sock"
+        )
+    )
+    app = create_web_dashboard_app(
+        FakeDaemonApiClient,
+        FakeDaemonEventClient,
+        FakeDaemonPcmuClient,
+        lambda: recording_file_client,
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/recordings/file/test.wav")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": web_dashboard.WEB_DASHBOARD_RECORDING_UNAVAILABLE_DETAIL
+    }
+    assert "/private/sdsctl/recordings.sock" not in response.text
+
+
 def test_web_dashboard_disables_interactive_docs() -> None:
     app = create_web_dashboard_app(FakeDaemonApiClient)
 
@@ -615,3 +922,9 @@ def test_web_dashboard_disables_interactive_docs() -> None:
     assert openapi_response.json()["info"]["version"] == __version__
     assert "/api/v1/events" in openapi_response.json()["paths"]
     assert "/api/v1/audio" in openapi_response.json()["paths"]
+    assert "/api/v1/recording" in openapi_response.json()["paths"]
+    assert "/api/v1/recordings" in openapi_response.json()["paths"]
+    assert (
+        "/api/v1/recordings/file/{identifier}"
+        in openapi_response.json()["paths"]
+    )

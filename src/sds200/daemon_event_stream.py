@@ -56,6 +56,19 @@ class _RadioStateSource(Protocol):
     def snapshot(self) -> RadioStateSnapshot: ...
 
 
+class _SnapshotLike(Protocol):
+    def as_dict(self) -> dict[str, object]: ...
+
+
+class _RecordingEventSource(Protocol):
+    def snapshot(self) -> _SnapshotLike: ...
+
+    def on_state(
+        self,
+        callback: Callable[[_SnapshotLike], None],
+    ) -> Callable[[], None]: ...
+
+
 def _utc_now() -> datetime:
     return datetime.now(UTC)
 
@@ -67,12 +80,14 @@ class DaemonEventStream:
         self,
         runtime: DaemonRuntime,
         *,
+        recording_manager: _RecordingEventSource | None = None,
         queue_capacity: int = DAEMON_EVENT_DEFAULT_QUEUE_CAPACITY,
         max_subscribers: int = 32,
         max_event_bytes: int = DAEMON_EVENT_DEFAULT_MAX_BYTES,
         now: Callable[[], datetime] = _utc_now,
     ) -> None:
         self.runtime = runtime
+        self.recording_manager = recording_manager
         self._lock = threading.RLock()
         self._closed = False
         self._publisher = DaemonEventPublisher(
@@ -105,6 +120,10 @@ class DaemonEventStream:
             unsubscribes.append(
                 runtime.router.on_transition(self._destination_health)
             )
+            if recording_manager is not None:
+                unsubscribes.append(
+                    recording_manager.on_state(self._recording_state)
+                )
         except BaseException:
             for unsubscribe in reversed(unsubscribes):
                 unsubscribe()
@@ -162,7 +181,15 @@ class DaemonEventStream:
             self._publisher.close()
 
     def _snapshot(self) -> Mapping[str, object]:
-        return self.runtime.snapshot().as_dict()
+        snapshot = self.runtime.snapshot().as_dict()
+        manager = self.recording_manager
+        if manager is None:
+            return snapshot
+
+        return {
+            **snapshot,
+            "recording": manager.snapshot().as_dict(),
+        }
 
     def _publish(
         self,
@@ -226,6 +253,12 @@ class DaemonEventStream:
         self._publish(
             DaemonEventKind.AUDIO_STATE,
             asdict(snapshot),
+        )
+
+    def _recording_state(self, snapshot: _SnapshotLike) -> None:
+        self._publish(
+            DaemonEventKind.RECORDING_STATE,
+            snapshot.as_dict(),
         )
 
     def _destination_health(

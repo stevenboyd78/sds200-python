@@ -69,6 +69,51 @@ class FakeDestinationCoordinator:
 
 
 
+class FakeRecordingManager:
+    def __init__(
+        self,
+        order: list[str],
+        *,
+        close_error: BaseException | None = None,
+    ) -> None:
+        self.order = order
+        self.close_error = close_error
+        self.close_calls = 0
+
+    def close(self) -> None:
+        self.order.append("recording.close")
+        self.close_calls += 1
+        if self.close_error is not None:
+            raise self.close_error
+
+
+class FakeRecordingFileServer:
+    def __init__(
+        self,
+        order: list[str],
+        *,
+        start_error: BaseException | None = None,
+        stop_error: BaseException | None = None,
+    ) -> None:
+        self.order = order
+        self.start_error = start_error
+        self.stop_error = stop_error
+        self.start_calls = 0
+        self.stop_calls = 0
+
+    def start(self) -> None:
+        self.order.append("recording-files.start")
+        self.start_calls += 1
+        if self.start_error is not None:
+            raise self.start_error
+
+    def stop(self) -> None:
+        self.order.append("recording-files.stop")
+        self.stop_calls += 1
+        if self.stop_error is not None:
+            raise self.stop_error
+
+
 class FakeReloadCleanupFailure:
     def __init__(self, error_type: str) -> None:
         self.error_type = error_type
@@ -563,6 +608,80 @@ def test_process_owns_destinations_between_runtime_and_api() -> None:
         "api.start",
         "signals.wait",
         "api.stop",
+        "destinations.stop",
+        "runtime.stop",
+        "signals.exit",
+    ]
+
+
+def test_process_closes_recording_before_destinations_and_runtime() -> None:
+    order: list[str] = []
+    runtime = FakeRuntime(order)
+    destinations = FakeDestinationCoordinator(order)
+    recording = FakeRecordingManager(order)
+    api_server = FakeApiServer(order)
+    signals = FakeSignalController(
+        order,
+        (True,),
+        last_signal=int(signal.SIGTERM),
+    )
+
+    result = DaemonProcess(
+        runtime,
+        destination_coordinator=destinations,
+        recording_manager=recording,
+        api_server=api_server,
+        signals=signals,
+        poll_interval=0.25,
+    ).run()
+
+    assert result.last_signal == int(signal.SIGTERM)
+    assert order == [
+        "signals.enter",
+        "runtime.start",
+        "destinations.start",
+        "api.start",
+        "signals.wait",
+        "api.stop",
+        "recording.close",
+        "destinations.stop",
+        "runtime.stop",
+        "signals.exit",
+    ]
+    assert recording.close_calls == 1
+
+
+def test_recording_cleanup_failure_still_stops_destinations_and_runtime() -> None:
+    order: list[str] = []
+    recording_error = RuntimeError("secret recording cleanup failure")
+    runtime = FakeRuntime(order)
+    destinations = FakeDestinationCoordinator(order)
+    recording = FakeRecordingManager(
+        order,
+        close_error=recording_error,
+    )
+    api_server = FakeApiServer(order)
+    signals = FakeSignalController(order, (True,))
+
+    with pytest.raises(RuntimeError) as raised:
+        DaemonProcess(
+            runtime,
+            destination_coordinator=destinations,
+            recording_manager=recording,
+            api_server=api_server,
+            signals=signals,
+            poll_interval=0.25,
+        ).run()
+
+    assert raised.value is recording_error
+    assert order == [
+        "signals.enter",
+        "runtime.start",
+        "destinations.start",
+        "api.start",
+        "signals.wait",
+        "api.stop",
+        "recording.close",
         "destinations.stop",
         "runtime.stop",
         "signals.exit",
@@ -1353,3 +1472,135 @@ def test_clean_shutdown_attempts_pcmu_and_event_after_prior_failures(
     assert "primary_error=RuntimeError" in caplog.text
     assert "cleanup_error=OSError" in caplog.text
     assert "secret" not in caplog.text
+
+def test_process_orders_recording_file_service_around_recording_manager() -> None:
+    order: list[str] = []
+    runtime = FakeRuntime(order)
+    destinations = FakeDestinationCoordinator(order)
+    recording = FakeRecordingManager(order)
+    recording_files = FakeRecordingFileServer(order)
+    api_server = FakeApiServer(order)
+    event_server = FakeEventServer(order)
+    pcmu_server = FakePcmuServer(order)
+    signals = FakeSignalController(
+        order,
+        (True,),
+        last_signal=int(signal.SIGTERM),
+    )
+
+    result = DaemonProcess(
+        runtime,
+        destination_coordinator=destinations,
+        recording_manager=recording,
+        recording_file_server=recording_files,
+        api_server=api_server,
+        event_server=event_server,
+        pcmu_server=pcmu_server,
+        signals=signals,
+        poll_interval=0.25,
+    ).run()
+
+    assert result.last_signal == int(signal.SIGTERM)
+    assert order == [
+        "signals.enter",
+        "events.start",
+        "pcmu.start",
+        "runtime.start",
+        "destinations.start",
+        "recording-files.start",
+        "api.start",
+        "signals.wait",
+        "api.stop",
+        "recording-files.stop",
+        "recording.close",
+        "destinations.stop",
+        "runtime.stop",
+        "pcmu.stop",
+        "events.stop",
+        "signals.exit",
+    ]
+
+
+def test_recording_file_startup_failure_cleans_earlier_components() -> None:
+    order: list[str] = []
+    startup_error = RuntimeError("secret recording-file startup failure")
+    runtime = FakeRuntime(order)
+    destinations = FakeDestinationCoordinator(order)
+    recording = FakeRecordingManager(order)
+    recording_files = FakeRecordingFileServer(
+        order,
+        start_error=startup_error,
+    )
+    api_server = FakeApiServer(order)
+    event_server = FakeEventServer(order)
+    pcmu_server = FakePcmuServer(order)
+    signals = FakeSignalController(order, ())
+
+    with pytest.raises(RuntimeError) as raised:
+        DaemonProcess(
+            runtime,
+            destination_coordinator=destinations,
+            recording_manager=recording,
+            recording_file_server=recording_files,
+            api_server=api_server,
+            event_server=event_server,
+            pcmu_server=pcmu_server,
+            signals=signals,
+            poll_interval=0.25,
+        ).run()
+
+    assert raised.value is startup_error
+    assert order == [
+        "signals.enter",
+        "events.start",
+        "pcmu.start",
+        "runtime.start",
+        "destinations.start",
+        "recording-files.start",
+        "recording-files.stop",
+        "recording.close",
+        "destinations.stop",
+        "runtime.stop",
+        "pcmu.stop",
+        "events.stop",
+        "signals.exit",
+    ]
+    assert api_server.start_calls == 0
+    assert api_server.stop_calls == 0
+
+
+def test_recording_file_shutdown_failure_does_not_skip_recording_cleanup() -> None:
+    order: list[str] = []
+    shutdown_error = RuntimeError("secret recording-file shutdown failure")
+    runtime = FakeRuntime(order)
+    destinations = FakeDestinationCoordinator(order)
+    recording = FakeRecordingManager(order)
+    recording_files = FakeRecordingFileServer(
+        order,
+        stop_error=shutdown_error,
+    )
+    signals = FakeSignalController(order, (True,))
+
+    with pytest.raises(RuntimeError) as raised:
+        DaemonProcess(
+            runtime,
+            destination_coordinator=destinations,
+            recording_manager=recording,
+            recording_file_server=recording_files,
+            signals=signals,
+            poll_interval=0.25,
+        ).run()
+
+    assert raised.value is shutdown_error
+    assert order == [
+        "signals.enter",
+        "runtime.start",
+        "destinations.start",
+        "recording-files.start",
+        "signals.wait",
+        "recording-files.stop",
+        "recording.close",
+        "destinations.stop",
+        "runtime.stop",
+        "signals.exit",
+    ]

@@ -8,6 +8,26 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Added
 
+- Milestone 20.5 daemon-owned browser recording workflows over the existing
+  decoded-PCM router, with repeatable collision-safe WAV capture, adjacent
+  metadata sidecars, bounded newest-first finalized inventory, stable recording
+  status/start/stop/list API operations, ordered `recording.state` events, and
+  daemon-shutdown finalization without opening a second scanner RTSP/RTP stream.
+- A private versioned `recordings.sock` recording-file service with bounded local
+  clients, canonical inventory-relative identifiers, component-by-component
+  `O_NOFOLLOW` reopening, regular-file and WAV revalidation, exact-length
+  streaming, redacted failures, and deterministic process cleanup.
+- Browser Record and Stop controls with live elapsed, packet, sample, duration,
+  and RTP reliability telemetry; automatic active-recording reconciliation after
+  reload or reconnect; recent finalized recordings; and same-origin Play and
+  Download actions that use the recording-file service without creating browser
+  PCMU or scanner-audio ownership.
+- Physical SDS200 browser-recording validation confirmed live daemon-owned
+  capture, loss-free observed telemetry, finalized WAV and metadata inventory,
+  saved-file playback and download, active recording survival across web-process
+  shutdown and restart, and SIGTERM finalization before daemon audio shutdown.
+  The shutdown-finalized recording was rediscovered as playable after daemon
+  restart, and the full browser acceptance workflow passed.
 - Milestone 20.4 explicit same-origin browser audio over the daemon-owned PCMU
   socket with one independent validated client per playback stream, exact v1
   frame forwarding without re-encoding, manual Play and Stop controls,

@@ -196,6 +196,10 @@ button:focus-visible,
   background: var(--surface-emphasis);
 }
 
+.recording-panel {
+  grid-column: span 2;
+}
+
 .panel-header {
   padding-bottom: var(--space-4);
   border-bottom: 1px solid var(--border);
@@ -264,20 +268,26 @@ button:focus-visible,
   font-size: 0.875em;
 }
 
-.audio-playback-status {
+.audio-playback-status,
+.recording-status,
+.recordings-message {
   min-height: 1.5em;
   margin: var(--space-5) 0 var(--space-3);
   color: var(--muted);
   font-weight: 750;
 }
 
-.audio-controls {
+.audio-controls,
+.recording-controls {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
 }
 
-.audio-controls button {
+.audio-controls button,
+.recording-controls button,
+.recording-library button,
+.recording-action {
   min-width: 7rem;
   padding: var(--space-3) var(--space-4);
   border: 0.125rem solid var(--accent);
@@ -289,19 +299,114 @@ button:focus-visible,
   cursor: pointer;
 }
 
-.audio-controls button:hover:not(:disabled) {
+.audio-controls button:hover:not(:disabled),
+.recording-controls button:hover:not(:disabled),
+.recording-library button:hover:not(:disabled),
+.recording-action:hover {
   background: var(--accent-strong);
   border-color: var(--accent-strong);
 }
 
-.audio-controls button:disabled {
+.audio-controls button:disabled,
+.recording-controls button:disabled,
+.recording-library button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
 
-#audio-stop {
+#audio-stop,
+#recording-stop,
+#recordings-refresh {
   color: var(--accent-strong);
   background: transparent;
+}
+
+.recording-telemetry {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: var(--space-5);
+}
+
+.recording-library {
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border);
+}
+
+.recording-library-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.recording-library-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.recording-library-header .panel-kicker {
+  margin-bottom: var(--space-1);
+}
+
+.recording-list {
+  display: grid;
+  gap: var(--space-3);
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recording-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface-emphasis);
+}
+
+.recording-item-details {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-1);
+}
+
+.recording-item-details strong {
+  overflow-wrap: anywhere;
+}
+
+.recording-item-meta,
+.recording-unavailable {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.recording-item-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.recording-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.recording-empty {
+  color: var(--muted);
+}
+
+.saved-playback {
+  margin-top: var(--space-5);
+}
+
+.saved-playback audio {
+  width: 100%;
 }
 
 .site-footer {
@@ -326,6 +431,10 @@ button:focus-visible,
   .panel-emphasis {
     grid-column: span 2;
     grid-row: 1;
+  }
+
+  .recording-panel {
+    grid-column: span 2;
   }
 }
 
@@ -353,8 +462,27 @@ button:focus-visible,
     grid-template-columns: 1fr;
   }
 
-  .panel-emphasis {
+  .panel-emphasis,
+  .recording-panel {
     grid-column: auto;
+  }
+
+  .recording-telemetry {
+    grid-template-columns: 1fr;
+  }
+
+  .recording-item,
+  .recording-library-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .recording-item-actions {
+    width: 100%;
+  }
+
+  .recording-action {
+    flex: 1 1 auto;
   }
 
   .status-list > div {
