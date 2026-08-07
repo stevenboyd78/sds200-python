@@ -34,10 +34,16 @@ Install optional local audio playback:
 python -m pip install "sds200[playback]"
 ```
 
-Install both optional feature groups:
+Install the optional loopback web dashboard:
 
 ```bash
-python -m pip install "sds200[tui,playback]"
+python -m pip install "sds200[web]"
+```
+
+Install the TUI, playback, and web feature groups together:
+
+```bash
+python -m pip install "sds200[tui,playback,web]"
 ```
 
 Verify the installation:
@@ -152,8 +158,8 @@ rollback procedure.
 ## Run the SDS200 daemon
 
 The foreground daemon is intended for process-manager ownership. It exposes
-private local API, event, and PCMU sockets and can activate saved playback,
-recording, and remote-profile destinations.
+private local API, event, PCMU, and finalized-recording sockets and can activate
+saved playback, recording, and remote-profile destinations.
 
 ```bash
 sdsctl --log-level INFO --host SCANNER_IP daemon
@@ -164,6 +170,15 @@ sdsctl tui --daemon-client
 Standalone scanner commands and the standalone TUI remain the default. Daemon
 client mode is explicit.
 
+To run the loopback web dashboard in another terminal:
+
+```bash
+sdsctl web
+```
+
+Open `http://127.0.0.1:8000/` locally. The web service remains a daemon client
+and does not open scanner hardware directly.
+
 ## Next steps
 
 - Launch the terminal monitor with `sdsctl monitor`.
@@ -172,4 +187,6 @@ client mode is explicit.
   [TUI guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/tui.md).
 - Read the canonical
   [network audio guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/audio.md).
+- Read the canonical
+  [web dashboard guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/web-dashboard.md).
 - Open [Troubleshooting](Troubleshooting.md) when discovery or startup fails.

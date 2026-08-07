@@ -75,27 +75,25 @@ device, encoder, or network operations must not block RTP reception.
 
 Milestone 19.3 provides the renderer-neutral ownership runtime for long-lived
 scanner control, PSI, one audio fanout, and dynamic decoded-PCM destinations.
-Milestone 19.4 hosts that runtime in the foreground `sdsctl daemon` process with
-SIGINT and SIGTERM coordination, deterministic cleanup, and a `Type=simple`
-service-manager contract. Milestone 19.5 adds a private local Unix-domain socket,
-a versioned read-only protocol, authoritative snapshots, and bounded client
-handling. Milestone 19.6 adds a second private socket with ordered
-snapshot-first runtime events, bounded subscriptions, and sequence-gap
-resynchronization. Milestone 19.7 adds a third private socket with bounded
-accepted-PCMU packet subscriptions, RTP continuity metadata, and isolated
-per-client loss accounting. Decoded-PCM subscriptions, controls, and client
-migration remain follow-on work.
+Milestones 19.4 through 19.7 host that runtime in `sdsctl daemon` and add private
+versioned API, ordered-event, and accepted-PCMU services. Milestone 19.8 adds
+typed bounded scanner controls. Milestones 19.9 and 19.10 add explicit
+daemon-backed CLI and TUI clients. Milestone 20.1 begins the loopback web client,
+and Milestones 20.2 through 20.5 add the responsive dashboard, ordered live
+updates, explicit PCMU playback, and daemon-owned recording workflows including
+a fourth private finalized-recording service.
 
 The SDS200 accepts only one network-audio client at a time. The ownership runtime
 holds that single RTSP/RTP session, publishes each accepted PCMU packet once, and
-decodes it once. Future daemon transports should expose independent bounded
-decoded-PCM subscriptions to CLI, TUI, web, recording, streaming, and automation
-clients. A slow or failed subscriber must not block RTP reception or another
-subscriber.
+decodes it once. The shared decoded-PCM router already fans that decode out to
+daemon-owned destinations and browser recording without opening another scanner
+audio session. Independent decoded-PCM client subscriptions may be added later;
+a slow or failed subscriber must never block RTP reception or another subscriber.
 
-CLI, TUI, web, and automation clients should eventually consume the local daemon
-API instead of opening duplicate scanner connections. Standalone operation may
-remain available where practical.
+The web dashboard and explicit daemon-backed CLI and TUI modes consume local
+daemon services instead of opening duplicate scanner connections. Standalone CLI
+and TUI operation remains available where practical. Future automation clients,
+including Home Assistant, should follow the same single-owner boundary.
 
 ### Deterministic lifecycle behavior
 
@@ -132,7 +130,7 @@ for trusted local networks or trusted VPNs.
 
 - Do not expose scanner UDP port 50536 directly to the public internet.
 - Do not expose unauthenticated scanner-control or Favorites-write interfaces.
-- Bind future web and API services to localhost by default.
+- Keep web and daemon client services local-only by default.
 - Require explicit authentication and transport-security planning before remote
   access.
 - Avoid wildcard-interface binds as a default.
@@ -180,11 +178,15 @@ services for diagnostics, controls, audio, recordings, and mode-aware screens.
 
 ### Web dashboard
 
-A future responsive dashboard should provide scanner state, connection health,
-operational logs, recordings, audio destinations, and safe controls.
+The responsive loopback dashboard now provides authoritative scanner and runtime
+state, connection health, ordered live updates, explicit browser audio playback,
+daemon-owned recording telemetry, newest-first finalized recording inventory,
+and safe saved-WAV playback and download.
 
-It should use the daemon API, bind locally by default, and require deliberate
-security configuration before remote access.
+The web process remains a daemon client and does not open scanner hardware or a
+second RTSP/RTP session. Remaining dashboard work includes operational logs,
+typed scanner controls, optional themes and shared visual assets, and deliberate
+authentication and transport-security design before any supported remote access.
 
 ### Home Assistant
 
@@ -207,9 +209,11 @@ HACS packaging should wait until the API and entity model are stable.
 
 A future desktop GUI may reuse the same services and API.
 
-An LCARS-inspired theme remains a possible presentation option. Scalable SVG
-assets and responsive layouts should be preferred so the design can adapt to
-terminal, web, desktop, and compact Raspberry Pi displays.
+Optional LCARS-inspired and Matrix-inspired themes are planned over one shared
+accessible dashboard structure rather than as separate interfaces. Scalable,
+theme-aware SVG assets and responsive layouts should be preferred so the design
+can adapt to web, terminal, desktop, documentation, and compact Raspberry Pi
+presentation surfaces.
 
 ## Favorites Workspace
 
@@ -300,23 +304,25 @@ private endpoints.
 
 ## Recording and audio direction
 
-Future recording work includes:
+The recording stack now includes renderer-neutral identities and path policy,
+configurable organization, metadata sidecars, recursive inventory, deterministic
+retention planning and execution, local TUI and CLI workflows, daemon-owned
+recording over the shared decoded-PCM router, and browser recording plus safe
+finalized-WAV playback and download. Destructive file-management behavior must
+remain explicit, inventory-bound, recoverable where practical, and disabled by
+default unless the user requests it.
 
-- safe scanner-state-derived path components;
-- configurable organization policies;
-- retention previews and reporting;
-- sidecar-aware file management;
-- no deletion by default;
-- explicit confirmation for destructive policies.
-
-Milestone 18 delivers per-subscriber audio health events and explicit
-PortAudio, PipeWire, PulseAudio, and ALSA playback adapters.
+The audio stack includes one daemon-owned SDS200 RTSP/RTP session, accepted-PCMU
+publication, single-pass decoding, decoded-PCM fanout, per-subscriber health,
+explicit PortAudio, PipeWire, PulseAudio, and ALSA playback adapters, remote
+destinations, daemon-backed CLI/TUI audio, and browser PCMU playback.
 
 Remaining future audio work includes:
 
 - bounded local decoded-PCM client subscriptions and consumption adapters;
-- layered saved playback configuration and automatic backend selection;
-- continued separation between control and audio failures.
+- layered saved-playback configuration and automatic backend selection; and
+- continued separation between control, recording, playback, encoder, and
+  transport failures.
 
 ## Advanced scanner capabilities
 

@@ -288,6 +288,10 @@ sockets:
 - `$XDG_RUNTIME_DIR/sdsctl/pcmu.sock`, or the user-state fallback, provides
   accepted RTP PCMU packets through a bounded binary stream. Select an explicit
   absolute path with `--pcmu-socket-path`.
+- `$XDG_RUNTIME_DIR/sdsctl/recordings.sock`, or the user-state fallback, provides
+  bounded read access to finalized inventory-approved WAV files for daemon
+  clients such as the web dashboard. Select an explicit absolute path with
+  `--recording-file-socket-path`.
 
 Use the explicit daemon client when another process owns the scanner:
 
@@ -324,10 +328,11 @@ subscription is created. Frames preserve RTP sequence, timestamp, SSRC,
 continuity estimates, observation time, endpoint, raw payload bytes, and
 cumulative loss caused by that client's bounded queue.
 
-Stop the process with `Ctrl+C` or `SIGTERM`. Shutdown first closes API clients, then stops daemon-owned destinations,
-then stops scanner, PSI, audio, and router ownership, closes PCMU clients, and
-finally closes event clients after final lifecycle transitions. All three owned
-sockets are removed.
+Stop the process with `Ctrl+C` or `SIGTERM`. Shutdown closes API clients first,
+then closes finalized-recording readers, finalizes any active daemon-owned
+recording, stops configured destinations, stops scanner/PSI/audio/router
+ownership, closes PCMU clients, and finally closes event clients after final
+lifecycle transitions. All four owned sockets are removed.
 
 The command remains in the foreground for service-manager ownership. It does not
 fork, create a pidfile, install a service, expose TCP, accept unrestricted raw
