@@ -11,38 +11,24 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 19.12 — v0.19.0 release
+### Milestone 20.6 — Browser scanner controls
 
-- **Compatibility, migration, deployment, and systemd documentation — complete**
-  - Documented preserved distribution, import-package, executable, and legacy
-    profile compatibility.
-  - Documented explicit destination manifests, service accounts, private
-    sockets, `SIGHUP` reload, systemd operation, upgrades, and rollback.
-- **Acceptance validation — complete**
-  - Passed adversarial regression validation for multiple, slow, malformed, and
-    excess clients plus shutdown fault injection.
-  - Passed final Ruff, MyPy for 74 source files, all 1,267 tests on Python
-    3.14.4, documentation checks for 34 Markdown files, version `0.19.0` source
-    and wheel builds, Twine checks, artifact inspection, clean installation, and
-    public PyPI `0.18.0` to local `0.19.0` upgrade validation.
-  - Passed the full Python 3.11–3.14 GitHub Actions matrix and the repository's
-    existing CodeQL default setup for Actions and Python with zero findings and
-    no analysis errors.
-  - Completed physical SDS200 daemon-owned CLI and TUI validation against
-    firmware `1.26.01`, including private sockets, simultaneous clients,
-    canonical `stream.snapshot` delivery, loss-free PCMU reception, valid WAV
-    and metadata output, daemon-owned reconnect, retained ownership after TUI
-    exit, and orderly shutdown with all sockets removed.
-- **Publication — complete**
-  - Merged release preparation after the full Python 3.11–3.14 CI matrix and
-    CodeQL Actions and Python analyses passed.
-  - Published annotated tag `v0.19.0`, completed trusted PyPI publishing, and
-    published the latest stable GitHub release.
-  - Verified public PyPI metadata, the wheel and source distribution, and a
-    clean Python 3.14 installation with `sdsctl 0.19.0`.
-
-Keep the existing Python distribution and import package compatible until a
-separate migration plan justifies a rename.
+- Expose the daemon's existing typed `hold`, `next`, `previous`, and bounded
+  `reconnect` operations through the loopback web dashboard.
+- Keep scanner ownership in the daemon; the web process must use the versioned
+  daemon API and must not open scanner control hardware directly.
+- Negotiate advertised capabilities and disable or reject unavailable controls
+  rather than inferring support from scanner presentation state.
+- Prevent overlapping browser mutations, surface stable redacted daemon errors,
+  and reconcile successful mutations from authoritative completion snapshots
+  plus ordered events.
+- Preserve responsive layouts, keyboard access, visible focus, reduced-motion
+  behavior, and state meaning that does not depend on color alone.
+- Keep the existing loopback-only security boundary. Authentication, TLS, proxy
+  trust, and supported remote exposure remain separate future work.
+- Add host-independent regression coverage followed by physical SDS200
+  validation without interrupting daemon-owned PSI, audio, recording, event, or
+  PCMU services.
 
 ## Deferred hardware validation
 
@@ -62,10 +48,11 @@ When hardware becomes available:
 Until then, documentation must describe SDS150 support as implemented or
 fixture-tested, not hardware-validated.
 
-## Future milestone candidates
+## Current and future milestone groups
 
-These milestone groups preserve intended future work. Their numbering and release
-assignment may change before implementation begins.
+These milestone groups preserve the current product sequence and intended future
+work. Numbering and release assignment may change before an unstarted slice
+begins.
 
 ### Milestone 20 — Web dashboard, themes, and Home Assistant
 
@@ -88,11 +75,18 @@ assignment may change before implementation begins.
   telemetry, hidden-tab playback continuity, deterministic PCMU and SSE client
   cleanup, idle daemon event-client reaping, bounded web-server graceful
   shutdown, and physical SDS200 validation.
+- Milestone 20.5 completed daemon-owned browser recording workflows over the
+  existing decoded-PCM router, recording status/start/stop/inventory API
+  operations, ordered `recording.state` events, a private `recordings.sock`
+  finalized-file service, safe inventory-relative WAV playback and download,
+  recording survival across browser and web-process disconnects, daemon-shutdown
+  finalization, regression coverage, packaging validation, and physical SDS200
+  validation.
 - Bind to localhost by default.
 - Require explicit authentication and transport-security planning before remote
   exposure.
-- Expose scanner state, connection health, audio state, recordings, logs, and safe
-  controls.
+- Complete the remaining browser operational-log and safe scanner-control
+  workflows over existing daemon-owned services.
 - Establish a reusable design system with shared color, typography, spacing,
   panel, status-indicator, icon, motion, and responsive-layout tokens.
 - Keep an accessible conventional theme as the baseline, with readable contrast,
@@ -326,3 +320,19 @@ fixtures before renderer-specific implementation.
   3.11–3.14 CI and CodeQL validation; physical daemon-owned CLI and TUI
   validation; v0.19.0 trusted PyPI and GitHub publication; and clean Python 3.14
   installation verification from public PyPI.
+- Milestone 20.1: optional loopback-only FastAPI/Uvicorn web-service foundation,
+  versioned health/status/snapshot/OpenAPI routes, redacted failures, package
+  extras, documentation, and host-independent regression coverage.
+- Milestone 20.2: accessible responsive browser shell, packaged web assets,
+  daemon-status polling, scanner/runtime summaries, restrictive response
+  headers, light/dark presentation, compact layouts, and accessibility coverage.
+- Milestone 20.3: same-origin Server-Sent Events over the ordered daemon event
+  service with snapshot-first delivery, incremental updates, reconnect, polling
+  fallback, authoritative reconciliation, and lifecycle coverage.
+- Milestone 20.4: explicit browser playback over daemon-owned PCMU with
+  AudioWorklet decoding, bounded buffering/resampling, loss telemetry,
+  deterministic client cleanup, and physical SDS200 validation.
+- Milestone 20.5: daemon-owned browser recording, recording API and ordered
+  events, private finalized-WAV service, newest-first inventory, safe saved
+  playback/download, disconnect survival, shutdown finalization, packaging and
+  regression coverage, and physical SDS200 validation.

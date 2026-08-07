@@ -191,6 +191,37 @@ cannot traverse.
 The canonical configuration is in the
 [network audio guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/audio.md).
 
+## Daemon or web dashboard will not start
+
+First confirm that the foreground daemon is healthy:
+
+```bash
+sdsctl daemon-client status
+```
+
+The normal daemon owns four private local services: `daemon.sock`,
+`events.sock`, `pcmu.sock`, and `recordings.sock`. A daemon-backed client must
+run with filesystem permission to connect to the required sockets. Do not make
+the socket directory or socket files world-writable to work around an ownership
+problem.
+
+If the daemon is healthy but the browser service fails, run the loopback web
+service directly and review its sanitized error:
+
+```bash
+sdsctl web
+```
+
+The supported web service binds only to localhost or an explicit loopback
+address. Wildcard, LAN, and public binds are intentionally rejected until
+authentication and transport-security support exists.
+
+See the canonical
+[web dashboard guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/web-dashboard.md)
+and
+[daemon deployment guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/daemon-deployment.md)
+for exact socket paths, permissions, and service behavior.
+
 ## Capture detailed diagnostics
 
 Operational logs exclude raw scanner traffic by default:

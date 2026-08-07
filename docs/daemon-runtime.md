@@ -36,9 +36,11 @@ while preserving the standalone top-level scanner and direct-audio commands.
 Milestone 19.10 adds explicit daemon-backed TUI operation using the API, event,
 and PCMU services while preserving standalone TUI ownership as the default.
 Milestone 19.11 adds validated saved-destination activation and transactional
-`SIGHUP` replacement. Decoded-PCM CLI subscriptions and automatic daemon
-discovery and selection remain follow-on work. The process does not fork or
-create a pidfile.
+`SIGHUP` replacement. Milestone 20.5 adds a daemon-owned recording manager over
+the shared decoded-PCM router plus a fourth private Unix-domain socket for
+bounded finalized-recording access. Decoded-PCM CLI subscriptions and automatic
+daemon discovery and selection remain follow-on work. The process does not fork
+or create a pidfile.
 
 ## Foreground process contract
 
@@ -58,13 +60,15 @@ The command constructs exactly one `DaemonRuntime`, one `PcmSinkRouter`, one
 `NetworkAudioTransport`, one compatibility-named `DaemonReadOnlyApi`, one
 bounded `DaemonApiServer`, one `DaemonEventStream`, one bounded
 `DaemonEventServer`, one `PcmuStream`, one bounded `DaemonPcmuServer`, one
+`DaemonRecordingManager`, one bounded `DaemonRecordingFileServer`, one
 `DaemonDestinationCoordinator`, and one `DaemonDestinationReloader`. The API
 class retains its historical public name while exposing backward-compatible
-reads and explicit safe controls. The PCMU stream subscribes to the same
-authoritative transport used by the decoded-PCM fanout. The coordinator activates
-the validated startup destination set against the shared decoded-PCM router.
-Daemon-client audio continues to consume PCMU independently. Decoded-PCM client
-subscriptions remain follow-on work.
+reads, explicit safe controls, and daemon recording operations. The PCMU stream
+subscribes to the same authoritative transport used by the decoded-PCM fanout.
+The coordinator activates the validated startup destination set against the
+shared decoded-PCM router, while the recording manager attaches and detaches its
+WAV sink from that same router. Daemon-client audio continues to consume PCMU
+independently. Decoded-PCM client subscriptions remain follow-on work.
 
 The audio endpoint must come from either `--host` or a network-capable SDS200
 profile. A fallback profile may select serial control at runtime, but its saved
@@ -76,8 +80,9 @@ The command runs in the foreground. It does not daemonize itself, fork, create a
 pidfile, change privileges, install a service unit, or request socket activation.
 The event and PCMU services own their sockets before runtime startup so the
 event stream can observe lifecycle transitions and PCMU clients can subscribe
-before authoritative audio begins. The request-response API opens only after the
-runtime has started successfully.
+before authoritative audio begins. The finalized-recording service opens after
+runtime and destination activation, and the request-response API opens last so
+recording operations are not admitted before all required local services exist.
 
 ### Signals and exit behavior
 
@@ -112,26 +117,33 @@ At the process-host level, startup occurs in this order:
 2. bind and start the local `DaemonPcmuServer`;
 3. start `DaemonRuntime`;
 4. activate the validated daemon destination configuration;
-5. bind and start the local `DaemonApiServer`; and
-6. wait for `SIGHUP`, `SIGINT`, `SIGTERM`, or another process-loop failure.
+5. bind and start the local `DaemonRecordingFileServer`;
+6. bind and start the local `DaemonApiServer`; and
+7. wait for `SIGHUP`, `SIGINT`, `SIGTERM`, or another process-loop failure.
 
 Starting the event service first allows an already connected client to observe
 runtime startup transitions. Starting the PCMU service before the runtime allows
 clients to subscribe before the shared transport begins publishing accepted
-packets. Starting the API last ensures every admitted request observes an
-initialized runtime.
+packets. Starting the recording-file service after runtime and destination
+activation makes finalized inventory access available before recording API
+requests are admitted. Starting the API last ensures every admitted request
+observes an initialized runtime and configured recording service.
 
 Shutdown occurs in this order:
 
 1. close the API listener and connected request-response clients;
 2. wait for bounded API worker completion;
-3. stop all daemon-owned destinations;
-4. stop the daemon runtime while the event service remains available for final
+3. close the recording-file listener and connected finalized-file readers;
+4. wait for bounded recording-file worker completion;
+5. close the daemon recording manager, finalizing an active recording when
+   possible;
+6. stop all configured daemon-owned destinations;
+7. stop the daemon runtime while the event service remains available for final
    lifecycle transitions;
-5. close the PCMU listener, publisher subscription, and connected clients;
-6. wait for bounded PCMU worker completion;
-7. close the event listener and connected subscribers; and
-8. wait for bounded event-worker completion.
+8. close the PCMU listener, publisher subscription, and connected clients;
+9. wait for bounded PCMU worker completion;
+10. close the event listener and connected subscribers; and
+11. wait for bounded event-worker completion.
 
 If any component startup fails, cleanup is attempted for every component whose
 startup was attempted. Cleanup continues after an individual failure, while the

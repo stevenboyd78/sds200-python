@@ -9,19 +9,25 @@ Milestone 19.8 preserves those version 1 operations and adds explicit,
 capability-checked scanner controls for hold, next, previous, and reconnect.
 The protocol does not expose unrestricted raw scanner-command passthrough.
 
-Ordered events and accepted PCMU packets remain separate services:
+Ordered events, accepted PCMU packets, and finalized recording bytes remain
+separate services:
 
 - [local daemon event stream](daemon-events.md) through `events.sock`;
-- [local daemon PCMU stream](daemon-pcmu.md) through `pcmu.sock`.
+- [local daemon PCMU stream](daemon-pcmu.md) through `pcmu.sock`; and
+- finalized inventory-approved WAV access through `recordings.sock`, documented
+  with the [web dashboard](web-dashboard.md) and
+  [daemon deployment guide](daemon-deployment.md).
 
 Milestone 19.9 adds explicit `sdsctl daemon-client` status, snapshot, hold,
 next, previous, and reconnect workflows through the reusable `DaemonApiClient`.
 The separate `events` and `audio` actions consume `events.sock` and `pcmu.sock`
-without opening this API connection. The top-level scanner and direct-audio
-commands remain standalone. Milestone 19.10 adds explicit daemon-backed TUI
-operation, while decoded-PCM client workflows remain follow-on work.
-Integrations may also use the documented socket framing and
-version contract directly.
+without opening this API connection. Milestone 19.10 adds explicit daemon-backed
+TUI operation. Milestone 20.5 adds `recording.status`, `recording.start`,
+`recording.stop`, and `recordings.list` plus matching reusable
+`DaemonApiClient` methods for web recording workflows. The top-level scanner and
+direct-audio commands remain standalone, while decoded-PCM client workflows
+remain follow-on work. Integrations may also use the documented socket framing
+and version contract directly.
 
 The Python implementation retains the historical public class name
 `DaemonReadOnlyApi` for compatibility even though version 1 now advertises both
@@ -157,11 +163,16 @@ messages.
 `hello` and `daemon.capabilities` advertise:
 
 - protocol name and supported versions;
-- every supported operation;
+- every operation available in the running daemon;
 - `read_only: false`;
 - the backward-compatible `read_only_operations` set;
-- the explicit `control_operations` set; and
+- the explicit scanner `control_operations` set; and
 - `max_control_timeout`, currently `2.0` seconds.
+
+Recording operations appear in `operations` only when a recording manager is
+configured. `recording.status` and `recordings.list` are also advertised as
+read-only operations; `recording.start` and `recording.stop` mutate recording
+state but are intentionally separate from scanner `control_operations`.
 
 `hello` additionally returns `selected_version`.
 
@@ -178,15 +189,55 @@ historical Python class name.
 | `runtime.snapshot` | Complete authoritative `DaemonRuntimeSnapshot.as_dict()` payload |
 | `scanner.state` | Endpoint, optional model and firmware identity, connection and PSI state, and current radio state |
 | `audio.health` | Audio-session and decoded-PCM router snapshots |
+| `recording.status` | Complete daemon-owned recording workflow snapshot |
+| `recordings.list` | Bounded newest-first finalized recording inventory |
 
-`hello`, `daemon.capabilities`, and `ping` do not read the runtime snapshot.
-The remaining operations obtain one authoritative snapshot for that request.
+`hello`, `daemon.capabilities`, `ping`, `recording.status`, and
+`recordings.list` do not read the runtime snapshot. `runtime.snapshot`,
+`scanner.state`, and `audio.health` obtain one authoritative runtime snapshot
+for that request. Recording operations use the daemon recording manager's own
+authoritative snapshot or inventory result.
 
 New daemon snapshots include `scanner_model` and `scanner_firmware` as
 non-empty strings when identity probes succeed, or `null` when an individual
 probe fails. Version 1 clients continue accepting older snapshots that omit
 these additive fields. A failed identity probe does not stop daemon-owned
 scanner control, PSI, or audio.
+
+## Recording operations
+
+Milestone 20.5 adds four parameterless recording operations when the daemon owns
+a configured recording manager:
+
+| Operation | Result |
+| --- | --- |
+| `recording.status` | Current daemon-owned recording snapshot |
+| `recording.start` | Snapshot after attaching a new WAV sink to the shared decoded-PCM router |
+| `recording.stop` | Snapshot after detaching and finalizing the active recording |
+| `recordings.list` | Bounded newest-first inventory of finalized playable recording artifacts |
+
+Browser or API clients do not provide filesystem paths. The daemon's
+`RecordingPathPolicy` chooses the recording root and identity, and finalized
+file bytes are read separately through the private `recordings.sock` service
+using an inventory-relative identifier. Starting or stopping recording never
+opens another scanner RTSP/RTP session.
+
+An active recording is daemon-owned rather than browser-owned, so it survives a
+browser reload or complete web-process disconnect. Daemon shutdown closes the
+recording manager before destination and audio-runtime teardown so an active WAV
+can be finalized while the shared router is still available.
+
+Stable recording failures are:
+
+| Code | Meaning |
+| --- | --- |
+| `recording_busy` | A recording is already active or awaiting finalization |
+| `recording_unavailable` | The recording manager or required runtime state is unavailable |
+| `recording_failed` | A redacted recording start, stop, finalization, inventory, or filesystem operation failed |
+
+Clients should obtain current state from `recording.status`, authoritative
+`stream.snapshot` payloads, and ordered `recording.state` events rather than
+assuming that a disconnected request client owns the recording lifecycle.
 
 ## Scanner control operations
 
@@ -289,6 +340,9 @@ Version 1 defines these stable error codes:
 - `control_timeout`
 - `control_rejected`
 - `control_failed`
+- `recording_busy`
+- `recording_unavailable`
+- `recording_failed`
 - `request_too_large`
 - `internal_error`
 
@@ -302,6 +356,9 @@ Important control classifications are:
 | `control_timeout` | The bounded control did not complete before its deadline |
 | `control_rejected` | The scanner explicitly returned `NG`, `ERR`, or `ERROR` |
 | `control_failed` | Another redacted scanner or transport failure occurred |
+| `recording_busy` | A daemon recording is already active or awaiting finalization |
+| `recording_unavailable` | Daemon recording is not currently available |
+| `recording_failed` | A redacted daemon recording operation failed |
 
 Clients should branch on `error.code`, not the human-readable message.
 
@@ -406,15 +463,17 @@ against the same SDS200:
 ## Lifecycle and current exclusions
 
 `DaemonProcess` starts the event listener, starts the PCMU listener, starts the
-ownership runtime, and finally opens the request-response API. Every admitted
-API request therefore observes an initialized runtime, while event subscribers
-may observe startup transitions and PCMU subscribers are ready before
-authoritative audio begins.
+ownership runtime, activates configured destinations, starts the finalized
+recording-file service, and finally opens the request-response API. Every
+admitted API request therefore observes an initialized runtime and configured
+recording service, while event subscribers may observe startup transitions and
+PCMU subscribers are ready before authoritative audio begins.
 
-Shutdown closes the API listener and clients before stopping scanner, PSI,
-audio, and router ownership. The PCMU service stops after the runtime, and the
-separate event service remains available for final lifecycle transitions and
-stops last.
+Shutdown closes the API listener and clients, closes finalized recording-file
+readers, closes the recording manager so an active WAV can be finalized, stops
+configured destinations, and then stops scanner, PSI, audio, and router
+ownership. The PCMU service stops after the runtime, and the separate event
+service remains available for final lifecycle transitions and stops last.
 
 If service startup fails, every attempted component is cleaned up. Cleanup
 continues after an individual failure, while the primary startup or process
@@ -425,7 +484,7 @@ The `daemon.sock` protocol intentionally excludes:
 - unrestricted raw scanner-command passthrough;
 - undocumented resume or unhold semantics;
 - streaming event responses on an API connection;
-- binary PCM or PCMU delivery on the API connection;
+- binary PCM, PCMU, or finalized-WAV delivery on the API connection;
 - TCP or remote-network exposure;
 - daemon discovery or automatic client selection;
 - decoded-PCM CLI client workflows; and
@@ -433,10 +492,13 @@ The `daemon.sock` protocol intentionally excludes:
 
 Ordered events are available through their dedicated socket and
 `sdsctl daemon-client events`. Daemon-owned PCMU audio is available through
-`pcmu.sock` and `sdsctl daemon-client audio`. The daemon-backed TUI obtains its
-authoritative initial state and safe-control results through this API while
-ordered updates and PCMU audio remain on their dedicated sockets. Decoded-PCM
-Automatic daemon discovery and decoded-PCM client workflows remain
-follow-on work. Explicit CLI and TUI daemon clients, saved destination
-activation, and transactional `SIGHUP` destination reload are part of the
-current daemon contract.
+`pcmu.sock` and `sdsctl daemon-client audio`. Finalized recording bytes are
+available through `recordings.sock` to inventory-aware clients such as the web
+dashboard. The daemon-backed TUI obtains its authoritative initial state and
+safe-control results through this API while ordered updates and PCMU audio remain
+on their dedicated sockets.
+
+Automatic daemon discovery and decoded-PCM client workflows remain follow-on
+work. Explicit CLI and TUI daemon clients, browser recording operations, saved
+destination activation, and transactional `SIGHUP` destination reload are part
+of the current daemon contract.

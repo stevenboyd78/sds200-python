@@ -25,6 +25,9 @@ The project is not affiliated with or endorsed by Uniden.
   — full-screen monitoring, controls, recording, and playback.
 - [Network audio guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/audio.md)
   — SDS200 playback, recording, Broadcastify, and Asterisk integration.
+- [Web dashboard guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/web-dashboard.md)
+  — loopback browser monitoring, live events, audio playback, recording, and
+  finalized-WAV playback/download.
 - [Daemon deployment and upgrade guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/daemon-deployment.md)
   — systemd, destination manifests, local clients, migration, and upgrades.
 
@@ -79,9 +82,31 @@ sdsctl --host SCANNER_IP audio \
   --duration 30
 ```
 
+### Run the daemon-backed web dashboard
+
+Install the web extra, start the daemon, then start the loopback web service in
+another terminal:
+
+```bash
+python -m pip install "sds200[web]"
+sdsctl --log-level INFO --host SCANNER_IP daemon
+sdsctl web
+```
+
+Open `http://127.0.0.1:8000/` on the same host. The dashboard consumes daemon
+state and services; it does not open a second scanner control or RTSP/RTP audio
+connection. Current browser workflows include ordered live updates, explicit
+audio playback, daemon-owned recording, and safe playback/download of finalized
+recordings.
+
+See the canonical
+[web dashboard guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/web-dashboard.md)
+for security boundaries and exact behavior.
+
 ## Project documentation
 
 - [Roadmap](https://github.com/stevenboyd78/sds200-python/blob/main/ROADMAP.md)
+- [Project vision](https://github.com/stevenboyd78/sds200-python/blob/main/docs/project-vision.md)
 - [Changelog](https://github.com/stevenboyd78/sds200-python/blob/main/CHANGELOG.md)
 - [Operational logging](https://github.com/stevenboyd78/sds200-python/blob/main/docs/logging.md)
 - [Daemon deployment and upgrades](https://github.com/stevenboyd78/sds200-python/blob/main/docs/daemon-deployment.md)
