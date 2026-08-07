@@ -8,6 +8,11 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Added
 
+- Milestone 20.3 same-origin Server-Sent Events bridge over the existing ordered
+  daemon event socket, authoritative snapshot-first delivery, validated SSE
+  identifiers and JSON envelopes, redacted initial failures, deterministic
+  event-client cleanup, browser-side incremental updates, automatic reconnect,
+  two-second polling fallback, and periodic authoritative reconciliation.
 - Milestone 20.2 accessible responsive browser shell with packaged HTML, CSS,
   and JavaScript assets; read-only polling of the existing daemon-status API;
   scanner, activity, PSI, audio, and destination summaries; progressive

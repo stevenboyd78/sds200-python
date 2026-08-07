@@ -383,32 +383,35 @@ are rejected.
 
 ### Loopback web dashboard
 
-Milestone 20.2 adds an accessible responsive browser shell over the optional
-daemon-backed HTTP service without opening scanner hardware or a second
-RTSP/RTP session. Start the foreground daemon, then run the web service in
-another terminal:
+Milestone 20.3 adds live same-origin Server-Sent Events to the accessible
+responsive browser shell without opening scanner hardware or a second RTSP/RTP
+session. Start the foreground daemon, then run the web service in another
+terminal:
 
 ```bash
 sdsctl --log-level INFO --host 192.168.0.251 daemon
 sdsctl web
 ```
 
-Open `http://127.0.0.1:8000/` locally. The read-only shell refreshes the existing
-daemon-status endpoint and presents scanner connection and identity, current
-radio activity, PSI status, audio state, destination-router state, and update
-time. It provides an accessible conventional layout with keyboard focus,
-responsive compact behavior, system light and dark modes, and reduced-motion
-support.
+Open `http://127.0.0.1:8000/` locally. Each browser stream receives an
+authoritative daemon snapshot first and then strictly ordered state events.
+Scanner connection, radio activity, PSI, audio, and daemon lifecycle changes
+update incrementally. Two-second status polling remains active when live events
+are unavailable, and a periodic authoritative status read reconciles the
+browser with daemon state.
+
+The interface retains keyboard focus, responsive compact behavior, system light
+and dark modes, reduced-motion support, and text-only rendering of daemon
+values.
 
 Install it with `python -m pip install "sds200[web]"`. The service listens on
 `127.0.0.1:8000` by default and accepts only `localhost` or explicit loopback IP
 addresses. Wildcard, LAN, public, and non-local hostname bindings are rejected.
 
-Authentication, TLS, live event streaming, browser audio, recordings, logs,
-controls, optional themes, and Home Assistant integration remain deferred.
-Remote exposure is intentionally unsupported until authentication and
-transport-security planning is complete. See the
-[web dashboard guide](docs/web-dashboard.md).
+Authentication, TLS, browser audio, recordings, logs, controls, optional themes,
+and Home Assistant integration remain deferred. Remote exposure is
+intentionally unsupported until authentication and transport-security planning
+is complete. See the [web dashboard guide](docs/web-dashboard.md).
 
 ### SDS200 network audio playback and recording
 

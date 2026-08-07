@@ -1158,12 +1158,21 @@ def build_parser(
         ),
     )
     web.add_argument(
+        "--daemon-event-socket-path",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Explicit daemon event socket path; otherwise use "
+            "XDG_RUNTIME_DIR or the user state directory"
+        ),
+    )
+    web.add_argument(
         "--daemon-timeout",
         type=_positive_float,
         default=DAEMON_API_CLIENT_DEFAULT_TIMEOUT,
         metavar="SECONDS",
         help=(
-            "Daemon connection and API response timeout "
+            "Daemon API and event connection timeout "
             f"(default: {DAEMON_API_CLIENT_DEFAULT_TIMEOUT})"
         ),
     )
@@ -1175,6 +1184,16 @@ def build_parser(
         help=(
             "Maximum accepted daemon API response size "
             f"(default: {DAEMON_API_DEFAULT_MAX_RESPONSE_BYTES})"
+        ),
+    )
+    web.add_argument(
+        "--daemon-max-event-bytes",
+        type=_positive_integer,
+        default=None,
+        metavar="BYTES",
+        help=(
+            "Maximum accepted daemon event size "
+            f"(default: {DAEMON_EVENT_DEFAULT_MAX_BYTES})"
         ),
     )
     web.add_argument(
@@ -3337,8 +3356,13 @@ def _run_web(
             ) from error
         raise
 
-    location = resolve_daemon_socket_location(
+    api_location = resolve_daemon_socket_location(
         args.daemon_socket_path,
+        environ=environ,
+        configuration_paths=configuration_paths,
+    )
+    event_location = resolve_daemon_event_socket_location(
+        args.daemon_event_socket_path,
         environ=environ,
         configuration_paths=configuration_paths,
     )
@@ -3348,15 +3372,30 @@ def _run_web(
         if args.daemon_max_response_bytes is None
         else args.daemon_max_response_bytes
     )
+    max_event_bytes = (
+        DAEMON_EVENT_DEFAULT_MAX_BYTES
+        if args.daemon_max_event_bytes is None
+        else args.daemon_max_event_bytes
+    )
 
     def api_client_factory() -> DaemonApiClient:
         return DaemonApiClient(
-            location,
+            api_location,
             timeout=timeout,
             max_response_bytes=max_response_bytes,
         )
 
-    app = create_web_dashboard_app(api_client_factory)
+    def event_client_factory() -> DaemonEventClient:
+        return DaemonEventClient(
+            event_location,
+            timeout=timeout,
+            max_event_bytes=max_event_bytes,
+        )
+
+    app = create_web_dashboard_app(
+        api_client_factory,
+        event_client_factory,
+    )
 
     return run_web_dashboard_server(
         app,

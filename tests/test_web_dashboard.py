@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from typing import Self
 
 import pytest
 from fastapi.testclient import TestClient
 
 from sds200 import __version__
-from sds200.exceptions import DaemonUnavailableError
+from sds200.daemon_events import DaemonEvent, DaemonEventKind
+from sds200.exceptions import DaemonDisconnectedError, DaemonUnavailableError
 from sds200.web_dashboard import (
     WEB_DASHBOARD_API_PROTOCOL,
     WEB_DASHBOARD_API_VERSION,
@@ -58,12 +61,47 @@ class FakeDaemonApiClient:
         return dict(self.snapshot_result)
 
 
+class FakeDaemonEventClient:
+    def __init__(
+        self,
+        *,
+        events: list[DaemonEvent] | None = None,
+        error: BaseException | None = None,
+    ) -> None:
+        self.events = list(events or [])
+        self.error = error
+        self.receive_calls = 0
+        self.closed = False
+
+    def receive(self) -> DaemonEvent:
+        self.receive_calls += 1
+        if self.error is not None:
+            raise self.error
+        if self.events:
+            return self.events.pop(0)
+        raise DaemonDisconnectedError("test event stream completed")
+
+    def close(self) -> None:
+        self.closed = True
+
+
 def test_web_dashboard_requires_callable_client_factory() -> None:
     with pytest.raises(
         TypeError,
         match="Daemon API client factory must be callable",
     ):
         create_web_dashboard_app(None)  # type: ignore[arg-type]
+
+
+def test_web_dashboard_requires_callable_event_client_factory() -> None:
+    with pytest.raises(
+        TypeError,
+        match="Daemon event client factory must be callable or None",
+    ):
+        create_web_dashboard_app(
+            FakeDaemonApiClient,
+            object(),  # type: ignore[arg-type]
+        )
 
 
 def test_web_dashboard_shell_does_not_connect_to_daemon() -> None:
@@ -81,9 +119,7 @@ def test_web_dashboard_shell_does_not_connect_to_daemon() -> None:
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["x-frame-options"] == "DENY"
     assert response.headers["referrer-policy"] == "no-referrer"
-    assert "default-src 'none'" in response.headers[
-        "content-security-policy"
-    ]
+    assert "default-src 'none'" in response.headers["content-security-policy"]
     assert "<title>sdsctl scanner dashboard</title>" in response.text
     assert 'id="main-content"' in response.text
     assert 'id="status-badge"' in response.text
@@ -110,11 +146,12 @@ def test_web_dashboard_serves_packaged_static_assets() -> None:
     assert "@media (prefers-reduced-motion: reduce)" in stylesheet.text
 
     assert script.status_code == 200
-    assert script.headers["content-type"].startswith(
-        "application/javascript"
-    )
+    assert script.headers["content-type"].startswith("application/javascript")
     assert script.headers["cache-control"] == "no-store"
     assert 'fetch("/api/v1/status"' in script.text
+    assert 'new EventSource("/api/v1/events")' in script.text
+    assert "FALLBACK_REFRESH_INTERVAL_MS" in script.text
+    assert "RECONCILE_INTERVAL_MS" in script.text
     assert "textContent" in script.text
     assert "innerHTML" not in script.text
 
@@ -149,6 +186,7 @@ def test_web_dashboard_api_index_advertises_endpoints() -> None:
     assert response.status_code == 200
     assert response.json()["links"] == {
         "dashboard": "/",
+        "events": "/api/v1/events",
         "health": "/healthz",
         "snapshot": "/api/v1/snapshot",
         "status": "/api/v1/status",
@@ -157,10 +195,7 @@ def test_web_dashboard_api_index_advertises_endpoints() -> None:
 
 def test_web_dashboard_status_negotiates_and_returns_snapshot() -> None:
     daemon_client = FakeDaemonApiClient(
-        hello={
-            "protocol": "sdsctl.daemon",
-            "selected_version": 1,
-        },
+        hello={"protocol": "sdsctl.daemon", "selected_version": 1},
         snapshot={
             "scanner_endpoint": "192.168.0.251",
             "scanner_connected": True,
@@ -213,6 +248,84 @@ def test_web_dashboard_snapshot_negotiates_before_snapshot() -> None:
     assert daemon_client.closed is True
 
 
+def test_web_dashboard_streams_ordered_daemon_events_as_sse() -> None:
+    observed_at = datetime(2026, 8, 6, 18, 30, tzinfo=UTC)
+    snapshot = DaemonEvent.create(
+        7,
+        DaemonEventKind.SNAPSHOT,
+        {"state": "running", "scanner_connected": True},
+        observed_at=observed_at,
+    )
+    connection = DaemonEvent.create(
+        8,
+        DaemonEventKind.SCANNER_CONNECTION,
+        {
+            "endpoint": "udp://192.0.2.25:50536",
+            "connected": False,
+        },
+        observed_at=observed_at,
+    )
+    event_client = FakeDaemonEventClient(events=[snapshot, connection])
+    app = create_web_dashboard_app(
+        FakeDaemonApiClient,
+        lambda: event_client,
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/events")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-accel-buffering"] == "no"
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+    lines = response.text.splitlines()
+    assert [line for line in lines if line.startswith("id: ")] == [
+        "id: 7",
+        "id: 8",
+    ]
+
+    payloads = [
+        json.loads(line.removeprefix("data: "))
+        for line in lines
+        if line.startswith("data: ")
+    ]
+    assert payloads == [snapshot.as_dict(), connection.as_dict()]
+    assert event_client.receive_calls == 3
+    assert event_client.closed is True
+
+
+def test_web_dashboard_redacts_initial_event_stream_failures() -> None:
+    event_client = FakeDaemonEventClient(
+        error=DaemonUnavailableError(
+            "Daemon event socket was not found: /private/sdsctl/events.sock"
+        )
+    )
+    app = create_web_dashboard_app(
+        FakeDaemonApiClient,
+        lambda: event_client,
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/events")
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": WEB_DASHBOARD_UNAVAILABLE_DETAIL}
+    assert "/private/sdsctl/events.sock" not in response.text
+    assert event_client.closed is True
+
+
+def test_web_dashboard_events_require_configured_factory() -> None:
+    app = create_web_dashboard_app(FakeDaemonApiClient)
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/events")
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": WEB_DASHBOARD_UNAVAILABLE_DETAIL}
+
+
 def test_web_dashboard_redacts_daemon_failures() -> None:
     daemon_client = FakeDaemonApiClient(
         error=DaemonUnavailableError(
@@ -225,9 +338,7 @@ def test_web_dashboard_redacts_daemon_failures() -> None:
         response = client.get("/api/v1/status")
 
     assert response.status_code == 503
-    assert response.json() == {
-        "detail": WEB_DASHBOARD_UNAVAILABLE_DETAIL,
-    }
+    assert response.json() == {"detail": WEB_DASHBOARD_UNAVAILABLE_DETAIL}
     assert "/private/sdsctl/daemon.sock" not in response.text
     assert daemon_client.closed is True
 
@@ -244,3 +355,4 @@ def test_web_dashboard_disables_interactive_docs() -> None:
     assert redoc_response.status_code == 404
     assert openapi_response.status_code == 200
     assert openapi_response.json()["info"]["version"] == __version__
+    assert "/api/v1/events" in openapi_response.json()["paths"]
