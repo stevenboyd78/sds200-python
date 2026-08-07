@@ -1,8 +1,9 @@
 # Web dashboard
 
 Milestone 20.1 established the optional daemon-backed HTTP service and
-loopback-only command. Milestone 20.2 adds the first accessible responsive,
-read-only browser shell over that service.
+loopback-only command. Milestone 20.2 added the first accessible responsive,
+read-only browser shell. Milestone 20.3 adds live ordered browser updates over
+Server-Sent Events.
 
 ## Architecture
 
@@ -21,17 +22,27 @@ Then start the web service in a separate terminal:
 sdsctl web
 ```
 
-The web process resolves the same private daemon API socket used by
-`sdsctl daemon-client`. The default location is
-`$XDG_RUNTIME_DIR/sdsctl/daemon.sock`, with the existing user-state fallback
-when `XDG_RUNTIME_DIR` is unavailable.
+The web process resolves both private daemon sockets used for browser state:
 
-Select an explicit daemon socket when needed:
+- `daemon.sock` supplies bounded request-response status and snapshot reads;
+- `events.sock` supplies the authoritative snapshot-first ordered event stream.
+
+Their default locations are under `$XDG_RUNTIME_DIR/sdsctl`, with the existing
+user-state fallback when `XDG_RUNTIME_DIR` is unavailable.
+
+Select explicit sockets when needed:
 
 ```bash
 sdsctl web \
-  --daemon-socket-path /run/user/1000/sdsctl/daemon.sock
+  --daemon-socket-path /run/user/1000/sdsctl/daemon.sock \
+  --daemon-event-socket-path /run/user/1000/sdsctl/events.sock
 ```
+
+Every browser event connection creates an independent local
+`DaemonEventClient`. The client validates the daemon event protocol, requires
+the first event to be `stream.snapshot`, and enforces strictly increasing,
+gap-free sequence delivery. Closing the browser stream closes that client
+without stopping the daemon event service or scanner ownership.
 
 ## Installation
 
@@ -80,15 +91,43 @@ Open the local dashboard after starting the web service:
 http://127.0.0.1:8000/
 ```
 
-The shell polls `/api/v1/status` every two seconds while its browser tab is
-visible. It presents:
+The browser performs one initial `/api/v1/status` request and opens
+`/api/v1/events` with the same origin. The event response uses
+`text/event-stream`. Every daemon envelope is emitted as one SSE message with:
+
+- an `id` equal to the validated daemon sequence;
+- a `data` field containing the complete daemon event JSON object; and
+- a blank line terminating the message.
+
+The first message is always the authoritative `stream.snapshot` checkpoint.
+Later messages retain the existing daemon event kinds and payloads:
+
+- `daemon.transition`;
+- `scanner.connection`;
+- `scanner.psi`;
+- `radio.state`;
+- `audio.state`; and
+- `destination.health`.
+
+The browser directly applies complete runtime snapshots, scanner connection
+changes, PSI and radio-state updates, and audio snapshots. Destination-health
+events trigger an authoritative reconciliation because the displayed router
+summary is broader than one subscriber transition.
+
+When the event stream disconnects, the browser's `EventSource` reconnects
+automatically. Two-second `/api/v1/status` polling remains active while the
+event stream is unavailable. A status request also runs every 30 seconds during
+healthy streaming to reconcile the incremental browser state with the
+authoritative daemon snapshot.
+
+The interface presents:
 
 - scanner connection, model, firmware, and endpoint;
 - active system, channel, mode, screen kind, signal, and RSSI when available;
 - daemon lifecycle and transition sequence;
 - PSI activity and interval;
 - audio and destination-router state; and
-- the local time of the most recent successful update.
+- the local time of the most recent applied update.
 
 The interface uses semantic landmarks, definition lists, a skip link, visible
 keyboard focus, status text that does not rely on color alone, responsive
@@ -96,8 +135,8 @@ single-, two-, and three-column layouts, system light and dark modes, and
 reduced-motion behavior. JavaScript updates text through `textContent`; it does
 not render daemon-provided HTML.
 
-The HTML, CSS, and JavaScript are package resources served with `no-store`,
-a restrictive Content Security Policy, no-referrer behavior, MIME sniffing
+The HTML, CSS, and JavaScript are package resources served with `no-store`, a
+restrictive Content Security Policy, no-referrer behavior, MIME sniffing
 disabled, and framing denied.
 
 ## HTTP endpoints
@@ -109,31 +148,43 @@ disabled, and framing denied.
 | `GET` | `/healthz` | Web-process health without contacting the daemon |
 | `GET` | `/api/v1/status` | Negotiated daemon capabilities and runtime snapshot |
 | `GET` | `/api/v1/snapshot` | Authoritative daemon runtime snapshot |
+| `GET` | `/api/v1/events` | Snapshot-first ordered daemon Server-Sent Events |
 | `GET` | `/api/v1/openapi.json` | Machine-readable API schema |
 
 Interactive Swagger and ReDoc routes are disabled.
 
-The service envelope uses protocol `sdsctl.web`, version `1`. Each daemon-backed
-request creates a bounded local daemon client, negotiates the daemon protocol,
-performs the requested read, and closes the client.
+The service envelope uses protocol `sdsctl.web`, version `1`. Each
+request-response daemon route creates a bounded local API client, negotiates the
+daemon protocol, performs the requested read, and closes the client.
 
-Daemon transport and protocol failures return HTTP `503` with a stable,
-redacted message. Private socket paths and low-level exception details are not
-included in the HTTP response.
+The event route receives its first validated daemon event before starting the
+HTTP response. An absent, refused, inaccessible, incompatible, or malformed
+initial stream therefore returns HTTP `503` with the same stable redacted
+message as other daemon-backed endpoints. Private socket paths and low-level
+exception details are not included.
+
+After HTTP streaming begins, a later daemon disconnect or protocol failure ends
+that SSE response and closes the local event client. The browser reconnects to
+obtain a new authoritative snapshot boundary. The web service does not invent
+event replay, skip daemon sequence validation, or translate a gap into partial
+browser state.
 
 ## Command options
 
 ```text
 --daemon-socket-path PATH
+--daemon-event-socket-path PATH
 --daemon-timeout SECONDS
 --daemon-max-response-bytes BYTES
+--daemon-max-event-bytes BYTES
 --listen-address ADDRESS
 --listen-port PORT
 --no-access-log
 ```
 
-The daemon timeout defaults to five seconds. The response-size default matches
-the existing daemon API client limit.
+The daemon timeout defaults to five seconds and applies to API and event
+connection establishment. The response and event size defaults match the
+existing daemon API and event clients.
 
 Disable the HTTP access log when a supervising service supplies request logging:
 
@@ -143,21 +194,26 @@ sdsctl web --no-access-log
 
 ## Current scope
 
-Milestones 20.1 and 20.2 include:
+Milestones 20.1 through 20.3 include:
 
 - the optional `web` package extra;
 - a host-independent FastAPI application factory;
-- versioned health, status, snapshot, metadata, and OpenAPI routes;
+- versioned health, status, snapshot, metadata, event, and OpenAPI routes;
 - redacted daemon-unavailable responses;
 - a loopback-only Uvicorn adapter;
 - the `sdsctl web` command;
 - a packaged accessible responsive read-only browser shell;
-- two-second status polling while the browser tab is visible;
+- snapshot-first same-origin Server-Sent Events;
+- validated daemon sequence identifiers and complete JSON event envelopes;
+- direct incremental scanner, radio, PSI, audio, and daemon updates;
+- automatic browser reconnect, two-second polling fallback, and periodic
+  authoritative reconciliation;
 - scanner, radio-activity, daemon, PSI, audio, and router summaries;
-- restrictive static-response security headers; and
-- parser, application, shell, server, packaging, and regression tests.
+- restrictive static-response and event-response headers; and
+- parser, application, event lifecycle, shell, server, packaging, and regression
+  tests.
 
-Later Milestone 20 work remains responsible for event-driven live updates,
-audio and recording workflows, logs, safe controls, optional LCARS-inspired and
-Matrix-inspired themes, expanded SVG assets and branding, authentication and
-secure remote-access planning, and Home Assistant integration.
+Later Milestone 20 work remains responsible for browser audio and recording
+workflows, logs, safe controls, optional LCARS-inspired and Matrix-inspired
+themes, expanded SVG assets and branding, authentication and secure
+remote-access planning, and Home Assistant integration.

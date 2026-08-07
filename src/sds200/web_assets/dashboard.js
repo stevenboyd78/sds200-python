@@ -1,7 +1,12 @@
 "use strict";
 
-const REFRESH_INTERVAL_MS = 2000;
+const FALLBACK_REFRESH_INTERVAL_MS = 2000;
+const RECONCILE_INTERVAL_MS = 30000;
 
+let currentSnapshot = {};
+let eventSource = null;
+let eventStreamConnected = false;
+let lastEventSequence = null;
 let refreshInProgress = false;
 
 function element(id) {
@@ -76,37 +81,28 @@ function setOverallStatus(state, label, message) {
   element("dashboard-message").textContent = message;
 }
 
-function renderStatus(payload) {
-  const daemon = record(payload.daemon);
-  const snapshot = record(daemon.snapshot);
+function renderSnapshot(snapshot, message = null) {
   const radio = record(snapshot.radio_state);
   const audio = record(snapshot.audio);
   const router = record(snapshot.router);
 
   const connected = snapshot.scanner_connected === true;
+  const defaultMessage = connected
+    ? "Daemon and scanner status are available."
+    : "The daemon is available, but the scanner is disconnected.";
 
   setOverallStatus(
     connected ? "online" : "offline",
     connected ? "Connected" : "Disconnected",
-    connected
-      ? "Daemon and scanner status are available."
-      : "The daemon is available, but the scanner is disconnected.",
+    message ?? defaultMessage,
   );
 
   setText(
     "scanner-connected",
-    booleanLabel(
-      snapshot.scanner_connected,
-      "Connected",
-      "Disconnected",
-    ),
+    booleanLabel(snapshot.scanner_connected, "Connected", "Disconnected"),
   );
   setText("scanner-model", snapshot.scanner_model, "Unknown model");
-  setText(
-    "scanner-firmware",
-    snapshot.scanner_firmware,
-    "Unknown firmware",
-  );
+  setText("scanner-firmware", snapshot.scanner_firmware, "Unknown firmware");
   setText("scanner-endpoint", snapshot.scanner_endpoint);
 
   setText("radio-system", radio.system, "No active system");
@@ -118,20 +114,91 @@ function renderStatus(payload) {
 
   setText("daemon-state", snapshot.state);
   setText("psi-state", psiLabel(snapshot));
-  setText(
-    "audio-state",
-    booleanLabel(audio.running, "Running", "Stopped"),
-  );
-  setText(
-    "router-state",
-    booleanLabel(router.running, "Running", "Stopped"),
-  );
+  setText("audio-state", booleanLabel(audio.running, "Running", "Stopped"));
+  setText("router-state", booleanLabel(router.running, "Running", "Stopped"));
   setText("transition-sequence", snapshot.transition_sequence);
 
   const updatedAt = new Date();
   const updateNode = element("last-update");
   updateNode.dateTime = updatedAt.toISOString();
   updateNode.textContent = updatedAt.toLocaleString();
+}
+
+function renderStatus(payload) {
+  const daemon = record(payload.daemon);
+  currentSnapshot = record(daemon.snapshot);
+  renderSnapshot(currentSnapshot);
+}
+
+function eventSequence(envelope, message) {
+  if (
+    typeof envelope.sequence === "number" &&
+    Number.isInteger(envelope.sequence)
+  ) {
+    return envelope.sequence;
+  }
+
+  const parsed = Number.parseInt(message.lastEventId, 10);
+  if (Number.isInteger(parsed)) {
+    return parsed;
+  }
+
+  throw new Error("Daemon event omitted a valid sequence.");
+}
+
+function applyDaemonEvent(envelope, message) {
+  const kind = envelope.kind;
+  const payload = record(envelope.payload);
+  const sequence = eventSequence(envelope, message);
+
+  if (kind === "stream.snapshot") {
+    currentSnapshot = payload;
+    lastEventSequence = sequence;
+    renderSnapshot(currentSnapshot, "Live daemon events are connected.");
+    return;
+  }
+
+  if (lastEventSequence !== null && sequence !== lastEventSequence + 1) {
+    throw new Error(
+      `Daemon event sequence gap: expected ${
+        lastEventSequence + 1
+      }, received ${sequence}.`,
+    );
+  }
+  lastEventSequence = sequence;
+
+  if (kind === "daemon.transition") {
+    currentSnapshot = record(payload.snapshot);
+  } else if (kind === "scanner.connection") {
+    currentSnapshot = {
+      ...currentSnapshot,
+      scanner_connected: payload.connected,
+      scanner_endpoint: payload.endpoint ?? currentSnapshot.scanner_endpoint,
+    };
+  } else if (kind === "scanner.psi") {
+    currentSnapshot = {
+      ...currentSnapshot,
+      psi_active: true,
+      radio_state: record(payload.state),
+    };
+  } else if (kind === "radio.state") {
+    currentSnapshot = {
+      ...currentSnapshot,
+      radio_state: record(payload.current),
+    };
+  } else if (kind === "audio.state") {
+    currentSnapshot = {
+      ...currentSnapshot,
+      audio: payload,
+    };
+  } else if (kind === "destination.health") {
+    void refreshStatus();
+    return;
+  } else {
+    return;
+  }
+
+  renderSnapshot(currentSnapshot, "Live daemon events are connected.");
 }
 
 function errorMessage(payload, response) {
@@ -152,9 +219,7 @@ async function refreshStatus() {
   try {
     const response = await fetch("/api/v1/status", {
       method: "GET",
-      headers: {
-        Accept: "application/json",
-      },
+      headers: {Accept: "application/json"},
       cache: "no-store",
       credentials: "same-origin",
     });
@@ -188,13 +253,72 @@ async function refreshStatus() {
   }
 }
 
-document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) {
-    void refreshStatus();
+function stopEventStream() {
+  if (eventSource !== null) {
+    eventSource.close();
+    eventSource = null;
   }
+  eventStreamConnected = false;
+  lastEventSequence = null;
+}
+
+function startEventStream() {
+  stopEventStream();
+
+  if (document.hidden || typeof EventSource === "undefined") {
+    return;
+  }
+
+  eventSource = new EventSource("/api/v1/events");
+
+  eventSource.onopen = () => {
+    eventStreamConnected = true;
+  };
+
+  eventSource.onmessage = (message) => {
+    try {
+      const envelope = JSON.parse(message.data);
+      if (record(envelope) !== envelope) {
+        throw new Error("Daemon event envelope is not an object.");
+      }
+      eventStreamConnected = true;
+      applyDaemonEvent(envelope, message);
+    } catch {
+      eventStreamConnected = false;
+      stopEventStream();
+      void refreshStatus();
+      window.setTimeout(startEventStream, FALLBACK_REFRESH_INTERVAL_MS);
+    }
+  };
+
+  eventSource.onerror = () => {
+    eventStreamConnected = false;
+    element("dashboard-message").textContent =
+      "Live events are reconnecting; status polling remains active.";
+  };
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    stopEventStream();
+    return;
+  }
+
+  void refreshStatus();
+  startEventStream();
 });
 
+window.addEventListener("pagehide", stopEventStream);
+
 void refreshStatus();
+startEventStream();
+
+window.setInterval(() => {
+  if (!eventStreamConnected) {
+    void refreshStatus();
+  }
+}, FALLBACK_REFRESH_INTERVAL_MS);
+
 window.setInterval(() => {
   void refreshStatus();
-}, REFRESH_INTERVAL_MS);
+}, RECONCILE_INTERVAL_MS);

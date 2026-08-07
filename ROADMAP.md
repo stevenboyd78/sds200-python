@@ -78,6 +78,10 @@ assignment may change before implementation begins.
   polling, scanner and runtime summaries, restrictive browser response headers,
   light and dark presentation, compact layouts, reduced-motion behavior, and
   host-independent shell and static-asset tests.
+- Milestone 20.3 completed same-origin Server-Sent Events over the existing
+  ordered daemon event socket, authoritative snapshot-first delivery, browser
+  incremental updates and reconnect behavior, polling fallback, periodic
+  reconciliation, redacted failures, and event-client lifecycle tests.
 - Bind to localhost by default.
 - Require explicit authentication and transport-security planning before remote
   exposure.
