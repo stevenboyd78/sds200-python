@@ -6,6 +6,7 @@
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#172033">
   <title>sdsctl scanner dashboard</title>
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/assets/dashboard.css">
   <script src="/assets/dashboard.js" defer></script>
 </head>
@@ -34,7 +35,7 @@
   <main id="main-content" class="dashboard" tabindex="-1">
     <section class="overview" aria-labelledby="overview-title">
       <div>
-        <p class="eyebrow">Milestone 20.2</p>
+        <p class="eyebrow">Live local dashboard</p>
         <h2 id="overview-title">Local scanner overview</h2>
       </div>
 
@@ -133,6 +134,46 @@
           <div>
             <dt>Transition</dt>
             <dd id="transition-sequence">Unavailable</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="panel" aria-labelledby="browser-audio-title">
+        <header class="panel-header">
+          <p class="panel-kicker">Listen</p>
+          <h2 id="browser-audio-title">Browser audio</h2>
+        </header>
+
+        <p
+          id="audio-playback-status"
+          class="audio-playback-status"
+          role="status"
+          aria-live="polite"
+        >
+          Stopped
+        </p>
+
+        <div class="audio-controls">
+          <button id="audio-play" type="button">Play audio</button>
+          <button id="audio-stop" type="button" disabled>Stop</button>
+        </div>
+
+        <dl class="status-list status-list-compact">
+          <div>
+            <dt>Source</dt>
+            <dd id="audio-source" class="technical-value">Unavailable</dd>
+          </div>
+          <div>
+            <dt>Packets</dt>
+            <dd id="audio-packets">0</dd>
+          </div>
+          <div>
+            <dt>Queue loss</dt>
+            <dd id="audio-queue-loss">0 packets · 0 overflows</dd>
+          </div>
+          <div>
+            <dt>RTP loss</dt>
+            <dd id="audio-rtp-loss">0 packets</dd>
           </div>
         </dl>
       </section>

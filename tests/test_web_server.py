@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import sys
+from types import SimpleNamespace
+
 import pytest
 
 from sds200.web_server import (
+    WEB_DASHBOARD_DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT,
     WEB_DASHBOARD_DEFAULT_HOST,
     WEB_DASHBOARD_DEFAULT_PORT,
+    _default_server_factory,
     normalize_web_dashboard_host,
     normalize_web_dashboard_port,
     run_web_dashboard_server,
@@ -123,6 +128,47 @@ def test_run_web_dashboard_server_defaults_are_loopback_only() -> None:
             True,
         )
     ]
+
+
+def test_default_server_factory_bounds_graceful_shutdown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeUvicornConfig:
+        def __init__(self, app: object, **kwargs: object) -> None:
+            captured["app"] = app
+            captured.update(kwargs)
+
+    class FakeUvicornServer:
+        def __init__(self, config: object) -> None:
+            self.config = config
+
+        def run(self) -> None:
+            raise AssertionError("server should not run during construction")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "uvicorn",
+        SimpleNamespace(
+            Config=FakeUvicornConfig,
+            Server=FakeUvicornServer,
+        ),
+    )
+
+    app = object()
+    server = _default_server_factory(
+        app,
+        host="127.0.0.1",
+        port=8123,
+        access_log=False,
+    )
+
+    assert isinstance(server, FakeUvicornServer)
+    assert captured["app"] is app
+    assert captured["timeout_graceful_shutdown"] == (
+        WEB_DASHBOARD_DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT
+    )
 
 
 def test_run_web_dashboard_server_requires_callable_factory() -> None:

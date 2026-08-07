@@ -82,6 +82,12 @@ assignment may change before implementation begins.
   ordered daemon event socket, authoritative snapshot-first delivery, browser
   incremental updates and reconnect behavior, polling fallback, periodic
   reconciliation, redacted failures, and event-client lifecycle tests.
+- Milestone 20.4 completed explicit browser playback of daemon-owned PCMU with
+  same-origin binary streaming, manual Play and Stop controls, AudioWorklet
+  mu-law decoding, bounded buffering and resampling, queue-loss and RTP-loss
+  telemetry, hidden-tab playback continuity, deterministic PCMU and SSE client
+  cleanup, idle daemon event-client reaping, bounded web-server graceful
+  shutdown, and physical SDS200 validation.
 - Bind to localhost by default.
 - Require explicit authentication and transport-security planning before remote
   exposure.

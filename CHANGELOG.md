@@ -8,6 +8,20 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Added
 
+- Milestone 20.4 explicit same-origin browser audio over the daemon-owned PCMU
+  socket with one independent validated client per playback stream, exact v1
+  frame forwarding without re-encoding, manual Play and Stop controls,
+  AudioWorklet G.711 mu-law decoding, bounded buffering and resampling, daemon
+  queue-loss and RTP-loss telemetry, hidden-tab playback continuity, and
+  deterministic Stop and page-close cleanup. The milestone also reaps idle
+  disconnected daemon event clients and bounds Uvicorn graceful shutdown to two
+  seconds so long-lived browser streams cannot make one `SIGINT` wait forever.
+- Physical SDS200 browser validation with firmware 1.26.01 confirmed audible
+  scanner audio in both output channels, zero browser queue and RTP loss during
+  the observed run, PCMU cleanup on Stop, continued audio while the dashboard
+  was hidden, repeated SSE visibility-cycle cleanup with no retained accepted
+  event sockets, and controlled active-SSE web shutdown after one `SIGINT` in
+  2.368 seconds with the daemon remaining healthy.
 - Milestone 20.3 same-origin Server-Sent Events bridge over the existing ordered
   daemon event socket, authoritative snapshot-first delivery, validated SSE
   identifiers and JSON envelopes, redacted initial failures, deterministic

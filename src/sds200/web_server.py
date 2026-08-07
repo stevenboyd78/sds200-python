@@ -7,6 +7,7 @@ from typing import Any, Protocol, cast
 
 WEB_DASHBOARD_DEFAULT_HOST = "127.0.0.1"
 WEB_DASHBOARD_DEFAULT_PORT = 8000
+WEB_DASHBOARD_DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT = 2
 WEB_DASHBOARD_INSTALL_ERROR = (
     "Web dashboard support is not installed; install it with: "
     'python -m pip install "sds200[web]"'
@@ -136,11 +137,15 @@ def _default_server_factory(
         log_config=None,
         proxy_headers=False,
         server_header=False,
+        timeout_graceful_shutdown=(
+            WEB_DASHBOARD_DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT
+        ),
     )
     return uvicorn.Server(config)
 
 
 __all__ = [
+    "WEB_DASHBOARD_DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT",
     "WEB_DASHBOARD_DEFAULT_HOST",
     "WEB_DASHBOARD_DEFAULT_PORT",
     "WEB_DASHBOARD_INSTALL_ERROR",

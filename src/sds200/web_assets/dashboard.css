@@ -55,6 +55,7 @@ a {
 }
 
 a:focus-visible,
+button:focus-visible,
 [tabindex="-1"]:focus-visible {
   outline: 0.2rem solid var(--focus);
   outline-offset: 0.2rem;
@@ -261,6 +262,46 @@ a:focus-visible,
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", monospace;
   font-size: 0.875em;
+}
+
+.audio-playback-status {
+  min-height: 1.5em;
+  margin: var(--space-5) 0 var(--space-3);
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.audio-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.audio-controls button {
+  min-width: 7rem;
+  padding: var(--space-3) var(--space-4);
+  border: 0.125rem solid var(--accent);
+  border-radius: var(--radius-small);
+  color: var(--surface);
+  background: var(--accent);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.audio-controls button:hover:not(:disabled) {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+
+.audio-controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+#audio-stop {
+  color: var(--accent-strong);
+  background: transparent;
 }
 
 .site-footer {

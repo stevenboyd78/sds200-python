@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
 from functools import cache
 from importlib.resources import files
 from typing import Protocol, TypeAlias
@@ -15,6 +16,8 @@ from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from . import __version__
 from .daemon_events import DaemonEvent
 from .exceptions import SDS200Error
+from .pcmu_protocol import encode_pcmu_delivery
+from .pcmu_subscriptions import PcmuPacketDelivery
 
 WEB_DASHBOARD_API_PROTOCOL = "sdsctl.web"
 WEB_DASHBOARD_API_VERSION = 1
@@ -39,6 +42,12 @@ _WEB_RESPONSE_HEADERS = {
     "X-Frame-Options": "DENY",
 }
 _EVENT_STREAM_RESPONSE_HEADERS = {
+    "Cache-Control": "no-store",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+    "X-Content-Type-Options": "nosniff",
+}
+_AUDIO_STREAM_RESPONSE_HEADERS = {
     "Cache-Control": "no-store",
     "Connection": "keep-alive",
     "X-Accel-Buffering": "no",
@@ -83,8 +92,25 @@ class DaemonEventClientLike(Protocol):
         """Close the daemon event connection."""
 
 
+class DaemonPcmuClientLike(Protocol):
+    """Minimum daemon PCMU client contract required by the web service."""
+
+    max_endpoint_bytes: int
+    max_frame_bytes: int
+
+    def connect(self) -> object:
+        """Connect to the daemon PCMU service without waiting for audio."""
+
+    def receive(self) -> PcmuPacketDelivery:
+        """Receive one validated PCMU delivery."""
+
+    def close(self) -> None:
+        """Close the daemon PCMU connection."""
+
+
 DaemonApiClientFactory: TypeAlias = Callable[[], DaemonApiClientContext]
 DaemonEventClientFactory: TypeAlias = Callable[[], DaemonEventClientLike]
+DaemonPcmuClientFactory: TypeAlias = Callable[[], DaemonPcmuClientLike]
 _DaemonQuery: TypeAlias = Callable[
     [DaemonApiClientLike],
     Mapping[str, object],
@@ -94,6 +120,7 @@ _DaemonQuery: TypeAlias = Callable[
 def create_web_dashboard_app(
     api_client_factory: DaemonApiClientFactory,
     event_client_factory: DaemonEventClientFactory | None = None,
+    pcmu_client_factory: DaemonPcmuClientFactory | None = None,
 ) -> FastAPI:
     """Create the daemon-backed web application without scanner ownership."""
 
@@ -101,6 +128,8 @@ def create_web_dashboard_app(
         raise TypeError("Daemon API client factory must be callable.")
     if event_client_factory is not None and not callable(event_client_factory):
         raise TypeError("Daemon event client factory must be callable or None.")
+    if pcmu_client_factory is not None and not callable(pcmu_client_factory):
+        raise TypeError("Daemon PCMU client factory must be callable or None.")
 
     app = FastAPI(
         title="sdsctl web dashboard",
@@ -140,11 +169,34 @@ def create_web_dashboard_app(
             media_type="application/javascript",
         )
 
+    @app.get(
+        "/assets/audio-worklet.js",
+        include_in_schema=False,
+        response_class=Response,
+    )
+    def audio_worklet_script() -> Response:
+        return _asset_response(
+            "audio-worklet.js",
+            media_type="application/javascript",
+        )
+
+    @app.get(
+        "/assets/favicon.svg",
+        include_in_schema=False,
+        response_class=Response,
+    )
+    def favicon() -> Response:
+        return _asset_response(
+            "favicon.svg",
+            media_type="image/svg+xml",
+        )
+
     @app.get("/api/v1")
     def api_index() -> dict[str, object]:
         return {
             "service": _service_metadata(),
             "links": {
+                "audio": "/api/v1/audio",
                 "dashboard": "/",
                 "events": "/api/v1/events",
                 "health": "/healthz",
@@ -185,6 +237,18 @@ def create_web_dashboard_app(
     )
     def events() -> StreamingResponse:
         return _event_stream_response(event_client_factory)
+
+    @app.get(
+        "/api/v1/audio",
+        responses={
+            200: {
+                "content": {"application/octet-stream": {}},
+                "description": "Daemon-owned PCMU audio frames",
+            },
+        },
+    )
+    def audio() -> StreamingResponse:
+        return _audio_stream_response(pcmu_client_factory)
 
     return app
 
@@ -268,17 +332,70 @@ def _event_stream_response(
     )
 
 
-def _iter_daemon_events(
+def _audio_stream_response(
+    pcmu_client_factory: DaemonPcmuClientFactory | None,
+) -> StreamingResponse:
+    if pcmu_client_factory is None:
+        raise HTTPException(
+            status_code=503,
+            detail=WEB_DASHBOARD_UNAVAILABLE_DETAIL,
+        )
+
+    client: DaemonPcmuClientLike | None = None
+    try:
+        client = pcmu_client_factory()
+        client.connect()
+    except (SDS200Error, OSError) as error:
+        if client is not None:
+            client.close()
+        logger.warning(
+            "web dashboard daemon PCMU connection failed error_type=%s",
+            error.__class__.__name__,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=WEB_DASHBOARD_UNAVAILABLE_DETAIL,
+        ) from None
+
+    return StreamingResponse(
+        content=_iter_daemon_audio(client),
+        media_type="application/octet-stream",
+        headers=dict(_AUDIO_STREAM_RESPONSE_HEADERS),
+    )
+
+
+async def _iter_daemon_events(
     client: DaemonEventClientLike,
     first_event: DaemonEvent,
-) -> Iterator[bytes]:
+) -> AsyncIterator[bytes]:
     try:
         yield _encode_server_sent_event(first_event)
         while True:
-            yield _encode_server_sent_event(client.receive())
+            event = await asyncio.to_thread(client.receive)
+            yield _encode_server_sent_event(event)
     except (SDS200Error, OSError) as error:
         logger.warning(
             "web dashboard daemon event stream ended error_type=%s",
+            error.__class__.__name__,
+        )
+    finally:
+        client.close()
+
+
+async def _iter_daemon_audio(
+    client: DaemonPcmuClientLike,
+) -> AsyncIterator[bytes]:
+    try:
+        while True:
+            delivery = await asyncio.to_thread(client.receive)
+            yield encode_pcmu_delivery(
+                delivery,
+                max_endpoint_bytes=client.max_endpoint_bytes,
+                max_frame_bytes=client.max_frame_bytes,
+            )
+    except (SDS200Error, OSError) as error:
+        logger.warning(
+            "web dashboard daemon PCMU stream ended error_type=%s",
             error.__class__.__name__,
         )
     finally:
@@ -313,6 +430,8 @@ __all__ = [
     "DaemonApiClientLike",
     "DaemonEventClientFactory",
     "DaemonEventClientLike",
+    "DaemonPcmuClientFactory",
+    "DaemonPcmuClientLike",
     "WEB_DASHBOARD_API_PROTOCOL",
     "WEB_DASHBOARD_API_VERSION",
     "WEB_DASHBOARD_UNAVAILABLE_DETAIL",
