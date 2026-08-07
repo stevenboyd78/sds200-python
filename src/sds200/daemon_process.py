@@ -28,6 +28,10 @@ class _DaemonDestinationReloaderLike(Protocol):
     def reload(self) -> DaemonDestinationReloadResult: ...
 
 
+class _DaemonRecordingManagerLike(Protocol):
+    def close(self) -> None: ...
+
+
 class _DaemonApiServerLike(Protocol):
     def start(self) -> None: ...
 
@@ -41,6 +45,12 @@ class _DaemonEventServerLike(Protocol):
 
 
 class _DaemonPcmuServerLike(Protocol):
+    def start(self) -> None: ...
+
+    def stop(self) -> None: ...
+
+
+class _DaemonRecordingFileServerLike(Protocol):
     def start(self) -> None: ...
 
     def stop(self) -> None: ...
@@ -210,6 +220,10 @@ class DaemonProcess:
         destination_reloader: (
             _DaemonDestinationReloaderLike | None
         ) = None,
+        recording_manager: _DaemonRecordingManagerLike | None = None,
+        recording_file_server: (
+            _DaemonRecordingFileServerLike | None
+        ) = None,
         api_server: _DaemonApiServerLike | None = None,
         event_server: _DaemonEventServerLike | None = None,
         pcmu_server: _DaemonPcmuServerLike | None = None,
@@ -232,6 +246,8 @@ class DaemonProcess:
         self.runtime = runtime
         self.destination_coordinator = destination_coordinator
         self.destination_reloader = destination_reloader
+        self.recording_manager = recording_manager
+        self.recording_file_server = recording_file_server
         self.api_server = api_server
         self.event_server = event_server
         self.pcmu_server = pcmu_server
@@ -244,6 +260,7 @@ class DaemonProcess:
             pcmu_server_attempted = False
             runtime_attempted = False
             destination_coordinator_attempted = False
+            recording_file_server_attempted = False
             api_server_attempted = False
 
             try:
@@ -262,6 +279,10 @@ class DaemonProcess:
                     destination_coordinator_attempted = True
                     self.destination_coordinator.start()
 
+                if self.recording_file_server is not None:
+                    recording_file_server_attempted = True
+                    self.recording_file_server.start()
+
                 if self.api_server is not None:
                     api_server_attempted = True
                     self.api_server.start()
@@ -277,6 +298,10 @@ class DaemonProcess:
             except BaseException as process_error:
                 cleanup_failures = self._stop_components(
                     stop_api_server=api_server_attempted,
+                    stop_recording_file_server=(
+                        recording_file_server_attempted
+                    ),
+                    stop_recording_manager=self.recording_manager is not None,
                     stop_destination_coordinator=(
                         destination_coordinator_attempted
                     ),
@@ -295,6 +320,10 @@ class DaemonProcess:
             else:
                 cleanup_failures = self._stop_components(
                     stop_api_server=api_server_attempted,
+                    stop_recording_file_server=(
+                        recording_file_server_attempted
+                    ),
+                    stop_recording_manager=self.recording_manager is not None,
                     stop_destination_coordinator=(
                         destination_coordinator_attempted
                     ),
@@ -351,6 +380,8 @@ class DaemonProcess:
         self,
         *,
         stop_api_server: bool,
+        stop_recording_file_server: bool,
+        stop_recording_manager: bool,
         stop_destination_coordinator: bool,
         stop_runtime: bool,
         stop_pcmu_server: bool,
@@ -361,6 +392,21 @@ class DaemonProcess:
         if stop_api_server and self.api_server is not None:
             try:
                 self.api_server.stop()
+            except BaseException as error:
+                failures.append(error)
+
+        if (
+            stop_recording_file_server
+            and self.recording_file_server is not None
+        ):
+            try:
+                self.recording_file_server.stop()
+            except BaseException as error:
+                failures.append(error)
+
+        if stop_recording_manager and self.recording_manager is not None:
+            try:
+                self.recording_manager.close()
             except BaseException as error:
                 failures.append(error)
 

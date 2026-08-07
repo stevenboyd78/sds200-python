@@ -152,6 +152,47 @@ class DaemonApiClient:
             raise
         return result
 
+    def recording_status(self) -> dict[str, object]:
+        """Return the daemon-owned recording workflow snapshot."""
+
+        return self._recording_request(DaemonApiOperation.RECORDING_STATUS)
+
+    def recording_start(self) -> dict[str, object]:
+        """Start one daemon-owned WAV recording."""
+
+        return self._recording_request(DaemonApiOperation.RECORDING_START)
+
+    def recording_stop(self) -> dict[str, object]:
+        """Stop and finalize the daemon-owned WAV recording."""
+
+        return self._recording_request(DaemonApiOperation.RECORDING_STOP)
+
+    def recordings_list(self) -> dict[str, object]:
+        """Return the daemon-owned bounded finalized recording inventory."""
+
+        operation = DaemonApiOperation.RECORDINGS_LIST
+        self._require_operation(operation)
+        result = self.request(operation)
+        try:
+            _validate_recording_inventory(result)
+        except DaemonProtocolError:
+            self.close()
+            raise
+        return result
+
+    def _recording_request(
+        self,
+        operation: DaemonApiOperation,
+    ) -> dict[str, object]:
+        self._require_operation(operation)
+        result = self.request(operation)
+        try:
+            _validate_recording_snapshot(result)
+        except DaemonProtocolError:
+            self.close()
+            raise
+        return result
+
     def hold(
         self,
         target: str,
@@ -507,6 +548,107 @@ def _bounded_control_timeout(
     return normalized
 
 
+def _validate_recording_snapshot(
+    result: Mapping[str, object],
+) -> None:
+    required = {
+        "status",
+        "active",
+        "recording",
+        "metadata",
+        "started_at",
+        "stopped_at",
+        "elapsed_seconds",
+        "packets",
+        "samples",
+        "audio_duration_seconds",
+        "reliability",
+        "sink",
+        "completed_recordings",
+        "closed",
+        "error",
+    }
+    missing = sorted(required - set(result))
+    if missing:
+        raise DaemonProtocolError(
+            "The daemon recording snapshot omitted required fields: "
+            f"{missing!r}."
+        )
+
+    _non_empty_string(result["status"], "status")
+    _boolean(result["active"], "active")
+    _optional_string(result["recording"], "recording")
+    _optional_string(result["metadata"], "metadata")
+    _optional_string(result["started_at"], "started_at")
+    _optional_string(result["stopped_at"], "stopped_at")
+    _non_negative_number(result["elapsed_seconds"], "elapsed_seconds")
+    _non_negative_integer(result["packets"], "packets")
+    _non_negative_integer(result["samples"], "samples")
+    _non_negative_number(
+        result["audio_duration_seconds"],
+        "audio_duration_seconds",
+    )
+    _string_keyed_mapping(result["reliability"], "reliability")
+    _string_keyed_mapping(result["sink"], "sink")
+    _non_negative_integer(
+        result["completed_recordings"],
+        "completed_recordings",
+    )
+    _boolean(result["closed"], "closed")
+    _optional_string(result["error"], "error")
+
+
+def _validate_recording_inventory(
+    result: Mapping[str, object],
+) -> None:
+    required = {
+        "limit",
+        "total_entries",
+        "summary",
+        "issues",
+        "entries",
+    }
+    missing = sorted(required - set(result))
+    if missing:
+        raise DaemonProtocolError(
+            "The daemon recording inventory omitted required fields: "
+            f"{missing!r}."
+        )
+
+    limit = result["limit"]
+    total_entries = result["total_entries"]
+    _positive_integer(limit, "limit")
+    _non_negative_integer(total_entries, "total_entries")
+    assert type(limit) is int
+    assert type(total_entries) is int
+
+    _string_keyed_mapping(result["summary"], "summary")
+
+    issues = result["issues"]
+    if not isinstance(issues, list) or any(
+        not isinstance(issue, str) for issue in issues
+    ):
+        raise DaemonProtocolError(
+            "The daemon recording inventory issues must be a string list."
+        )
+
+    entries = result["entries"]
+    if not isinstance(entries, list):
+        raise DaemonProtocolError(
+            "The daemon recording inventory entries must be a list."
+        )
+    if len(entries) > limit:
+        raise DaemonProtocolError(
+            "The daemon recording inventory exceeded its advertised limit."
+        )
+    if len(entries) > total_entries:
+        raise DaemonProtocolError(
+            "The daemon recording inventory exceeds its total entry count."
+        )
+    for entry in entries:
+        _string_keyed_mapping(entry, "recording entry")
+
+
 def _validate_control_result(
     result: Mapping[str, object],
     *,
@@ -789,6 +931,18 @@ def _non_negative_integer(value: object, name: str) -> None:
         raise DaemonProtocolError(
             "The daemon runtime snapshot field "
             f"{name!r} must be a non-negative integer."
+        )
+
+
+def _non_negative_number(value: object, name: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise DaemonProtocolError(
+            f"The daemon field {name!r} must be a number."
+        )
+    normalized = float(value)
+    if not isfinite(normalized) or normalized < 0:
+        raise DaemonProtocolError(
+            f"The daemon field {name!r} must be finite and non-negative."
         )
 
 

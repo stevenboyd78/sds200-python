@@ -125,6 +125,37 @@ class FakeRuntime:
         return self.transitions.subscribe(callback)
 
 
+@dataclass(frozen=True)
+class FakeRecordingSnapshot:
+    payload: dict[str, object]
+
+    def as_dict(self) -> dict[str, object]:
+        return dict(self.payload)
+
+
+class FakeRecordingManager:
+    def __init__(self) -> None:
+        self.states = CallbackSource()
+        self.snapshot_payload: dict[str, object] = {
+            "status": "idle",
+            "active": False,
+            "recording": None,
+        }
+
+    def snapshot(self) -> FakeRecordingSnapshot:
+        return FakeRecordingSnapshot(self.snapshot_payload)
+
+    def on_state(
+        self,
+        callback: Callable[[FakeRecordingSnapshot], None],
+    ) -> Callable[[], None]:
+        return self.states.subscribe(callback)  # type: ignore[arg-type]
+
+    def emit(self, payload: dict[str, object]) -> None:
+        self.snapshot_payload = dict(payload)
+        self.states.emit(FakeRecordingSnapshot(self.snapshot_payload))
+
+
 def test_stream_starts_each_subscription_with_runtime_snapshot() -> None:
     runtime = FakeRuntime()
     stream = DaemonEventStream(runtime)
@@ -147,6 +178,60 @@ def test_stream_starts_each_subscription_with_runtime_snapshot() -> None:
         "state": "running",
         "scanner_endpoint": runtime.scanner.endpoint,
     }
+
+
+def test_stream_with_recording_manager_augments_snapshot_and_forwards_state() -> None:
+    runtime = FakeRuntime()
+    manager = FakeRecordingManager()
+    stream = DaemonEventStream(
+        runtime,
+        recording_manager=manager,
+    )
+    subscription = stream.subscribe()
+
+    initial = subscription.get(timeout=0)
+    assert initial.kind == DaemonEventKind.SNAPSHOT
+    assert initial.payload == {
+        "state": "idle",
+        "scanner_endpoint": runtime.scanner.endpoint,
+        "recording": {
+            "status": "idle",
+            "active": False,
+            "recording": None,
+        },
+    }
+    assert len(manager.states.callbacks) == 1
+
+    manager.emit(
+        {
+            "status": "recording",
+            "active": True,
+            "recording": "sds200-20260807-145300.wav",
+        }
+    )
+    event = subscription.get(timeout=0)
+
+    assert event.sequence == 1
+    assert event.kind == DaemonEventKind.RECORDING_STATE
+    assert event.payload == {
+        "status": "recording",
+        "active": True,
+        "recording": "sds200-20260807-145300.wav",
+    }
+
+    stream.close()
+    assert manager.states.callbacks == []
+
+
+def test_stream_without_recording_manager_preserves_legacy_snapshot() -> None:
+    runtime = FakeRuntime()
+    stream = DaemonEventStream(runtime)
+    subscription = stream.subscribe()
+
+    snapshot = subscription.get(timeout=0)
+
+    assert "recording" not in snapshot.payload
+    stream.close()
 
 
 def test_stream_maps_all_sources_into_one_ordered_event_sequence() -> None:

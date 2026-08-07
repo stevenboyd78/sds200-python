@@ -19,6 +19,7 @@ from .exceptions import DaemonIpcError
 
 DAEMON_EVENT_SOCKET_FILENAME = "events.sock"
 DAEMON_PCMU_SOCKET_FILENAME = "pcmu.sock"
+DAEMON_RECORDING_FILE_SOCKET_FILENAME = "recordings.sock"
 DAEMON_SOCKET_FILENAME = "daemon.sock"
 DAEMON_SOCKET_DIRECTORY_MODE = 0o700
 DAEMON_SOCKET_MODE = 0o600
@@ -181,6 +182,50 @@ def resolve_daemon_pcmu_socket_location(
     )
     return DaemonSocketLocation(
         paths.user_state_dir / DAEMON_PCMU_SOCKET_FILENAME,
+        DaemonSocketSource.USER_STATE,
+    )
+
+
+def resolve_daemon_recording_file_socket_location(
+    socket_path: str | Path | None = None,
+    *,
+    environ: Mapping[str, str] | None = None,
+    configuration_paths: ConfigurationPaths | None = None,
+    home: str | Path | None = None,
+) -> DaemonSocketLocation:
+    """Resolve the daemon recording-file socket without filesystem changes."""
+
+    if socket_path is not None:
+        if isinstance(socket_path, str) and not socket_path.strip():
+            raise ValueError(
+                "Daemon recording-file socket path must not be empty."
+            )
+        return DaemonSocketLocation(
+            Path(socket_path),
+            DaemonSocketSource.EXPLICIT,
+        )
+
+    environment = os.environ if environ is None else environ
+    runtime_value = environment.get("XDG_RUNTIME_DIR")
+    if runtime_value:
+        runtime_root = Path(runtime_value)
+        if not runtime_root.is_absolute():
+            raise ValueError(
+                f"XDG_RUNTIME_DIR must be an absolute path: {runtime_root}"
+            )
+        return DaemonSocketLocation(
+            runtime_root
+            / CONFIG_DIRECTORY_NAME
+            / DAEMON_RECORDING_FILE_SOCKET_FILENAME,
+            DaemonSocketSource.XDG_RUNTIME,
+        )
+
+    paths = configuration_paths or resolve_configuration_paths(
+        environ=environment,
+        home=home,
+    )
+    return DaemonSocketLocation(
+        paths.user_state_dir / DAEMON_RECORDING_FILE_SOCKET_FILENAME,
         DaemonSocketSource.USER_STATE,
     )
 

@@ -58,6 +58,22 @@ class FakeDaemonEventClient:
         self.instances.append(self)
 
 
+class FakeDaemonRecordingFileClient:
+    instances: list[FakeDaemonRecordingFileClient] = []
+
+    def __init__(
+        self,
+        location: DaemonSocketLocation,
+        *,
+        timeout: float,
+        max_content_bytes: int,
+    ) -> None:
+        self.location = location
+        self.timeout = timeout
+        self.max_content_bytes = max_content_bytes
+        self.instances.append(self)
+
+
 class FakeDaemonPcmuClient:
     instances: list[FakeDaemonPcmuClient] = []
 
@@ -83,11 +99,13 @@ def test_web_parser_uses_loopback_defaults() -> None:
     assert args.daemon_socket_path is None
     assert args.daemon_event_socket_path is None
     assert args.daemon_pcmu_socket_path is None
+    assert args.daemon_recording_file_socket_path is None
     assert args.daemon_timeout == 5.0
     assert args.daemon_max_response_bytes is None
     assert args.daemon_max_event_bytes is None
     assert args.daemon_pcmu_max_endpoint_bytes is None
     assert args.daemon_pcmu_max_frame_bytes is None
+    assert args.daemon_recording_file_max_content_bytes is None
     assert args.listen_address == WEB_DASHBOARD_DEFAULT_HOST
     assert args.listen_port == WEB_DASHBOARD_DEFAULT_PORT
     assert args.access_log is True
@@ -103,6 +121,8 @@ def test_web_parser_accepts_explicit_local_options() -> None:
             "/tmp/sdsctl/events.sock",
             "--daemon-pcmu-socket-path",
             "/tmp/sdsctl/pcmu.sock",
+            "--daemon-recording-file-socket-path",
+            "/tmp/sdsctl/recordings.sock",
             "--daemon-timeout",
             "2.5",
             "--daemon-max-response-bytes",
@@ -113,6 +133,8 @@ def test_web_parser_accepts_explicit_local_options() -> None:
             "2048",
             "--daemon-pcmu-max-frame-bytes",
             "65536",
+            "--daemon-recording-file-max-content-bytes",
+            "1048576",
             "--listen-address",
             "::1",
             "--listen-port",
@@ -124,11 +146,15 @@ def test_web_parser_accepts_explicit_local_options() -> None:
     assert args.daemon_socket_path == Path("/tmp/sdsctl/daemon.sock")
     assert args.daemon_event_socket_path == Path("/tmp/sdsctl/events.sock")
     assert args.daemon_pcmu_socket_path == Path("/tmp/sdsctl/pcmu.sock")
+    assert args.daemon_recording_file_socket_path == Path(
+        "/tmp/sdsctl/recordings.sock"
+    )
     assert args.daemon_timeout == 2.5
     assert args.daemon_max_response_bytes == 8192
     assert args.daemon_max_event_bytes == 4096
     assert args.daemon_pcmu_max_endpoint_bytes == 2048
     assert args.daemon_pcmu_max_frame_bytes == 65536
+    assert args.daemon_recording_file_max_content_bytes == 1048576
     assert args.listen_address == "::1"
     assert args.listen_port == 8123
     assert args.access_log is False
@@ -177,9 +203,11 @@ def test_web_cli_builds_daemon_clients_and_runs_server(
     FakeDaemonApiClient.instances.clear()
     FakeDaemonEventClient.instances.clear()
     FakeDaemonPcmuClient.instances.clear()
+    FakeDaemonRecordingFileClient.instances.clear()
     captured_api_factories: list[Callable[[], object]] = []
     captured_event_factories: list[Callable[[], object]] = []
     captured_pcmu_factories: list[Callable[[], object]] = []
+    captured_recording_file_factories: list[Callable[[], object]] = []
     app = object()
     server_calls: list[tuple[object, str, int, bool]] = []
 
@@ -187,10 +215,14 @@ def test_web_cli_builds_daemon_clients_and_runs_server(
         api_client_factory: Callable[[], object],
         event_client_factory: Callable[[], object],
         pcmu_client_factory: Callable[[], object],
+        recording_file_client_factory: Callable[[], object],
     ) -> object:
         captured_api_factories.append(api_client_factory)
         captured_event_factories.append(event_client_factory)
         captured_pcmu_factories.append(pcmu_client_factory)
+        captured_recording_file_factories.append(
+            recording_file_client_factory
+        )
         return app
 
     def fake_run_server(
@@ -207,6 +239,11 @@ def test_web_cli_builds_daemon_clients_and_runs_server(
     monkeypatch.setattr(cli, "DaemonEventClient", FakeDaemonEventClient)
     monkeypatch.setattr(cli, "DaemonPcmuClient", FakeDaemonPcmuClient)
     monkeypatch.setattr(
+        cli,
+        "DaemonRecordingFileClient",
+        FakeDaemonRecordingFileClient,
+    )
+    monkeypatch.setattr(
         web_dashboard,
         "create_web_dashboard_app",
         fake_create_app,
@@ -216,6 +253,7 @@ def test_web_cli_builds_daemon_clients_and_runs_server(
     socket_path = tmp_path / "daemon.sock"
     event_socket_path = tmp_path / "events.sock"
     pcmu_socket_path = tmp_path / "pcmu.sock"
+    recording_file_socket_path = tmp_path / "recordings.sock"
     result = cli.main(
         [
             "web",
@@ -225,6 +263,8 @@ def test_web_cli_builds_daemon_clients_and_runs_server(
             str(event_socket_path),
             "--daemon-pcmu-socket-path",
             str(pcmu_socket_path),
+            "--daemon-recording-file-socket-path",
+            str(recording_file_socket_path),
             "--daemon-timeout",
             "2.5",
             "--daemon-max-response-bytes",
@@ -235,6 +275,8 @@ def test_web_cli_builds_daemon_clients_and_runs_server(
             "2048",
             "--daemon-pcmu-max-frame-bytes",
             "65536",
+            "--daemon-recording-file-max-content-bytes",
+            "1048576",
             "--listen-address",
             "localhost",
             "--listen-port",
@@ -249,10 +291,12 @@ def test_web_cli_builds_daemon_clients_and_runs_server(
     assert len(captured_api_factories) == 1
     assert len(captured_event_factories) == 1
     assert len(captured_pcmu_factories) == 1
+    assert len(captured_recording_file_factories) == 1
 
     daemon_client = captured_api_factories[0]()
     event_client = captured_event_factories[0]()
     pcmu_client = captured_pcmu_factories[0]()
+    recording_file_client = captured_recording_file_factories[0]()
 
     assert isinstance(daemon_client, FakeDaemonApiClient)
     assert daemon_client.location.path == socket_path
@@ -272,6 +316,15 @@ def test_web_cli_builds_daemon_clients_and_runs_server(
     assert pcmu_client.timeout == 2.5
     assert pcmu_client.max_endpoint_bytes == 2048
     assert pcmu_client.max_frame_bytes == 65536
+
+    assert isinstance(
+        recording_file_client,
+        FakeDaemonRecordingFileClient,
+    )
+    assert recording_file_client.location.path == recording_file_socket_path
+    assert recording_file_client.location.source.value == "explicit"
+    assert recording_file_client.timeout == 2.5
+    assert recording_file_client.max_content_bytes == 1048576
 
 
 def test_web_cli_rejects_scanner_connection_options(

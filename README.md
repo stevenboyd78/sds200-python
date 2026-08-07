@@ -383,11 +383,12 @@ are rejected.
 
 ### Loopback web dashboard
 
-Milestone 20.4 adds explicit browser audio playback to the accessible
-responsive dashboard on top of Milestone 20.3 live same-origin Server-Sent
-Events. The web service remains a daemon client: it does not open scanner
-hardware or a second RTSP/RTP session. Start the foreground daemon, then run the
-web service in another terminal:
+Milestone 20.5 adds daemon-owned browser recording workflows to the
+accessible responsive dashboard on top of Milestone 20.4 explicit browser audio
+playback and Milestone 20.3 live same-origin Server-Sent Events. The web service
+remains a daemon client: it does not open scanner hardware or a second RTSP/RTP
+session. Start the foreground daemon, then run the web service in another
+terminal:
 
 ```bash
 sdsctl --log-level INFO --host 192.168.0.251 daemon
@@ -408,6 +409,15 @@ RTP loss. **Stop** closes only that browser audio subscription. Audio continues
 while the dashboard is hidden, while closing or navigating away from the page
 stops playback and releases the stream.
 
+Press **Record** to attach a WAV sink to the daemon's already-owned decoded-PCM
+router. The dashboard reports live recording duration, packet and sample totals,
+and RTP reliability without creating another scanner audio stream. Active
+recordings survive browser reloads and web-process disconnects. **Stop** finalizes
+the WAV and adjacent metadata sidecar, refreshes the newest-first recording
+inventory, and enables same-origin **Play** and **Download** actions for playable
+completed recordings. Saved playback reads through the private daemon
+recording-file service and does not create a browser PCMU subscription.
+
 The interface retains keyboard focus, responsive compact behavior, system light
 and dark modes, reduced-motion support, and text-only rendering of daemon
 values.
@@ -416,8 +426,8 @@ Install it with `python -m pip install "sds200[web]"`. The service listens on
 `127.0.0.1:8000` by default and accepts only `localhost` or explicit loopback IP
 addresses. Wildcard, LAN, public, and non-local hostname bindings are rejected.
 
-Authentication, TLS, browser recordings, logs, controls, optional themes, and
-Home Assistant integration remain deferred. Remote exposure is
+Authentication, TLS, browser logs, scanner controls, optional themes, and Home
+Assistant integration remain deferred. Remote exposure is
 intentionally unsupported until authentication and transport-security planning
 is complete. See the [web dashboard guide](docs/web-dashboard.md).
 

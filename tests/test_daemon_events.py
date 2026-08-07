@@ -41,6 +41,7 @@ def test_event_protocol_contract_is_stable() -> None:
         "scanner.psi",
         "radio.state",
         "audio.state",
+        "recording.state",
         "destination.health",
     ]
 

@@ -5,9 +5,10 @@ access, upgrades, and rollback for the foreground `sdsctl daemon` introduced
 during Milestone 19.
 
 The daemon owns one SDS200 control connection, one PSI stream, one RTSP/RTP
-audio session, one decoded-PCM router, three private local sockets, and any saved
-playback, recording, or remote-stream destinations. It remains in the foreground
-and is intended to be supervised by systemd or another process manager.
+audio session, one decoded-PCM router, four private local sockets, the
+daemon-owned recording workflow, and any saved playback, recording, or
+remote-stream destinations. It remains in the foreground and is intended to be
+supervised by systemd or another process manager.
 
 ## Compatibility and migration
 
@@ -37,11 +38,14 @@ The relevant default paths are:
 | Legacy scanner profiles | `${XDG_CONFIG_HOME:-~/.config}/sds200/profiles.toml` |
 | Legacy remote-audio profiles | `${XDG_CONFIG_HOME:-~/.config}/sds200/remote-audio-profiles.toml` |
 | User state fallback | `${XDG_STATE_HOME:-~/.local/state}/sdsctl/` |
+| Daemon recording root | `${XDG_STATE_HOME:-~/.local/state}/sdsctl/recordings/` |
 | User cache | `${XDG_CACHE_HOME:-~/.cache}/sdsctl/` |
 | Runtime sockets with `XDG_RUNTIME_DIR` | `$XDG_RUNTIME_DIR/sdsctl/` |
 
-When `XDG_RUNTIME_DIR` is absent, the API, event, and PCMU sockets fall back to
-the user-state directory.
+When `XDG_RUNTIME_DIR` is absent, the API, event, PCMU, and recording-file
+sockets fall back to the user-state directory. The daemon recording root remains
+under the resolved user-state directory unless `--recording-directory PATH` is
+selected explicitly.
 
 ## Install into a dedicated virtual environment
 
@@ -167,7 +171,7 @@ User=sdsctl
 Group=sdsctl
 Environment=PYTHONUNBUFFERED=1
 EnvironmentFile=-/etc/sdsctl/sdsctl.env
-ExecStart=/opt/sdsctl/bin/sdsctl --log-level INFO --host 192.168.0.251 daemon --destination-config /etc/sdsctl/daemon-destinations.toml --socket-path /run/sdsctl/daemon.sock --event-socket-path /run/sdsctl/events.sock --pcmu-socket-path /run/sdsctl/pcmu.sock
+ExecStart=/opt/sdsctl/bin/sdsctl --log-level INFO --host 192.168.0.251 daemon --destination-config /etc/sdsctl/daemon-destinations.toml --recording-directory /var/lib/sdsctl/recordings --socket-path /run/sdsctl/daemon.sock --event-socket-path /run/sdsctl/events.sock --pcmu-socket-path /run/sdsctl/pcmu.sock --recording-file-socket-path /run/sdsctl/recordings.sock
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=5
@@ -192,7 +196,7 @@ options follow it. Replace the explicit host with a saved network-capable
 profile when appropriate:
 
 ```ini
-ExecStart=/opt/sdsctl/bin/sdsctl --log-level INFO --profile home daemon --destination-config /etc/sdsctl/daemon-destinations.toml --socket-path /run/sdsctl/daemon.sock --event-socket-path /run/sdsctl/events.sock --pcmu-socket-path /run/sdsctl/pcmu.sock
+ExecStart=/opt/sdsctl/bin/sdsctl --log-level INFO --profile home daemon --destination-config /etc/sdsctl/daemon-destinations.toml --recording-directory /var/lib/sdsctl/recordings --socket-path /run/sdsctl/daemon.sock --event-socket-path /run/sdsctl/events.sock --pcmu-socket-path /run/sdsctl/pcmu.sock --recording-file-socket-path /run/sdsctl/recordings.sock
 ```
 
 A fallback profile may use serial control while retaining its SDS200 network host
@@ -200,8 +204,17 @@ for RTSP/RTP audio. Serial-only profiles, replay captures, and non-SDS200
 network-audio selections are rejected.
 
 `ProtectSystem=strict` leaves the system read-only except for locations managed
-by systemd, including `RuntimeDirectory` and `StateDirectory`. Add narrowly
-scoped writable paths only when a selected destination requires them.
+by systemd, including `RuntimeDirectory` and `StateDirectory`. The explicit
+`--recording-directory /var/lib/sdsctl/recordings` path above is writable because
+it is beneath `StateDirectory=sdsctl`. Add other narrowly scoped writable paths
+only when a selected destination requires them.
+
+The fourth private socket, `recordings.sock`, serves only finalized daemon
+recordings selected by inventory-relative identifier. It is separate from
+`pcmu.sock`: saved-file playback or download does not create scanner-audio or
+browser-PCMU ownership. On shutdown the daemon stops recording-file readers,
+finalizes any active daemon recording and metadata, then tears down destinations
+and the shared audio runtime.
 
 Local playback from a system service requires access to the selected audio
 device. An ALSA deployment may require `SupplementaryGroups=audio`. A per-user

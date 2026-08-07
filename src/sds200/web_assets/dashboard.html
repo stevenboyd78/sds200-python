@@ -18,7 +18,7 @@
       <p class="eyebrow">sdsctl web</p>
       <h1>Scanner dashboard</h1>
       <p class="subtitle">
-        Read-only status from the locally owned scanner daemon
+        Local status, audio, and daemon-owned recording workflows
       </p>
     </div>
 
@@ -176,6 +176,98 @@
             <dd id="audio-rtp-loss">0 packets</dd>
           </div>
         </dl>
+      </section>
+
+      <section class="panel recording-panel" aria-labelledby="recording-title">
+        <header class="panel-header">
+          <p class="panel-kicker">Capture</p>
+          <h2 id="recording-title">Recordings</h2>
+        </header>
+
+        <p
+          id="recording-status"
+          class="recording-status"
+          role="status"
+          aria-live="polite"
+        >
+          Checking
+        </p>
+
+        <div class="recording-controls">
+          <button id="recording-start" type="button" disabled>Record</button>
+          <button id="recording-stop" type="button" disabled>Stop</button>
+        </div>
+
+        <dl class="status-list status-list-compact recording-telemetry">
+          <div>
+            <dt>Elapsed</dt>
+            <dd id="recording-elapsed">0:00</dd>
+          </div>
+          <div>
+            <dt>Packets</dt>
+            <dd id="recording-packets">0</dd>
+          </div>
+          <div>
+            <dt>Samples</dt>
+            <dd id="recording-samples">0</dd>
+          </div>
+          <div>
+            <dt>Audio duration</dt>
+            <dd id="recording-audio-duration">0:00</dd>
+          </div>
+          <div>
+            <dt>RTP loss</dt>
+            <dd id="recording-rtp-loss">0 packets</dd>
+          </div>
+          <div>
+            <dt>Duplicates / late</dt>
+            <dd id="recording-rtp-order">0 / 0</dd>
+          </div>
+          <div>
+            <dt>Malformed / source</dt>
+            <dd id="recording-rtp-invalid">0 / 0</dd>
+          </div>
+          <div>
+            <dt>Discontinuities</dt>
+            <dd id="recording-discontinuities">0</dd>
+          </div>
+          <div>
+            <dt>File</dt>
+            <dd id="recording-file" class="technical-value">None</dd>
+          </div>
+        </dl>
+
+        <div class="recording-library">
+          <div class="recording-library-header">
+            <div>
+              <p class="panel-kicker">Finalized</p>
+              <h3>Recent recordings</h3>
+            </div>
+            <button id="recordings-refresh" type="button">Refresh</button>
+          </div>
+
+          <p id="recordings-message" class="recordings-message" role="status">
+            Loading recent recordings.
+          </p>
+
+          <ul id="recordings-list" class="recording-list"></ul>
+
+          <div class="saved-playback">
+            <p
+              id="saved-playback-status"
+              class="recordings-message"
+              role="status"
+              aria-live="polite"
+            >
+              No saved recording selected.
+            </p>
+            <audio
+              id="saved-recording-player"
+              controls
+              preload="none"
+            ></audio>
+          </div>
+        </div>
       </section>
     </div>
   </main>

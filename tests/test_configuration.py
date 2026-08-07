@@ -16,6 +16,7 @@ from sds200 import (
     discover_legacy_configuration,
     resolve_configuration_paths,
 )
+from sds200.configuration import DAEMON_RECORDING_DIRECTORY_NAME
 from sds200.profiles import default_profile_path
 from sds200.remote_audio_profiles import default_remote_audio_profile_path
 
@@ -39,6 +40,9 @@ def test_configuration_paths_use_documented_defaults(tmp_path: Path) -> None:
     )
     assert paths.user_config_file == (
         home / ".config" / CONFIG_DIRECTORY_NAME / APPLICATION_CONFIG_FILENAME
+    )
+    assert paths.daemon_recording_dir == (
+        paths.user_state_dir / DAEMON_RECORDING_DIRECTORY_NAME
     )
     assert paths.legacy_connection_profiles_file.name == (
         CONNECTION_PROFILE_FILENAME

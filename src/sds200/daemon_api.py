@@ -9,6 +9,11 @@ from types import MappingProxyType
 from typing import Protocol, cast
 
 from .commands import NAVIGATION_TARGETS
+from .daemon_recording import (
+    DaemonRecordingBusyError,
+    DaemonRecordingOperationError,
+    DaemonRecordingUnavailableError,
+)
 from .exceptions import (
     CommandRejectedError,
     CommandTimeoutError,
@@ -36,6 +41,10 @@ class DaemonApiOperation(StrEnum):
     RUNTIME_SNAPSHOT = "runtime.snapshot"
     SCANNER_STATE = "scanner.state"
     AUDIO_HEALTH = "audio.health"
+    RECORDING_STATUS = "recording.status"
+    RECORDING_START = "recording.start"
+    RECORDING_STOP = "recording.stop"
+    RECORDINGS_LIST = "recordings.list"
     SCANNER_HOLD = "scanner.hold"
     SCANNER_NEXT = "scanner.next"
     SCANNER_PREVIOUS = "scanner.previous"
@@ -49,6 +58,14 @@ DAEMON_API_READ_ONLY_OPERATIONS = (
     DaemonApiOperation.RUNTIME_SNAPSHOT,
     DaemonApiOperation.SCANNER_STATE,
     DaemonApiOperation.AUDIO_HEALTH,
+    DaemonApiOperation.RECORDING_STATUS,
+    DaemonApiOperation.RECORDINGS_LIST,
+)
+DAEMON_API_RECORDING_OPERATIONS = (
+    DaemonApiOperation.RECORDING_STATUS,
+    DaemonApiOperation.RECORDING_START,
+    DaemonApiOperation.RECORDING_STOP,
+    DaemonApiOperation.RECORDINGS_LIST,
 )
 DAEMON_API_CONTROL_OPERATIONS = (
     DaemonApiOperation.SCANNER_HOLD,
@@ -72,6 +89,9 @@ class DaemonApiErrorCode(StrEnum):
     CONTROL_TIMEOUT = "control_timeout"
     CONTROL_REJECTED = "control_rejected"
     CONTROL_FAILED = "control_failed"
+    RECORDING_BUSY = "recording_busy"
+    RECORDING_UNAVAILABLE = "recording_unavailable"
+    RECORDING_FAILED = "recording_failed"
     REQUEST_TOO_LARGE = "request_too_large"
     INTERNAL_ERROR = "internal_error"
 
@@ -86,6 +106,16 @@ class _RuntimeLike(Protocol):
 
 class _ControlResultLike(Protocol):
     def as_dict(self) -> dict[str, object]: ...
+
+
+class _RecordingManagerLike(Protocol):
+    def snapshot(self) -> _SnapshotLike: ...
+
+    def start_recording(self) -> _SnapshotLike: ...
+
+    def stop_recording(self) -> _SnapshotLike: ...
+
+    def list_recordings(self) -> _SnapshotLike: ...
 
 
 class _ControlRuntimeLike(_RuntimeLike, Protocol):
@@ -364,8 +394,14 @@ class DaemonApiResponse:
 class DaemonReadOnlyApi:
     """Dispatch versioned requests against one daemon ownership runtime."""
 
-    def __init__(self, runtime: _RuntimeLike) -> None:
+    def __init__(
+        self,
+        runtime: _RuntimeLike,
+        *,
+        recording_manager: _RecordingManagerLike | None = None,
+    ) -> None:
         self.runtime = runtime
+        self.recording_manager = recording_manager
 
     @property
     def maximum_request_seconds(self) -> float:
@@ -424,7 +460,7 @@ class DaemonReadOnlyApi:
 
         try:
             result = self._dispatch(operation, request.params)
-        except _ControlDispatchError as error:
+        except (_ControlDispatchError, _RecordingDispatchError) as error:
             return DaemonApiResponse.failure(
                 request.request_id,
                 error.code,
@@ -467,6 +503,8 @@ class DaemonReadOnlyApi:
             return self._capabilities()
         if operation is DaemonApiOperation.PING:
             return {"pong": True}
+        if operation in DAEMON_API_RECORDING_OPERATIONS:
+            return self._dispatch_recording(operation)
         if operation in DAEMON_API_CONTROL_OPERATIONS:
             return self._dispatch_control(operation, params)
 
@@ -489,6 +527,46 @@ class DaemonReadOnlyApi:
                 "router": snapshot["router"],
             }
         raise AssertionError(f"Unhandled daemon API operation: {operation!r}")
+
+    def _dispatch_recording(
+        self,
+        operation: DaemonApiOperation,
+    ) -> Mapping[str, object]:
+        manager = self.recording_manager
+        if manager is None:
+            raise _RecordingDispatchError(
+                DaemonApiErrorCode.RECORDING_UNAVAILABLE,
+                "Daemon recording is unavailable.",
+            )
+
+        try:
+            if operation is DaemonApiOperation.RECORDING_STATUS:
+                return manager.snapshot().as_dict()
+            if operation is DaemonApiOperation.RECORDING_START:
+                return manager.start_recording().as_dict()
+            if operation is DaemonApiOperation.RECORDING_STOP:
+                return manager.stop_recording().as_dict()
+            if operation is DaemonApiOperation.RECORDINGS_LIST:
+                return manager.list_recordings().as_dict()
+        except DaemonRecordingBusyError:
+            raise _RecordingDispatchError(
+                DaemonApiErrorCode.RECORDING_BUSY,
+                "A daemon recording is already active or awaiting finalization.",
+            ) from None
+        except DaemonRecordingUnavailableError:
+            raise _RecordingDispatchError(
+                DaemonApiErrorCode.RECORDING_UNAVAILABLE,
+                "Daemon recording is unavailable.",
+            ) from None
+        except DaemonRecordingOperationError:
+            raise _RecordingDispatchError(
+                DaemonApiErrorCode.RECORDING_FAILED,
+                "The daemon recording operation could not be completed.",
+            ) from None
+
+        raise AssertionError(
+            f"Unhandled daemon API recording operation: {operation!r}"
+        )
 
     def _dispatch_control(
         self,
@@ -568,16 +646,25 @@ class DaemonReadOnlyApi:
             f"Unhandled daemon API control operation: {operation!r}"
         )
 
-    @staticmethod
-    def _capabilities() -> dict[str, object]:
+    def _capabilities(self) -> dict[str, object]:
+        recording_available = self.recording_manager is not None
+        operations = [
+            operation
+            for operation in DaemonApiOperation
+            if (
+                recording_available
+                or operation not in DAEMON_API_RECORDING_OPERATIONS
+            )
+        ]
         return {
             "protocol": DAEMON_API_PROTOCOL,
             "supported_versions": list(DAEMON_API_SUPPORTED_VERSIONS),
-            "operations": [operation.value for operation in DaemonApiOperation],
+            "operations": [operation.value for operation in operations],
             "read_only": False,
             "read_only_operations": [
                 operation.value
                 for operation in DAEMON_API_READ_ONLY_OPERATIONS
+                if operation in operations
             ],
             "control_operations": [
                 operation.value
@@ -592,6 +679,16 @@ class _ControlParameterError(ValueError):
 
 
 class _ControlDispatchError(RuntimeError):
+    def __init__(
+        self,
+        code: DaemonApiErrorCode,
+        message: str,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+class _RecordingDispatchError(RuntimeError):
     def __init__(
         self,
         code: DaemonApiErrorCode,

@@ -11,6 +11,7 @@ from sds200.daemon_api import (
     DAEMON_API_MAX_REQUEST_ID_LENGTH,
     DAEMON_API_PROTOCOL,
     DAEMON_API_READ_ONLY_OPERATIONS,
+    DAEMON_API_RECORDING_OPERATIONS,
     DAEMON_API_SUPPORTED_VERSIONS,
     DAEMON_API_VERSION,
     DaemonApiError,
@@ -168,11 +169,16 @@ def test_hello_negotiates_version_and_lists_capabilities(
     assert response.result == {
         "protocol": DAEMON_API_PROTOCOL,
         "supported_versions": list(DAEMON_API_SUPPORTED_VERSIONS),
-        "operations": [operation.value for operation in DaemonApiOperation],
+        "operations": [
+            operation.value
+            for operation in DaemonApiOperation
+            if operation not in DAEMON_API_RECORDING_OPERATIONS
+        ],
         "read_only": False,
         "read_only_operations": [
             operation.value
             for operation in DAEMON_API_READ_ONLY_OPERATIONS
+            if operation not in DAEMON_API_RECORDING_OPERATIONS
         ],
         "control_operations": [
             operation.value
@@ -205,6 +211,7 @@ def test_capabilities_and_ping_do_not_read_runtime_snapshot(
     assert capabilities.result["read_only_operations"] == [
         operation.value
         for operation in DAEMON_API_READ_ONLY_OPERATIONS
+        if operation not in DAEMON_API_RECORDING_OPERATIONS
     ]
     assert ping.result == {"pong": True}
     assert runtime.snapshot_calls == 0

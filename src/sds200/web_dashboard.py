@@ -15,7 +15,12 @@ from fastapi.responses import HTMLResponse, Response, StreamingResponse
 
 from . import __version__
 from .daemon_events import DaemonEvent
-from .exceptions import SDS200Error
+from .daemon_recording_file_client import (
+    DaemonRecordingFileDownload,
+    DaemonRecordingFileRequestError,
+)
+from .daemon_recording_file_protocol import RecordingFileResponseStatus
+from .exceptions import DaemonRequestError, SDS200Error
 from .pcmu_protocol import encode_pcmu_delivery
 from .pcmu_subscriptions import PcmuPacketDelivery
 
@@ -31,6 +36,7 @@ _WEB_RESPONSE_HEADERS = {
         "style-src 'self'; "
         "script-src 'self'; "
         "connect-src 'self'; "
+        "media-src 'self'; "
         "img-src 'self'; "
         "font-src 'self'; "
         "base-uri 'none'; "
@@ -53,6 +59,27 @@ _AUDIO_STREAM_RESPONSE_HEADERS = {
     "X-Accel-Buffering": "no",
     "X-Content-Type-Options": "nosniff",
 }
+_RECORDING_FILE_RESPONSE_HEADERS = {
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+}
+
+WEB_DASHBOARD_RECORDING_BUSY_DETAIL = (
+    "A daemon recording is already active or awaiting finalization."
+)
+WEB_DASHBOARD_RECORDING_UNAVAILABLE_DETAIL = (
+    "Daemon recording is currently unavailable."
+)
+WEB_DASHBOARD_RECORDING_FAILED_DETAIL = (
+    "The daemon recording operation could not be completed."
+)
+WEB_DASHBOARD_RECORDING_INVALID_IDENTIFIER_DETAIL = (
+    "The recording identifier is invalid."
+)
+WEB_DASHBOARD_RECORDING_NOT_FOUND_DETAIL = "The recording was not found."
+WEB_DASHBOARD_RECORDING_NOT_PLAYABLE_DETAIL = (
+    "The recording is not playable."
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +92,18 @@ class DaemonApiClientLike(Protocol):
 
     def runtime_snapshot(self) -> Mapping[str, object]:
         """Return one authoritative daemon runtime snapshot."""
+
+    def recording_status(self) -> Mapping[str, object]:
+        """Return the daemon-owned recording state."""
+
+    def recording_start(self) -> Mapping[str, object]:
+        """Start one daemon-owned recording."""
+
+    def recording_stop(self) -> Mapping[str, object]:
+        """Stop and finalize the active daemon-owned recording."""
+
+    def recordings_list(self) -> Mapping[str, object]:
+        """Return the finalized daemon recording inventory."""
 
 
 class DaemonApiClientContext(Protocol):
@@ -108,9 +147,20 @@ class DaemonPcmuClientLike(Protocol):
         """Close the daemon PCMU connection."""
 
 
+class DaemonRecordingFileClientLike(Protocol):
+    """Minimum daemon recording-file client contract for the web service."""
+
+    def open(self, identifier: str) -> DaemonRecordingFileDownload:
+        """Open one finalized recording by inventory-relative identifier."""
+
+
 DaemonApiClientFactory: TypeAlias = Callable[[], DaemonApiClientContext]
 DaemonEventClientFactory: TypeAlias = Callable[[], DaemonEventClientLike]
 DaemonPcmuClientFactory: TypeAlias = Callable[[], DaemonPcmuClientLike]
+DaemonRecordingFileClientFactory: TypeAlias = Callable[
+    [],
+    DaemonRecordingFileClientLike,
+]
 _DaemonQuery: TypeAlias = Callable[
     [DaemonApiClientLike],
     Mapping[str, object],
@@ -121,6 +171,9 @@ def create_web_dashboard_app(
     api_client_factory: DaemonApiClientFactory,
     event_client_factory: DaemonEventClientFactory | None = None,
     pcmu_client_factory: DaemonPcmuClientFactory | None = None,
+    recording_file_client_factory: (
+        DaemonRecordingFileClientFactory | None
+    ) = None,
 ) -> FastAPI:
     """Create the daemon-backed web application without scanner ownership."""
 
@@ -130,6 +183,13 @@ def create_web_dashboard_app(
         raise TypeError("Daemon event client factory must be callable or None.")
     if pcmu_client_factory is not None and not callable(pcmu_client_factory):
         raise TypeError("Daemon PCMU client factory must be callable or None.")
+    if (
+        recording_file_client_factory is not None
+        and not callable(recording_file_client_factory)
+    ):
+        raise TypeError(
+            "Daemon recording-file client factory must be callable or None."
+        )
 
     app = FastAPI(
         title="sdsctl web dashboard",
@@ -200,6 +260,9 @@ def create_web_dashboard_app(
                 "dashboard": "/",
                 "events": "/api/v1/events",
                 "health": "/healthz",
+                "recording": "/api/v1/recording",
+                "recordings": "/api/v1/recordings",
+                "recording_file": "/api/v1/recordings/file/{identifier}",
                 "snapshot": "/api/v1/snapshot",
                 "status": "/api/v1/status",
             },
@@ -225,6 +288,61 @@ def create_web_dashboard_app(
             **_api_envelope(),
             "snapshot": _query_daemon(api_client_factory, _daemon_snapshot),
         }
+
+    @app.get("/api/v1/recording")
+    def recording_status() -> dict[str, object]:
+        return {
+            **_api_envelope(),
+            "recording": _query_recording_daemon(
+                api_client_factory,
+                lambda client: client.recording_status(),
+            ),
+        }
+
+    @app.post("/api/v1/recording/start")
+    def recording_start() -> dict[str, object]:
+        return {
+            **_api_envelope(),
+            "recording": _query_recording_daemon(
+                api_client_factory,
+                lambda client: client.recording_start(),
+            ),
+        }
+
+    @app.post("/api/v1/recording/stop")
+    def recording_stop() -> dict[str, object]:
+        return {
+            **_api_envelope(),
+            "recording": _query_recording_daemon(
+                api_client_factory,
+                lambda client: client.recording_stop(),
+            ),
+        }
+
+    @app.get("/api/v1/recordings")
+    def recordings() -> dict[str, object]:
+        return {
+            **_api_envelope(),
+            "recordings": _query_recording_daemon(
+                api_client_factory,
+                lambda client: client.recordings_list(),
+            ),
+        }
+
+    @app.get(
+        "/api/v1/recordings/file/{identifier:path}",
+        responses={
+            200: {
+                "content": {"audio/wav": {}},
+                "description": "Finalized daemon recording",
+            },
+        },
+    )
+    def recording_file(identifier: str) -> StreamingResponse:
+        return _recording_file_response(
+            recording_file_client_factory,
+            identifier,
+        )
 
     @app.get(
         "/api/v1/events",
@@ -300,6 +418,104 @@ def _query_daemon(
         ) from None
 
 
+def _query_recording_daemon(
+    api_client_factory: DaemonApiClientFactory,
+    query: _DaemonQuery,
+) -> dict[str, object]:
+    try:
+        with api_client_factory() as client:
+            return dict(query(client))
+    except DaemonRequestError as error:
+        status_code, detail = _recording_request_error_response(error)
+        logger.warning(
+            "web dashboard daemon recording request failed error_type=%s code=%s",
+            error.__class__.__name__,
+            error.code,
+        )
+        raise HTTPException(
+            status_code=status_code,
+            detail=detail,
+        ) from None
+    except (SDS200Error, OSError) as error:
+        logger.warning(
+            "web dashboard daemon recording connection failed error_type=%s",
+            error.__class__.__name__,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=WEB_DASHBOARD_RECORDING_UNAVAILABLE_DETAIL,
+        ) from None
+
+
+def _recording_request_error_response(
+    error: DaemonRequestError,
+) -> tuple[int, str]:
+    if error.code == "recording_busy":
+        return 409, WEB_DASHBOARD_RECORDING_BUSY_DETAIL
+    if error.code == "recording_unavailable":
+        return 503, WEB_DASHBOARD_RECORDING_UNAVAILABLE_DETAIL
+    if error.code == "recording_failed":
+        return 503, WEB_DASHBOARD_RECORDING_FAILED_DETAIL
+    return 503, WEB_DASHBOARD_RECORDING_FAILED_DETAIL
+
+
+def _recording_file_response(
+    recording_file_client_factory: (
+        DaemonRecordingFileClientFactory | None
+    ),
+    identifier: str,
+) -> StreamingResponse:
+    if recording_file_client_factory is None:
+        raise HTTPException(
+            status_code=503,
+            detail=WEB_DASHBOARD_RECORDING_UNAVAILABLE_DETAIL,
+        )
+
+    try:
+        client = recording_file_client_factory()
+        download = client.open(identifier)
+    except DaemonRecordingFileRequestError as error:
+        status_code, detail = _recording_file_error_response(error.status)
+        logger.warning(
+            "web dashboard recording-file request failed error_type=%s status=%s",
+            error.__class__.__name__,
+            error.status.name,
+        )
+        raise HTTPException(status_code=status_code, detail=detail) from None
+    except (SDS200Error, OSError) as error:
+        logger.warning(
+            "web dashboard recording-file connection failed error_type=%s",
+            error.__class__.__name__,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=WEB_DASHBOARD_RECORDING_UNAVAILABLE_DETAIL,
+        ) from None
+
+    return StreamingResponse(
+        content=_iter_recording_file(download),
+        media_type="audio/wav",
+        headers={
+            **_RECORDING_FILE_RESPONSE_HEADERS,
+            "Content-Length": str(download.content_length),
+        },
+    )
+
+
+def _recording_file_error_response(
+    status: RecordingFileResponseStatus,
+) -> tuple[int, str]:
+    if status is RecordingFileResponseStatus.INVALID_IDENTIFIER:
+        return 400, WEB_DASHBOARD_RECORDING_INVALID_IDENTIFIER_DETAIL
+    if status is RecordingFileResponseStatus.NOT_FOUND:
+        return 404, WEB_DASHBOARD_RECORDING_NOT_FOUND_DETAIL
+    if status is RecordingFileResponseStatus.NOT_PLAYABLE:
+        return 409, WEB_DASHBOARD_RECORDING_NOT_PLAYABLE_DETAIL
+    if status is RecordingFileResponseStatus.UNAVAILABLE:
+        return 409, WEB_DASHBOARD_RECORDING_UNAVAILABLE_DETAIL
+    return 503, WEB_DASHBOARD_RECORDING_FAILED_DETAIL
+
+
 def _event_stream_response(
     event_client_factory: DaemonEventClientFactory | None,
 ) -> StreamingResponse:
@@ -362,6 +578,24 @@ def _audio_stream_response(
         media_type="application/octet-stream",
         headers=dict(_AUDIO_STREAM_RESPONSE_HEADERS),
     )
+
+
+async def _iter_recording_file(
+    download: DaemonRecordingFileDownload,
+) -> AsyncIterator[bytes]:
+    try:
+        while not download.closed:
+            payload = await asyncio.to_thread(download.read, 64 * 1024)
+            if not payload:
+                return
+            yield payload
+    except (SDS200Error, OSError, ValueError) as error:
+        logger.warning(
+            "web dashboard recording-file stream ended error_type=%s",
+            error.__class__.__name__,
+        )
+    finally:
+        download.close()
 
 
 async def _iter_daemon_events(
@@ -432,6 +666,8 @@ __all__ = [
     "DaemonEventClientLike",
     "DaemonPcmuClientFactory",
     "DaemonPcmuClientLike",
+    "DaemonRecordingFileClientFactory",
+    "DaemonRecordingFileClientLike",
     "WEB_DASHBOARD_API_PROTOCOL",
     "WEB_DASHBOARD_API_VERSION",
     "WEB_DASHBOARD_UNAVAILABLE_DETAIL",

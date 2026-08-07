@@ -3,8 +3,9 @@
 Milestone 20.1 established the optional daemon-backed HTTP service and
 loopback-only command. Milestone 20.2 added the first accessible responsive,
 read-only browser shell. Milestone 20.3 added live ordered browser updates over
-Server-Sent Events. Milestone 20.4 adds explicit browser playback of daemon-owned
-PCMU audio.
+Server-Sent Events. Milestone 20.4 added explicit browser playback of daemon-owned
+PCMU audio. Milestone 20.5 adds daemon-owned recording workflows, finalized
+recording inventory, and safe saved-WAV playback and download.
 
 ## Architecture
 
@@ -23,11 +24,15 @@ Then start the web service in a separate terminal:
 sdsctl web
 ```
 
-The web process resolves all three private daemon sockets used by the dashboard:
+The web process resolves all four private daemon sockets used by the dashboard:
 
-- `daemon.sock` supplies bounded request-response status and snapshot reads;
+- `daemon.sock` supplies bounded request-response status, recording operations,
+  and inventory reads;
 - `events.sock` supplies the authoritative snapshot-first ordered event stream;
-- `pcmu.sock` supplies accepted RTP PCMU packets for explicit browser playback.
+- `pcmu.sock` supplies accepted RTP PCMU packets for explicit browser playback;
+  and
+- `recordings.sock` supplies finalized WAV bytes by daemon inventory-relative
+  identifier.
 
 Their default locations are under `$XDG_RUNTIME_DIR/sdsctl`, with the existing
 user-state fallback when `XDG_RUNTIME_DIR` is unavailable.
@@ -38,7 +43,8 @@ Select explicit sockets when needed:
 sdsctl web \
   --daemon-socket-path /run/user/1000/sdsctl/daemon.sock \
   --daemon-event-socket-path /run/user/1000/sdsctl/events.sock \
-  --daemon-pcmu-socket-path /run/user/1000/sdsctl/pcmu.sock
+  --daemon-pcmu-socket-path /run/user/1000/sdsctl/pcmu.sock \
+  --daemon-recording-file-socket-path /run/user/1000/sdsctl/recordings.sock
 ```
 
 Every browser event connection creates an independent local
@@ -52,6 +58,17 @@ The web service forwards each validated daemon PCMU v1 frame exactly as encoded;
 it does not decode, re-encode, or create another scanner RTSP/RTP session.
 Stopping playback or leaving the page closes that browser PCMU client without
 affecting daemon audio ownership or other subscribers.
+
+Browser recording commands use short-lived `DaemonApiClient` connections. The
+daemon recording manager attaches `PcmWavSink` to the existing decoded-PCM router,
+so starting a browser recording never creates another scanner RTSP/RTP session.
+The recording remains daemon-owned if the page reloads or the web process exits.
+
+Completed WAV playback and download use `recordings.sock`, not `pcmu.sock`.
+The web service passes only daemon inventory-relative identifiers to
+`DaemonRecordingFileClient`; it never opens recording filesystem paths itself.
+The daemon recording-file service revalidates the inventory entry and securely
+reopens it before streaming bytes.
 
 ## Installation
 
@@ -118,13 +135,17 @@ Later messages retain the existing daemon event kinds and payloads:
 - `scanner.connection`;
 - `scanner.psi`;
 - `radio.state`;
-- `audio.state`; and
+- `audio.state`;
+- `recording.state`; and
 - `destination.health`.
 
 The browser directly applies complete runtime snapshots, scanner connection
-changes, PSI and radio-state updates, and audio snapshots. Destination-health
-events trigger an authoritative reconciliation because the displayed router
-summary is broader than one subscriber transition.
+changes, PSI and radio-state updates, audio snapshots, and recording snapshots.
+`recording.state` updates the recording panel directly and is also committed into
+the current browser snapshot so later unrelated events cannot repaint stale
+recording state. Destination-health events trigger an authoritative
+reconciliation because the displayed router summary is broader than one
+subscriber transition.
 
 When the event stream disconnects, the browser's `EventSource` reconnects
 automatically. Two-second `/api/v1/status` polling remains active while the
@@ -138,7 +159,11 @@ The interface presents:
 - active system, channel, mode, screen kind, signal, and RSSI when available;
 - daemon lifecycle and transition sequence;
 - PSI activity and interval;
-- audio and destination-router state; and
+- audio and destination-router state;
+- daemon-owned recording state, elapsed time, packet and sample totals, audio
+  duration, RTP reliability, and current file;
+- a newest-first list of recent finalized recordings with Play and Download
+  actions for compatible WAVs; and
 - the local time of the most recent applied update.
 
 The interface uses semantic landmarks, definition lists, a skip link, visible
@@ -181,6 +206,47 @@ Hiding the dashboard intentionally suspends SSE but does not stop audio. Returni
 to the page reopens SSE while preserving the same audio stream. Closing or
 navigating away from the page stops both event and audio streams.
 
+## Browser recording workflows
+
+Browser recording is explicit and daemon-owned. Press **Record** to send
+`POST /api/v1/recording/start`. The daemon recording manager allocates a
+collision-safe WAV path beneath its configured recording root and attaches a WAV
+sink to the already-running decoded-PCM router. No browser request supplies a
+filesystem path or filename, and no second scanner RTSP/RTP stream is opened.
+
+While recording is active, the browser reconciles `GET /api/v1/recording` once
+per second so elapsed time, packet and sample totals, audio duration, sink
+statistics, and RTP reliability continue to advance even when no state
+transition event is emitted. While inactive, the normal 30-second reconciliation
+checks recording status. `recording.state` events and visibility restoration
+provide faster state recovery.
+
+Reloading the page or stopping the web process does not stop an active recording.
+The daemon continues to own the sink until **Stop**, explicit daemon shutdown, or
+a recording failure. Press **Stop** to send `POST /api/v1/recording/stop`;
+successful finalization closes the WAV, writes the adjacent metadata sidecar, and
+refreshes `GET /api/v1/recordings`.
+
+The recent-recording list is bounded and newest-first. Only finalized inventory
+entries marked playable receive actions. **Play** assigns the same-origin
+recording-file route to a native `<audio>` element. **Download** uses that same
+route with a browser download filename derived from the inventory identifier.
+Neither action creates a browser PCMU client or changes live scanner-audio
+ownership.
+
+`GET /api/v1/recordings/file/{identifier}` never reads a caller-selected
+filesystem path. The web service sends the identifier to the daemon's private
+recording-file client. The daemon accepts only canonical inventory-relative POSIX
+WAV identifiers, rejects traversal and non-inventory entries, excludes active or
+pending recordings, securely reopens path components without following symlinks,
+requires a regular file, revalidates compatible WAV parameters, and then streams
+the already-open file with an exact content length.
+
+Daemon shutdown stops recording-file readers before closing the recording
+manager. The manager finalizes any active WAV and metadata while the shared audio
+runtime is still alive, then the normal destination, runtime, PCMU, and event
+shutdown continues.
+
 ## HTTP endpoints
 
 | Method | Path | Purpose |
@@ -192,6 +258,11 @@ navigating away from the page stops both event and audio streams.
 | `GET` | `/api/v1/snapshot` | Authoritative daemon runtime snapshot |
 | `GET` | `/api/v1/events` | Snapshot-first ordered daemon Server-Sent Events |
 | `GET` | `/api/v1/audio` | Validated daemon-owned PCMU v1 binary frame stream |
+| `GET` | `/api/v1/recording` | Current daemon-owned recording snapshot |
+| `POST` | `/api/v1/recording/start` | Start one daemon-owned WAV recording |
+| `POST` | `/api/v1/recording/stop` | Stop and finalize the active recording |
+| `GET` | `/api/v1/recordings` | Bounded newest-first finalized recording inventory |
+| `GET` | `/api/v1/recordings/file/{identifier}` | Stream one finalized playable WAV by inventory-relative identifier |
 | `GET` | `/api/v1/openapi.json` | Machine-readable API schema |
 
 Interactive Swagger and ReDoc routes are disabled.
@@ -219,26 +290,37 @@ pre-read a PCMU frame before returning `200`, because audio reception may be
 idle. After streaming begins, daemon disconnect or protocol failure ends the
 response and closes the PCMU client.
 
+Recording status, mutation, and inventory routes use the daemon API and map the
+stable `recording_busy`, `recording_unavailable`, and `recording_failed` codes to
+redacted HTTP responses. The finalized-file route uses only `recordings.sock`;
+invalid identifiers return `400`, missing entries `404`, unavailable or
+non-playable entries `409`, and local service failures `503`. Successful WAV
+responses use `audio/wav`, exact `Content-Length`, `Cache-Control: no-store`,
+and `X-Content-Type-Options: nosniff`.
+
 ## Command options
 
 ```text
 --daemon-socket-path PATH
 --daemon-event-socket-path PATH
 --daemon-pcmu-socket-path PATH
+--daemon-recording-file-socket-path PATH
 --daemon-timeout SECONDS
 --daemon-max-response-bytes BYTES
 --daemon-max-event-bytes BYTES
 --daemon-pcmu-max-endpoint-bytes BYTES
 --daemon-pcmu-max-frame-bytes BYTES
+--daemon-recording-file-max-content-bytes BYTES
 --listen-address ADDRESS
 --listen-port PORT
 --no-access-log
 ```
 
-The daemon timeout defaults to five seconds and applies to API, event, and PCMU
-connection establishment. The response, event, PCMU endpoint, and PCMU frame
-limits default to the existing daemon client contracts. Browser PCMU frame size
-must be at least the fixed 82-byte header and cannot exceed 131,072 bytes.
+The daemon timeout defaults to five seconds and applies to API, event, PCMU, and
+recording-file connection establishment. The response, event, PCMU endpoint,
+PCMU frame, and recording-file content limits default to the existing daemon
+client contracts. Browser PCMU frame size must be at least the fixed 82-byte
+header and cannot exceed 131,072 bytes.
 
 Disable the HTTP access log when a supervising service supplies request logging:
 
@@ -248,7 +330,7 @@ sdsctl web --no-access-log
 
 ## Current scope
 
-Milestones 20.1 through 20.4 include:
+Milestones 20.1 through 20.5 include:
 
 - the optional `web` package extra;
 - a host-independent FastAPI application factory;
@@ -265,14 +347,22 @@ Milestones 20.1 through 20.4 include:
 - scanner, radio-activity, daemon, PSI, audio, and router summaries;
 - explicit Play and Stop browser audio over daemon-owned PCMU with AudioWorklet
   mu-law decoding, bounded buffering, resampling, and loss telemetry;
+- daemon-owned Record and Stop workflows over the existing decoded-PCM router,
+  with live recording and RTP reliability telemetry;
+- ordered `recording.state` browser updates plus active-recording polling and
+  reload/reconnect reconciliation;
+- bounded newest-first finalized recording inventory with safe same-origin Play
+  and Download actions through the private recording-file service;
 - deterministic browser PCMU and SSE cleanup, including hidden-tab event
-  suspension without stopping active audio;
+  suspension without stopping active audio or daemon-owned recording;
+- active recording survival across browser or web-process disconnects and
+  daemon-shutdown finalization before audio runtime teardown;
 - idle disconnected daemon event-client reaping;
-- restrictive static-, event-, and audio-response headers; and
-- parser, application, event, audio lifecycle, shell, server, packaging, and
-  regression tests.
+- restrictive static-, event-, audio-, and recording-file response headers; and
+- parser, application, event, audio, recording lifecycle, shell, server,
+  packaging, and regression tests.
 
-Later Milestone 20 work remains responsible for browser recording workflows,
-logs, safe controls, optional LCARS-inspired and Matrix-inspired
-themes, expanded SVG assets and branding, authentication and secure
-remote-access planning, and Home Assistant integration.
+Later Milestone 20 work remains responsible for browser logs, safe scanner
+controls, optional LCARS-inspired and Matrix-inspired themes, expanded SVG
+assets and branding, authentication and secure remote-access planning, and Home
+Assistant integration.

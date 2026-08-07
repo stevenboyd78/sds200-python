@@ -174,6 +174,7 @@ from .daemon_events import (
 from .daemon_ipc import (
     DAEMON_EVENT_SOCKET_FILENAME,
     DAEMON_PCMU_SOCKET_FILENAME,
+    DAEMON_RECORDING_FILE_SOCKET_FILENAME,
     DAEMON_SOCKET_DIRECTORY_MODE,
     DAEMON_SOCKET_FILENAME,
     DAEMON_SOCKET_MODE,
@@ -182,6 +183,7 @@ from .daemon_ipc import (
     DaemonSocketSource,
     resolve_daemon_event_socket_location,
     resolve_daemon_pcmu_socket_location,
+    resolve_daemon_recording_file_socket_location,
     resolve_daemon_socket_location,
 )
 from .daemon_pcmu_audio import (
@@ -205,6 +207,21 @@ from .daemon_process import (
     DaemonProcess,
     DaemonProcessResult,
     DaemonSignalController,
+)
+from .daemon_recording_file_client import (
+    DAEMON_RECORDING_FILE_CLIENT_DEFAULT_MAX_CONTENT_BYTES,
+    DAEMON_RECORDING_FILE_CLIENT_DEFAULT_TIMEOUT,
+    DaemonRecordingFileClient,
+    DaemonRecordingFileDownload,
+    DaemonRecordingFileRequestError,
+)
+from .daemon_recording_file_server import (
+    DAEMON_RECORDING_FILE_DEFAULT_ACCEPT_POLL_INTERVAL,
+    DAEMON_RECORDING_FILE_DEFAULT_CLIENT_TIMEOUT,
+    DAEMON_RECORDING_FILE_DEFAULT_MAX_CLIENTS,
+    DAEMON_RECORDING_FILE_DEFAULT_SHUTDOWN_TIMEOUT,
+    DaemonRecordingFileServer,
+    DaemonRecordingFileServerSnapshot,
 )
 from .daemon_runtime import (
     DaemonControlOperation,
@@ -599,6 +616,13 @@ __all__ = [
     "DAEMON_PCMU_DEFAULT_SEND_TIMEOUT",
     "DAEMON_PCMU_DEFAULT_SHUTDOWN_TIMEOUT",
     "DAEMON_PCMU_SOCKET_FILENAME",
+    "DAEMON_RECORDING_FILE_CLIENT_DEFAULT_MAX_CONTENT_BYTES",
+    "DAEMON_RECORDING_FILE_CLIENT_DEFAULT_TIMEOUT",
+    "DAEMON_RECORDING_FILE_DEFAULT_ACCEPT_POLL_INTERVAL",
+    "DAEMON_RECORDING_FILE_DEFAULT_CLIENT_TIMEOUT",
+    "DAEMON_RECORDING_FILE_DEFAULT_MAX_CLIENTS",
+    "DAEMON_RECORDING_FILE_DEFAULT_SHUTDOWN_TIMEOUT",
+    "DAEMON_RECORDING_FILE_SOCKET_FILENAME",
     "DAEMON_SOCKET_DIRECTORY_MODE",
     "DAEMON_SOCKET_FILENAME",
     "DAEMON_SOCKET_MODE",
@@ -654,6 +678,11 @@ __all__ = [
     "DaemonRemoteProfileDestination",
     "DaemonProcessResult",
     "DaemonProtocolError",
+    "DaemonRecordingFileClient",
+    "DaemonRecordingFileDownload",
+    "DaemonRecordingFileRequestError",
+    "DaemonRecordingFileServer",
+    "DaemonRecordingFileServerSnapshot",
     "DaemonReadOnlyApi",
     "DaemonRequestError",
     "DaemonRuntime",
@@ -885,6 +914,7 @@ __all__ = [
     "resolve_configuration_paths",
     "resolve_daemon_event_socket_location",
     "resolve_daemon_pcmu_socket_location",
+    "resolve_daemon_recording_file_socket_location",
     "resolve_daemon_socket_location",
     "scan_recording_inventory",
     "safe_recording_component",
