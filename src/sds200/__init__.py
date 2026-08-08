@@ -194,6 +194,13 @@ from .daemon_mqtt import (
     default_daemon_mqtt_config_path,
     load_daemon_mqtt_configuration,
 )
+from .daemon_mqtt_worker import (
+    DAEMON_MQTT_DEFAULT_EVENT_POLL_INTERVAL,
+    DAEMON_MQTT_DEFAULT_STOP_TIMEOUT,
+    DaemonMqttWorker,
+    DaemonMqttWorkerSnapshot,
+    DaemonMqttWorkerState,
+)
 from .daemon_pcmu_audio import (
     DaemonPcmuAudioStatistics,
     DaemonPcmuAudioTransport,
@@ -579,6 +586,8 @@ __all__ = [
     "DAEMON_DESTINATION_CONFIG_VERSION",
     "DAEMON_MQTT_CONFIG_FILENAME",
     "DAEMON_MQTT_CONFIG_VERSION",
+    "DAEMON_MQTT_DEFAULT_EVENT_POLL_INTERVAL",
+    "DAEMON_MQTT_DEFAULT_STOP_TIMEOUT",
     "DAEMON_PLAYBACK_BACKENDS",
     "ConfigurationError",
     "DaemonIpcError",
@@ -666,6 +675,9 @@ __all__ = [
     "DaemonDestinationReplacementPreview",
     "DaemonMqttConfiguration",
     "DaemonMqttQos",
+    "DaemonMqttWorker",
+    "DaemonMqttWorkerSnapshot",
+    "DaemonMqttWorkerState",
     "DaemonEvent",
     "DaemonEventClient",
     "DaemonEventKind",
