@@ -271,6 +271,13 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Fixed
 
+- Renew active SDS200 network PSI pushes in place every 120 seconds after
+  physical firmware 1.26.01 testing showed otherwise healthy push delivery
+  stopping at roughly 184 seconds. Renewal is serialized with scanner command
+  transactions, the acknowledgement path remains serialized through the first
+  subsequent PSI frame, command and bounded-reconnect timeout budgets are
+  preserved, capture wrapping and UDP fallback remain supported, and stale-PSI
+  reconnect recovery remains the second-line failure path.
 - Added the package author email to the PEP 621 project metadata so future
   distributions expose the expected `Author-email` value.
 
