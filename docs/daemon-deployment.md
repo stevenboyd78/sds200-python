@@ -35,6 +35,7 @@ The relevant default paths are:
 | System application configuration | `/etc/sdsctl/config.toml` |
 | User application configuration | `${XDG_CONFIG_HOME:-~/.config}/sdsctl/config.toml` |
 | Daemon destination manifest | `${XDG_CONFIG_HOME:-~/.config}/sdsctl/daemon-destinations.toml` |
+| Optional daemon MQTT manifest | `${XDG_CONFIG_HOME:-~/.config}/sdsctl/daemon-mqtt.toml` |
 | Legacy scanner profiles | `${XDG_CONFIG_HOME:-~/.config}/sds200/profiles.toml` |
 | Legacy remote-audio profiles | `${XDG_CONFIG_HOME:-~/.config}/sds200/remote-audio-profiles.toml` |
 | User state fallback | `${XDG_STATE_HOME:-~/.local/state}/sdsctl/` |
@@ -71,7 +72,10 @@ sudo install -d -o sdsctl -g sdsctl -m 0700 \
 
 Install only the feature groups the service needs. Recording and remote
 streaming do not require local playback. Local playback requires an operating
-system audio backend and appropriate device permissions.
+system audio backend and appropriate device permissions. A daemon that publishes
+MQTT also needs the `mqtt` extra, for example
+`python -m pip install "sds200[mqtt]"`; combine extras when one environment hosts
+multiple optional features.
 
 Verify the installed executable before creating the service:
 
@@ -155,6 +159,57 @@ sudo install -o root -g root -m 0600 /dev/null /etc/sdsctl/sdsctl.env
 Do not place resolved credentials in the destination manifest, application
 configuration, unit file, logs, traces, or captures.
 
+## MQTT integration
+
+Milestone 20.8 adds a separate optional daemon MQTT manifest. A service deployment
+can place it at `/etc/sdsctl/daemon-mqtt.toml` and select it with
+`--mqtt-config /etc/sdsctl/daemon-mqtt.toml`:
+
+```toml
+version = 1
+
+[broker]
+host = "mqtt.example.lan"
+port = 1883
+client_id = "sdsctl-scanner"
+username = "sdsctl"
+password_environment_variable = "SDSCTL_MQTT_PASSWORD"
+topic_prefix = "sdsctl/scanner"
+qos = 1
+retain = true
+keepalive_seconds = 60
+reconnect_initial_delay = 1.0
+reconnect_multiplier = 2.0
+reconnect_max_delay = 30.0
+```
+
+Omit `reconnect_max_attempts` to keep retrying indefinitely; set it when the
+service should enter a terminal MQTT `failed` state after a bounded retry budget.
+That terminal MQTT state does not stop the scanner daemon.
+
+Store the referenced password in the existing root-owned environment file rather
+than in TOML:
+
+```text
+SDSCTL_MQTT_PASSWORD=replace-with-broker-password
+```
+
+The daemon validates the MQTT manifest and optional Paho dependency before scanner
+construction. Broker connection and publication happen later in an isolated
+worker thread after `DaemonRuntime` starts. Broker outages therefore do not stop
+scanner control, PSI, audio, recording, local clients, or configured PCM
+destinations.
+
+The current adapter uses MQTT 3.1.1 over the configured TCP host and port and does
+not configure TLS. Username/password authentication does not encrypt the
+credential or payload. Keep the broker on a trusted local network, localhost, or
+a trusted VPN; do not route this foundation across an untrusted network.
+
+Milestone 20.8 is publication-only. It does not subscribe to command topics,
+expose raw scanner keys, or publish Home Assistant MQTT Discovery yet. See
+[Daemon MQTT publication](daemon-mqtt.md) for the exact topics and retention
+contract.
+
 ## systemd service
 
 Create `/etc/systemd/system/sdsctl.service`:
@@ -192,8 +247,9 @@ WantedBy=multi-user.target
 ```
 
 Global scanner and logging options must precede `daemon`; daemon-specific
-options follow it. Replace the explicit host with a saved network-capable
-profile when appropriate:
+options follow it. When MQTT is enabled, append
+`--mqtt-config /etc/sdsctl/daemon-mqtt.toml` to `ExecStart`. Replace the explicit
+host with a saved network-capable profile when appropriate:
 
 ```ini
 ExecStart=/opt/sdsctl/bin/sdsctl --log-level INFO --profile home daemon --destination-config /etc/sdsctl/daemon-destinations.toml --recording-directory /var/lib/sdsctl/recordings --socket-path /run/sdsctl/daemon.sock --event-socket-path /run/sdsctl/events.sock --pcmu-socket-path /run/sdsctl/pcmu.sock --recording-file-socket-path /run/sdsctl/recordings.sock

@@ -8,6 +8,19 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Added
 
+- Milestone 20.8 native daemon MQTT foundation with a strict optional version 1
+  `daemon-mqtt.toml` broker manifest, `--mqtt-config` override, a separate
+  `sds200[mqtt]` Paho MQTT 2.x extra, environment-referenced password secrets,
+  validated reconnect policy, and dependency/configuration preflight before
+  scanner construction only when MQTT is configured.
+- A failure-isolated daemon MQTT publication worker over the existing authoritative
+  event stream. It publishes retained `online`/`offline` availability with a
+  retained offline last will, canonical daemon/scanner/radio/audio/recording and
+  per-destination state topics, and a non-retained semantic event stream while
+  suppressing packet-rate PSI. Sequence gaps force authoritative resubscription,
+  broker failures use worker-owned exponential backoff, graceful local failures
+  publish offline before disconnect, and MQTT shutdown precedes runtime shutdown
+  without opening another scanner or RTSP/RTP session.
 - Milestone 20.7 browser-local dashboard themes with a system-adaptive default
   plus immersive LCARS-inspired, Matrix-inspired, First Responder, and Amateur
   Radio environments over the existing shared accessible dashboard structure.

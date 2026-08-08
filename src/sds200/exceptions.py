@@ -54,6 +54,10 @@ class DaemonIpcError(SDS200Error):
     """The local daemon IPC endpoint could not be owned or operated safely."""
 
 
+class DaemonMqttError(SDS200Error):
+    """A daemon-owned MQTT integration operation could not be completed."""
+
+
 class DaemonClientError(SDS200Error):
     """A local daemon client operation could not be completed."""
 

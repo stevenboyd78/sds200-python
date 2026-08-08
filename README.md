@@ -76,6 +76,9 @@ information in this image represents a real system.*
 - Versioned ordered local daemon event stream over a separate private Unix
   socket with authoritative snapshots, bounded subscriptions, and explicit
   sequence-gap resynchronization
+- Optional daemon-owned MQTT publication with retained availability, canonical
+  semantic state topics, non-retained ordered semantic events, bounded reconnect
+  backoff, and packet-rate PSI suppression without opening another scanner session
 - Explicit `sdsctl daemon-client` workflows for negotiated status and snapshot
   reads, safe typed scanner controls, validated gap-detecting event watches, and
   daemon-owned PCMU playback or WAV recording
@@ -131,6 +134,16 @@ Install the optional loopback-only web service:
 ```bash
 python -m pip install "sds200[web]"
 ```
+
+Install optional daemon MQTT support:
+
+```bash
+python -m pip install "sds200[mqtt]"
+```
+
+The MQTT extra installs Paho MQTT 2.x. Milestone 20.8 publishes daemon-owned
+semantic state and events only; inbound MQTT scanner commands and Home Assistant
+Discovery are later slices.
 
 Install optional local audio playback support:
 
@@ -346,9 +359,11 @@ cumulative loss caused by that client's bounded queue.
 
 Stop the process with `Ctrl+C` or `SIGTERM`. Shutdown closes API clients first,
 then closes finalized-recording readers, finalizes any active daemon-owned
-recording, stops configured destinations, stops scanner/PSI/audio/router
+recording, stops configured destinations, attempts retained MQTT `offline` when
+possible and stops the optional MQTT worker, stops scanner/PSI/audio/router
 ownership, closes PCMU clients, and finally closes event clients after final
-lifecycle transitions. All four owned sockets are removed.
+lifecycle transitions.
+All four owned sockets are removed.
 
 The command remains in the foreground for service-manager ownership. It does not
 fork, create a pidfile, install a service, expose TCP, accept unrestricted raw
@@ -394,6 +409,19 @@ The daemon loads the explicit `--destination-config` path or
 scanner hardware. Saved playback, recording, and remote-profile destinations are
 activated under daemon ownership. `SIGHUP` transactionally reloads that exact
 manifest while preserving the previous committed set on failure.
+
+Optional MQTT configuration is likewise validated before scanner construction.
+Use `--mqtt-config PATH` or the default
+`${XDG_CONFIG_HOME:-~/.config}/sdsctl/daemon-mqtt.toml`. When the file is absent,
+the daemon does not load or require the external Paho MQTT package. When present,
+the daemon publishes retained `online`/`offline` availability plus canonical
+semantic state derived from
+the existing authoritative event stream. Packet-rate `scanner.psi` events are
+never forwarded to MQTT. Broker connection and publication failures remain
+isolated in the MQTT worker and use configured reconnect backoff rather than
+interrupting scanner ownership. See the [daemon MQTT guide](docs/daemon-mqtt.md)
+for the version 1 manifest, exact topic contract, retention behavior, secrets, and
+current security boundary.
 
 Decoded-PCM subscriptions and automatic daemon selection remain follow-on work.
 See the
@@ -818,6 +846,7 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting and
 - [Textual TUI](docs/tui.md)
 - [Daemon deployment and upgrades](docs/daemon-deployment.md)
 - [Foreground daemon and ownership runtime](docs/daemon-runtime.md)
+- [Daemon MQTT publication](docs/daemon-mqtt.md)
 - [Local daemon API](docs/daemon-api.md)
 - [Web dashboard](docs/web-dashboard.md)
 - [Local daemon event stream](docs/daemon-events.md)

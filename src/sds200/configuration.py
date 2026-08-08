@@ -18,6 +18,7 @@ APPLICATION_CONFIGURATION_VERSION = 1
 CONFIG_DIRECTORY_NAME = "sdsctl"
 CONNECTION_PROFILE_FILENAME = "profiles.toml"
 DAEMON_DESTINATION_CONFIG_FILENAME = "daemon-destinations.toml"
+DAEMON_MQTT_CONFIG_FILENAME = "daemon-mqtt.toml"
 DAEMON_RECORDING_DIRECTORY_NAME = "recordings"
 DEFAULT_SYSTEM_CONFIG_DIR = Path("/etc/sdsctl")
 LEGACY_CONFIG_DIRECTORY_NAME = "sds200"
@@ -90,6 +91,10 @@ class ConfigurationPaths:
     @property
     def daemon_destination_config_file(self) -> Path:
         return self.user_config_dir / DAEMON_DESTINATION_CONFIG_FILENAME
+
+    @property
+    def daemon_mqtt_config_file(self) -> Path:
+        return self.user_config_dir / DAEMON_MQTT_CONFIG_FILENAME
 
     @property
     def daemon_recording_dir(self) -> Path:

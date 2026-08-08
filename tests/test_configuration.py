@@ -8,6 +8,7 @@ from sds200 import (
     APPLICATION_CONFIG_FILENAME,
     CONFIG_DIRECTORY_NAME,
     CONNECTION_PROFILE_FILENAME,
+    DAEMON_MQTT_CONFIG_FILENAME,
     DEFAULT_SYSTEM_CONFIG_DIR,
     LEGACY_CONFIG_DIRECTORY_NAME,
     REMOTE_AUDIO_PROFILE_FILENAME,
@@ -40,6 +41,9 @@ def test_configuration_paths_use_documented_defaults(tmp_path: Path) -> None:
     )
     assert paths.user_config_file == (
         home / ".config" / CONFIG_DIRECTORY_NAME / APPLICATION_CONFIG_FILENAME
+    )
+    assert paths.daemon_mqtt_config_file == (
+        paths.user_config_dir / DAEMON_MQTT_CONFIG_FILENAME
     )
     assert paths.daemon_recording_dir == (
         paths.user_state_dir / DAEMON_RECORDING_DIRECTORY_NAME

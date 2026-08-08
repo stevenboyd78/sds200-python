@@ -124,6 +124,8 @@ def test_daemon_parser_accepts_process_and_audio_options() -> None:
             "20",
             "--destination-config",
             "/tmp/sdsctl-destinations.toml",
+            "--mqtt-config",
+            "/tmp/sdsctl-mqtt.toml",
             "--recording-directory",
             "/tmp/sdsctl-recordings",
             "--recording-file-socket-path",
@@ -189,6 +191,7 @@ def test_daemon_parser_accepts_process_and_audio_options() -> None:
     assert args.destination_config == Path(
         "/tmp/sdsctl-destinations.toml"
     )
+    assert args.mqtt_config == Path("/tmp/sdsctl-mqtt.toml")
     assert args.recording_directory == Path("/tmp/sdsctl-recordings")
     assert args.recording_file_socket_path == Path(
         "/tmp/sdsctl-recording-files-test.sock"
@@ -601,6 +604,206 @@ def test_daemon_cli_loads_explicit_destination_manifest(
     assert destination.kind == "playback"
     assert destination.backend == "sounddevice"
     assert observed_reload_paths == [manifest]
+
+
+def test_daemon_cli_wires_explicit_mqtt_manifest_into_process(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest = tmp_path / "daemon-mqtt.toml"
+    manifest.write_text(
+        "version = 1\n"
+        "[broker]\n"
+        'host = "mqtt.example.test"\n'
+        'topic_prefix = "radio/sds200"\n',
+        encoding="utf-8",
+    )
+    paths = resolve_configuration_paths(
+        environ={},
+        home=tmp_path / "home",
+        system_config_dir=tmp_path / "etc" / "sdsctl",
+    )
+    factories: list[object] = []
+    workers: list[object] = []
+    processes: list[object] = []
+
+    class FakeBrokerFactory:
+        def __init__(self) -> None:
+            factories.append(self)
+
+    class FakeMqttWorker:
+        def __init__(
+            self,
+            config: object,
+            event_stream: object,
+            broker_factory: object,
+            *,
+            environ: object = None,
+        ) -> None:
+            self.config = config
+            self.event_stream = event_stream
+            self.broker_factory = broker_factory
+            self.environ = environ
+            workers.append(self)
+
+        def close(self) -> None:
+            raise AssertionError("started process owns MQTT worker cleanup")
+
+    class FakeProcess:
+        def __init__(
+            self,
+            runtime: object,
+            *,
+            destination_coordinator: object,
+            destination_reloader: object,
+            mqtt_service: object,
+            recording_manager: object,
+            recording_file_server: object,
+            api_server: object,
+            event_server: object,
+            pcmu_server: object,
+        ) -> None:
+            del (
+                runtime,
+                destination_coordinator,
+                destination_reloader,
+                recording_manager,
+                recording_file_server,
+                api_server,
+                pcmu_server,
+            )
+            self.mqtt_service = mqtt_service
+            self.event_server = event_server
+            processes.append(self)
+
+        def run(self) -> DaemonProcessResult:
+            return DaemonProcessResult(last_signal=int(signal.SIGTERM))
+
+    monkeypatch.setattr(
+        cli,
+        "selected_radio",
+        lambda args, **kwargs: object(),
+    )
+    monkeypatch.setattr(
+        cli,
+        "NetworkAudioTransport",
+        lambda *args, **kwargs: FakeAudioTransport(),
+    )
+    monkeypatch.setattr(
+        cli,
+        "DaemonDestinationCoordinator",
+        FakeDaemonDestinationCoordinator,
+    )
+    monkeypatch.setattr(cli, "DaemonEventStream", FakeDaemonEventStream)
+    monkeypatch.setattr(cli, "PahoMqttBrokerFactory", FakeBrokerFactory)
+    monkeypatch.setattr(cli, "DaemonMqttWorker", FakeMqttWorker)
+    monkeypatch.setattr(cli, "DaemonProcess", FakeProcess)
+
+    result = cli.main(
+        [
+            "--host",
+            "192.0.2.25",
+            "daemon",
+            "--mqtt-config",
+            str(manifest),
+        ],
+        configuration_paths=paths,
+        environ={},
+    )
+
+    assert result == 0
+    assert len(factories) == 1
+    assert len(workers) == 1
+    assert len(processes) == 1
+
+    worker = workers[0]
+    process = processes[0]
+    assert worker.config.host == "mqtt.example.test"  # type: ignore[attr-defined]
+    assert worker.config.topic_prefix == "radio/sds200"  # type: ignore[attr-defined]
+    assert worker.broker_factory is factories[0]  # type: ignore[attr-defined]
+    assert worker.event_stream is process.event_server.stream  # type: ignore[attr-defined]
+    assert worker.environ == {}  # type: ignore[attr-defined]
+    assert process.mqtt_service is worker  # type: ignore[attr-defined]
+
+
+def test_daemon_cli_rejects_invalid_mqtt_manifest_before_scanner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest = tmp_path / "daemon-mqtt.toml"
+    manifest.write_text(
+        "version = 2\n"
+        "[broker]\n"
+        'host = "mqtt.example.test"\n',
+        encoding="utf-8",
+    )
+    selections = 0
+
+    def select_radio(*args: object, **kwargs: object) -> object:
+        nonlocal selections
+        del args, kwargs
+        selections += 1
+        return object()
+
+    monkeypatch.setattr(cli, "selected_radio", select_radio)
+
+    result = cli.main(
+        [
+            "--host",
+            "192.0.2.25",
+            "daemon",
+            "--mqtt-config",
+            str(manifest),
+        ],
+        environ={},
+    )
+
+    assert result == 2
+    assert selections == 0
+    assert "version must be 1" in capsys.readouterr().err
+
+
+def test_daemon_cli_preflights_mqtt_dependency_before_scanner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest = tmp_path / "daemon-mqtt.toml"
+    manifest.write_text(
+        "version = 1\n"
+        "[broker]\n"
+        'host = "mqtt.example.test"\n',
+        encoding="utf-8",
+    )
+    selections = 0
+
+    def fail_factory() -> object:
+        raise cli.SDS200Error("MQTT support is unavailable")
+
+    def select_radio(*args: object, **kwargs: object) -> object:
+        nonlocal selections
+        del args, kwargs
+        selections += 1
+        return object()
+
+    monkeypatch.setattr(cli, "PahoMqttBrokerFactory", fail_factory)
+    monkeypatch.setattr(cli, "selected_radio", select_radio)
+
+    result = cli.main(
+        [
+            "--host",
+            "192.0.2.25",
+            "daemon",
+            "--mqtt-config",
+            str(manifest),
+        ],
+        environ={},
+    )
+
+    assert result == 2
+    assert selections == 0
+    assert "MQTT support is unavailable" in capsys.readouterr().err
 
 
 def test_daemon_cli_rejects_invalid_destination_manifest_before_scanner(

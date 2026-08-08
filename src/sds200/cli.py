@@ -81,6 +81,9 @@ from .daemon_ipc import (
     resolve_daemon_recording_file_socket_location,
     resolve_daemon_socket_location,
 )
+from .daemon_mqtt import load_daemon_mqtt_configuration
+from .daemon_mqtt_paho import PahoMqttBrokerFactory
+from .daemon_mqtt_worker import DaemonMqttWorker
 from .daemon_pcmu_audio import DaemonPcmuAudioTransport
 from .daemon_pcmu_client import DaemonPcmuClient
 from .daemon_pcmu_server import (
@@ -745,6 +748,15 @@ def build_parser(
         metavar="PATH",
         help=(
             "Explicit daemon destination manifest; otherwise use "
+            "the user configuration directory"
+        ),
+    )
+    daemon.add_argument(
+        "--mqtt-config",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Explicit daemon MQTT manifest; otherwise use "
             "the user configuration directory"
         ),
     )
@@ -2531,6 +2543,19 @@ def _run_daemon(
             destination_manifest_path,
         )
     )
+    mqtt_manifest_path = (
+        args.mqtt_config
+        if args.mqtt_config is not None
+        else resolved_paths.daemon_mqtt_config_file
+    )
+    mqtt_configuration = load_daemon_mqtt_configuration(
+        mqtt_manifest_path,
+    )
+    mqtt_broker_factory = (
+        PahoMqttBrokerFactory()
+        if mqtt_configuration is not None
+        else None
+    )
     recording_directory = (
         args.recording_directory
         if args.recording_directory is not None
@@ -2628,8 +2653,18 @@ def _run_daemon(
     )
 
     pcmu_stream: PcmuStream | None = None
+    mqtt_worker: DaemonMqttWorker | None = None
     destination_coordinator: DaemonDestinationCoordinator | None = None
     try:
+        if mqtt_configuration is not None:
+            assert mqtt_broker_factory is not None
+            mqtt_worker = DaemonMqttWorker(
+                mqtt_configuration,
+                event_stream,
+                mqtt_broker_factory,
+                environ=environ,
+            )
+
         pcmu_stream = PcmuStream(
             transport,
             queue_capacity=args.pcmu_queue_capacity,
@@ -2670,6 +2705,12 @@ def _run_daemon(
             except BaseException as cleanup_error:
                 cleanup_errors.append(cleanup_error)
 
+        if mqtt_worker is not None:
+            try:
+                mqtt_worker.close()
+            except BaseException as cleanup_error:
+                cleanup_errors.append(cleanup_error)
+
         if pcmu_stream is not None:
             try:
                 pcmu_stream.close()
@@ -2690,16 +2731,30 @@ def _run_daemon(
             )
         raise
 
-    result = DaemonProcess(
-        runtime,
-        destination_coordinator=destination_coordinator,
-        destination_reloader=destination_reloader,
-        recording_manager=recording_manager,
-        recording_file_server=recording_file_server,
-        api_server=api_server,
-        event_server=event_server,
-        pcmu_server=pcmu_server,
-    ).run()
+    if mqtt_worker is None:
+        process = DaemonProcess(
+            runtime,
+            destination_coordinator=destination_coordinator,
+            destination_reloader=destination_reloader,
+            recording_manager=recording_manager,
+            recording_file_server=recording_file_server,
+            api_server=api_server,
+            event_server=event_server,
+            pcmu_server=pcmu_server,
+        )
+    else:
+        process = DaemonProcess(
+            runtime,
+            destination_coordinator=destination_coordinator,
+            destination_reloader=destination_reloader,
+            mqtt_service=mqtt_worker,
+            recording_manager=recording_manager,
+            recording_file_server=recording_file_server,
+            api_server=api_server,
+            event_server=event_server,
+            pcmu_server=pcmu_server,
+        )
+    result = process.run()
     logger.info(
         "foreground daemon stopped host=%s socket=%s event_socket=%s "
         "pcmu_socket=%s recording_file_socket=%s signal=%s",

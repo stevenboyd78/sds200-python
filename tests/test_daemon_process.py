@@ -73,6 +73,33 @@ class FakeDestinationCoordinator:
 
 
 
+class FakeMqttService:
+    def __init__(
+        self,
+        order: list[str],
+        *,
+        start_error: BaseException | None = None,
+        stop_error: BaseException | None = None,
+    ) -> None:
+        self.order = order
+        self.start_error = start_error
+        self.stop_error = stop_error
+        self.start_calls = 0
+        self.stop_calls = 0
+
+    def start(self) -> None:
+        self.order.append("mqtt.start")
+        self.start_calls += 1
+        if self.start_error is not None:
+            raise self.start_error
+
+    def stop(self) -> None:
+        self.order.append("mqtt.stop")
+        self.stop_calls += 1
+        if self.stop_error is not None:
+            raise self.stop_error
+
+
 class FakeRecordingManager:
     def __init__(
         self,
@@ -617,6 +644,96 @@ def test_process_owns_destinations_between_runtime_and_api() -> None:
         "runtime.stop",
         "signals.exit",
     ]
+
+
+def test_process_orders_mqtt_between_runtime_and_destinations() -> None:
+    order: list[str] = []
+    runtime = FakeRuntime(order)
+    mqtt = FakeMqttService(order)
+    destinations = FakeDestinationCoordinator(order)
+    signals = FakeSignalController(
+        order,
+        (True,),
+        last_signal=int(signal.SIGTERM),
+    )
+
+    result = DaemonProcess(
+        runtime,
+        destination_coordinator=destinations,
+        mqtt_service=mqtt,
+        signals=signals,
+        poll_interval=0.25,
+    ).run()
+
+    assert result.last_signal == int(signal.SIGTERM)
+    assert order == [
+        "signals.enter",
+        "runtime.start",
+        "mqtt.start",
+        "destinations.start",
+        "signals.wait",
+        "destinations.stop",
+        "mqtt.stop",
+        "runtime.stop",
+        "signals.exit",
+    ]
+
+
+def test_mqtt_startup_failure_stops_mqtt_then_runtime() -> None:
+    order: list[str] = []
+    startup_error = RuntimeError("secret MQTT startup failure")
+    runtime = FakeRuntime(order)
+    mqtt = FakeMqttService(order, start_error=startup_error)
+    destinations = FakeDestinationCoordinator(order)
+    signals = FakeSignalController(order, ())
+
+    with pytest.raises(RuntimeError) as raised:
+        DaemonProcess(
+            runtime,
+            destination_coordinator=destinations,
+            mqtt_service=mqtt,
+            signals=signals,
+            poll_interval=0.25,
+        ).run()
+
+    assert raised.value is startup_error
+    assert order == [
+        "signals.enter",
+        "runtime.start",
+        "mqtt.start",
+        "mqtt.stop",
+        "runtime.stop",
+        "signals.exit",
+    ]
+    assert destinations.start_calls == 0
+
+
+def test_mqtt_shutdown_failure_does_not_skip_runtime_cleanup() -> None:
+    order: list[str] = []
+    shutdown_error = RuntimeError("secret MQTT shutdown failure")
+    runtime = FakeRuntime(order)
+    mqtt = FakeMqttService(order, stop_error=shutdown_error)
+    signals = FakeSignalController(order, (True,))
+
+    with pytest.raises(RuntimeError) as raised:
+        DaemonProcess(
+            runtime,
+            mqtt_service=mqtt,
+            signals=signals,
+            poll_interval=0.25,
+        ).run()
+
+    assert raised.value is shutdown_error
+    assert order == [
+        "signals.enter",
+        "runtime.start",
+        "mqtt.start",
+        "signals.wait",
+        "mqtt.stop",
+        "runtime.stop",
+        "signals.exit",
+    ]
+    assert runtime.stop_calls == 1
 
 
 def test_process_closes_recording_before_destinations_and_runtime() -> None:

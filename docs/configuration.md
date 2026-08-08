@@ -38,6 +38,13 @@ The default daemon destination manifest is:
 
 - `${XDG_CONFIG_HOME:-~/.config}/sdsctl/daemon-destinations.toml`.
 
+The default optional daemon MQTT manifest is:
+
+- `${XDG_CONFIG_HOME:-~/.config}/sdsctl/daemon-mqtt.toml`.
+
+The destination and MQTT manifests are separate versioned daemon documents; they
+are not fields in the flat application configuration schema.
+
 Path resolution also defines persistent service locations:
 
 - state: `${XDG_STATE_HOME:-~/.local/state}/sdsctl/`;
@@ -133,6 +140,23 @@ SDSCTL_THEME=light \
 Here, the explicit dark theme and unlimited reconnect policy override the
 environment and both TOML files.
 
+## Daemon MQTT configuration
+
+Milestone 20.8 adds a separate strict version 1
+`daemon-mqtt.toml` document for the optional daemon-owned broker integration.
+Its `[broker]` table configures host, port, client ID, username, password
+environment-variable reference, topic prefix, QoS, semantic-state retention,
+keepalive, and reconnect policy. An absent file means MQTT is disabled and does
+not require the optional Paho dependency.
+
+The daemon accepts `--mqtt-config PATH` as an explicit manifest override and
+loads and validates that document before constructing scanner hardware. Resolved
+password values are never serialized back into configuration; only the
+environment-variable name is stored.
+
+See [Daemon MQTT publication](daemon-mqtt.md) for the complete manifest and
+topic contracts.
+
 ## Python API
 
 The public API exposes immutable values and per-field provenance:
@@ -159,9 +183,12 @@ fields are reported by name and source, not by value.
 
 Saved remote-audio destinations continue to store environment-variable secret
 references rather than resolved passwords. The daemon destination manifest
-selects those profiles by name and never stores resolved credentials. Resolved
-credentials must not be written to application configuration, destination
-configuration, logs, exceptions, traces, or serialized output.
+selects those profiles by name and never stores resolved credentials. The daemon
+MQTT manifest follows the same rule: `password_environment_variable` stores only
+the environment-variable name, and a password reference requires an MQTT
+username. Resolved credentials must not be written to application configuration,
+destination configuration, MQTT configuration, logs, exceptions, traces, or
+serialized output.
 
 See [Daemon deployment and upgrade guide](daemon-deployment.md) for systemd,
 destination-manifest, service-account, migration, and upgrade examples.
