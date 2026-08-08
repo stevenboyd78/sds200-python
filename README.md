@@ -455,18 +455,26 @@ verified SDS200 front-panel-key gesture when needed, and waits for the target
 hold field to converge before returning success. The compatibility indexed
 `scanner.hold` API remains available separately.
 
-The interface retains keyboard focus, responsive compact behavior, system light
-and dark modes, reduced-motion support, and text-only rendering of daemon
-values.
+The interface retains keyboard focus, responsive compact behavior, reduced-motion
+support, and text-only rendering of daemon values. The **Theme** selector offers
+the system-adaptive dashboard plus immersive LCARS-inspired, Matrix-inspired,
+First Responder, and Amateur Radio environments. On desktop-class viewports the
+custom themes become dense full-screen workstations while preserving the same
+accessible structure and semantic scanner state; smaller displays reflow into a
+compact presentation instead of using a separate interface. The selection is
+browser-local, is restored before the dashboard stylesheet paints, and does not
+change daemon or scanner state. The
+[web dashboard guide](docs/web-dashboard.md#theme-gallery) includes generated
+captures of every theme using deterministic fictional demo data.
 
 Install it with `python -m pip install "sds200[web]"`. The service listens on
 `127.0.0.1:8000` by default and accepts only `localhost` or explicit loopback IP
 addresses. Wildcard, LAN, public, and non-local hostname bindings are rejected.
 
-Authentication, TLS, browser logs, optional themes, and Home Assistant
-integration remain deferred. Remote exposure is
-intentionally unsupported until authentication and transport-security planning
-is complete. See the [web dashboard guide](docs/web-dashboard.md).
+Authentication, TLS, browser logs, additional shared branding assets, and Home
+Assistant integration remain deferred. Remote exposure is intentionally
+unsupported until authentication and transport-security planning is complete.
+See the [web dashboard guide](docs/web-dashboard.md).
 
 ### SDS200 network audio playback and recording
 

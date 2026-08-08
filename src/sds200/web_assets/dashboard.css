@@ -56,6 +56,7 @@ a {
 
 a:focus-visible,
 button:focus-visible,
+select:focus-visible,
 [tabindex="-1"]:focus-visible {
   outline: 0.2rem solid var(--focus);
   outline-offset: 0.2rem;
@@ -90,6 +91,37 @@ button:focus-visible,
   justify-content: space-between;
   gap: var(--space-5);
   padding-block: var(--space-6) var(--space-5);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-4);
+}
+
+.theme-picker {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.theme-picker label {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.theme-picker select {
+  min-width: 10rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  color: var(--text);
+  background: var(--surface);
+  font: inherit;
+  font-weight: 750;
 }
 
 .brand h1,
@@ -548,11 +580,4368 @@ button:focus-visible,
   }
 }
 
+:root[data-theme="lcars"] {
+  color-scheme: dark;
+  --background: #0b0910;
+  --surface: #17121d;
+  --surface-emphasis: #241a2b;
+  --text: #fff4df;
+  --muted: #d2bfd7;
+  --border: #9b6fbd;
+  --accent: #e89547;
+  --accent-strong: #f3b45f;
+  --success: #9bd68b;
+  --warning: #f1c85f;
+  --danger: #ef8585;
+  --focus: #ffe28a;
+  --shadow: none;
+  --radius-small: 0.85rem 0.3rem 0.85rem 0.3rem;
+  --radius-large: 1.6rem 0.45rem 1.6rem 0.45rem;
+}
+
+:root[data-theme="lcars"] body {
+  background:
+    linear-gradient(90deg, rgb(232 149 71 / 0.16), transparent 22rem),
+    linear-gradient(180deg, transparent 0 78%, rgb(155 111 189 / 0.08) 78%),
+    var(--background);
+}
+
+:root[data-theme="lcars"] .site-header {
+  border-bottom: 0.7rem solid var(--accent);
+}
+
+:root[data-theme="lcars"] .panel {
+  border-width: 2px;
+  border-left-width: 0.7rem;
+  box-shadow: none;
+}
+
+:root[data-theme="lcars"] .panel:nth-child(3n + 2) {
+  border-left-color: #d36b9b;
+}
+
+:root[data-theme="lcars"] .panel:nth-child(3n) {
+  border-left-color: #7d9bd1;
+}
+
+:root[data-theme="lcars"] .eyebrow,
+:root[data-theme="lcars"] .panel-kicker {
+  letter-spacing: 0.16em;
+}
+
+:root[data-theme="matrix"] {
+  color-scheme: dark;
+  --background: #020705;
+  --surface: #06110b;
+  --surface-emphasis: #0a1a10;
+  --text: #b8ffc7;
+  --muted: #79c78a;
+  --border: #1f6f35;
+  --accent: #43d968;
+  --accent-strong: #72f58f;
+  --success: #72f58f;
+  --warning: #f1d66f;
+  --danger: #ff8a8a;
+  --focus: #d4ff62;
+  --shadow: 0 0 1.2rem rgb(67 217 104 / 0.08);
+  --radius-small: 0.2rem;
+  --radius-large: 0.25rem;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", monospace;
+}
+
+:root[data-theme="matrix"] body {
+  background:
+    repeating-linear-gradient(
+      180deg,
+      rgb(67 217 104 / 0.025) 0,
+      rgb(67 217 104 / 0.025) 1px,
+      transparent 1px,
+      transparent 4px
+    ),
+    linear-gradient(145deg, rgb(67 217 104 / 0.06), transparent 30rem),
+    var(--background);
+}
+
+:root[data-theme="matrix"] .panel {
+  border-width: 1px;
+}
+
+:root[data-theme="matrix"] .brand h1,
+:root[data-theme="matrix"] .overview h2,
+:root[data-theme="matrix"] .panel h2 {
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+:root[data-theme="matrix"] .primary-value {
+  text-shadow: 0 0 0.8rem rgb(67 217 104 / 0.18);
+}
+
+:root[data-theme="first-responder"] {
+  color-scheme: dark;
+  --background: #07111f;
+  --surface: #0d1b2d;
+  --surface-emphasis: #12243a;
+  --text: #eef6ff;
+  --muted: #adc0d6;
+  --border: #36546f;
+  --accent: #4ea1ff;
+  --accent-strong: #7bb9ff;
+  --success: #6ed8a6;
+  --warning: #ffd166;
+  --danger: #ff8585;
+  --focus: #b9dcff;
+  --shadow: 0 0.8rem 2rem rgb(0 0 0 / 0.32);
+  --radius-small: 0.35rem;
+  --radius-large: 0.55rem;
+}
+
+:root[data-theme="first-responder"] body {
+  background:
+    linear-gradient(135deg, rgb(78 161 255 / 0.08), transparent 30rem),
+    linear-gradient(315deg, rgb(220 70 70 / 0.055), transparent 34rem),
+    var(--background);
+}
+
+:root[data-theme="first-responder"] .site-header {
+  position: relative;
+  border-bottom: 1px solid var(--border);
+}
+
+:root[data-theme="first-responder"] .site-header::after {
+  position: absolute;
+  right: 0;
+  bottom: -0.2rem;
+  left: 0;
+  height: 0.2rem;
+  content: "";
+  background:
+    linear-gradient(
+      90deg,
+      #3b82f6 0 42%,
+      transparent 42% 58%,
+      #d94f4f 58% 100%
+    );
+}
+
+:root[data-theme="first-responder"] .panel {
+  border-top: 0.2rem solid var(--accent);
+}
+
+:root[data-theme="first-responder"] .panel-emphasis {
+  border-top-color: #d94f4f;
+}
+
+:root[data-theme="first-responder"] .eyebrow,
+:root[data-theme="first-responder"] .panel-kicker {
+  letter-spacing: 0.11em;
+}
+
+:root[data-theme="amateur-radio"] {
+  color-scheme: dark;
+  --background: #11100c;
+  --surface: #1b1a14;
+  --surface-emphasis: #242218;
+  --text: #f6edcf;
+  --muted: #bdb394;
+  --border: #5b5139;
+  --accent: #d99a3e;
+  --accent-strong: #f0b65d;
+  --success: #82d18a;
+  --warning: #f0c85a;
+  --danger: #ef8484;
+  --focus: #8ed9e6;
+  --shadow: inset 0 0 0 1px rgb(255 255 255 / 0.025);
+  --radius-small: 0.2rem;
+  --radius-large: 0.3rem;
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+}
+
+:root[data-theme="amateur-radio"] body {
+  background:
+    linear-gradient(180deg, rgb(217 154 62 / 0.035), transparent 22rem),
+    var(--background);
+}
+
+:root[data-theme="amateur-radio"] .panel {
+  border-width: 1px;
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.02),
+    0 0.35rem 1rem rgb(0 0 0 / 0.24);
+}
+
+:root[data-theme="amateur-radio"] .panel-header {
+  border-bottom-style: dashed;
+}
+
+:root[data-theme="amateur-radio"] .primary-value,
+:root[data-theme="amateur-radio"] .technical-value,
+:root[data-theme="amateur-radio"] .status-list dd {
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", monospace;
+}
+
+:root[data-theme="amateur-radio"] .primary-value {
+  color: #ffd078;
+  letter-spacing: 0.025em;
+}
+
+:root[data-theme="amateur-radio"] .panel-kicker,
+:root[data-theme="amateur-radio"] .eyebrow {
+  color: #8ed9e6;
+}
+
+/* Graphical theme layers stay decorative and never carry scanner meaning. */
+
+:root[data-theme="lcars"] .site-header {
+  position: relative;
+  padding-left: clamp(2rem, 9vw, 9rem);
+  overflow: hidden;
+}
+
+:root[data-theme="lcars"] .site-header::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: clamp(1.25rem, 6vw, 6rem);
+  content: "";
+  pointer-events: none;
+  background:
+    linear-gradient(
+      180deg,
+      #d36b9b 0 17%,
+      transparent 17% 21%,
+      #e89547 21% 52%,
+      transparent 52% 57%,
+      #7d9bd1 57% 76%,
+      transparent 76% 81%,
+      #9b6fbd 81% 100%
+    );
+  border-radius: 0 0 2.8rem 0;
+}
+
+:root[data-theme="lcars"] .site-header::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: clamp(1.25rem, 6vw, 6rem);
+  height: 0.7rem;
+  content: "";
+  pointer-events: none;
+  background:
+    linear-gradient(
+      90deg,
+      #e89547 0 38%,
+      transparent 38% 41%,
+      #d36b9b 41% 66%,
+      transparent 66% 69%,
+      #7d9bd1 69% 100%
+    );
+  border-radius: 0 999px 999px 0;
+}
+
+:root[data-theme="lcars"] .panel {
+  position: relative;
+  overflow: hidden;
+}
+
+:root[data-theme="lcars"] .panel::after {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.55rem;
+  width: 3.6rem;
+  height: 0.42rem;
+  content: "";
+  pointer-events: none;
+  background:
+    linear-gradient(
+      90deg,
+      var(--accent) 0 44%,
+      transparent 44% 50%,
+      #d36b9b 50% 72%,
+      transparent 72% 78%,
+      #7d9bd1 78% 100%
+    );
+  border-radius: 999px;
+  opacity: 0.9;
+}
+
+:root[data-theme="lcars"] .panel-header {
+  padding-right: 4.6rem;
+}
+
+@keyframes matrix-grid-drift {
+  from {
+    background-position:
+      0 0,
+      0 0,
+      0 0;
+  }
+
+  to {
+    background-position:
+      0 3rem,
+      3rem 0,
+      0 0;
+  }
+}
+
+:root[data-theme="matrix"] body {
+  background:
+    repeating-linear-gradient(
+      180deg,
+      rgb(67 217 104 / 0.045) 0,
+      rgb(67 217 104 / 0.045) 1px,
+      transparent 1px,
+      transparent 6px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgb(67 217 104 / 0.025) 0,
+      rgb(67 217 104 / 0.025) 1px,
+      transparent 1px,
+      transparent 3rem
+    ),
+    radial-gradient(
+      circle at 50% -10%,
+      rgb(67 217 104 / 0.11),
+      transparent 42rem
+    ),
+    var(--background);
+  background-size:
+    auto 3rem,
+    3rem auto,
+    auto;
+  animation: matrix-grid-drift 18s linear infinite;
+}
+
+:root[data-theme="matrix"] .site-header,
+:root[data-theme="matrix"] .panel {
+  position: relative;
+  overflow: hidden;
+}
+
+:root[data-theme="matrix"] .site-header::after,
+:root[data-theme="matrix"] .panel::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  content: "";
+  pointer-events: none;
+  background:
+    linear-gradient(
+      90deg,
+      transparent,
+      rgb(114 245 143 / 0.75),
+      transparent
+    );
+  box-shadow: 0 0 0.8rem rgb(67 217 104 / 0.35);
+}
+
+:root[data-theme="matrix"] .panel::before {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.65rem;
+  content: "01 10 01";
+  pointer-events: none;
+  color: rgb(114 245 143 / 0.38);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+:root[data-theme="matrix"] .panel {
+  box-shadow:
+    inset 0 0 1.5rem rgb(67 217 104 / 0.025),
+    0 0 1.2rem rgb(67 217 104 / 0.075);
+}
+
+:root[data-theme="matrix"] .technical-value,
+:root[data-theme="matrix"] .status-list dd {
+  text-shadow: 0 0 0.5rem rgb(67 217 104 / 0.16);
+}
+
+:root[data-theme="first-responder"] body {
+  background:
+    repeating-radial-gradient(
+      circle at 88% 18%,
+      transparent 0 4.8rem,
+      rgb(78 161 255 / 0.035) 4.8rem 5rem
+    ),
+    linear-gradient(
+      90deg,
+      transparent 0 49.9%,
+      rgb(255 255 255 / 0.018) 49.9% 50.1%,
+      transparent 50.1% 100%
+    ),
+    linear-gradient(
+      180deg,
+      transparent 0 49.9%,
+      rgb(255 255 255 / 0.018) 49.9% 50.1%,
+      transparent 50.1% 100%
+    ),
+    linear-gradient(135deg, rgb(78 161 255 / 0.08), transparent 30rem),
+    linear-gradient(315deg, rgb(220 70 70 / 0.055), transparent 34rem),
+    var(--background);
+}
+
+:root[data-theme="first-responder"] .site-header::after {
+  height: 0.32rem;
+  bottom: -0.32rem;
+  background:
+    linear-gradient(
+      90deg,
+      #3b82f6 0 16%,
+      transparent 16% 18%,
+      #3b82f6 18% 34%,
+      transparent 34% 50%,
+      #d94f4f 50% 66%,
+      transparent 66% 68%,
+      #d94f4f 68% 84%,
+      transparent 84% 100%
+    );
+  box-shadow:
+    0 0 1rem rgb(59 130 246 / 0.28),
+    0 0 1rem rgb(217 79 79 / 0.2);
+}
+
+:root[data-theme="first-responder"] .panel {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(
+      135deg,
+      rgb(78 161 255 / 0.035),
+      transparent 8rem
+    ),
+    var(--surface);
+}
+
+:root[data-theme="first-responder"] .panel::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 4rem;
+  height: 0.3rem;
+  content: "";
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, var(--accent), #d94f4f);
+  opacity: 0.8;
+}
+
+:root[data-theme="first-responder"] .panel-header::after {
+  width: 2.6rem;
+  height: 0.22rem;
+  margin-left: auto;
+  content: "";
+  background:
+    repeating-linear-gradient(
+      90deg,
+      var(--accent) 0 0.45rem,
+      transparent 0.45rem 0.65rem
+    );
+  opacity: 0.65;
+}
+
+:root[data-theme="amateur-radio"] body {
+  background:
+    linear-gradient(
+      90deg,
+      rgb(217 154 62 / 0.025) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      180deg,
+      rgb(217 154 62 / 0.018) 1px,
+      transparent 1px
+    ),
+    radial-gradient(
+      circle at 14% 10%,
+      rgb(142 217 230 / 0.055),
+      transparent 28rem
+    ),
+    var(--background);
+  background-size:
+    3rem 3rem,
+    3rem 3rem,
+    auto;
+}
+
+:root[data-theme="amateur-radio"] .site-header {
+  position: relative;
+  padding-bottom: calc(var(--space-5) + 1rem);
+}
+
+:root[data-theme="amateur-radio"] .site-header::after {
+  position: absolute;
+  right: 0;
+  bottom: 0.35rem;
+  left: 0;
+  height: 0.65rem;
+  content: "";
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      #d99a3e 0 1px,
+      transparent 1px 0.5rem,
+      #d99a3e 0.5rem 0.55rem,
+      transparent 0.55rem 2rem
+    );
+  border-bottom: 1px solid #6e5b36;
+  opacity: 0.8;
+}
+
+:root[data-theme="amateur-radio"] .panel {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      circle at 0.7rem 0.7rem,
+      #6f6752 0 0.13rem,
+      #26231a 0.14rem 0.23rem,
+      transparent 0.24rem
+    ),
+    radial-gradient(
+      circle at calc(100% - 0.7rem) 0.7rem,
+      #6f6752 0 0.13rem,
+      #26231a 0.14rem 0.23rem,
+      transparent 0.24rem
+    ),
+    radial-gradient(
+      circle at 0.7rem calc(100% - 0.7rem),
+      #6f6752 0 0.13rem,
+      #26231a 0.14rem 0.23rem,
+      transparent 0.24rem
+    ),
+    radial-gradient(
+      circle at calc(100% - 0.7rem) calc(100% - 0.7rem),
+      #6f6752 0 0.13rem,
+      #26231a 0.14rem 0.23rem,
+      transparent 0.24rem
+    ),
+    var(--surface);
+}
+
+:root[data-theme="amateur-radio"] .panel-emphasis {
+  background:
+    linear-gradient(180deg, rgb(255 208 120 / 0.04), transparent 60%),
+    #17170e;
+  box-shadow:
+    inset 0 0 2rem rgb(255 208 120 / 0.045),
+    inset 0 0 0 1px rgb(255 208 120 / 0.09);
+}
+
+:root[data-theme="amateur-radio"] .primary-value,
+:root[data-theme="amateur-radio"] .secondary-value {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #65542e;
+  background:
+    linear-gradient(180deg, rgb(255 208 120 / 0.06), transparent),
+    #101008;
+  box-shadow: inset 0 0 0.9rem rgb(255 208 120 / 0.04);
+}
+
+:root[data-theme="amateur-radio"] .status-list > div {
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 0.45rem,
+      rgb(217 154 62 / 0.045) 0.45rem 0.5rem
+    );
+}
+
+/*
+ * Immersive theme environments.
+ *
+ * 1080p is the primary showcase canvas, wider workstation displays gain a
+ * four-column composition, and compact Raspberry Pi-class displays keep the
+ * existing two-column flow with simplified decoration.
+ */
+
+:root[data-theme="lcars"],
+:root[data-theme="matrix"],
+:root[data-theme="first-responder"],
+:root[data-theme="amateur-radio"] {
+  --content-width: 220rem;
+}
+
+/* LCARS-inspired starship console */
+
+:root[data-theme="lcars"] .dashboard-grid {
+  gap: 0.7rem;
+}
+
+:root[data-theme="lcars"] .panel {
+  padding: 1rem 1.2rem 1.25rem 3.8rem;
+  border: 0;
+  border-radius: 2.2rem 0.35rem 0.35rem 2.2rem;
+  background: #100d14;
+  box-shadow: inset 2.4rem 0 0 var(--accent);
+}
+
+:root[data-theme="lcars"] .panel:nth-child(2) {
+  box-shadow: inset 2.4rem 0 0 #d36b9b;
+}
+
+:root[data-theme="lcars"] .panel:nth-child(3) {
+  box-shadow: inset 2.4rem 0 0 #7d9bd1;
+}
+
+:root[data-theme="lcars"] .panel:nth-child(4) {
+  box-shadow: inset 2.4rem 0 0 #c9a46c;
+}
+
+:root[data-theme="lcars"] .panel:nth-child(5) {
+  box-shadow: inset 2.4rem 0 0 #b781d1;
+}
+
+:root[data-theme="lcars"] .panel:nth-child(6) {
+  box-shadow: inset 2.4rem 0 0 #df7869;
+}
+
+:root[data-theme="lcars"] .panel-header {
+  position: relative;
+  margin: -0.2rem -0.2rem 1rem 0;
+  padding: 0.55rem 1rem 0.6rem 4.2rem;
+  border: 0;
+  border-radius: 999px 0.3rem 0.3rem 999px;
+  color: #100d14;
+  background: #e89547;
+}
+
+:root[data-theme="lcars"] .panel:nth-child(2) .panel-header {
+  background: #d36b9b;
+}
+
+:root[data-theme="lcars"] .panel:nth-child(3) .panel-header {
+  background: #9fb7eb;
+}
+
+:root[data-theme="lcars"] .panel:nth-child(4) .panel-header {
+  background: #d7b778;
+}
+
+:root[data-theme="lcars"] .panel:nth-child(5) .panel-header {
+  background: #c69add;
+}
+
+:root[data-theme="lcars"] .panel:nth-child(6) .panel-header {
+  background: #e58b7f;
+}
+
+:root[data-theme="lcars"] .panel-header h2,
+:root[data-theme="lcars"] .panel-header .panel-kicker {
+  color: #100d14;
+}
+
+:root[data-theme="lcars"] .panel-header .panel-kicker {
+  margin-bottom: 0.15rem;
+  letter-spacing: 0.14em;
+}
+
+:root[data-theme="lcars"] .status-list > div {
+  border-bottom-color: rgb(232 149 71 / 0.35);
+}
+
+:root[data-theme="lcars"] .scanner-control-group {
+  padding: 0.75rem;
+  border-left: 0.4rem solid #d36b9b;
+  border-radius: 0 0.9rem 0.9rem 0;
+  background: rgb(211 107 155 / 0.055);
+}
+
+/* Matrix-inspired multi-terminal workstation */
+
+:root[data-theme="matrix"] .dashboard-grid {
+  gap: 0.8rem;
+}
+
+:root[data-theme="matrix"] .panel {
+  padding: 0 1rem 1rem;
+  border: 1px solid #245e32;
+  border-radius: 0.15rem;
+  background:
+    linear-gradient(180deg, rgb(67 217 104 / 0.025), transparent 12rem),
+    #020a05;
+  box-shadow:
+    inset 0 0 1.8rem rgb(67 217 104 / 0.035),
+    0 0 1.2rem rgb(0 0 0 / 0.45);
+}
+
+:root[data-theme="matrix"] .panel:nth-child(2n) {
+  background:
+    linear-gradient(180deg, rgb(114 245 143 / 0.03), transparent 10rem),
+    #041008;
+}
+
+:root[data-theme="matrix"] .panel-header {
+  position: relative;
+  min-height: 3.7rem;
+  margin: 0 -1rem 0.8rem;
+  padding: 1.55rem 0.8rem 0.45rem;
+  border-bottom: 1px solid #245e32;
+  background:
+    linear-gradient(180deg, #0c2212, #06150b);
+}
+
+:root[data-theme="matrix"] .panel-header::before {
+  position: absolute;
+  top: 0.48rem;
+  left: 0.72rem;
+  width: 0.48rem;
+  height: 0.48rem;
+  content: "";
+  border-radius: 50%;
+  background: #72f58f;
+  box-shadow:
+    0.82rem 0 #348d4a,
+    1.64rem 0 #1d5a2d;
+}
+
+:root[data-theme="matrix"] .panel-header::after {
+  position: absolute;
+  top: 0.72rem;
+  right: 0.75rem;
+  width: min(38%, 7rem);
+  height: 1px;
+  content: "";
+  background: #2a713b;
+  box-shadow:
+    0 0.3rem #174822,
+    0 0.6rem #0d3217;
+}
+
+:root[data-theme="matrix"] .panel-kicker {
+  margin-bottom: 0.1rem;
+  color: #79c78a;
+  font-size: 0.67rem;
+}
+
+:root[data-theme="matrix"] .panel h2 {
+  color: #b8ffc7;
+  font-size: 1.05rem;
+  text-shadow: 0 0 0.7rem rgb(114 245 143 / 0.22);
+}
+
+:root[data-theme="matrix"] .status-list > div {
+  border-bottom: 1px dashed #1f6f35;
+}
+
+:root[data-theme="matrix"] .scanner-control-group,
+:root[data-theme="matrix"] .recording-library {
+  border-color: #245e32;
+  background: rgb(67 217 104 / 0.018);
+}
+
+:root[data-theme="matrix"] button,
+:root[data-theme="matrix"] .recording-action,
+:root[data-theme="matrix"] .theme-picker select {
+  border-radius: 0;
+}
+
+/* First Responder dispatch-center desktop */
+
+:root[data-theme="first-responder"] .dashboard-grid {
+  gap: 0.55rem;
+}
+
+:root[data-theme="first-responder"] .site-header {
+  margin-top: 0.65rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid #36546f;
+  border-top: 0.32rem solid #4ea1ff;
+  border-radius: 0.25rem;
+  background:
+    linear-gradient(180deg, #12243a, #0b1828);
+  box-shadow: 0 0.55rem 1.5rem rgb(0 0 0 / 0.28);
+}
+
+:root[data-theme="first-responder"] .panel {
+  padding: 0 0.9rem 0.9rem;
+  border: 1px solid #36546f;
+  border-top: 1px solid #55748f;
+  border-radius: 0.2rem;
+  background: #0a1726;
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.015),
+    0 0.45rem 1.1rem rgb(0 0 0 / 0.27);
+}
+
+:root[data-theme="first-responder"] .panel-header {
+  position: relative;
+  margin: 0 -0.9rem 0.75rem;
+  padding: 0.5rem 0.75rem 0.55rem;
+  border-bottom: 1px solid #4a6b88;
+  background:
+    linear-gradient(180deg, #244968, #173550);
+}
+
+:root[data-theme="first-responder"] .panel-emphasis .panel-header {
+  background:
+    linear-gradient(180deg, #703c46, #492a34);
+}
+
+:root[data-theme="first-responder"] .panel-kicker {
+  margin-bottom: 0.05rem;
+  color: #b8d7f4;
+  font-size: 0.66rem;
+}
+
+:root[data-theme="first-responder"] .panel h2 {
+  color: #f3f8fd;
+  font-size: 1.05rem;
+}
+
+:root[data-theme="first-responder"] .status-badge {
+  border-radius: 0.2rem;
+  background: #07111f;
+  box-shadow: inset 0 0 0.65rem rgb(78 161 255 / 0.06);
+}
+
+:root[data-theme="first-responder"] .overview {
+  margin-top: 0.55rem;
+  margin-bottom: 0.55rem;
+  padding: 0.55rem 0.75rem;
+  border-left: 0.3rem solid var(--accent);
+  background: rgb(13 27 45 / 0.68);
+}
+
+:root[data-theme="first-responder"] .scanner-control-group {
+  margin-top: 0.75rem;
+  padding: 0.65rem;
+  border: 1px solid #294a66;
+  background: #091522;
+}
+
+:root[data-theme="first-responder"] .site-footer {
+  margin-top: 0.55rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid #36546f;
+  background: #091522;
+}
+
+/* Amateur Radio: SDS200-inspired base/mobile scanner face */
+
+:root[data-theme="amateur-radio"] body {
+  background:
+    linear-gradient(
+      100deg,
+      rgb(255 255 255 / 0.018),
+      transparent 18% 82%,
+      rgb(255 255 255 / 0.012)
+    ),
+    repeating-linear-gradient(
+      0deg,
+      #11100c 0 2px,
+      #15140f 2px 4px
+    );
+}
+
+:root[data-theme="amateur-radio"] .site-header {
+  margin-top: 0.8rem;
+  padding: 1rem 1.2rem 1.45rem;
+  border: 1px solid #514b3b;
+  border-radius: 0.2rem;
+  background:
+    linear-gradient(180deg, #292820, #151510);
+  box-shadow:
+    inset 0 1px rgb(255 255 255 / 0.06),
+    0 0.65rem 1.6rem rgb(0 0 0 / 0.38);
+}
+
+:root[data-theme="amateur-radio"] .dashboard-grid {
+  gap: 0.75rem;
+  padding: 0.8rem;
+  border: 1px solid #4a4537;
+  background:
+    linear-gradient(180deg, #1e1e18, #12120e);
+  box-shadow:
+    inset 0 0 2.5rem rgb(0 0 0 / 0.32),
+    0 0.8rem 2rem rgb(0 0 0 / 0.3);
+}
+
+:root[data-theme="amateur-radio"] .panel {
+  border: 1px solid #514b3b;
+  border-radius: 0.18rem;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.025), transparent 4rem),
+    #1a1a15;
+  box-shadow:
+    inset 0 1px rgb(255 255 255 / 0.035),
+    0 0.3rem 0.9rem rgb(0 0 0 / 0.35);
+}
+
+:root[data-theme="amateur-radio"] .panel-header {
+  border-bottom: 1px solid #5b5139;
+}
+
+:root[data-theme="amateur-radio"] .panel-emphasis {
+  position: relative;
+  border: 0.7rem solid #292a26;
+  outline: 1px solid #626357;
+  background:
+    repeating-linear-gradient(
+      180deg,
+      rgb(255 255 255 / 0.012) 0 1px,
+      transparent 1px 4px
+    ),
+    #020607;
+  box-shadow:
+    inset 0 0 2.4rem rgb(0 0 0 / 0.9),
+    0 0.4rem 1rem rgb(0 0 0 / 0.42);
+}
+
+:root[data-theme="amateur-radio"] .panel-emphasis .panel-header {
+  border-bottom-color: #344950;
+}
+
+:root[data-theme="amateur-radio"] .panel-emphasis .panel-kicker {
+  color: #7dcad8;
+}
+
+:root[data-theme="amateur-radio"] #radio-system {
+  color: #69ddf1;
+  text-shadow: 0 0 0.65rem rgb(105 221 241 / 0.22);
+}
+
+:root[data-theme="amateur-radio"] #radio-channel {
+  color: #ffd66f;
+}
+
+:root[data-theme="amateur-radio"] #radio-mode {
+  color: #97e58d;
+}
+
+:root[data-theme="amateur-radio"] #radio-signal {
+  color: #ffae72;
+}
+
+:root[data-theme="amateur-radio"] .scanner-controls-panel {
+  position: relative;
+  padding-top: 6rem;
+  background:
+    linear-gradient(180deg, #292923 0 4.8rem, #181813 4.8rem 100%);
+}
+
+:root[data-theme="amateur-radio"] .scanner-controls-panel::before,
+:root[data-theme="amateur-radio"] .scanner-controls-panel::after {
+  position: absolute;
+  top: 0.75rem;
+  width: 3.7rem;
+  height: 3.7rem;
+  content: "";
+  border: 0.22rem solid #77776d;
+  border-radius: 50%;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      circle at 38% 32%,
+      #b6b7ad 0 7%,
+      #707168 8% 33%,
+      #32332f 34% 57%,
+      #10110f 58% 100%
+    );
+  box-shadow:
+    inset 0 0 0.55rem rgb(255 255 255 / 0.16),
+    0 0.35rem 0.65rem rgb(0 0 0 / 0.55);
+}
+
+:root[data-theme="amateur-radio"] .scanner-controls-panel::before {
+  left: 1.1rem;
+}
+
+:root[data-theme="amateur-radio"] .scanner-controls-panel::after {
+  right: 1.1rem;
+}
+
+:root[data-theme="amateur-radio"] .scanner-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+:root[data-theme="amateur-radio"] .scanner-hold-control {
+  display: flex;
+  min-width: 0;
+}
+
+:root[data-theme="amateur-radio"] .scanner-controls button {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #64645d;
+  border-radius: 0.18rem;
+  color: #eee9d8;
+  background:
+    linear-gradient(180deg, #34342f, #151512);
+  box-shadow:
+    inset 0 1px rgb(255 255 255 / 0.08),
+    0 0.18rem 0.3rem rgb(0 0 0 / 0.5);
+  text-shadow: 0 1px #000000;
+}
+
+:root[data-theme="amateur-radio"] .scanner-controls button:hover:not(:disabled) {
+  border-color: #8ed9e6;
+  background:
+    linear-gradient(180deg, #41423c, #1b1c18);
+}
+
+:root[data-theme="amateur-radio"] .scanner-hold-state {
+  color: #ffd66f;
+}
+
+:root[data-theme="amateur-radio"] .recording-panel,
+:root[data-theme="amateur-radio"] .recording-library {
+  border-color: #5b5139;
+}
+
+/* 1080p and larger workstation composition. */
+
+@media (min-width: 100rem) {
+  :root[data-theme="lcars"] .dashboard-grid,
+  :root[data-theme="matrix"] .dashboard-grid,
+  :root[data-theme="first-responder"] .dashboard-grid,
+  :root[data-theme="amateur-radio"] .dashboard-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  :root[data-theme="lcars"] .panel-emphasis,
+  :root[data-theme="matrix"] .panel-emphasis,
+  :root[data-theme="first-responder"] .panel-emphasis,
+  :root[data-theme="amateur-radio"] .panel-emphasis,
+  :root[data-theme="lcars"] .recording-panel,
+  :root[data-theme="matrix"] .recording-panel,
+  :root[data-theme="first-responder"] .recording-panel,
+  :root[data-theme="amateur-radio"] .recording-panel {
+    grid-column: span 2;
+  }
+}
+
+/* Compact 7-inch-class console adaptation. */
+
+@media (max-width: 56rem) {
+  :root[data-theme="lcars"] .panel {
+    padding: 0.8rem 0.9rem 1rem 2.25rem;
+    border-radius: 1.3rem 0.25rem 0.25rem 1.3rem;
+    box-shadow: inset 1.35rem 0 0 var(--accent);
+  }
+
+  :root[data-theme="lcars"] .panel:nth-child(2),
+  :root[data-theme="lcars"] .panel:nth-child(3),
+  :root[data-theme="lcars"] .panel:nth-child(4),
+  :root[data-theme="lcars"] .panel:nth-child(5),
+  :root[data-theme="lcars"] .panel:nth-child(6) {
+    box-shadow: inset 1.35rem 0 0 var(--accent);
+  }
+
+  :root[data-theme="lcars"] .panel-header {
+    padding-left: 1.1rem;
+  }
+
+  :root[data-theme="lcars"] .site-header {
+    padding-left: 2.2rem;
+  }
+
+  :root[data-theme="lcars"] .site-header::before {
+    width: 1.2rem;
+  }
+
+  :root[data-theme="lcars"] .site-header::after {
+    left: 1.2rem;
+  }
+
+  :root[data-theme="matrix"] body {
+    animation: none;
+  }
+
+  :root[data-theme="matrix"] .panel-header::after {
+    display: none;
+  }
+
+  :root[data-theme="first-responder"] .dashboard-grid,
+  :root[data-theme="matrix"] .dashboard-grid {
+    gap: 0.65rem;
+  }
+
+  :root[data-theme="amateur-radio"] .dashboard-grid {
+    padding: 0.5rem;
+    gap: 0.55rem;
+  }
+
+  :root[data-theme="amateur-radio"] .scanner-controls-panel {
+    padding-top: 4.9rem;
+  }
+
+  :root[data-theme="amateur-radio"] .scanner-controls-panel::before,
+  :root[data-theme="amateur-radio"] .scanner-controls-panel::after {
+    width: 2.8rem;
+    height: 2.8rem;
+  }
+}
+
+/*
+ * Full-screen immersive console contract.
+ *
+ * At desktop-class widths/heights the four expressive themes become a
+ * single-screen application shell: compact header and status strip, all six
+ * operational panels visible in a 3x2 matrix, and no document-level scrolling.
+ * Variable-length recent recordings may scroll inside their own list.
+ */
+
+@media (min-width: 64rem) and (min-height: 36rem) {
+  :root[data-theme="lcars"] body,
+  :root[data-theme="matrix"] body,
+  :root[data-theme="first-responder"] body,
+  :root[data-theme="amateur-radio"] body {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+    font-size: 0.84rem;
+  }
+
+  :root[data-theme="lcars"] .site-header,
+  :root[data-theme="matrix"] .site-header,
+  :root[data-theme="first-responder"] .site-header,
+  :root[data-theme="amateur-radio"] .site-header {
+    width: min(100% - 1rem, var(--content-width));
+    min-height: 3.65rem;
+    margin-top: 0.3rem;
+    padding: 0.4rem 0.75rem;
+    gap: 0.8rem;
+  }
+
+  :root[data-theme="lcars"] .brand,
+  :root[data-theme="matrix"] .brand,
+  :root[data-theme="first-responder"] .brand,
+  :root[data-theme="amateur-radio"] .brand {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    gap: 0.7rem;
+  }
+
+  :root[data-theme="lcars"] .brand .eyebrow,
+  :root[data-theme="matrix"] .brand .eyebrow,
+  :root[data-theme="first-responder"] .brand .eyebrow,
+  :root[data-theme="amateur-radio"] .brand .eyebrow {
+    flex: 0 0 auto;
+    margin: 0;
+    font-size: 0.58rem;
+  }
+
+  :root[data-theme="lcars"] .brand h1,
+  :root[data-theme="matrix"] .brand h1,
+  :root[data-theme="first-responder"] .brand h1,
+  :root[data-theme="amateur-radio"] .brand h1 {
+    font-size: 1.35rem;
+    letter-spacing: 0.01em;
+  }
+
+  :root[data-theme="lcars"] .subtitle,
+  :root[data-theme="matrix"] .subtitle,
+  :root[data-theme="first-responder"] .subtitle,
+  :root[data-theme="amateur-radio"] .subtitle {
+    display: none;
+  }
+
+  :root[data-theme="lcars"] .header-actions,
+  :root[data-theme="matrix"] .header-actions,
+  :root[data-theme="first-responder"] .header-actions,
+  :root[data-theme="amateur-radio"] .header-actions {
+    gap: 0.55rem;
+  }
+
+  :root[data-theme="lcars"] .theme-picker,
+  :root[data-theme="matrix"] .theme-picker,
+  :root[data-theme="first-responder"] .theme-picker,
+  :root[data-theme="amateur-radio"] .theme-picker {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  :root[data-theme="lcars"] .theme-picker label,
+  :root[data-theme="matrix"] .theme-picker label,
+  :root[data-theme="first-responder"] .theme-picker label,
+  :root[data-theme="amateur-radio"] .theme-picker label {
+    font-size: 0.58rem;
+  }
+
+  :root[data-theme="lcars"] .theme-picker select,
+  :root[data-theme="matrix"] .theme-picker select,
+  :root[data-theme="first-responder"] .theme-picker select,
+  :root[data-theme="amateur-radio"] .theme-picker select {
+    min-width: 9.25rem;
+    padding: 0.35rem 0.5rem;
+    font-size: 0.78rem;
+  }
+
+  :root[data-theme="lcars"] .status-badge,
+  :root[data-theme="matrix"] .status-badge,
+  :root[data-theme="first-responder"] .status-badge,
+  :root[data-theme="amateur-radio"] .status-badge {
+    min-width: 6.6rem;
+    padding: 0.45rem 0.65rem;
+    font-size: 0.78rem;
+  }
+
+  :root[data-theme="lcars"] .dashboard,
+  :root[data-theme="matrix"] .dashboard,
+  :root[data-theme="first-responder"] .dashboard,
+  :root[data-theme="amateur-radio"] .dashboard {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+    width: min(100% - 1rem, var(--content-width));
+    padding-bottom: 0.3rem;
+    overflow: hidden;
+  }
+
+  :root[data-theme="lcars"] .overview,
+  :root[data-theme="matrix"] .overview,
+  :root[data-theme="first-responder"] .overview,
+  :root[data-theme="amateur-radio"] .overview {
+    min-height: 2rem;
+    margin: 0.25rem 0;
+    padding: 0.25rem 0.5rem;
+    align-items: center;
+    gap: 0.8rem;
+  }
+
+  :root[data-theme="lcars"] .overview .eyebrow,
+  :root[data-theme="matrix"] .overview .eyebrow,
+  :root[data-theme="first-responder"] .overview .eyebrow,
+  :root[data-theme="amateur-radio"] .overview .eyebrow {
+    display: none;
+  }
+
+  :root[data-theme="lcars"] .overview h2,
+  :root[data-theme="matrix"] .overview h2,
+  :root[data-theme="first-responder"] .overview h2,
+  :root[data-theme="amateur-radio"] .overview h2 {
+    font-size: 0.92rem;
+  }
+
+  :root[data-theme="lcars"] .dashboard-message,
+  :root[data-theme="matrix"] .dashboard-message,
+  :root[data-theme="first-responder"] .dashboard-message,
+  :root[data-theme="amateur-radio"] .dashboard-message {
+    max-width: 55%;
+    font-size: 0.72rem;
+    line-height: 1.15;
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid,
+  :root[data-theme="matrix"] .dashboard-grid,
+  :root[data-theme="first-responder"] .dashboard-grid,
+  :root[data-theme="amateur-radio"] .dashboard-grid {
+    grid-template-columns:
+      minmax(0, 0.9fr)
+      minmax(0, 1.08fr)
+      minmax(0, 1.02fr);
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    gap: 0.45rem;
+    min-height: 0;
+    height: 100%;
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel,
+  :root[data-theme="matrix"] .dashboard-grid > .panel,
+  :root[data-theme="first-responder"] .dashboard-grid > .panel,
+  :root[data-theme="amateur-radio"] .dashboard-grid > .panel {
+    min-height: 0;
+    overflow: auto;
+    scrollbar-width: thin;
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel:nth-child(1),
+  :root[data-theme="matrix"] .dashboard-grid > .panel:nth-child(1),
+  :root[data-theme="first-responder"] .dashboard-grid > .panel:nth-child(1),
+  :root[data-theme="amateur-radio"] .dashboard-grid > .panel:nth-child(1) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel:nth-child(2),
+  :root[data-theme="matrix"] .dashboard-grid > .panel:nth-child(2),
+  :root[data-theme="first-responder"] .dashboard-grid > .panel:nth-child(2),
+  :root[data-theme="amateur-radio"] .dashboard-grid > .panel:nth-child(2) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel:nth-child(3),
+  :root[data-theme="matrix"] .dashboard-grid > .panel:nth-child(3),
+  :root[data-theme="first-responder"] .dashboard-grid > .panel:nth-child(3),
+  :root[data-theme="amateur-radio"] .dashboard-grid > .panel:nth-child(3) {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel:nth-child(4),
+  :root[data-theme="matrix"] .dashboard-grid > .panel:nth-child(4),
+  :root[data-theme="first-responder"] .dashboard-grid > .panel:nth-child(4),
+  :root[data-theme="amateur-radio"] .dashboard-grid > .panel:nth-child(4) {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel:nth-child(5),
+  :root[data-theme="matrix"] .dashboard-grid > .panel:nth-child(5),
+  :root[data-theme="first-responder"] .dashboard-grid > .panel:nth-child(5),
+  :root[data-theme="amateur-radio"] .dashboard-grid > .panel:nth-child(5) {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel:nth-child(6),
+  :root[data-theme="matrix"] .dashboard-grid > .panel:nth-child(6),
+  :root[data-theme="first-responder"] .dashboard-grid > .panel:nth-child(6),
+  :root[data-theme="amateur-radio"] .dashboard-grid > .panel:nth-child(6) {
+    grid-column: 3;
+    grid-row: 2;
+  }
+
+  :root[data-theme="lcars"] .panel,
+  :root[data-theme="matrix"] .panel,
+  :root[data-theme="first-responder"] .panel,
+  :root[data-theme="amateur-radio"] .panel {
+    font-size: 0.78rem;
+  }
+
+  :root[data-theme="lcars"] .panel h2,
+  :root[data-theme="matrix"] .panel h2,
+  :root[data-theme="first-responder"] .panel h2,
+  :root[data-theme="amateur-radio"] .panel h2 {
+    font-size: 0.98rem;
+  }
+
+  :root[data-theme="lcars"] .panel-kicker,
+  :root[data-theme="matrix"] .panel-kicker,
+  :root[data-theme="first-responder"] .panel-kicker,
+  :root[data-theme="amateur-radio"] .panel-kicker {
+    font-size: 0.56rem;
+    line-height: 1;
+  }
+
+  :root[data-theme="lcars"] .status-list,
+  :root[data-theme="matrix"] .status-list,
+  :root[data-theme="first-responder"] .status-list,
+  :root[data-theme="amateur-radio"] .status-list {
+    margin-top: 0.35rem;
+  }
+
+  :root[data-theme="lcars"] .status-list > div,
+  :root[data-theme="matrix"] .status-list > div,
+  :root[data-theme="first-responder"] .status-list > div,
+  :root[data-theme="amateur-radio"] .status-list > div {
+    grid-template-columns: minmax(5.3rem, 0.8fr) minmax(0, 1.2fr);
+    gap: 0.4rem;
+    padding-block: 0.38rem;
+  }
+
+  :root[data-theme="lcars"] .status-list-compact,
+  :root[data-theme="matrix"] .status-list-compact,
+  :root[data-theme="first-responder"] .status-list-compact,
+  :root[data-theme="amateur-radio"] .status-list-compact {
+    margin-top: 0.55rem;
+  }
+
+  :root[data-theme="lcars"] .primary-value,
+  :root[data-theme="matrix"] .primary-value,
+  :root[data-theme="first-responder"] .primary-value,
+  :root[data-theme="amateur-radio"] .primary-value {
+    margin: 0.7rem 0 0.2rem;
+    font-size: clamp(1.15rem, 1.6vw, 1.65rem);
+  }
+
+  :root[data-theme="lcars"] .secondary-value,
+  :root[data-theme="matrix"] .secondary-value,
+  :root[data-theme="first-responder"] .secondary-value,
+  :root[data-theme="amateur-radio"] .secondary-value {
+    min-height: 1.5em;
+    font-size: 0.9rem;
+  }
+
+  :root[data-theme="lcars"] .audio-playback-status,
+  :root[data-theme="lcars"] .scanner-control-status,
+  :root[data-theme="lcars"] .recording-status,
+  :root[data-theme="lcars"] .recordings-message,
+  :root[data-theme="matrix"] .audio-playback-status,
+  :root[data-theme="matrix"] .scanner-control-status,
+  :root[data-theme="matrix"] .recording-status,
+  :root[data-theme="matrix"] .recordings-message,
+  :root[data-theme="first-responder"] .audio-playback-status,
+  :root[data-theme="first-responder"] .scanner-control-status,
+  :root[data-theme="first-responder"] .recording-status,
+  :root[data-theme="first-responder"] .recordings-message,
+  :root[data-theme="amateur-radio"] .audio-playback-status,
+  :root[data-theme="amateur-radio"] .scanner-control-status,
+  :root[data-theme="amateur-radio"] .recording-status,
+  :root[data-theme="amateur-radio"] .recordings-message {
+    min-height: 1.2em;
+    margin: 0.45rem 0 0.35rem;
+    font-size: 0.72rem;
+  }
+
+  :root[data-theme="lcars"] .audio-controls,
+  :root[data-theme="lcars"] .scanner-controls,
+  :root[data-theme="lcars"] .recording-controls,
+  :root[data-theme="matrix"] .audio-controls,
+  :root[data-theme="matrix"] .scanner-controls,
+  :root[data-theme="matrix"] .recording-controls,
+  :root[data-theme="first-responder"] .audio-controls,
+  :root[data-theme="first-responder"] .scanner-controls,
+  :root[data-theme="first-responder"] .recording-controls,
+  :root[data-theme="amateur-radio"] .audio-controls,
+  :root[data-theme="amateur-radio"] .scanner-controls,
+  :root[data-theme="amateur-radio"] .recording-controls {
+    gap: 0.35rem;
+  }
+
+  :root[data-theme="lcars"] .audio-controls button,
+  :root[data-theme="lcars"] .scanner-controls button,
+  :root[data-theme="lcars"] .recording-controls button,
+  :root[data-theme="lcars"] .recording-library button,
+  :root[data-theme="lcars"] .recording-action,
+  :root[data-theme="matrix"] .audio-controls button,
+  :root[data-theme="matrix"] .scanner-controls button,
+  :root[data-theme="matrix"] .recording-controls button,
+  :root[data-theme="matrix"] .recording-library button,
+  :root[data-theme="matrix"] .recording-action,
+  :root[data-theme="first-responder"] .audio-controls button,
+  :root[data-theme="first-responder"] .scanner-controls button,
+  :root[data-theme="first-responder"] .recording-controls button,
+  :root[data-theme="first-responder"] .recording-library button,
+  :root[data-theme="first-responder"] .recording-action,
+  :root[data-theme="amateur-radio"] .audio-controls button,
+  :root[data-theme="amateur-radio"] .scanner-controls button,
+  :root[data-theme="amateur-radio"] .recording-controls button,
+  :root[data-theme="amateur-radio"] .recording-library button,
+  :root[data-theme="amateur-radio"] .recording-action {
+    min-width: 5.4rem;
+    padding: 0.4rem 0.55rem;
+    font-size: 0.72rem;
+  }
+
+  :root[data-theme="lcars"] .scanner-control-group,
+  :root[data-theme="matrix"] .scanner-control-group,
+  :root[data-theme="first-responder"] .scanner-control-group,
+  :root[data-theme="amateur-radio"] .scanner-control-group {
+    margin-top: 0.55rem;
+    padding-block: 0.35rem;
+  }
+
+  :root[data-theme="lcars"] .scanner-control-group h3,
+  :root[data-theme="matrix"] .scanner-control-group h3,
+  :root[data-theme="first-responder"] .scanner-control-group h3,
+  :root[data-theme="amateur-radio"] .scanner-control-group h3 {
+    margin-bottom: 0.35rem;
+    font-size: 0.76rem;
+  }
+
+  :root[data-theme="lcars"] .recording-panel,
+  :root[data-theme="matrix"] .recording-panel,
+  :root[data-theme="first-responder"] .recording-panel,
+  :root[data-theme="amateur-radio"] .recording-panel {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    column-gap: 0.5rem;
+    align-content: start;
+  }
+
+  :root[data-theme="lcars"] .recording-panel > .panel-header,
+  :root[data-theme="matrix"] .recording-panel > .panel-header,
+  :root[data-theme="first-responder"] .recording-panel > .panel-header,
+  :root[data-theme="amateur-radio"] .recording-panel > .panel-header,
+  :root[data-theme="lcars"] .recording-telemetry,
+  :root[data-theme="matrix"] .recording-telemetry,
+  :root[data-theme="first-responder"] .recording-telemetry,
+  :root[data-theme="amateur-radio"] .recording-telemetry,
+  :root[data-theme="lcars"] .recording-library,
+  :root[data-theme="matrix"] .recording-library,
+  :root[data-theme="first-responder"] .recording-library,
+  :root[data-theme="amateur-radio"] .recording-library {
+    grid-column: 1 / -1;
+  }
+
+  :root[data-theme="lcars"] .recording-status,
+  :root[data-theme="matrix"] .recording-status,
+  :root[data-theme="first-responder"] .recording-status,
+  :root[data-theme="amateur-radio"] .recording-status {
+    align-self: center;
+  }
+
+  :root[data-theme="lcars"] .recording-controls,
+  :root[data-theme="matrix"] .recording-controls,
+  :root[data-theme="first-responder"] .recording-controls,
+  :root[data-theme="amateur-radio"] .recording-controls {
+    align-self: center;
+    justify-self: end;
+  }
+
+  :root[data-theme="lcars"] .recording-telemetry,
+  :root[data-theme="matrix"] .recording-telemetry,
+  :root[data-theme="first-responder"] .recording-telemetry,
+  :root[data-theme="amateur-radio"] .recording-telemetry {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: 0.45rem;
+    margin-top: 0.25rem;
+  }
+
+  :root[data-theme="lcars"] .recording-telemetry > div,
+  :root[data-theme="matrix"] .recording-telemetry > div,
+  :root[data-theme="first-responder"] .recording-telemetry > div,
+  :root[data-theme="amateur-radio"] .recording-telemetry > div {
+    grid-template-columns: minmax(4.3rem, 0.9fr) minmax(0, 1.1fr);
+    padding-block: 0.27rem;
+  }
+
+  :root[data-theme="lcars"] .recording-library,
+  :root[data-theme="matrix"] .recording-library,
+  :root[data-theme="first-responder"] .recording-library,
+  :root[data-theme="amateur-radio"] .recording-library {
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    gap: 0.25rem;
+    min-height: 0;
+    margin-top: 0.4rem;
+    padding-top: 0.4rem;
+    overflow: hidden;
+  }
+
+  :root[data-theme="lcars"] .recording-library-header,
+  :root[data-theme="matrix"] .recording-library-header,
+  :root[data-theme="first-responder"] .recording-library-header,
+  :root[data-theme="amateur-radio"] .recording-library-header {
+    gap: 0.4rem;
+  }
+
+  :root[data-theme="lcars"] .recording-library-header h3,
+  :root[data-theme="matrix"] .recording-library-header h3,
+  :root[data-theme="first-responder"] .recording-library-header h3,
+  :root[data-theme="amateur-radio"] .recording-library-header h3 {
+    font-size: 0.8rem;
+  }
+
+  :root[data-theme="lcars"] .recording-list,
+  :root[data-theme="matrix"] .recording-list,
+  :root[data-theme="first-responder"] .recording-list,
+  :root[data-theme="amateur-radio"] .recording-list {
+    min-height: 0;
+    margin: 0.1rem 0 0;
+    gap: 0.25rem;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+
+  :root[data-theme="lcars"] .recording-item,
+  :root[data-theme="matrix"] .recording-item,
+  :root[data-theme="first-responder"] .recording-item,
+  :root[data-theme="amateur-radio"] .recording-item {
+    gap: 0.35rem;
+    padding: 0.35rem;
+  }
+
+  :root[data-theme="lcars"] .saved-playback,
+  :root[data-theme="matrix"] .saved-playback,
+  :root[data-theme="first-responder"] .saved-playback,
+  :root[data-theme="amateur-radio"] .saved-playback {
+    margin-top: 0.15rem;
+  }
+
+  :root[data-theme="lcars"] .saved-playback audio,
+  :root[data-theme="matrix"] .saved-playback audio,
+  :root[data-theme="first-responder"] .saved-playback audio,
+  :root[data-theme="amateur-radio"] .saved-playback audio {
+    height: 2rem;
+  }
+
+  :root[data-theme="lcars"] .site-footer,
+  :root[data-theme="matrix"] .site-footer,
+  :root[data-theme="first-responder"] .site-footer,
+  :root[data-theme="amateur-radio"] .site-footer {
+    width: min(100% - 1rem, var(--content-width));
+    min-height: 1.55rem;
+    padding-block: 0.25rem;
+    font-size: 0.65rem;
+  }
+
+  /* Theme-specific density corrections retain each environment's chrome. */
+
+  :root[data-theme="lcars"] .panel {
+    padding: 0.6rem 0.75rem 0.7rem 2.6rem;
+    border-radius: 1.5rem 0.25rem 0.25rem 1.5rem;
+    box-shadow: inset 1.65rem 0 0 var(--accent);
+  }
+
+  :root[data-theme="lcars"] .panel:nth-child(2) {
+    box-shadow: inset 1.65rem 0 0 #d36b9b;
+  }
+
+  :root[data-theme="lcars"] .panel:nth-child(3) {
+    box-shadow: inset 1.65rem 0 0 #7d9bd1;
+  }
+
+  :root[data-theme="lcars"] .panel:nth-child(4) {
+    box-shadow: inset 1.65rem 0 0 #c9a46c;
+  }
+
+  :root[data-theme="lcars"] .panel:nth-child(5) {
+    box-shadow: inset 1.65rem 0 0 #b781d1;
+  }
+
+  :root[data-theme="lcars"] .panel:nth-child(6) {
+    box-shadow: inset 1.65rem 0 0 #df7869;
+  }
+
+  :root[data-theme="lcars"] .panel-header {
+    margin: -0.1rem -0.05rem 0.45rem 0;
+    padding: 0.3rem 0.65rem 0.32rem 2.2rem;
+  }
+
+  :root[data-theme="lcars"] .site-header {
+    padding-left: 4.4rem;
+    border-bottom-width: 0.4rem;
+  }
+
+  :root[data-theme="lcars"] .site-header::before {
+    width: 3.4rem;
+  }
+
+  :root[data-theme="lcars"] .site-header::after {
+    left: 3.4rem;
+    height: 0.4rem;
+  }
+
+  :root[data-theme="matrix"] .panel {
+    padding: 0 0.65rem 0.65rem;
+  }
+
+  :root[data-theme="matrix"] .panel-header {
+    min-height: 2.6rem;
+    margin: 0 -0.65rem 0.4rem;
+    padding: 1rem 0.55rem 0.28rem;
+  }
+
+  :root[data-theme="matrix"] .panel-header::before {
+    top: 0.3rem;
+    left: 0.5rem;
+    width: 0.34rem;
+    height: 0.34rem;
+    box-shadow:
+      0.58rem 0 #348d4a,
+      1.16rem 0 #1d5a2d;
+  }
+
+  :root[data-theme="matrix"] .panel-header::after {
+    top: 0.46rem;
+  }
+
+  :root[data-theme="first-responder"] .panel {
+    padding: 0 0.6rem 0.6rem;
+  }
+
+  :root[data-theme="first-responder"] .panel-header {
+    margin: 0 -0.6rem 0.4rem;
+    padding: 0.3rem 0.5rem 0.32rem;
+  }
+
+  :root[data-theme="first-responder"] .overview {
+    border-left-width: 0.2rem;
+  }
+
+  :root[data-theme="amateur-radio"] .dashboard-grid {
+    padding: 0.45rem;
+  }
+
+  :root[data-theme="amateur-radio"] .panel {
+    padding: 0.55rem;
+  }
+
+  :root[data-theme="amateur-radio"] .panel-emphasis {
+    border-width: 0.38rem;
+  }
+
+  :root[data-theme="amateur-radio"] .scanner-controls-panel {
+    padding-top: 3.45rem;
+  }
+
+  :root[data-theme="amateur-radio"] .scanner-controls-panel::before,
+  :root[data-theme="amateur-radio"] .scanner-controls-panel::after {
+    top: 0.42rem;
+    width: 2.15rem;
+    height: 2.15rem;
+    border-width: 0.15rem;
+  }
+
+  :root[data-theme="amateur-radio"] .scanner-controls-panel::before {
+    left: 0.7rem;
+  }
+
+  :root[data-theme="amateur-radio"] .scanner-controls-panel::after {
+    right: 0.7rem;
+  }
+}
+
+/*
+ * High-fidelity desktop environments.
+ *
+ * These layers deliberately use the empty regions of the 1080p console as
+ * decorative instrumentation. They carry no scanner state and remain
+ * pointer-inert.
+ */
+
+@media (min-width: 64rem) and (min-height: 36rem) {
+  /* LCARS-inspired: one continuous starship control surface. */
+
+  :root[data-theme="lcars"] .dashboard {
+    position: relative;
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid {
+    position: relative;
+    gap: 0.34rem;
+    padding: 0.34rem;
+    border: 0;
+    border-radius: 1.7rem 0.35rem 1.7rem 0.35rem;
+    background:
+      linear-gradient(
+        90deg,
+        #e89547 0 16%,
+        #d7b778 16% 31%,
+        #d36b9b 31% 50%,
+        #c69add 50% 67%,
+        #9fb7eb 67% 84%,
+        #e58b7f 84% 100%
+      );
+    box-shadow:
+      inset 0 0 0 0.17rem #09070d,
+      0 0 0 0.08rem rgb(255 244 223 / 0.08);
+    overflow: hidden;
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid::before {
+    position: absolute;
+    z-index: 2;
+    top: calc(50% - 0.11rem);
+    right: 0.34rem;
+    left: 0.34rem;
+    height: 0.22rem;
+    content: "";
+    pointer-events: none;
+    background:
+      linear-gradient(
+        90deg,
+        #e89547 0 12%,
+        #0b0910 12% 13%,
+        #d7b778 13% 27%,
+        #0b0910 27% 28%,
+        #d36b9b 28% 44%,
+        #0b0910 44% 45%,
+        #c69add 45% 61%,
+        #0b0910 61% 62%,
+        #9fb7eb 62% 79%,
+        #0b0910 79% 80%,
+        #e58b7f 80% 100%
+      );
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid::after {
+    position: absolute;
+    z-index: 2;
+    top: 0.34rem;
+    bottom: 0.34rem;
+    left: 33.17%;
+    width: 0.18rem;
+    content: "";
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(
+        180deg,
+        #0b0910 0 1.15rem,
+        #9fb7eb 1.15rem 1.7rem,
+        #0b0910 1.7rem 2.35rem,
+        #d36b9b 2.35rem 3rem
+      );
+    box-shadow:
+      calc(33.4vw - 0.75rem) 0 0 rgb(11 9 16 / 0.92);
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel {
+    --lcars-panel: #e89547;
+    --lcars-panel-soft: rgb(232 149 71 / 0.12);
+    position: relative;
+    isolation: isolate;
+    border: 0;
+    border-radius: 1.55rem 0.2rem 0.2rem 1.55rem;
+    background:
+      linear-gradient(
+        105deg,
+        var(--lcars-panel-soft),
+        transparent 3.5rem
+      ),
+      #0d0b11;
+    box-shadow:
+      inset 1.75rem 0 0 var(--lcars-panel),
+      inset 1.93rem 0 0 #0d0b11;
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel:nth-child(1) {
+    --lcars-panel: #e89547;
+    --lcars-panel-soft: rgb(232 149 71 / 0.13);
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel:nth-child(2) {
+    --lcars-panel: #d36b9b;
+    --lcars-panel-soft: rgb(211 107 155 / 0.13);
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel:nth-child(3) {
+    --lcars-panel: #9fb7eb;
+    --lcars-panel-soft: rgb(159 183 235 / 0.13);
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel:nth-child(4) {
+    --lcars-panel: #d7b778;
+    --lcars-panel-soft: rgb(215 183 120 / 0.13);
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel:nth-child(5) {
+    --lcars-panel: #c69add;
+    --lcars-panel-soft: rgb(198 154 221 / 0.13);
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel:nth-child(6) {
+    --lcars-panel: #e58b7f;
+    --lcars-panel-soft: rgb(229 139 127 / 0.13);
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel::before {
+    position: absolute;
+    z-index: -1;
+    right: 0.7rem;
+    bottom: 0.65rem;
+    width: min(34%, 11rem);
+    height: min(30%, 6.5rem);
+    content: "";
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(
+        180deg,
+        var(--lcars-panel) 0 0.18rem,
+        transparent 0.18rem 0.52rem
+      ),
+      repeating-linear-gradient(
+        90deg,
+        transparent 0 1.15rem,
+        var(--lcars-panel-soft) 1.15rem 1.45rem
+      );
+    border-right: 0.42rem solid var(--lcars-panel);
+    border-bottom: 0.42rem solid var(--lcars-panel);
+    border-radius: 0 0 1.3rem 0;
+    opacity: 0.24;
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel::after {
+    position: absolute;
+    z-index: 2;
+    top: 0.42rem;
+    right: 0.55rem;
+    width: 5.8rem;
+    height: 0.35rem;
+    content: "";
+    pointer-events: none;
+    background:
+      linear-gradient(
+        90deg,
+        var(--lcars-panel) 0 32%,
+        transparent 32% 37%,
+        #ffe0a3 37% 50%,
+        transparent 50% 55%,
+        var(--lcars-panel) 55% 78%,
+        transparent 78% 83%,
+        #9fb7eb 83% 100%
+      );
+    border-radius: 999px;
+    opacity: 0.95;
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel .panel-header {
+    position: relative;
+    margin-right: 0.25rem;
+    padding-left: 2rem;
+    overflow: visible;
+    color: #0b0910;
+    background: var(--lcars-panel);
+    border-radius: 999px 0.18rem 0.18rem 999px;
+    box-shadow:
+      1.25rem 0 0 -0.82rem var(--lcars-panel),
+      2rem 0 0 -1.08rem var(--lcars-panel);
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel .panel-header::after {
+    position: absolute;
+    top: 50%;
+    right: -0.25rem;
+    width: 1.15rem;
+    height: 0.26rem;
+    content: "";
+    pointer-events: none;
+    background: var(--lcars-panel);
+    transform: translateY(-50%);
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel .panel-header h2,
+  :root[data-theme="lcars"] .dashboard-grid > .panel .panel-header .panel-kicker {
+    color: #0b0910;
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel .status-list > div {
+    position: relative;
+    margin-inline: 0.05rem;
+    padding-inline: 0.35rem;
+    border-bottom: 0;
+    background:
+      linear-gradient(
+        90deg,
+        var(--lcars-panel-soft),
+        transparent 42%
+      );
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel .status-list > div + div {
+    border-top: 1px solid rgb(255 244 223 / 0.12);
+  }
+
+  :root[data-theme="lcars"] .scanner-control-group {
+    position: relative;
+    border: 0;
+    border-left: 0.38rem solid var(--lcars-panel);
+    border-radius: 0 0.75rem 0.75rem 0;
+    background:
+      linear-gradient(
+        90deg,
+        var(--lcars-panel-soft),
+        rgb(36 26 43 / 0.62)
+      );
+  }
+
+  :root[data-theme="lcars"] .scanner-control-group::after {
+    position: absolute;
+    top: 0.28rem;
+    right: 0.38rem;
+    width: 1.8rem;
+    height: 0.26rem;
+    content: "";
+    pointer-events: none;
+    background: var(--lcars-panel);
+    border-radius: 999px;
+    opacity: 0.7;
+  }
+
+  :root[data-theme="lcars"] .site-footer {
+    border-top: 0;
+    background:
+      linear-gradient(
+        90deg,
+        #e89547 0 18%,
+        transparent 18% 20%,
+        #d36b9b 20% 42%,
+        transparent 42% 44%,
+        #9fb7eb 44% 70%,
+        transparent 70% 72%,
+        #c69add 72% 100%
+      )
+      top / 100% 0.18rem no-repeat;
+  }
+
+  /*
+   * LCARS alignment correction.
+   *
+   * Keep the continuous multicolor grid substrate, but do not draw synthetic
+   * dividers across pane content. Decorative data blocks stay inside their
+   * owning pane and header capsules terminate cleanly.
+   */
+
+  :root[data-theme="lcars"] .dashboard-grid::before,
+  :root[data-theme="lcars"] .dashboard-grid::after {
+    content: none;
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel {
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel::before {
+    right: 0.8rem;
+    bottom: 0.72rem;
+    width: min(27%, 8.5rem);
+    height: min(22%, 4.4rem);
+    border-right-width: 0.28rem;
+    border-bottom-width: 0.28rem;
+    border-radius: 0 0 0.9rem 0;
+    opacity: 0.16;
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel::after {
+    top: 0.38rem;
+    right: 0.72rem;
+    width: 4.3rem;
+    height: 0.22rem;
+    background:
+      linear-gradient(
+        90deg,
+        var(--lcars-panel) 0 38%,
+        transparent 38% 44%,
+        #ffe0a3 44% 57%,
+        transparent 57% 63%,
+        var(--lcars-panel) 63% 100%
+      );
+    opacity: 0.78;
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel .panel-header {
+    margin-right: 0.45rem;
+    box-shadow: none;
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel .panel-header::after {
+    content: none;
+  }
+
+  /* Matrix-inspired: a dense workstation of visibly different terminals. */
+
+  :root[data-theme="matrix"] .dashboard-grid {
+    position: relative;
+    gap: 0.42rem;
+    padding: 0.3rem;
+    border: 1px solid #123c21;
+    background:
+      linear-gradient(90deg, rgb(67 217 104 / 0.04) 1px, transparent 1px),
+      linear-gradient(180deg, rgb(67 217 104 / 0.04) 1px, transparent 1px),
+      #010503;
+    background-size: 2rem 2rem;
+    box-shadow:
+      inset 0 0 2.5rem rgb(67 217 104 / 0.045),
+      0 0 1.2rem rgb(0 0 0 / 0.65);
+  }
+
+  :root[data-theme="matrix"] .dashboard-grid > .panel {
+    --term-accent: #43d968;
+    --term-dim: rgb(67 217 104 / 0.13);
+    position: relative;
+    isolation: isolate;
+    border: 1px solid color-mix(in srgb, var(--term-accent) 50%, #051008);
+    border-left-width: 0.28rem;
+    background:
+      repeating-linear-gradient(
+        180deg,
+        rgb(184 255 199 / 0.018) 0 1px,
+        transparent 1px 4px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        transparent 0 2.8rem,
+        var(--term-dim) 2.8rem 2.84rem
+      ),
+      radial-gradient(
+        circle at 80% 18%,
+        var(--term-dim),
+        transparent 13rem
+      ),
+      #020a05;
+    box-shadow:
+      inset 0 0 1.3rem rgb(0 0 0 / 0.42),
+      inset 0 0 0 1px rgb(114 245 143 / 0.025),
+      0 0 0.65rem rgb(0 0 0 / 0.55);
+  }
+
+  :root[data-theme="matrix"] .dashboard-grid > .panel:nth-child(1) {
+    --term-accent: #43d968;
+    --term-dim: rgb(67 217 104 / 0.14);
+  }
+
+  :root[data-theme="matrix"] .dashboard-grid > .panel:nth-child(2) {
+    --term-accent: #72f58f;
+    --term-dim: rgb(114 245 143 / 0.13);
+  }
+
+  :root[data-theme="matrix"] .dashboard-grid > .panel:nth-child(3) {
+    --term-accent: #2bbb63;
+    --term-dim: rgb(43 187 99 / 0.14);
+  }
+
+  :root[data-theme="matrix"] .dashboard-grid > .panel:nth-child(4) {
+    --term-accent: #8bdc9e;
+    --term-dim: rgb(139 220 158 / 0.11);
+  }
+
+  :root[data-theme="matrix"] .dashboard-grid > .panel:nth-child(5) {
+    --term-accent: #36cfa0;
+    --term-dim: rgb(54 207 160 / 0.11);
+  }
+
+  :root[data-theme="matrix"] .dashboard-grid > .panel:nth-child(6) {
+    --term-accent: #a0f072;
+    --term-dim: rgb(160 240 114 / 0.11);
+  }
+
+  :root[data-theme="matrix"] .dashboard-grid > .panel::before {
+    position: absolute;
+    z-index: 3;
+    top: 0.34rem;
+    right: 0.55rem;
+    width: 5.4rem;
+    height: 0.24rem;
+    content: "";
+    pointer-events: none;
+    color: transparent;
+    background:
+      repeating-linear-gradient(
+        90deg,
+        var(--term-accent) 0 0.45rem,
+        transparent 0.45rem 0.62rem
+      );
+    box-shadow:
+      0 0.38rem 0 -0.07rem var(--term-dim),
+      0 0.76rem 0 -0.09rem var(--term-dim);
+    opacity: 0.72;
+  }
+
+  :root[data-theme="matrix"] .dashboard-grid > .panel::after {
+    position: absolute;
+    z-index: 2;
+    right: 0.5rem;
+    bottom: 0.36rem;
+    left: 0.55rem;
+    height: 0.34rem;
+    content: "";
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(
+        90deg,
+        var(--term-accent) 0 1.4rem,
+        transparent 1.4rem 1.55rem,
+        var(--term-dim) 1.55rem 2.5rem,
+        transparent 2.5rem 2.75rem
+      );
+    border-top: 1px solid var(--term-dim);
+    box-shadow: 0 -0.2rem 0 rgb(0 0 0 / 0.25);
+    opacity: 0.48;
+  }
+
+  :root[data-theme="matrix"] .dashboard-grid > .panel .panel-header {
+    display: flex;
+    min-height: 2.45rem;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.86rem 6.4rem 0.25rem 2.3rem;
+    border-bottom: 1px solid var(--term-accent);
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--term-accent) 15%, #020a05),
+        #031008
+      );
+    box-shadow:
+      inset 0 -0.16rem 0 rgb(0 0 0 / 0.32),
+      0 0.2rem 0.55rem rgb(0 0 0 / 0.34);
+  }
+
+  :root[data-theme="matrix"] .dashboard-grid > .panel .panel-header::before {
+    top: 0.28rem;
+    left: 0.5rem;
+    width: 0.31rem;
+    height: 0.31rem;
+    background: var(--term-accent);
+    box-shadow:
+      0.53rem 0 color-mix(in srgb, var(--term-accent) 60%, #06110b),
+      1.06rem 0 color-mix(in srgb, var(--term-accent) 32%, #06110b);
+  }
+
+  :root[data-theme="matrix"] .dashboard-grid > .panel .panel-header::after {
+    top: 0.36rem;
+    right: 0.5rem;
+    width: 4.7rem;
+    height: 0.1rem;
+    background:
+      repeating-linear-gradient(
+        90deg,
+        var(--term-accent) 0 0.7rem,
+        transparent 0.7rem 0.86rem
+      );
+    box-shadow:
+      0 0.28rem 0 var(--term-dim),
+      0 0.56rem 0 var(--term-dim);
+  }
+
+  :root[data-theme="matrix"] .dashboard-grid > .panel .panel-kicker {
+    flex: 0 0 auto;
+    margin: 0;
+    color: color-mix(in srgb, var(--term-accent) 78%, #b8ffc7);
+    font-size: 0.53rem;
+  }
+
+  :root[data-theme="matrix"] .dashboard-grid > .panel h2 {
+    color: var(--term-accent);
+    text-shadow:
+      0 0 0.38rem var(--term-dim),
+      0 0 0.9rem rgb(67 217 104 / 0.08);
+  }
+
+  :root[data-theme="matrix"] .dashboard-grid > .panel .status-list > div {
+    padding-inline: 0.35rem;
+    border-bottom: 1px dashed
+      color-mix(in srgb, var(--term-accent) 38%, #06110b);
+    background:
+      linear-gradient(
+        90deg,
+        var(--term-dim),
+        transparent 34%
+      );
+  }
+
+  :root[data-theme="matrix"] .dashboard-grid > .panel .technical-value,
+  :root[data-theme="matrix"] .dashboard-grid > .panel .status-list dd {
+    color: color-mix(in srgb, var(--term-accent) 78%, #b8ffc7);
+    text-shadow: 0 0 0.35rem var(--term-dim);
+  }
+
+  :root[data-theme="matrix"] .scanner-control-group,
+  :root[data-theme="matrix"] .recording-library {
+    position: relative;
+    border: 1px solid
+      color-mix(in srgb, var(--term-accent) 35%, #06110b);
+    border-left: 0.2rem solid var(--term-accent);
+    background:
+      linear-gradient(
+        90deg,
+        var(--term-dim),
+        transparent 45%
+      ),
+      rgb(1 7 3 / 0.78);
+  }
+
+  :root[data-theme="matrix"] .scanner-control-group::after,
+  :root[data-theme="matrix"] .recording-library::after {
+    position: absolute;
+    top: 0.22rem;
+    right: 0.3rem;
+    width: 2.8rem;
+    height: 0.16rem;
+    content: "";
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(
+        90deg,
+        var(--term-accent) 0 0.35rem,
+        transparent 0.35rem 0.5rem
+      );
+    opacity: 0.48;
+  }
+
+  :root[data-theme="matrix"] .dashboard-grid button,
+  :root[data-theme="matrix"] .dashboard-grid .recording-action {
+    border-color: var(--term-accent);
+    color: #010503;
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--term-accent) 82%, #d4ff62),
+        var(--term-accent)
+      );
+    box-shadow:
+      inset 0 1px rgb(255 255 255 / 0.16),
+      0 0 0.45rem var(--term-dim);
+  }
+
+  :root[data-theme="matrix"] .dashboard-grid button:disabled {
+    color: color-mix(in srgb, var(--term-accent) 64%, #010503);
+  }
+
+  :root[data-theme="matrix"] #audio-stop,
+  :root[data-theme="matrix"] #scanner-reconnect,
+  :root[data-theme="matrix"] #recording-stop,
+  :root[data-theme="matrix"] #recordings-refresh {
+    color: var(--term-accent);
+    background: #010704;
+  }
+
+  :root[data-theme="matrix"] .site-footer {
+    border-top-color: #1f6f35;
+    background:
+      repeating-linear-gradient(
+        90deg,
+        rgb(67 217 104 / 0.16) 0 2.2rem,
+        transparent 2.2rem 2.35rem
+      );
+  }
+}
+
+/*
+ * High-fidelity First Responder and Amateur Radio environments.
+ *
+ * These layers stay presentation-only. Decorative workstation and scanner
+ * hardware cues never replace labeled scanner state or accessible controls.
+ */
+
+@media (min-width: 64rem) and (min-height: 36rem) {
+  /* First Responder: dense public-safety dispatch / CAD workstation. */
+
+  :root[data-theme="first-responder"] body {
+    background:
+      linear-gradient(
+        90deg,
+        rgb(78 161 255 / 0.025) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        180deg,
+        rgb(78 161 255 / 0.018) 1px,
+        transparent 1px
+      ),
+      radial-gradient(
+        circle at 84% 16%,
+        rgb(78 161 255 / 0.09),
+        transparent 20rem
+      ),
+      radial-gradient(
+        circle at 16% 84%,
+        rgb(217 79 79 / 0.055),
+        transparent 22rem
+      ),
+      #06101c;
+    background-size:
+      3.5rem 3.5rem,
+      3.5rem 3.5rem,
+      auto,
+      auto;
+  }
+
+  :root[data-theme="first-responder"] .site-header {
+    position: relative;
+    border: 1px solid #3c5e79;
+    border-top: 0.22rem solid #5aa8ff;
+    border-radius: 0.12rem;
+    background:
+      linear-gradient(180deg, #18334e, #0c2033);
+    box-shadow:
+      inset 0 1px rgb(255 255 255 / 0.05),
+      0 0.35rem 1rem rgb(0 0 0 / 0.34);
+  }
+
+  :root[data-theme="first-responder"] .site-header::before {
+    position: absolute;
+    right: 10.5rem;
+    bottom: -0.22rem;
+    width: 10rem;
+    height: 0.22rem;
+    content: "";
+    pointer-events: none;
+    background:
+      linear-gradient(
+        90deg,
+        #3b82f6 0 18%,
+        transparent 18% 22%,
+        #3b82f6 22% 40%,
+        transparent 40% 60%,
+        #d94f4f 60% 78%,
+        transparent 78% 82%,
+        #d94f4f 82% 100%
+      );
+    box-shadow:
+      0 0 0.8rem rgb(59 130 246 / 0.24),
+      0 0 0.8rem rgb(217 79 79 / 0.2);
+  }
+
+  :root[data-theme="first-responder"] .dashboard-grid {
+    position: relative;
+    gap: 0.38rem;
+    padding: 0.32rem;
+    border: 1px solid #31516d;
+    background:
+      linear-gradient(
+        90deg,
+        rgb(78 161 255 / 0.035) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        180deg,
+        rgb(78 161 255 / 0.028) 1px,
+        transparent 1px
+      ),
+      #071421;
+    background-size:
+      2.5rem 2.5rem,
+      2.5rem 2.5rem;
+    box-shadow:
+      inset 0 0 2rem rgb(0 0 0 / 0.24),
+      0 0 1rem rgb(0 0 0 / 0.3);
+  }
+
+  :root[data-theme="first-responder"] .dashboard-grid > .panel {
+    --dispatch-accent: #4ea1ff;
+    --dispatch-soft: rgb(78 161 255 / 0.11);
+    position: relative;
+    isolation: isolate;
+    overflow-x: hidden;
+    border: 1px solid #3d607c;
+    border-top: 0.22rem solid var(--dispatch-accent);
+    border-radius: 0.12rem;
+    background:
+      linear-gradient(
+        135deg,
+        var(--dispatch-soft),
+        transparent 8rem
+      ),
+      #091725;
+    box-shadow:
+      inset 0 0 0 1px rgb(255 255 255 / 0.015),
+      0 0.32rem 0.8rem rgb(0 0 0 / 0.3);
+  }
+
+  :root[data-theme="first-responder"] .dashboard-grid > .panel:nth-child(1) {
+    --dispatch-accent: #4ea1ff;
+    --dispatch-soft: rgb(78 161 255 / 0.12);
+  }
+
+  :root[data-theme="first-responder"] .dashboard-grid > .panel:nth-child(2) {
+    --dispatch-accent: #ff8b72;
+    --dispatch-soft: rgb(255 139 114 / 0.1);
+  }
+
+  :root[data-theme="first-responder"] .dashboard-grid > .panel:nth-child(3) {
+    --dispatch-accent: #72b7ff;
+    --dispatch-soft: rgb(114 183 255 / 0.11);
+  }
+
+  :root[data-theme="first-responder"] .dashboard-grid > .panel:nth-child(4) {
+    --dispatch-accent: #75d4ba;
+    --dispatch-soft: rgb(117 212 186 / 0.09);
+  }
+
+  :root[data-theme="first-responder"] .dashboard-grid > .panel:nth-child(5) {
+    --dispatch-accent: #9eb8d2;
+    --dispatch-soft: rgb(158 184 210 / 0.09);
+  }
+
+  :root[data-theme="first-responder"] .dashboard-grid > .panel:nth-child(6) {
+    --dispatch-accent: #e88989;
+    --dispatch-soft: rgb(232 137 137 / 0.1);
+  }
+
+  :root[data-theme="first-responder"] .dashboard-grid > .panel::before {
+    position: absolute;
+    z-index: -1;
+    right: 0.55rem;
+    bottom: 0.55rem;
+    width: min(31%, 9rem);
+    height: min(23%, 4.5rem);
+    content: "";
+    pointer-events: none;
+    background:
+      repeating-radial-gradient(
+        circle at 100% 100%,
+        transparent 0 0.55rem,
+        var(--dispatch-soft) 0.55rem 0.62rem
+      );
+    border-right: 1px solid var(--dispatch-accent);
+    border-bottom: 1px solid var(--dispatch-accent);
+    opacity: 0.23;
+  }
+
+  :root[data-theme="first-responder"] .dashboard-grid > .panel::after {
+    position: absolute;
+    top: 0.34rem;
+    right: 0.46rem;
+    width: 4rem;
+    height: 0.22rem;
+    content: "";
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(
+        90deg,
+        var(--dispatch-accent) 0 0.55rem,
+        transparent 0.55rem 0.7rem
+      );
+    opacity: 0.65;
+  }
+
+  :root[data-theme="first-responder"] .dashboard-grid > .panel .panel-header {
+    display: flex;
+    min-height: 2.3rem;
+    align-items: center;
+    gap: 0.55rem;
+    margin: 0 -0.6rem 0.38rem;
+    padding: 0.62rem 4.8rem 0.28rem 0.6rem;
+    border-bottom: 1px solid #52728e;
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--dispatch-accent) 26%, #173550),
+        color-mix(in srgb, var(--dispatch-accent) 10%, #102940)
+      );
+    box-shadow:
+      inset 0 -1px rgb(0 0 0 / 0.28),
+      0 0.18rem 0.4rem rgb(0 0 0 / 0.22);
+  }
+
+  :root[data-theme="first-responder"] .dashboard-grid > .panel .panel-kicker {
+    flex: 0 0 auto;
+    margin: 0;
+    color: #d9e9f7;
+    font-size: 0.52rem;
+  }
+
+  :root[data-theme="first-responder"] .dashboard-grid > .panel h2 {
+    color: #f4f8fc;
+    text-transform: uppercase;
+    letter-spacing: 0.035em;
+  }
+
+  :root[data-theme="first-responder"] .dashboard-grid > .panel .status-list > div {
+    padding-inline: 0.38rem;
+    border-bottom: 1px solid #24425a;
+    background:
+      linear-gradient(
+        90deg,
+        var(--dispatch-soft),
+        transparent 38%
+      );
+  }
+
+  :root[data-theme="first-responder"] .scanner-control-group {
+    position: relative;
+    border: 1px solid #315671;
+    border-left: 0.24rem solid var(--dispatch-accent);
+    border-radius: 0.08rem;
+    background:
+      linear-gradient(
+        90deg,
+        var(--dispatch-soft),
+        transparent 45%
+      ),
+      #081522;
+  }
+
+  :root[data-theme="first-responder"] .scanner-control-group::before {
+    position: absolute;
+    top: 0.24rem;
+    right: 0.36rem;
+    width: 2.2rem;
+    height: 0.16rem;
+    content: "";
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(
+        90deg,
+        var(--dispatch-accent) 0 0.34rem,
+        transparent 0.34rem 0.48rem
+      );
+    opacity: 0.58;
+  }
+
+  :root[data-theme="first-responder"] .dashboard-grid button,
+  :root[data-theme="first-responder"] .dashboard-grid .recording-action {
+    border-radius: 0.08rem;
+    border-color: color-mix(in srgb, var(--dispatch-accent) 78%, #ffffff);
+    color: #f3f8fd;
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--dispatch-accent) 38%, #173550),
+        color-mix(in srgb, var(--dispatch-accent) 22%, #0b1d2e)
+      );
+    box-shadow:
+      inset 0 1px rgb(255 255 255 / 0.07),
+      0 0.16rem 0.35rem rgb(0 0 0 / 0.32);
+  }
+
+  :root[data-theme="first-responder"] #audio-stop,
+  :root[data-theme="first-responder"] #scanner-reconnect,
+  :root[data-theme="first-responder"] #recording-stop,
+  :root[data-theme="first-responder"] #recordings-refresh {
+    color: var(--dispatch-accent);
+    background: #071421;
+  }
+
+  :root[data-theme="first-responder"] .recording-library {
+    position: relative;
+    border-top: 1px solid #375b78;
+    background:
+      linear-gradient(
+        90deg,
+        var(--dispatch-soft),
+        transparent 48%
+      );
+  }
+
+  :root[data-theme="first-responder"] .site-footer {
+    border: 1px solid #31516d;
+    border-top: 0.16rem solid #4ea1ff;
+    background:
+      linear-gradient(
+        90deg,
+        rgb(78 161 255 / 0.08),
+        transparent 40% 60%,
+        rgb(217 79 79 / 0.06)
+      ),
+      #071421;
+  }
+
+  /* Amateur Radio: SDS200-inspired base/mobile scanner hardware console. */
+
+  :root[data-theme="amateur-radio"] body {
+    background:
+      repeating-linear-gradient(
+        180deg,
+        #0d0e0d 0 2px,
+        #111210 2px 4px
+      );
+  }
+
+  :root[data-theme="amateur-radio"] .site-header {
+    position: relative;
+    border: 1px solid #66685f;
+    border-radius: 0.16rem;
+    background:
+      linear-gradient(180deg, #34352f, #171813);
+    box-shadow:
+      inset 0 1px rgb(255 255 255 / 0.08),
+      inset 0 -1px rgb(0 0 0 / 0.8),
+      0 0.45rem 1.1rem rgb(0 0 0 / 0.5);
+  }
+
+  :root[data-theme="amateur-radio"] .site-header::before,
+  :root[data-theme="amateur-radio"] .site-header::after {
+    position: absolute;
+    top: 50%;
+    width: 0.55rem;
+    height: 0.55rem;
+    content: "";
+    pointer-events: none;
+    border: 1px solid #777970;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle, #1b1c19 0 20%, #85877d 22% 40%, #2a2b27 42%);
+    box-shadow: inset 0 0 0.2rem rgb(255 255 255 / 0.18);
+    transform: translateY(-50%);
+  }
+
+  :root[data-theme="amateur-radio"] .site-header::before {
+    left: 0.48rem;
+  }
+
+  :root[data-theme="amateur-radio"] .site-header::after {
+    right: 0.48rem;
+  }
+
+  :root[data-theme="amateur-radio"] .dashboard-grid {
+    position: relative;
+    gap: 0.5rem;
+    padding: 0.55rem;
+    border: 0.55rem solid #24251f;
+    border-radius: 0.18rem;
+    outline: 1px solid #5d5f57;
+    background:
+      linear-gradient(
+        180deg,
+        rgb(255 255 255 / 0.025),
+        transparent 5rem
+      ),
+      #141510;
+    box-shadow:
+      inset 0 0 3rem rgb(0 0 0 / 0.62),
+      inset 0 1px rgb(255 255 255 / 0.045),
+      0 0.75rem 1.7rem rgb(0 0 0 / 0.48);
+  }
+
+  :root[data-theme="amateur-radio"] .dashboard-grid > .panel {
+    --radio-accent: #d99a3e;
+    --radio-soft: rgb(217 154 62 / 0.08);
+    position: relative;
+    isolation: isolate;
+    overflow-x: hidden;
+    border: 1px solid #5d5e55;
+    border-radius: 0.12rem;
+    background:
+      linear-gradient(
+        180deg,
+        rgb(255 255 255 / 0.02),
+        transparent 3rem
+      ),
+      #191a16;
+    box-shadow:
+      inset 0 1px rgb(255 255 255 / 0.045),
+      inset 0 -1px rgb(0 0 0 / 0.6),
+      0 0.25rem 0.65rem rgb(0 0 0 / 0.48);
+  }
+
+  :root[data-theme="amateur-radio"] .dashboard-grid > .panel:nth-child(1) {
+    --radio-accent: #d99a3e;
+    --radio-soft: rgb(217 154 62 / 0.09);
+  }
+
+  :root[data-theme="amateur-radio"] .dashboard-grid > .panel:nth-child(2) {
+    --radio-accent: #66d6e6;
+    --radio-soft: rgb(102 214 230 / 0.09);
+  }
+
+  :root[data-theme="amateur-radio"] .dashboard-grid > .panel:nth-child(3) {
+    --radio-accent: #d6b36b;
+    --radio-soft: rgb(214 179 107 / 0.08);
+  }
+
+  :root[data-theme="amateur-radio"] .dashboard-grid > .panel:nth-child(4) {
+    --radio-accent: #8fd18a;
+    --radio-soft: rgb(143 209 138 / 0.08);
+  }
+
+  :root[data-theme="amateur-radio"] .dashboard-grid > .panel:nth-child(5) {
+    --radio-accent: #8ed9e6;
+    --radio-soft: rgb(142 217 230 / 0.08);
+  }
+
+  :root[data-theme="amateur-radio"] .dashboard-grid > .panel:nth-child(6) {
+    --radio-accent: #ef9a72;
+    --radio-soft: rgb(239 154 114 / 0.08);
+  }
+
+  :root[data-theme="amateur-radio"] .dashboard-grid > .panel::before,
+  :root[data-theme="amateur-radio"] .dashboard-grid > .panel::after {
+    position: absolute;
+    width: 0.5rem;
+    height: 0.5rem;
+    content: "";
+    pointer-events: none;
+    border: 1px solid #6c6e66;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle, #191a17 0 22%, #777970 24% 42%, #262723 44%);
+    opacity: 0.76;
+  }
+
+  :root[data-theme="amateur-radio"] .dashboard-grid > .panel::before {
+    right: 0.35rem;
+    bottom: 0.35rem;
+  }
+
+  :root[data-theme="amateur-radio"] .dashboard-grid > .panel::after {
+    top: 0.35rem;
+    left: 0.35rem;
+  }
+
+  :root[data-theme="amateur-radio"] .dashboard-grid > .panel .panel-header {
+    display: flex;
+    min-height: 2.35rem;
+    align-items: center;
+    gap: 0.55rem;
+    margin: 0 -0.55rem 0.42rem;
+    padding: 0.62rem 3.6rem 0.3rem 0.85rem;
+    border-bottom: 1px solid #5e604f;
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--radio-accent) 13%, #34352f),
+        #20211c
+      );
+    box-shadow:
+      inset 0 1px rgb(255 255 255 / 0.05),
+      inset 0 -1px rgb(0 0 0 / 0.68);
+  }
+
+  :root[data-theme="amateur-radio"] .dashboard-grid > .panel .panel-header::after {
+    position: absolute;
+    right: 0.65rem;
+    width: 2.2rem;
+    height: 0.3rem;
+    content: "";
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(
+        90deg,
+        var(--radio-accent) 0 0.18rem,
+        transparent 0.18rem 0.33rem
+      );
+    opacity: 0.65;
+  }
+
+  :root[data-theme="amateur-radio"] .dashboard-grid > .panel .panel-kicker {
+    flex: 0 0 auto;
+    margin: 0;
+    color: var(--radio-accent);
+    font-size: 0.53rem;
+  }
+
+  :root[data-theme="amateur-radio"] .dashboard-grid > .panel h2 {
+    color: #f2ecd5;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  :root[data-theme="amateur-radio"] .panel-emphasis {
+    border: 0.48rem solid #2d2f2a;
+    outline: 1px solid #70726a;
+    background:
+      repeating-linear-gradient(
+        180deg,
+        rgb(102 214 230 / 0.018) 0 1px,
+        transparent 1px 4px
+      ),
+      linear-gradient(
+        90deg,
+        rgb(102 214 230 / 0.035),
+        transparent 22% 78%,
+        rgb(255 208 120 / 0.025)
+      ),
+      #020708;
+    box-shadow:
+      inset 0 0 2.3rem rgb(0 0 0 / 0.92),
+      inset 0 0 0 1px rgb(102 214 230 / 0.035),
+      0 0.32rem 0.8rem rgb(0 0 0 / 0.55);
+  }
+
+  :root[data-theme="amateur-radio"] .panel-emphasis .primary-value {
+    margin-top: 0.55rem;
+    padding: 0.42rem 0.5rem;
+    border: 1px solid #305862;
+    color: #6ee9ff;
+    background:
+      linear-gradient(
+        180deg,
+        rgb(110 233 255 / 0.055),
+        transparent
+      ),
+      #010607;
+    text-shadow:
+      0 0 0.55rem rgb(110 233 255 / 0.28),
+      0 0 1rem rgb(110 233 255 / 0.09);
+    box-shadow: inset 0 0 0.8rem rgb(110 233 255 / 0.03);
+  }
+
+  :root[data-theme="amateur-radio"] .panel-emphasis .secondary-value {
+    margin-top: 0.18rem;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid #5d4d27;
+    color: #ffd36d;
+    background: #080704;
+    text-shadow: 0 0 0.45rem rgb(255 211 109 / 0.24);
+  }
+
+  :root[data-theme="amateur-radio"] .panel-emphasis .status-list > div {
+    padding-inline: 0.4rem;
+    border-bottom: 1px solid #273f43;
+    background:
+      linear-gradient(
+        90deg,
+        rgb(102 214 230 / 0.045),
+        transparent 44%
+      );
+  }
+
+  :root[data-theme="amateur-radio"] .scanner-controls-panel {
+    padding-top: 3.65rem;
+    background:
+      linear-gradient(180deg, #34352f 0 3.15rem, #181914 3.15rem 100%);
+  }
+
+  :root[data-theme="amateur-radio"] .dashboard-grid > .scanner-controls-panel::before,
+  :root[data-theme="amateur-radio"] .dashboard-grid > .scanner-controls-panel::after {
+    position: absolute;
+    top: 0.34rem;
+    bottom: auto;
+    width: 2.72rem;
+    height: 2.72rem;
+    content: "";
+    border: 0.18rem solid #979a90;
+    border-radius: 50%;
+    background:
+      radial-gradient(
+        circle at 37% 29%,
+        rgb(255 255 255 / 0.18) 0 5%,
+        transparent 6% 100%
+      ),
+      radial-gradient(
+        circle,
+        #151612 0 23%,
+        #50524b 24% 32%,
+        #20211d 33% 48%,
+        #74776e 49% 56%,
+        #2b2d27 57% 68%,
+        #10110e 69% 100%
+      ),
+      conic-gradient(
+        from -14deg,
+        #d8a44c 0 2%,
+        #23241f 2% 8%,
+        #70736b 8% 9.5%,
+        #23241f 9.5% 17%,
+        #70736b 17% 18.5%,
+        #23241f 18.5% 26%,
+        #70736b 26% 27.5%,
+        #23241f 27.5% 100%
+      );
+    box-shadow:
+      inset 0 0 0 0.14rem #0f100d,
+      inset 0 0 0 0.32rem #393b35,
+      inset 0.18rem 0.18rem 0.36rem rgb(255 255 255 / 0.09),
+      inset -0.25rem -0.28rem 0.44rem rgb(0 0 0 / 0.74),
+      0 0.18rem 0 0.12rem #090a08,
+      0 0.42rem 0.58rem rgb(0 0 0 / 0.78),
+      0 0 0.9rem rgb(217 154 62 / 0.07);
+    opacity: 1;
+  }
+
+  :root[data-theme="amateur-radio"] .dashboard-grid > .scanner-controls-panel::before {
+    right: auto;
+    left: 0.72rem;
+  }
+
+  :root[data-theme="amateur-radio"] .dashboard-grid > .scanner-controls-panel::after {
+    right: 0.72rem;
+    left: auto;
+  }
+
+  :root[data-theme="amateur-radio"] .scanner-control-group {
+    position: relative;
+    border: 1px solid #4f5049;
+    border-left: 0.18rem solid var(--radio-accent);
+    border-radius: 0.08rem;
+    background:
+      linear-gradient(
+        90deg,
+        var(--radio-soft),
+        transparent 45%
+      ),
+      #161713;
+  }
+
+  :root[data-theme="amateur-radio"] .scanner-controls {
+    gap: 0.4rem;
+  }
+
+  :root[data-theme="amateur-radio"] .scanner-controls button {
+    border: 1px solid #686a62;
+    border-radius: 0.12rem;
+    color: #ece7d6;
+    background:
+      linear-gradient(180deg, #3b3c37, #1b1c18);
+    box-shadow:
+      inset 0 1px rgb(255 255 255 / 0.08),
+      inset 0 -1px rgb(0 0 0 / 0.7),
+      0 0.18rem 0.3rem rgb(0 0 0 / 0.55);
+    text-shadow: 0 1px #000000;
+  }
+
+  :root[data-theme="amateur-radio"] .scanner-controls button:hover:not(:disabled) {
+    border-color: var(--radio-accent);
+    color: #ffffff;
+    background:
+      linear-gradient(180deg, #4a4c45, #21231e);
+  }
+
+  :root[data-theme="amateur-radio"] .recording-panel {
+    background:
+      linear-gradient(
+        180deg,
+        var(--radio-soft),
+        transparent 5rem
+      ),
+      #191a16;
+  }
+
+  :root[data-theme="amateur-radio"] .recording-library {
+    border-top-color: #5d5e55;
+    background:
+      linear-gradient(
+        90deg,
+        var(--radio-soft),
+        transparent 50%
+      );
+  }
+
+  :root[data-theme="amateur-radio"] .site-footer {
+    border: 1px solid #55574f;
+    background:
+      linear-gradient(
+        180deg,
+        #24251f,
+        #151611
+      );
+    box-shadow: inset 0 1px rgb(255 255 255 / 0.035);
+  }
+}
+
+/*
+ * Intermediate-width recording telemetry.
+ *
+ * Keep the immersive 3x2 console between laptop and 1080p widths, but give
+ * each recording metric enough horizontal room to avoid wrapping values into
+ * fragments. Metrics become a 2-column matrix with label-over-value cells.
+ */
+
+@media (min-width: 64rem) and (max-width: 90rem) and (min-height: 36rem) {
+  :root[data-theme="lcars"] .recording-telemetry,
+  :root[data-theme="matrix"] .recording-telemetry,
+  :root[data-theme="first-responder"] .recording-telemetry,
+  :root[data-theme="amateur-radio"] .recording-telemetry {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  :root[data-theme="lcars"] .recording-telemetry > div,
+  :root[data-theme="matrix"] .recording-telemetry > div,
+  :root[data-theme="first-responder"] .recording-telemetry > div,
+  :root[data-theme="amateur-radio"] .recording-telemetry > div {
+    grid-template-columns: 1fr;
+    gap: 0.08rem;
+    align-content: start;
+  }
+
+  :root[data-theme="lcars"] .recording-telemetry dd,
+  :root[data-theme="matrix"] .recording-telemetry dd,
+  :root[data-theme="first-responder"] .recording-telemetry dd,
+  :root[data-theme="amateur-radio"] .recording-telemetry dd {
+    text-align: left;
+  }
+}
+
+@media (max-width: 42rem) {
+  .header-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .theme-picker {
+    align-self: flex-start;
+  }
+}
+
+/*
+ * Extreme graphical theme stage.
+ *
+ * This shared aria-hidden layer provides viewport-scale artwork for the four
+ * expressive themes. It is purely decorative, accepts no pointer input, and
+ * never replaces labeled scanner state.
+ */
+
+.theme-stage {
+  display: none;
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  contain: paint;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.theme-stage > span {
+  position: absolute;
+  display: block;
+  pointer-events: none;
+}
+
+:root[data-theme="lcars"] .theme-stage,
+:root[data-theme="matrix"] .theme-stage,
+:root[data-theme="first-responder"] .theme-stage,
+:root[data-theme="amateur-radio"] .theme-stage {
+  display: block;
+}
+
+.site-header {
+  position: relative;
+  z-index: 3;
+}
+
+.dashboard,
+.site-footer {
+  position: relative;
+  z-index: 1;
+}
+
+.skip-link {
+  z-index: 10;
+}
+
+@keyframes matrix-stage-fall {
+  from {
+    transform: translateY(-16rem);
+  }
+
+  to {
+    transform: translateY(16rem);
+  }
+}
+
+@keyframes matrix-stage-flicker {
+  0%,
+  91%,
+  94%,
+  100% {
+    opacity: 0.34;
+  }
+
+  92% {
+    opacity: 0.58;
+  }
+
+  93% {
+    opacity: 0.18;
+  }
+}
+
+@keyframes dispatch-radar-sweep {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes dispatch-light-breathe {
+  0%,
+  100% {
+    opacity: 0.34;
+  }
+
+  50% {
+    opacity: 0.62;
+  }
+}
+
+@keyframes radio-display-scan {
+  from {
+    transform: translateY(-3.5rem);
+  }
+
+  to {
+    transform: translateY(3.5rem);
+  }
+}
+
+@keyframes radio-meter-pulse {
+  0%,
+  100% {
+    opacity: 0.28;
+  }
+
+  50% {
+    opacity: 0.58;
+  }
+}
+
+@media (min-width: 64rem) and (min-height: 36rem) {
+  /*
+   * LCARS-inspired — one viewport-scale control surface.
+   * Static by design: geometry and color blocks do the work.
+   */
+
+  :root[data-theme="lcars"] body {
+    background:
+      radial-gradient(
+        circle at 52% 48%,
+        rgb(211 107 155 / 0.045),
+        transparent 34rem
+      ),
+      #08070b;
+  }
+
+  :root[data-theme="lcars"] .theme-stage-a {
+    top: 3.25rem;
+    bottom: 1.35rem;
+    left: 0;
+    width: 0.62rem;
+    background:
+      linear-gradient(
+        180deg,
+        #d36b9b 0 11%,
+        #08070b 11% 12.5%,
+        #e89547 12.5% 31%,
+        #08070b 31% 32.5%,
+        #9fb7eb 32.5% 50%,
+        #08070b 50% 51.5%,
+        #c69add 51.5% 70%,
+        #08070b 70% 71.5%,
+        #d7b778 71.5% 84%,
+        #08070b 84% 85.5%,
+        #e58b7f 85.5% 100%
+      );
+    border-radius: 0 999px 999px 0;
+    box-shadow: 0 0 1.1rem rgb(232 149 71 / 0.08);
+  }
+
+  :root[data-theme="lcars"] .theme-stage-b {
+    top: 3.25rem;
+    right: 0;
+    bottom: 1.35rem;
+    width: 0.48rem;
+    background:
+      repeating-linear-gradient(
+        180deg,
+        #9fb7eb 0 2.4rem,
+        #08070b 2.4rem 2.65rem,
+        #d36b9b 2.65rem 4.9rem,
+        #08070b 4.9rem 5.15rem,
+        #d7b778 5.15rem 7.8rem,
+        #08070b 7.8rem 8.05rem
+      );
+    border-radius: 999px 0 0 999px;
+  }
+
+  :root[data-theme="lcars"] .theme-stage-c {
+    top: 3.3rem;
+    right: 0.8rem;
+    left: 0.8rem;
+    height: 0.3rem;
+    background:
+      linear-gradient(
+        90deg,
+        #e89547 0 15%,
+        transparent 15% 16.5%,
+        #d36b9b 16.5% 33%,
+        transparent 33% 34.5%,
+        #9fb7eb 34.5% 53%,
+        transparent 53% 54.5%,
+        #c69add 54.5% 72%,
+        transparent 72% 73.5%,
+        #d7b778 73.5% 88%,
+        transparent 88% 89.5%,
+        #e58b7f 89.5% 100%
+      );
+    border-radius: 999px;
+  }
+
+  :root[data-theme="lcars"] .theme-stage-d {
+    right: 0.8rem;
+    bottom: 1.25rem;
+    left: 0.8rem;
+    height: 0.28rem;
+    background:
+      linear-gradient(
+        90deg,
+        #d7b778 0 13%,
+        transparent 13% 14.5%,
+        #c69add 14.5% 31%,
+        transparent 31% 32.5%,
+        #9fb7eb 32.5% 49%,
+        transparent 49% 50.5%,
+        #e89547 50.5% 69%,
+        transparent 69% 70.5%,
+        #d36b9b 70.5% 86%,
+        transparent 86% 87.5%,
+        #e58b7f 87.5% 100%
+      );
+    border-radius: 999px;
+  }
+
+  :root[data-theme="lcars"] .theme-stage-e {
+    top: 3.65rem;
+    left: 0.65rem;
+    width: 2.2rem;
+    height: 8.2rem;
+    border-top: 1.15rem solid #e89547;
+    border-left: 1.15rem solid #e89547;
+    border-radius: 2.9rem 0 0 0;
+    opacity: 0.62;
+  }
+
+  :root[data-theme="lcars"] .theme-stage-f {
+    right: 0.58rem;
+    bottom: 1.75rem;
+    width: 2rem;
+    height: 7rem;
+    border-right: 1.05rem solid #9fb7eb;
+    border-bottom: 1.05rem solid #9fb7eb;
+    border-radius: 0 0 2.7rem 0;
+    opacity: 0.5;
+  }
+
+  :root[data-theme="lcars"] .theme-stage-g {
+    top: 4rem;
+    right: 1.6rem;
+    width: 15rem;
+    height: 0.3rem;
+    background:
+      repeating-linear-gradient(
+        90deg,
+        #d36b9b 0 1.6rem,
+        transparent 1.6rem 1.9rem,
+        #e89547 1.9rem 3.6rem,
+        transparent 3.6rem 3.9rem,
+        #9fb7eb 3.9rem 5.1rem,
+        transparent 5.1rem 5.4rem
+      );
+    border-radius: 999px;
+    opacity: 0.64;
+  }
+
+  :root[data-theme="lcars"] .theme-stage-h {
+    left: 1.4rem;
+    bottom: 1.75rem;
+    width: 12rem;
+    height: 0.28rem;
+    background:
+      repeating-linear-gradient(
+        90deg,
+        #c69add 0 1rem,
+        transparent 1rem 1.25rem,
+        #d7b778 1.25rem 2.9rem,
+        transparent 2.9rem 3.15rem
+      );
+    border-radius: 999px;
+    opacity: 0.58;
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid {
+    background:
+      linear-gradient(
+        90deg,
+        #e89547 0 16.4%,
+        #08070b 16.4% 16.65%,
+        #d7b778 16.65% 32.8%,
+        #08070b 32.8% 33.05%,
+        #d36b9b 33.05% 49.4%,
+        #08070b 49.4% 49.65%,
+        #c69add 49.65% 66%,
+        #08070b 66% 66.25%,
+        #9fb7eb 66.25% 82.7%,
+        #08070b 82.7% 82.95%,
+        #e58b7f 82.95% 100%
+      );
+    box-shadow:
+      inset 0 0 0 0.15rem #08070b,
+      0 0 0 0.08rem rgb(255 244 223 / 0.08),
+      0 0 2.6rem rgb(211 107 155 / 0.07);
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel {
+    background:
+      radial-gradient(
+        circle at 84% 78%,
+        var(--lcars-panel-soft),
+        transparent 10rem
+      ),
+      linear-gradient(
+        105deg,
+        var(--lcars-panel-soft),
+        transparent 3.5rem
+      ),
+      #0b0a0e;
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel:nth-child(2) {
+    box-shadow:
+      inset 1.65rem 0 0 #d36b9b,
+      inset 1.83rem 0 0 #0b0a0e,
+      0 0 1.25rem rgb(211 107 155 / 0.055);
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel:nth-child(3) {
+    box-shadow:
+      inset 1.65rem 0 0 #9fb7eb,
+      inset 1.83rem 0 0 #0b0a0e,
+      0 0 1.25rem rgb(159 183 235 / 0.05);
+  }
+
+  /*
+   * Matrix-inspired — cinematic hacker workstation with animated streams,
+   * scan fields, virtual monitor geometry, and intentionally nonuniform panes.
+   */
+
+  :root[data-theme="matrix"] .theme-stage-a {
+    inset: 0;
+    background:
+      repeating-linear-gradient(
+        90deg,
+        transparent 0 3.6rem,
+        rgb(67 217 104 / 0.04) 3.6rem 3.64rem
+      ),
+      repeating-linear-gradient(
+        180deg,
+        transparent 0 1.55rem,
+        rgb(67 217 104 / 0.028) 1.55rem 1.59rem
+      );
+  }
+
+  :root[data-theme="matrix"] .theme-stage-b,
+  :root[data-theme="matrix"] .theme-stage-c,
+  :root[data-theme="matrix"] .theme-stage-d {
+    top: 1rem;
+    bottom: 1rem;
+    width: 1.25rem;
+    background:
+      repeating-linear-gradient(
+        180deg,
+        transparent 0 0.35rem,
+        rgb(67 217 104 / 0.55) 0.35rem 0.47rem,
+        transparent 0.47rem 0.72rem,
+        rgb(114 245 143 / 0.2) 0.72rem 1.05rem,
+        transparent 1.05rem 1.32rem
+      );
+    filter: blur(0.1px);
+    opacity: 0.3;
+    animation:
+      matrix-stage-fall 9s linear infinite,
+      matrix-stage-flicker 13s steps(1, end) infinite;
+  }
+
+  :root[data-theme="matrix"] .theme-stage-b {
+    left: 4%;
+  }
+
+  :root[data-theme="matrix"] .theme-stage-c {
+    left: 51%;
+    animation-duration: 12s, 17s;
+    animation-direction: reverse, normal;
+  }
+
+  :root[data-theme="matrix"] .theme-stage-d {
+    right: 3%;
+    animation-duration: 7s, 11s;
+  }
+
+  :root[data-theme="matrix"] .theme-stage-e {
+    top: 3.25rem;
+    right: 0.9rem;
+    width: 18rem;
+    height: 0.28rem;
+    background:
+      repeating-linear-gradient(
+        90deg,
+        #43d968 0 1.1rem,
+        transparent 1.1rem 1.35rem,
+        #1d7438 1.35rem 2.2rem,
+        transparent 2.2rem 2.45rem
+      );
+    opacity: 0.45;
+  }
+
+  :root[data-theme="matrix"] .theme-stage-f {
+    bottom: 1.15rem;
+    left: 0.9rem;
+    width: 20rem;
+    height: 0.25rem;
+    background:
+      repeating-linear-gradient(
+        90deg,
+        #36cfa0 0 0.75rem,
+        transparent 0.75rem 0.9rem
+      );
+    opacity: 0.4;
+  }
+
+  :root[data-theme="matrix"] .theme-stage-g {
+    top: 11%;
+    right: -8rem;
+    width: 24rem;
+    height: 24rem;
+    border: 1px solid rgb(67 217 104 / 0.1);
+    border-radius: 50%;
+    background:
+      repeating-radial-gradient(
+        circle,
+        transparent 0 2.6rem,
+        rgb(67 217 104 / 0.025) 2.6rem 2.68rem
+      );
+    box-shadow:
+      inset 0 0 0 4rem rgb(67 217 104 / 0.008),
+      inset 0 0 0 7rem rgb(67 217 104 / 0.006);
+  }
+
+  :root[data-theme="matrix"] .theme-stage-h {
+    bottom: 4%;
+    left: -6rem;
+    width: 19rem;
+    height: 19rem;
+    border: 1px dashed rgb(114 245 143 / 0.07);
+    border-radius: 50%;
+    background:
+      conic-gradient(
+        from 30deg,
+        rgb(67 217 104 / 0.04),
+        transparent 12% 25%,
+        rgb(114 245 143 / 0.025) 25% 31%,
+        transparent 31% 100%
+      );
+  }
+
+  :root[data-theme="matrix"] .dashboard-grid > .panel:nth-child(2n) {
+    transform: translateY(0.07rem);
+  }
+
+  :root[data-theme="matrix"] .dashboard-grid > .panel:nth-child(3n) {
+    box-shadow:
+      inset 0 0 1.8rem rgb(0 0 0 / 0.45),
+      inset 0 0 0 1px var(--term-dim),
+      0 0 1rem rgb(0 0 0 / 0.68),
+      0 0 0.55rem var(--term-dim);
+  }
+
+  :root[data-theme="matrix"] .dashboard-grid > .panel:nth-child(2) .panel-header {
+    background:
+      linear-gradient(
+        90deg,
+        rgb(67 217 104 / 0.13),
+        transparent 42%
+      ),
+      #031008;
+  }
+
+  :root[data-theme="matrix"] .dashboard-grid > .panel:nth-child(5) .panel-header {
+    background:
+      linear-gradient(
+        90deg,
+        rgb(54 207 160 / 0.13),
+        transparent 48%
+      ),
+      #02100a;
+  }
+
+  /*
+   * First Responder — CAD/dispatch workstation with lightbar, map/radar
+   * overlays, monitor framing, and quiet operational animation.
+   */
+
+  :root[data-theme="first-responder"] .theme-stage-a {
+    top: 3.2rem;
+    right: 0.8rem;
+    left: 0.8rem;
+    height: 0.24rem;
+    background:
+      linear-gradient(
+        90deg,
+        #3b82f6 0 9%,
+        transparent 9% 10.5%,
+        #3b82f6 10.5% 19.5%,
+        transparent 19.5% 50%,
+        #d94f4f 50% 59%,
+        transparent 59% 60.5%,
+        #d94f4f 60.5% 69.5%,
+        transparent 69.5% 100%
+      );
+    box-shadow:
+      0 0 0.9rem rgb(59 130 246 / 0.2),
+      0 0 0.9rem rgb(217 79 79 / 0.16);
+    animation: dispatch-light-breathe 3.2s ease-in-out infinite;
+  }
+
+  :root[data-theme="first-responder"] .theme-stage-b {
+    top: 14%;
+    right: -5rem;
+    width: 24rem;
+    height: 24rem;
+    border: 1px solid rgb(78 161 255 / 0.12);
+    border-radius: 50%;
+    background:
+      repeating-radial-gradient(
+        circle,
+        transparent 0 3.1rem,
+        rgb(78 161 255 / 0.045) 3.1rem 3.16rem
+      );
+  }
+
+  :root[data-theme="first-responder"] .theme-stage-c {
+    top: 14%;
+    right: -5rem;
+    width: 24rem;
+    height: 24rem;
+    border-radius: 50%;
+    background:
+      conic-gradient(
+        from 0deg,
+        transparent 0 82%,
+        rgb(78 161 255 / 0.16) 89%,
+        transparent 96% 100%
+      );
+    transform-origin: 50% 50%;
+    animation: dispatch-radar-sweep 9s linear infinite;
+  }
+
+  :root[data-theme="first-responder"] .theme-stage-d {
+    bottom: -7rem;
+    left: -7rem;
+    width: 25rem;
+    height: 25rem;
+    border: 1px solid rgb(217 79 79 / 0.08);
+    border-radius: 50%;
+    background:
+      repeating-radial-gradient(
+        circle,
+        transparent 0 2.6rem,
+        rgb(217 79 79 / 0.025) 2.6rem 2.66rem
+      );
+  }
+
+  :root[data-theme="first-responder"] .theme-stage-e {
+    top: 4rem;
+    left: 1rem;
+    width: 12rem;
+    height: 0.2rem;
+    background:
+      repeating-linear-gradient(
+        90deg,
+        #4ea1ff 0 0.75rem,
+        transparent 0.75rem 0.92rem
+      );
+    opacity: 0.5;
+  }
+
+  :root[data-theme="first-responder"] .theme-stage-f {
+    right: 1rem;
+    bottom: 1.35rem;
+    width: 14rem;
+    height: 0.2rem;
+    background:
+      repeating-linear-gradient(
+        90deg,
+        #e88989 0 0.7rem,
+        transparent 0.7rem 0.88rem
+      );
+    opacity: 0.42;
+  }
+
+  :root[data-theme="first-responder"] .theme-stage-g {
+    top: 8%;
+    bottom: 4%;
+    left: 0.35rem;
+    width: 0.18rem;
+    background:
+      repeating-linear-gradient(
+        180deg,
+        #4ea1ff 0 2rem,
+        transparent 2rem 2.25rem,
+        #75d4ba 2.25rem 3.6rem,
+        transparent 3.6rem 3.85rem
+      );
+    opacity: 0.45;
+  }
+
+  :root[data-theme="first-responder"] .theme-stage-h {
+    top: 8%;
+    right: 0.35rem;
+    bottom: 4%;
+    width: 0.18rem;
+    background:
+      repeating-linear-gradient(
+        180deg,
+        #e88989 0 1.7rem,
+        transparent 1.7rem 1.95rem,
+        #72b7ff 1.95rem 3.4rem,
+        transparent 3.4rem 3.65rem
+      );
+    opacity: 0.42;
+  }
+
+  :root[data-theme="first-responder"] .dashboard-grid {
+    box-shadow:
+      inset 0 0 2rem rgb(0 0 0 / 0.26),
+      0 0 1rem rgb(0 0 0 / 0.32),
+      0 0 1.4rem rgb(78 161 255 / 0.04);
+  }
+
+  :root[data-theme="first-responder"] .dashboard-grid > .panel:nth-child(2) {
+    background:
+      radial-gradient(
+        circle at 84% 82%,
+        rgb(255 139 114 / 0.055),
+        transparent 10rem
+      ),
+      linear-gradient(
+        135deg,
+        var(--dispatch-soft),
+        transparent 8rem
+      ),
+      #091725;
+  }
+
+  /*
+   * Amateur Radio — SDS200-inspired rack/base station with bezel, rack ears,
+   * ventilation, display scan glow, speaker grille, and instrument lighting.
+   */
+
+  :root[data-theme="amateur-radio"] .theme-stage-a,
+  :root[data-theme="amateur-radio"] .theme-stage-b {
+    top: 3.25rem;
+    bottom: 1.3rem;
+    width: 1.1rem;
+    border: 1px solid #55584f;
+    background:
+      repeating-linear-gradient(
+        180deg,
+        #2b2d28 0 1.9rem,
+        #11120f 1.9rem 2.15rem,
+        #353730 2.15rem 4.1rem,
+        #11120f 4.1rem 4.35rem
+      );
+    box-shadow:
+      inset 0 0 0 0.18rem #171813,
+      inset 0 0 0.8rem rgb(0 0 0 / 0.8);
+  }
+
+  :root[data-theme="amateur-radio"] .theme-stage-a {
+    left: 0;
+    border-radius: 0 0.2rem 0.2rem 0;
+  }
+
+  :root[data-theme="amateur-radio"] .theme-stage-b {
+    right: 0;
+    border-radius: 0.2rem 0 0 0.2rem;
+  }
+
+  :root[data-theme="amateur-radio"] .theme-stage-c {
+    top: 3.35rem;
+    right: 1.2rem;
+    left: 1.2rem;
+    height: 0.42rem;
+    border: 1px solid #55574f;
+    background:
+      linear-gradient(
+        180deg,
+        #3a3c35,
+        #1c1d19
+      );
+    box-shadow:
+      inset 0 1px rgb(255 255 255 / 0.055),
+      0 0.28rem 0.8rem rgb(0 0 0 / 0.5);
+  }
+
+  :root[data-theme="amateur-radio"] .theme-stage-d {
+    right: 1.2rem;
+    bottom: 1.18rem;
+    left: 1.2rem;
+    height: 0.42rem;
+    border: 1px solid #4e5049;
+    background:
+      linear-gradient(
+        180deg,
+        #22231f,
+        #11120f
+      );
+    box-shadow: inset 0 1px rgb(255 255 255 / 0.03);
+  }
+
+  :root[data-theme="amateur-radio"] .theme-stage-e {
+    top: 4.1rem;
+    right: 2rem;
+    width: 13rem;
+    height: 4.4rem;
+    background:
+      repeating-radial-gradient(
+        circle,
+        #0d0e0c 0 0.12rem,
+        transparent 0.13rem 0.48rem
+      );
+    background-size: 0.78rem 0.78rem;
+    border: 1px solid #3d4038;
+    border-radius: 0.2rem;
+    opacity: 0.42;
+    box-shadow: inset 0 0 1rem rgb(0 0 0 / 0.85);
+  }
+
+  :root[data-theme="amateur-radio"] .theme-stage-f {
+    top: 4.4rem;
+    left: 2rem;
+    width: 11rem;
+    height: 0.34rem;
+    background:
+      repeating-linear-gradient(
+        90deg,
+        #d99a3e 0 0.16rem,
+        transparent 0.16rem 0.42rem,
+        #8ed9e6 0.42rem 0.55rem,
+        transparent 0.55rem 0.85rem
+      );
+    opacity: 0.45;
+    animation: radio-meter-pulse 4.8s ease-in-out infinite;
+  }
+
+  :root[data-theme="amateur-radio"] .theme-stage-g {
+    top: 5rem;
+    left: 34%;
+    width: 32%;
+    height: 0.16rem;
+    background:
+      linear-gradient(
+        90deg,
+        transparent,
+        rgb(110 233 255 / 0.28),
+        transparent
+      );
+    box-shadow:
+      0 0 1rem rgb(110 233 255 / 0.16);
+    animation: radio-display-scan 7s linear infinite;
+  }
+
+  :root[data-theme="amateur-radio"] .theme-stage-h {
+    right: 2rem;
+    bottom: 1.8rem;
+    width: 10rem;
+    height: 0.28rem;
+    background:
+      repeating-linear-gradient(
+        90deg,
+        #8ed9e6 0 0.7rem,
+        transparent 0.7rem 0.9rem,
+        #d99a3e 0.9rem 1.45rem,
+        transparent 1.45rem 1.7rem
+      );
+    opacity: 0.38;
+  }
+
+  :root[data-theme="amateur-radio"] .dashboard-grid {
+    border-color: #343630;
+    outline-color: #70736a;
+    box-shadow:
+      inset 0 0 3.3rem rgb(0 0 0 / 0.68),
+      inset 0 1px rgb(255 255 255 / 0.045),
+      0 0.85rem 1.9rem rgb(0 0 0 / 0.52);
+  }
+
+  :root[data-theme="amateur-radio"] .panel-emphasis {
+    position: relative;
+  }
+
+  :root[data-theme="amateur-radio"] .panel-emphasis::before {
+    right: 0.8rem;
+    bottom: 0.8rem;
+    width: 9rem;
+    height: 3.8rem;
+    border: 1px solid rgb(102 214 230 / 0.12);
+    border-radius: 0.15rem;
+    background:
+      repeating-linear-gradient(
+        90deg,
+        transparent 0 0.7rem,
+        rgb(102 214 230 / 0.04) 0.7rem 0.74rem
+      ),
+      repeating-linear-gradient(
+        180deg,
+        transparent 0 0.52rem,
+        rgb(102 214 230 / 0.035) 0.52rem 0.56rem
+      );
+    opacity: 0.42;
+  }
+
+  :root[data-theme="amateur-radio"] .scanner-controls-panel {
+    box-shadow:
+      inset 0 1px rgb(255 255 255 / 0.045),
+      inset 0 -1px rgb(0 0 0 / 0.7),
+      0 0.3rem 0.75rem rgb(0 0 0 / 0.5);
+  }
+}
+
+@media (max-width: 63.99rem) {
+  .theme-stage {
+    opacity: 0.48;
+  }
+
+  :root[data-theme="matrix"] .theme-stage-b,
+  :root[data-theme="matrix"] .theme-stage-c,
+  :root[data-theme="matrix"] .theme-stage-d,
+  :root[data-theme="first-responder"] .theme-stage-c,
+  :root[data-theme="amateur-radio"] .theme-stage-g {
+    animation: none;
+  }
+}
+
+/*
+ * Cinematic theatrical polish.
+ *
+ * This layer deliberately treats each expressive theme as a production-set
+ * environment. All effects remain decorative, pointer-inert, and subordinate
+ * to the shared accessible dashboard content.
+ */
+
+@keyframes cinematic-bloom-breathe {
+  0%,
+  100% {
+    opacity: 0.34;
+    filter: blur(0);
+  }
+
+  50% {
+    opacity: 0.54;
+    filter: blur(0.12rem);
+  }
+}
+
+@keyframes cinematic-scan-pass {
+  from {
+    transform: translateY(-120%);
+  }
+
+  to {
+    transform: translateY(120%);
+  }
+}
+
+@keyframes cinematic-grid-drift {
+  from {
+    background-position:
+      0 0,
+      0 0;
+  }
+
+  to {
+    background-position:
+      5rem 0,
+      0 5rem;
+  }
+}
+
+@keyframes cinematic-data-pulse {
+  0%,
+  100% {
+    opacity: 0.26;
+  }
+
+  48% {
+    opacity: 0.44;
+  }
+
+  52% {
+    opacity: 0.68;
+  }
+
+  56% {
+    opacity: 0.36;
+  }
+}
+
+@keyframes cinematic-alert-wash {
+  0%,
+  100% {
+    transform: translateX(-105%) skewX(-18deg);
+    opacity: 0;
+  }
+
+  12% {
+    opacity: 0.18;
+  }
+
+  28% {
+    transform: translateX(105%) skewX(-18deg);
+    opacity: 0;
+  }
+}
+
+@keyframes cinematic-meter-scan {
+  from {
+    background-position: 0 0;
+  }
+
+  to {
+    background-position: 7rem 0;
+  }
+}
+
+@media (min-width: 64rem) and (min-height: 36rem) {
+  :root[data-theme="lcars"] .theme-stage::before,
+  :root[data-theme="matrix"] .theme-stage::before,
+  :root[data-theme="first-responder"] .theme-stage::before,
+  :root[data-theme="amateur-radio"] .theme-stage::before {
+    position: absolute;
+    z-index: 20;
+    inset: 0;
+    content: "";
+    pointer-events: none;
+    background:
+      radial-gradient(
+        ellipse at center,
+        transparent 48%,
+        rgb(0 0 0 / 0.16) 78%,
+        rgb(0 0 0 / 0.46) 118%
+      ),
+      linear-gradient(
+        115deg,
+        rgb(255 255 255 / 0.018),
+        transparent 18% 76%,
+        rgb(255 255 255 / 0.012)
+      );
+  }
+
+  :root[data-theme="lcars"] .theme-stage::after,
+  :root[data-theme="matrix"] .theme-stage::after,
+  :root[data-theme="first-responder"] .theme-stage::after,
+  :root[data-theme="amateur-radio"] .theme-stage::after {
+    position: absolute;
+    z-index: 19;
+    inset: 0;
+    content: "";
+    pointer-events: none;
+    background:
+      repeating-linear-gradient(
+        180deg,
+        transparent 0 2px,
+        rgb(255 255 255 / 0.008) 2px 3px
+      );
+    opacity: 0.5;
+  }
+
+  /* LCARS-inspired theatrical command deck. */
+
+  :root[data-theme="lcars"] .theme-stage-a {
+    box-shadow:
+      0 0 1.1rem rgb(232 149 71 / 0.13),
+      0 0 3.2rem rgb(211 107 155 / 0.08);
+  }
+
+  :root[data-theme="lcars"] .theme-stage-c,
+  :root[data-theme="lcars"] .theme-stage-d {
+    box-shadow:
+      0 0 0.6rem rgb(255 255 255 / 0.055),
+      0 0 1.4rem rgb(211 107 155 / 0.06);
+  }
+
+  :root[data-theme="lcars"] .theme-stage-e::before,
+  :root[data-theme="lcars"] .theme-stage-f::before {
+    position: absolute;
+    inset: 0.32rem;
+    content: "";
+    border: 1px solid rgb(255 255 255 / 0.07);
+    border-radius: inherit;
+    opacity: 0.65;
+  }
+
+  :root[data-theme="lcars"] .theme-stage-g::after {
+    position: absolute;
+    top: -1.2rem;
+    right: -2rem;
+    width: 14rem;
+    height: 3rem;
+    content: "";
+    background:
+      radial-gradient(
+        ellipse,
+        rgb(198 154 221 / 0.2),
+        transparent 68%
+      );
+    filter: blur(0.55rem);
+    animation: cinematic-bloom-breathe 6.5s ease-in-out infinite;
+  }
+
+  :root[data-theme="lcars"] .theme-stage-h::after {
+    position: absolute;
+    bottom: -1.2rem;
+    left: -1rem;
+    width: 13rem;
+    height: 2.8rem;
+    content: "";
+    background:
+      radial-gradient(
+        ellipse,
+        rgb(232 149 71 / 0.18),
+        transparent 68%
+      );
+    filter: blur(0.5rem);
+    animation: cinematic-bloom-breathe 7.8s ease-in-out infinite reverse;
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel {
+    box-shadow:
+      inset 0 1px rgb(255 255 255 / 0.025),
+      inset 0 -1.3rem 2.1rem rgb(0 0 0 / 0.28),
+      0 0.22rem 0.8rem rgb(0 0 0 / 0.46);
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel .panel-header {
+    position: relative;
+    overflow: hidden;
+  }
+
+  :root[data-theme="lcars"] .dashboard-grid > .panel .panel-header::before {
+    position: absolute;
+    inset: 0;
+    content: "";
+    pointer-events: none;
+    background:
+      linear-gradient(
+        115deg,
+        rgb(255 255 255 / 0.16),
+        transparent 18% 72%,
+        rgb(255 255 255 / 0.045)
+      );
+    opacity: 0.62;
+  }
+
+  /* Matrix-inspired cinematic workstation. */
+
+  :root[data-theme="matrix"] .theme-stage-a {
+    perspective: 44rem;
+  }
+
+  :root[data-theme="matrix"] .theme-stage-a::before {
+    position: absolute;
+    right: -12%;
+    bottom: -17%;
+    left: -12%;
+    height: 54%;
+    content: "";
+    transform: rotateX(62deg);
+    transform-origin: 50% 100%;
+    background:
+      repeating-linear-gradient(
+        90deg,
+        rgb(67 217 104 / 0.11) 0 1px,
+        transparent 1px 4.2rem
+      ),
+      repeating-linear-gradient(
+        180deg,
+        rgb(67 217 104 / 0.1) 0 1px,
+        transparent 1px 3.1rem
+      );
+    mask-image:
+      linear-gradient(
+        180deg,
+        transparent,
+        #000000 34%,
+        #000000
+      );
+    opacity: 0.32;
+    animation: cinematic-grid-drift 18s linear infinite;
+  }
+
+  :root[data-theme="matrix"] .theme-stage-a::after {
+    position: absolute;
+    top: -35%;
+    right: 0;
+    left: 0;
+    height: 45%;
+    content: "";
+    background:
+      linear-gradient(
+        180deg,
+        transparent,
+        rgb(97 255 134 / 0.07),
+        transparent
+      );
+    filter: blur(0.25rem);
+    animation: cinematic-scan-pass 8s linear infinite;
+  }
+
+  :root[data-theme="matrix"] .theme-stage-g {
+    box-shadow:
+      0 0 2rem rgb(67 217 104 / 0.08),
+      inset 0 0 3rem rgb(67 217 104 / 0.035);
+    animation: cinematic-data-pulse 5.5s ease-in-out infinite;
+  }
+
+  :root[data-theme="matrix"] .dashboard-grid > .panel {
+    position: relative;
+    backdrop-filter: blur(0.4px);
+  }
+
+  :root[data-theme="matrix"] .dashboard-grid > .panel::before {
+    filter: drop-shadow(0 0 0.32rem var(--term-dim));
+  }
+
+  :root[data-theme="matrix"] .dashboard-grid > .panel .panel-header {
+    box-shadow:
+      inset 0 -1px var(--term-dim),
+      0 0.22rem 0.8rem rgb(0 0 0 / 0.45),
+      0 0 0.8rem color-mix(in srgb, var(--term-accent) 12%, transparent);
+  }
+
+  /* First Responder theatrical dispatch floor. */
+
+  :root[data-theme="first-responder"] .theme-stage-a::after {
+    position: absolute;
+    top: -3rem;
+    left: -18%;
+    width: 32%;
+    height: 8rem;
+    content: "";
+    background:
+      linear-gradient(
+        90deg,
+        transparent,
+        rgb(78 161 255 / 0.36),
+        rgb(217 79 79 / 0.26),
+        transparent
+      );
+    filter: blur(1.6rem);
+    animation: cinematic-alert-wash 9s ease-in-out infinite;
+  }
+
+  :root[data-theme="first-responder"] .theme-stage-b {
+    box-shadow:
+      0 0 3rem rgb(78 161 255 / 0.08),
+      inset 0 0 2.4rem rgb(78 161 255 / 0.035);
+  }
+
+  :root[data-theme="first-responder"] .theme-stage-b::after {
+    position: absolute;
+    inset: 9%;
+    content: "";
+    border: 1px dashed rgb(78 161 255 / 0.15);
+    border-radius: 50%;
+    box-shadow:
+      inset 0 0 1.6rem rgb(78 161 255 / 0.03),
+      0 0 1.4rem rgb(78 161 255 / 0.04);
+  }
+
+  :root[data-theme="first-responder"] .theme-stage-d::after {
+    position: absolute;
+    inset: 15%;
+    content: "";
+    border: 1px solid rgb(217 79 79 / 0.1);
+    border-radius: 50%;
+  }
+
+  :root[data-theme="first-responder"] .dashboard-grid > .panel {
+    backdrop-filter: blur(0.55px);
+  }
+
+  :root[data-theme="first-responder"] .dashboard-grid > .panel::after {
+    filter: drop-shadow(0 0 0.3rem var(--dispatch-soft));
+  }
+
+  :root[data-theme="first-responder"] .dashboard-grid > .panel .panel-header {
+    position: relative;
+    overflow: hidden;
+  }
+
+  :root[data-theme="first-responder"] .dashboard-grid > .panel .panel-header::before {
+    position: absolute;
+    inset: 0;
+    content: "";
+    pointer-events: none;
+    background:
+      linear-gradient(
+        120deg,
+        rgb(255 255 255 / 0.09),
+        transparent 28% 82%
+      );
+  }
+
+  /* Amateur Radio theatrical equipment rack. */
+
+  :root[data-theme="amateur-radio"] .theme-stage-a,
+  :root[data-theme="amateur-radio"] .theme-stage-b {
+    box-shadow:
+      inset 0 0 0 0.18rem #171813,
+      inset 0 0 1rem rgb(0 0 0 / 0.9),
+      0 0 1.5rem rgb(0 0 0 / 0.5);
+  }
+
+  :root[data-theme="amateur-radio"] .theme-stage-c {
+    box-shadow:
+      inset 0 1px rgb(255 255 255 / 0.075),
+      inset 0 -1px rgb(0 0 0 / 0.78),
+      0 0.32rem 0.9rem rgb(0 0 0 / 0.58);
+  }
+
+  :root[data-theme="amateur-radio"] .theme-stage-e {
+    filter: drop-shadow(0 0.35rem 0.55rem rgb(0 0 0 / 0.62));
+  }
+
+  :root[data-theme="amateur-radio"] .theme-stage-e::after {
+    position: absolute;
+    inset: 0;
+    content: "";
+    background:
+      radial-gradient(
+        circle at 78% 24%,
+        rgb(255 255 255 / 0.055),
+        transparent 20%
+      );
+    border-radius: inherit;
+  }
+
+  :root[data-theme="amateur-radio"] .theme-stage-f {
+    box-shadow:
+      0 0 1rem rgb(217 154 62 / 0.12);
+    animation: cinematic-meter-scan 5.2s linear infinite;
+  }
+
+  :root[data-theme="amateur-radio"] .theme-stage-g {
+    filter: blur(0.05rem);
+    box-shadow:
+      0 0 1rem rgb(110 233 255 / 0.16),
+      0 0 2.6rem rgb(110 233 255 / 0.08);
+  }
+
+  :root[data-theme="amateur-radio"] .dashboard-grid {
+    background:
+      linear-gradient(
+        110deg,
+        rgb(255 255 255 / 0.018),
+        transparent 15% 78%,
+        rgb(255 255 255 / 0.01)
+      ),
+      #141510;
+  }
+
+  :root[data-theme="amateur-radio"] .dashboard-grid > .panel {
+    box-shadow:
+      inset 0 1px rgb(255 255 255 / 0.055),
+      inset 0 -1px rgb(0 0 0 / 0.72),
+      inset 0 0 1.2rem rgb(0 0 0 / 0.18),
+      0 0.3rem 0.82rem rgb(0 0 0 / 0.56);
+  }
+
+  :root[data-theme="amateur-radio"] .panel-emphasis::after {
+    position: absolute;
+    top: 0.45rem;
+    right: 1.1rem;
+    left: 1.1rem;
+    height: 22%;
+    content: "";
+    pointer-events: none;
+    border-radius: 50%;
+    background:
+      radial-gradient(
+        ellipse at 50% 0,
+        rgb(255 255 255 / 0.07),
+        transparent 66%
+      );
+    opacity: 0.46;
+  }
+
+  :root[data-theme="amateur-radio"] .scanner-controls-panel::before,
+  :root[data-theme="amateur-radio"] .scanner-controls-panel::after {
+    filter: drop-shadow(0 0.32rem 0.28rem rgb(0 0 0 / 0.68));
+  }
+
+  :root[data-theme="amateur-radio"] .scanner-controls button {
+    box-shadow:
+      inset 0 1px rgb(255 255 255 / 0.1),
+      inset 0 -2px rgb(0 0 0 / 0.78),
+      0 0.22rem 0.36rem rgb(0 0 0 / 0.65);
+  }
+}
+
+@media (max-width: 63.99rem) {
+  :root[data-theme="matrix"] .theme-stage-a::before,
+  :root[data-theme="matrix"] .theme-stage-a::after,
+  :root[data-theme="first-responder"] .theme-stage-a::after,
+  :root[data-theme="amateur-radio"] .theme-stage-f {
+    animation: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }

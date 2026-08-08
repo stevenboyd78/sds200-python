@@ -418,7 +418,17 @@ def test_web_dashboard_shell_does_not_connect_to_daemon() -> None:
     assert "Milestone 20.2" not in response.text
     assert 'href="/assets/favicon.svg"' in response.text
     assert 'type="image/svg+xml"' in response.text
+    assert 'id="theme-select"' in response.text
+    assert '<option value="system">System</option>' in response.text
+    assert '<option value="lcars">LCARS-inspired</option>' in response.text
+    assert '<option value="matrix">Matrix-inspired</option>' in response.text
+    assert '<option value="first-responder">First Responder</option>' in response.text
+    assert '<option value="amateur-radio">Amateur Radio</option>' in response.text
+    assert 'src="/assets/theme-bootstrap.js"' in response.text
     assert 'href="/assets/dashboard.css"' in response.text
+    assert response.text.index('src="/assets/theme-bootstrap.js"') < response.text.index(
+        'href="/assets/dashboard.css"'
+    )
     assert 'src="/assets/dashboard.js"' in response.text
     assert "<style" not in response.text
     assert "<script>" not in response.text
@@ -431,11 +441,14 @@ def test_web_dashboard_serves_packaged_static_assets() -> None:
     app = create_web_dashboard_app(forbidden_factory)
 
     with TestClient(app) as client:
+        shell = client.get("/")
         stylesheet = client.get("/assets/dashboard.css")
+        theme_bootstrap = client.get("/assets/theme-bootstrap.js")
         script = client.get("/assets/dashboard.js")
         audio_worklet = client.get("/assets/audio-worklet.js")
         favicon = client.get("/assets/favicon.svg")
 
+    assert shell.status_code == 200
     assert stylesheet.status_code == 200
     assert stylesheet.headers["content-type"].startswith("text/css")
     assert stylesheet.headers["cache-control"] == "no-store"
@@ -452,6 +465,145 @@ def test_web_dashboard_serves_packaged_static_assets() -> None:
     assert "#scanner-reconnect," in stylesheet.text
     assert ".recording-list" in stylesheet.text
     assert ".saved-playback" in stylesheet.text
+    assert ':root[data-theme="lcars"]' in stylesheet.text
+    assert ':root[data-theme="matrix"]' in stylesheet.text
+    assert ':root[data-theme="first-responder"]' in stylesheet.text
+    assert ':root[data-theme="amateur-radio"]' in stylesheet.text
+    assert ".theme-picker" in stylesheet.text
+    assert "@keyframes matrix-grid-drift" in stylesheet.text
+    assert "animation: matrix-grid-drift 18s linear infinite" in stylesheet.text
+    assert ':root[data-theme="lcars"] .site-header::before' in stylesheet.text
+    assert ':root[data-theme="matrix"] .panel::before' in stylesheet.text
+    assert ':root[data-theme="first-responder"] .panel::after' in stylesheet.text
+    assert ':root[data-theme="amateur-radio"] .site-header::after' in stylesheet.text
+    assert "animation-duration: 0.01ms !important" in stylesheet.text
+    assert "animation-iteration-count: 1 !important" in stylesheet.text
+    assert "--content-width: 220rem" in stylesheet.text
+    assert "@media (min-width: 100rem)" in stylesheet.text
+    assert "@media (max-width: 56rem)" in stylesheet.text
+    assert "grid-template-columns: repeat(4, minmax(0, 1fr))" in stylesheet.text
+    assert ':root[data-theme="matrix"] .panel-header::before' in stylesheet.text
+    assert ':root[data-theme="first-responder"] .status-badge' in stylesheet.text
+    assert ':root[data-theme="amateur-radio"] #radio-system' in stylesheet.text
+    assert (
+        ':root[data-theme="amateur-radio"] .dashboard-grid '
+        '> .scanner-controls-panel::before'
+        in stylesheet.text
+    )
+    assert "@media (min-width: 64rem) and (min-height: 36rem)" in stylesheet.text
+    assert "height: 100dvh" in stylesheet.text
+    assert "grid-template-rows: repeat(2, minmax(0, 1fr))" in stylesheet.text
+    assert "grid-template-columns: repeat(3, minmax(0, 1fr))" in stylesheet.text
+    assert "minmax(0, 0.9fr)" in stylesheet.text
+    assert "minmax(0, 1.08fr)" in stylesheet.text
+    assert "minmax(0, 1.02fr)" in stylesheet.text
+    assert "grid-template-columns: repeat(3, minmax(0, 1fr));" in stylesheet.text
+    assert "overflow-y: auto" in stylesheet.text
+    assert "grid-template-rows: auto auto auto minmax(0, 1fr)" in stylesheet.text
+    assert "--lcars-panel:" in stylesheet.text
+    assert ':root[data-theme="lcars"] .dashboard-grid::before' in stylesheet.text
+    assert ':root[data-theme="lcars"] .dashboard-grid::after' in stylesheet.text
+    assert "var(--lcars-panel-soft)" in stylesheet.text
+    assert (
+        ':root[data-theme="lcars"] .dashboard-grid::before,'
+        in stylesheet.text
+    )
+    assert "content: none;" in stylesheet.text
+    assert "overflow-x: hidden;" in stylesheet.text
+    assert "width: min(27%, 8.5rem);" in stylesheet.text
+    assert "--term-accent:" in stylesheet.text
+    assert ':root[data-theme="matrix"] .dashboard-grid > .panel::after' in stylesheet.text
+    assert "color-mix(in srgb, var(--term-accent)" in stylesheet.text
+    assert ':root[data-theme="matrix"] .scanner-control-group::after' in stylesheet.text
+    assert "--dispatch-accent:" in stylesheet.text
+    assert (
+        ':root[data-theme="first-responder"] .dashboard-grid > .panel::before'
+        in stylesheet.text
+    )
+    assert (
+        ':root[data-theme="first-responder"] .scanner-control-group::before'
+        in stylesheet.text
+    )
+    assert "--radio-accent:" in stylesheet.text
+    assert (
+        ':root[data-theme="amateur-radio"] .panel-emphasis .primary-value'
+        in stylesheet.text
+    )
+    assert (
+        ':root[data-theme="amateur-radio"] .dashboard-grid '
+        '> .scanner-controls-panel::before'
+        in stylesheet.text
+    )
+    assert "conic-gradient(" in stylesheet.text
+    assert (
+        "@media (min-width: 64rem) and (max-width: 90rem) "
+        "and (min-height: 36rem)"
+        in stylesheet.text
+    )
+    assert "grid-template-columns: repeat(2, minmax(0, 1fr));" in stylesheet.text
+    assert ':root[data-theme="amateur-radio"] .recording-telemetry dd' in stylesheet.text
+
+    assert "theme-stage" in shell.text
+    assert 'aria-hidden="true"' in shell.text
+    assert "theme-stage-h" in shell.text
+    assert ".theme-stage {" in stylesheet.text
+    assert "@keyframes matrix-stage-fall" in stylesheet.text
+    assert "@keyframes dispatch-radar-sweep" in stylesheet.text
+    assert "@keyframes radio-display-scan" in stylesheet.text
+    assert ':root[data-theme="lcars"] .theme-stage-a' in stylesheet.text
+    assert ':root[data-theme="matrix"] .theme-stage-g' in stylesheet.text
+    assert (
+        ':root[data-theme="first-responder"] .theme-stage-c'
+        in stylesheet.text
+    )
+    assert (
+        ':root[data-theme="amateur-radio"] .theme-stage-e'
+        in stylesheet.text
+    )
+    assert "contain: paint;" in stylesheet.text
+    assert ".site-header {\n  position: relative;\n  z-index: 3;\n}" in stylesheet.text
+    assert (
+        ".dashboard,\n.site-footer {\n  position: relative;\n  z-index: 1;\n}"
+        in stylesheet.text
+    )
+    assert ".skip-link {\n  z-index: 10;\n}" in stylesheet.text
+    assert (
+        ".site-footer,\n.skip-link {\n  position: relative;"
+        not in stylesheet.text
+    )
+
+    assert "@keyframes cinematic-bloom-breathe" in stylesheet.text
+    assert "@keyframes cinematic-scan-pass" in stylesheet.text
+    assert "@keyframes cinematic-alert-wash" in stylesheet.text
+    assert "@keyframes cinematic-meter-scan" in stylesheet.text
+    assert ':root[data-theme="lcars"] .theme-stage-g::after' in stylesheet.text
+    assert ':root[data-theme="matrix"] .theme-stage-a::before' in stylesheet.text
+    assert (
+        ':root[data-theme="first-responder"] .theme-stage-a::after'
+        in stylesheet.text
+    )
+    assert (
+        ':root[data-theme="amateur-radio"] .panel-emphasis::after'
+        in stylesheet.text
+    )
+    assert "perspective: 44rem;" in stylesheet.text
+    assert "backdrop-filter: blur(0.55px);" in stylesheet.text
+
+    assert theme_bootstrap.status_code == 200
+    assert theme_bootstrap.headers["content-type"].startswith(
+        "application/javascript"
+    )
+    assert theme_bootstrap.headers["cache-control"] == "no-store"
+    assert '"sdsctl.web.theme"' in theme_bootstrap.text
+    assert '"system"' in theme_bootstrap.text
+    assert '"lcars"' in theme_bootstrap.text
+    assert '"matrix"' in theme_bootstrap.text
+    assert '"first-responder"' in theme_bootstrap.text
+    assert '"amateur-radio"' in theme_bootstrap.text
+    assert "localStorage.getItem" in theme_bootstrap.text
+    assert "localStorage.setItem" in theme_bootstrap.text
+    assert "document.documentElement.dataset.theme" in theme_bootstrap.text
+    assert "innerHTML" not in theme_bootstrap.text
 
     assert script.status_code == 200
     assert script.headers["content-type"].startswith("application/javascript")
@@ -481,6 +633,9 @@ def test_web_dashboard_serves_packaged_static_assets() -> None:
     assert "indicator.hidden = !held" in script.text
     assert '"scanner-hold-active"' not in script.text
     assert "scannerControlMutationInProgress" in script.text
+    assert "initializeThemeControl" in script.text
+    assert 'element("theme-select")' in script.text
+    assert "controller.select(select.value)" in script.text
     assert "control.snapshot" in script.text
     assert "daemonEventGeneration" in script.text
     assert "eventGenerationAtStart" in script.text

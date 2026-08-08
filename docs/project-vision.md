@@ -181,12 +181,19 @@ services for diagnostics, controls, audio, recordings, and mode-aware screens.
 The responsive loopback dashboard now provides authoritative scanner and runtime
 state, connection health, ordered live updates, explicit browser audio playback,
 daemon-owned recording telemetry, newest-first finalized recording inventory,
-and safe saved-WAV playback and download.
+safe saved-WAV playback and download, and browser-local visual presentation.
 
 The web process remains a daemon client and does not open scanner hardware or a
-second RTSP/RTP session. Remaining dashboard work includes operational logs,
-typed scanner controls, optional themes and shared visual assets, and deliberate
-authentication and transport-security design before any supported remote access.
+second RTSP/RTP session. The dashboard also provides capability-negotiated
+semantic scanner controls and browser-local system-adaptive, LCARS-inspired,
+Matrix-inspired, First Responder, and Amateur Radio themes over one shared
+accessible structure. The four custom themes can become immersive full-screen
+desktop workstations with renderer-specific staging and instrumentation while
+compact displays reflow the same controls and state. Theme staging remains
+decorative, pointer-inert, reduced-motion aware, and independent of daemon or
+scanner state. Remaining dashboard work includes operational logs, additional
+shared branding assets, and deliberate authentication and transport-security
+design before any supported remote access.
 
 ### Home Assistant
 
@@ -209,11 +216,20 @@ HACS packaging should wait until the API and entity model are stable.
 
 A future desktop GUI may reuse the same services and API.
 
-Optional LCARS-inspired and Matrix-inspired themes are planned over one shared
-accessible dashboard structure rather than as separate interfaces. Scalable,
-theme-aware SVG assets and responsive layouts should be preferred so the design
-can adapt to web, terminal, desktop, documentation, and compact Raspberry Pi
-presentation surfaces.
+The web dashboard now provides optional LCARS-inspired, Matrix-inspired, First
+Responder, and Amateur Radio environments over one shared accessible structure
+rather than separate interfaces. They use renderer-specific structural tokens
+and an ARIA-hidden decorative stage for cinematic depth, console geometry,
+terminal fields, dispatch instrumentation, and SDS200-inspired physical details.
+Their selection remains browser-local presentation state and does not alter the
+renderer-neutral terminal palettes, daemon state, scanner ownership, or API
+behavior. Future desktop interfaces may reuse the same semantic services while
+choosing their own renderer-specific design tokens.
+
+Scalable, theme-aware vector effects and responsive layouts should continue to
+be preferred as shared visual work expands so the design can adapt to web,
+terminal, desktop, documentation, 4K workstations, and compact Raspberry Pi
+presentation surfaces without requiring separate semantic interfaces.
 
 ## Favorites Workspace
 

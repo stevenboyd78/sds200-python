@@ -6,8 +6,12 @@ read-only browser shell. Milestone 20.3 added live ordered browser updates over
 Server-Sent Events. Milestone 20.4 added explicit browser playback of daemon-owned
 PCMU audio. Milestone 20.5 added daemon-owned recording workflows, finalized
 recording inventory, and safe saved-WAV playback and download. Milestone 20.6
-adds capability-negotiated scanner hold, previous/next navigation, and bounded
-reconnect controls without changing daemon scanner ownership.
+added capability-negotiated scanner hold, previous/next navigation, and bounded
+reconnect controls without changing daemon scanner ownership. Milestone 20.7
+adds browser-local system-adaptive, LCARS-inspired, Matrix-inspired,
+First Responder, and Amateur Radio themes over the same accessible dashboard
+structure, including immersive full-screen desktop compositions and compact
+responsive fallbacks for the four custom environments.
 
 ## Architecture
 
@@ -121,6 +125,89 @@ Open the local dashboard after starting the web service:
 ```text
 http://127.0.0.1:8000/
 ```
+
+Theme selection is presentation-only and browser-local. **System** follows the
+browser or operating-system light/dark preference. The four custom choices are
+deliberately more theatrical while preserving the same dashboard semantics:
+
+- **LCARS-inspired** connects the six operational panels with asymmetric rails,
+  segmented console bands, luminous command-deck surfaces, and layered display
+  depth.
+- **Matrix-inspired** turns the shared dashboard into a cinematic terminal
+  workstation with varied terminal panes, technical grids, scan illumination,
+  data-field staging, and perspective depth.
+- **First Responder** presents the same controls as a dispatch/CAD workstation
+  with application chrome, tactical/radar instrumentation, restrained emergency
+  light washes, and operations-center monitor depth.
+- **Amateur Radio** frames the dashboard as an SDS200-inspired rack/front panel
+  with a scanner display window, tactile controls, rotary hardware, vents,
+  chassis depth, and bench-equipment lighting.
+
+At desktop-class sizes the custom themes use a dense three-by-two full-screen
+workstation composition with minimal page scrolling. Intermediate widths reflow
+recording telemetry to preserve readable values, while compact and phone layouts
+fall back to conventional scrolling without changing the semantic interface.
+Large displays can expose more of the surrounding instrumentation rather than
+merely enlarging controls.
+
+The same-origin `/assets/theme-bootstrap.js` script runs in the document head
+before `/assets/dashboard.css`. It validates the stored value, applies the
+corresponding `data-theme` value to the document root before first paint, and
+updates `color-scheme` and `theme-color` metadata. The normal dashboard Content
+Security Policy remains unchanged: inline scripts and styles are still
+forbidden, and no remote fonts, scripts, styles, or theme assets are required.
+If local storage is unavailable, the dashboard safely falls back to **System**.
+
+The cinematic layer is a shared `aria-hidden` decorative stage. It is
+pointer-inert and carries no scanner meaning. All themes retain the same labels,
+DOM structure, ARIA state, keyboard focus treatment, responsive behavior, and
+status text; scanner state is never communicated by color alone. Decorative
+animation and transitions are suppressed for `prefers-reduced-motion`, and the
+more expensive effects are disabled in compact layouts.
+
+## Theme gallery
+
+These documentation captures render the real packaged dashboard and stylesheet
+through `create_web_dashboard_app()`. The screenshot helper supplies deterministic
+fictional daemon, scanner, radio, recording, and reliability state; the images do
+not contain live scanner identifiers, locations, or recordings.
+
+### System — 1920x1080
+
+![System theme at 1920x1080](assets/web-dashboard/theme-system-1920x1080.png)
+
+### LCARS-inspired — 1920x1080
+
+![LCARS-inspired theme at 1920x1080](assets/web-dashboard/theme-lcars-1920x1080.png)
+
+### Matrix-inspired — 1920x1080
+
+![Matrix-inspired theme at 1920x1080](assets/web-dashboard/theme-matrix-1920x1080.png)
+
+### First Responder — 1920x1080
+
+![First Responder theme at 1920x1080](assets/web-dashboard/theme-first-responder-1920x1080.png)
+
+### Amateur Radio — 1920x1080
+
+![Amateur Radio theme at 1920x1080](assets/web-dashboard/theme-amateur-radio-1920x1080.png)
+
+### Compact responsive example — 1366x768
+
+![Amateur Radio theme at 1366x768](assets/web-dashboard/theme-amateur-radio-1366x768.png)
+
+Regenerate the checked-in gallery from a repository checkout with Chrome or
+Chromium and the web dependencies available:
+
+```bash
+python scripts/generate_web_dashboard_screenshots.py
+```
+
+The helper starts a loopback-only demo instance of the real application, selects
+each theme through same-origin browser-local state, uses an isolated Chrome
+profile per capture, enforces a bounded capture timeout, validates the written
+PNG dimensions, and shuts the demo server down when capture is complete. None of
+that demo behavior is part of the shipped `sdsctl web` service.
 
 The browser performs one initial `/api/v1/status` request and opens
 `/api/v1/events` with the same origin. The event response uses
@@ -415,7 +502,7 @@ sdsctl web --no-access-log
 
 ## Current scope
 
-Milestones 20.1 through 20.6 include:
+Milestones 20.1 through 20.7 include:
 
 - the optional `web` package extra;
 - a host-independent FastAPI application factory;
@@ -446,10 +533,17 @@ Milestones 20.1 through 20.6 include:
 - active recording survival across browser or web-process disconnects and
   daemon-shutdown finalization before audio runtime teardown;
 - idle disconnected daemon event-client reaping;
-- restrictive static-, event-, audio-, and recording-file response headers; and
+- restrictive static-, event-, audio-, and recording-file response headers;
+- browser-local system-adaptive, LCARS-inspired, Matrix-inspired, First
+  Responder, and Amateur Radio themes over one shared accessible dashboard
+  structure, with immersive full-screen custom-theme staging, compact responsive
+  reflow, reduced-motion handling, CSP-safe pre-paint restoration, and no daemon
+  or scanner state coupling;
+- deterministic documentation screenshots generated from the real packaged
+  dashboard with fictional demo state and bounded native-Chrome capture; and
 - parser, application, event, audio, recording lifecycle, shell, server,
   packaging, and regression tests.
 
-Later Milestone 20 work remains responsible for browser logs, optional
-LCARS-inspired and Matrix-inspired themes, expanded SVG assets and branding,
-authentication and secure remote-access planning, and Home Assistant integration.
+Later work remains responsible for browser logs, additional shared branding
+assets, authentication and secure remote-access planning, and Home Assistant
+integration.

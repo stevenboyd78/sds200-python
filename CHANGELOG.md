@@ -8,6 +8,25 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Added
 
+- Milestone 20.7 browser-local dashboard themes with a system-adaptive default
+  plus immersive LCARS-inspired, Matrix-inspired, First Responder, and Amateur
+  Radio environments over the existing shared accessible dashboard structure.
+  Desktop-class custom themes use a dense full-screen workstation composition
+  with renderer-specific console rails, terminal fields, dispatch/CAD surfaces,
+  scanner chassis details, layered depth, reflections, scan effects, and other
+  pointer-inert decorative staging. Compact layouts reflow telemetry for smaller
+  displays, reduced-motion preferences suppress decorative animation, and no
+  state is communicated by color alone. A same-origin CSP-compatible bootstrap
+  script restores the saved choice before the stylesheet paints, theme selection
+  is persisted only in browser local storage, browser color metadata follows the
+  active appearance, and the feature adds no daemon, scanner, API-state, CLI, or
+  TUI theme coupling.
+- Deterministic web-dashboard documentation captures generated from the real
+  packaged dashboard with fictional daemon, scanner, radio, recording, and
+  reliability data. The repository helper uses native headless Chrome, isolated
+  per-capture browser profiles, bounded capture timeouts, and checked dimensions
+  to produce the five 1920x1080 theme references plus a 1366x768 compact-layout
+  reference without adding screenshot behavior to the shipped web service.
 - Milestone 20.6 loopback browser scanner controls for semantic system,
   department, site, and channel hold/release, previous/next channel navigation,
   and bounded reconnect. The web layer negotiates daemon-advertised
