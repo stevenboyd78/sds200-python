@@ -21,7 +21,6 @@ from urllib.parse import quote
 from urllib.request import urlopen
 
 import uvicorn
-from fastapi import HTTPException
 from fastapi.responses import HTMLResponse
 
 from sds200.web_dashboard import create_web_dashboard_app
@@ -257,39 +256,74 @@ def _control_result(operation: str) -> dict[str, object]:
     }
 
 
+def _demo_theme_response(theme: str) -> HTMLResponse:
+    """Return a fixed screenshot-setup page for one repository-defined theme."""
+
+    content = (
+        "<!doctype html>\n"
+        '<html lang="en">\n'
+        "<head>\n"
+        '  <meta charset="utf-8">\n'
+        "  <title>sdsctl web screenshot setup</title>\n"
+        "</head>\n"
+        "<body>\n"
+        "<script>\n"
+        f"localStorage.setItem({_THEME_STORAGE_KEY!r}, {theme!r});\n"
+        'location.replace("/");\n'
+        "</script>\n"
+        "</body>\n"
+        "</html>\n"
+    )
+    return HTMLResponse(
+        content=content,
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 def create_demo_app():
     """Return the production dashboard wired to deterministic fake data."""
 
     app = create_web_dashboard_app(DemoDaemonApiClient)
 
     @app.get(
-        "/__demo/theme/{theme}",
+        "/__demo/theme/system",
         include_in_schema=False,
         response_class=HTMLResponse,
     )
-    def select_demo_theme(theme: str) -> HTMLResponse:
-        if theme not in _THEMES:
-            raise HTTPException(status_code=404, detail="Unknown demo theme.")
+    def select_demo_system_theme() -> HTMLResponse:
+        return _demo_theme_response("system")
 
-        content = (
-            "<!doctype html>\n"
-            '<html lang="en">\n'
-            "<head>\n"
-            '  <meta charset="utf-8">\n'
-            "  <title>sdsctl web screenshot setup</title>\n"
-            "</head>\n"
-            "<body>\n"
-            "<script>\n"
-            f"localStorage.setItem({_THEME_STORAGE_KEY!r}, {theme!r});\n"
-            'location.replace("/");\n'
-            "</script>\n"
-            "</body>\n"
-            "</html>\n"
-        )
-        return HTMLResponse(
-            content=content,
-            headers={"Cache-Control": "no-store"},
-        )
+    @app.get(
+        "/__demo/theme/lcars",
+        include_in_schema=False,
+        response_class=HTMLResponse,
+    )
+    def select_demo_lcars_theme() -> HTMLResponse:
+        return _demo_theme_response("lcars")
+
+    @app.get(
+        "/__demo/theme/matrix",
+        include_in_schema=False,
+        response_class=HTMLResponse,
+    )
+    def select_demo_matrix_theme() -> HTMLResponse:
+        return _demo_theme_response("matrix")
+
+    @app.get(
+        "/__demo/theme/first-responder",
+        include_in_schema=False,
+        response_class=HTMLResponse,
+    )
+    def select_demo_first_responder_theme() -> HTMLResponse:
+        return _demo_theme_response("first-responder")
+
+    @app.get(
+        "/__demo/theme/amateur-radio",
+        include_in_schema=False,
+        response_class=HTMLResponse,
+    )
+    def select_demo_amateur_radio_theme() -> HTMLResponse:
+        return _demo_theme_response("amateur-radio")
 
     return app
 
