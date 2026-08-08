@@ -7,11 +7,23 @@
   <meta name="theme-color" content="#172033">
   <title>sdsctl scanner dashboard</title>
   <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <script src="/assets/theme-bootstrap.js"></script>
   <link rel="stylesheet" href="/assets/dashboard.css">
   <script src="/assets/dashboard.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to scanner status</a>
+
+  <div class="theme-stage" aria-hidden="true">
+    <span class="theme-stage-a"></span>
+    <span class="theme-stage-b"></span>
+    <span class="theme-stage-c"></span>
+    <span class="theme-stage-d"></span>
+    <span class="theme-stage-e"></span>
+    <span class="theme-stage-f"></span>
+    <span class="theme-stage-g"></span>
+    <span class="theme-stage-h"></span>
+  </div>
 
   <header class="site-header">
     <div class="brand">
@@ -22,13 +34,26 @@
       </p>
     </div>
 
-    <div
-      id="status-badge"
-      class="status-badge"
-      data-state="loading"
-      aria-live="polite"
-    >
-      Loading
+    <div class="header-actions">
+      <div class="theme-picker">
+        <label for="theme-select">Theme</label>
+        <select id="theme-select">
+          <option value="system">System</option>
+          <option value="lcars">LCARS-inspired</option>
+          <option value="matrix">Matrix-inspired</option>
+          <option value="first-responder">First Responder</option>
+          <option value="amateur-radio">Amateur Radio</option>
+        </select>
+      </div>
+
+      <div
+        id="status-badge"
+        class="status-badge"
+        data-state="loading"
+        aria-live="polite"
+      >
+        Loading
+      </div>
     </div>
   </header>
 

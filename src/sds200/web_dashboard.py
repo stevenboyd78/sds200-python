@@ -289,6 +289,17 @@ def create_web_dashboard_app(
         return _asset_response("dashboard.css", media_type="text/css")
 
     @app.get(
+        "/assets/theme-bootstrap.js",
+        include_in_schema=False,
+        response_class=Response,
+    )
+    def theme_bootstrap_script() -> Response:
+        return _asset_response(
+            "theme-bootstrap.js",
+            media_type="application/javascript",
+        )
+
+    @app.get(
         "/assets/dashboard.js",
         include_in_schema=False,
         response_class=Response,

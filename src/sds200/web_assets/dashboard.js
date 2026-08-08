@@ -48,6 +48,26 @@ function element(id) {
   return node;
 }
 
+function initializeThemeControl() {
+  const select = element("theme-select");
+  const controller = window.sdsctlTheme;
+
+  if (
+    controller === undefined ||
+    typeof controller.current !== "function" ||
+    typeof controller.select !== "function"
+  ) {
+    select.disabled = true;
+    return;
+  }
+
+  select.value = controller.current();
+  select.addEventListener("change", () => {
+    controller.select(select.value);
+    select.value = controller.current();
+  });
+}
+
 function record(value) {
   if (
     value !== null &&
@@ -1437,6 +1457,7 @@ savedRecordingPlayer.addEventListener("error", () => {
     "Saved recording playback failed.";
 });
 
+initializeThemeControl();
 initializeAudioPlayback();
 renderRecording({}, false);
 setScannerControls();
