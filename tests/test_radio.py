@@ -578,3 +578,507 @@ def test_reconnect_deadline_includes_transport_stop(
         radio.reconnect(timeout=0.001)
 
     radio.close()
+
+
+def test_reconnect_deadline_includes_active_psi_renewal() -> None:
+    transport = FakeTransport("udp://scanner")
+    radio = SDS200.from_transport(
+        transport,
+        expected_model="SDS200",
+    )
+    radio.connect()
+    radio._psi_interval_ms = 500
+    radio._psi_renewal_interval = 0.001
+    radio._psi_renewal_defer = 0.001
+    radio._psi_renewal_timeout = 0.2
+    radio._start_psi_renewal()
+
+    deadline = time.monotonic() + 1.0
+    while transport.writes != ["PSI,500"] and time.monotonic() < deadline:
+        time.sleep(0.001)
+
+    assert transport.writes == ["PSI,500"]
+    renewal_thread = radio._psi_renewal_thread
+    assert renewal_thread is not None
+    assert renewal_thread.is_alive()
+
+    started = time.monotonic()
+    with pytest.raises(CommandTimeoutError, match="scanner command activity"):
+        radio.reconnect(timeout=0.01)
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 0.1
+    assert radio.connected
+    assert radio.psi_active
+    assert radio._psi_renewal_thread is renewal_thread
+    assert renewal_thread.is_alive()
+
+    transport.feed_line("PSI,<XML>,")
+    transport.feed_line('<?xml version="1.0" encoding="utf-8"?>')
+    transport.feed_line('<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">')
+    transport.feed_line('<Property VOL="10" SQL="2" Sig="0" />')
+    transport.feed_line("</ScannerInfo>")
+
+    radio.stop_scanner_info_push()
+    assert not renewal_thread.is_alive()
+    radio.close()
+
+
+def test_command_timeout_includes_wait_for_command_transaction() -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(
+        transport,
+        expected_model="SDS200",
+    )
+    radio.connect()
+    first_errors: list[BaseException] = []
+
+    def hold_command_transaction() -> None:
+        try:
+            radio.command("GSI", timeout=0.2)
+        except BaseException as error:
+            first_errors.append(error)
+
+    first = threading.Thread(target=hold_command_transaction, daemon=True)
+    first.start()
+
+    deadline = time.monotonic() + 1.0
+    while transport.writes != ["GSI"] and time.monotonic() < deadline:
+        time.sleep(0.001)
+
+    assert transport.writes == ["GSI"]
+
+    started = time.monotonic()
+    with pytest.raises(CommandTimeoutError, match="MDL response"):
+        radio.command("MDL", timeout=0.01)
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 0.1
+    assert transport.writes == ["GSI"]
+
+    first.join(timeout=1.0)
+    assert not first.is_alive()
+    assert len(first_errors) == 1
+    assert isinstance(first_errors[0], CommandTimeoutError)
+
+    radio.close()
+
+
+def test_network_psi_push_renews_before_observed_hardware_expiry() -> None:
+    transport = FakeTransport("udp://scanner")
+    radio = SDS200.from_transport(transport, expected_model="SDS200")
+    radio._psi_renewal_interval = 0.02
+    radio._psi_renewal_defer = 0.005
+    radio._psi_renewal_timeout = 0.1
+    xml = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">\n'
+        '<Property VOL="10" SQL="2" Sig="0" />\n'
+        "</ScannerInfo>"
+    )
+
+    radio.connect()
+
+    def respond_to_psi_commands() -> None:
+        responded = 0
+        while responded < 2:
+            if transport.writes.count("PSI,500") <= responded:
+                time.sleep(0.001)
+                continue
+            transport.feed_line("PSI,<XML>,")
+            for line in xml.splitlines():
+                transport.feed_line(line)
+            responded += 1
+
+    responder = threading.Thread(target=respond_to_psi_commands, daemon=True)
+    responder.start()
+    radio.start_scanner_info_push(timeout=1.0)
+
+    deadline = time.monotonic() + 1.0
+    while transport.writes.count("PSI,500") < 2 and time.monotonic() < deadline:
+        time.sleep(0.001)
+    responder.join(timeout=1.0)
+
+    assert not responder.is_alive()
+    assert transport.writes.count("PSI,500") >= 2
+    renewal_thread = radio._psi_renewal_thread
+    assert renewal_thread is not None
+    assert renewal_thread.is_alive()
+
+    radio.stop_scanner_info_push()
+    writes_after_stop = list(transport.writes)
+    time.sleep(0.05)
+
+    assert transport.writes == writes_after_stop
+    assert transport.writes[-1] == "PSI,0"
+    assert radio._psi_renewal_thread is None
+    assert not renewal_thread.is_alive()
+    radio.close()
+
+
+def test_psi_renewal_defers_while_response_command_is_pending() -> None:
+    transport = FakeTransport("udp://scanner")
+    radio = SDS200.from_transport(transport, expected_model="SDS200")
+    radio.connect()
+    radio._psi_interval_ms = 500
+    radio._psi_renewal_timeout = 0.1
+    xml = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">\n'
+        '<Property VOL="10" SQL="2" Sig="0" />\n'
+        "</ScannerInfo>"
+    )
+    errors: list[BaseException] = []
+
+    def request_scanner_info() -> None:
+        try:
+            radio.get_scanner_info(timeout=1.0)
+        except BaseException as error:
+            errors.append(error)
+
+    request = threading.Thread(target=request_scanner_info, daemon=True)
+    request.start()
+
+    deadline = time.monotonic() + 1.0
+    while transport.writes != ["GSI"] and time.monotonic() < deadline:
+        time.sleep(0.001)
+
+    assert transport.writes == ["GSI"]
+    assert radio._renew_psi_if_idle() is False
+    assert transport.writes == ["GSI"]
+
+    transport.feed_line("GSI,<XML>,")
+    for line in xml.splitlines():
+        transport.feed_line(line)
+    request.join(timeout=1.0)
+
+    assert not request.is_alive()
+    assert not errors
+
+    def respond_to_renewal() -> None:
+        while transport.writes != ["GSI", "PSI,500"]:
+            time.sleep(0.001)
+        transport.feed_line("PSI,<XML>,")
+        for line in xml.splitlines():
+            transport.feed_line(line)
+
+    responder = threading.Thread(target=respond_to_renewal, daemon=True)
+    responder.start()
+    assert radio._renew_psi_if_idle() is True
+    responder.join(timeout=1.0)
+
+    assert not responder.is_alive()
+    assert transport.writes == ["GSI", "PSI,500"]
+
+    radio._psi_interval_ms = None
+    radio.close()
+
+
+def test_psi_renewal_discards_frame_seen_before_ack(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = FakeTransport("udp://scanner")
+    radio = SDS200.from_transport(transport, expected_model="SDS200")
+    radio.connect()
+    radio._psi_interval_ms = 500
+    radio._psi_renewal_timeout = 0.5
+    xml = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">\n'
+        '<Property VOL="10" SQL="2" Sig="0" />\n'
+        "</ScannerInfo>"
+    )
+    original_subscribe = radio.events.subscribe
+    injected_stale_frame = False
+
+    def subscribe_with_stale_frame(
+        event: str,
+        callback: object,
+    ) -> object:
+        nonlocal injected_stale_frame
+        unsubscribe = original_subscribe(event, callback)
+        if event == "psi" and not injected_stale_frame:
+            injected_stale_frame = True
+            transport.feed_line("PSI,<XML>,")
+            for line in xml.splitlines():
+                transport.feed_line(line)
+        return unsubscribe
+
+    monkeypatch.setattr(radio.events, "subscribe", subscribe_with_stale_frame)
+
+    renewal_results: list[bool] = []
+    ack_sent = threading.Event()
+    release_post_ack_frame = threading.Event()
+
+    def respond_to_renewal() -> None:
+        deadline = time.monotonic() + 1.0
+        while transport.writes != ["PSI,500"] and time.monotonic() < deadline:
+            time.sleep(0.001)
+        assert transport.writes == ["PSI,500"]
+        transport.feed_line("PSI,OK")
+        ack_sent.set()
+        assert release_post_ack_frame.wait(timeout=1.0)
+        transport.feed_line("PSI,<XML>,")
+        for line in xml.splitlines():
+            transport.feed_line(line)
+
+    responder = threading.Thread(target=respond_to_renewal, daemon=True)
+    responder.start()
+    renewal = threading.Thread(
+        target=lambda: renewal_results.append(radio._renew_psi_if_idle()),
+        daemon=True,
+    )
+    renewal.start()
+
+    assert ack_sent.wait(timeout=1.0)
+    time.sleep(0.02)
+
+    assert injected_stale_frame
+    assert renewal.is_alive()
+
+    release_post_ack_frame.set()
+    renewal.join(timeout=1.0)
+    responder.join(timeout=1.0)
+
+    assert not renewal.is_alive()
+    assert not responder.is_alive()
+    assert renewal_results == [True]
+    assert transport.writes == ["PSI,500"]
+
+    radio._psi_interval_ms = None
+    radio.close()
+
+
+def test_psi_renewal_keeps_transaction_lock_until_frame_after_ack() -> None:
+    transport = FakeTransport("udp://scanner")
+    radio = SDS200.from_transport(transport, expected_model="SDS200")
+    radio.connect()
+    radio._psi_interval_ms = 500
+    radio._psi_renewal_timeout = 0.5
+    xml = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">\n'
+        '<Property VOL="10" SQL="2" Sig="0" />\n'
+        "</ScannerInfo>"
+    )
+    renewal_results: list[bool] = []
+    command_errors: list[BaseException] = []
+
+    renewal = threading.Thread(
+        target=lambda: renewal_results.append(radio._renew_psi_if_idle()),
+        daemon=True,
+    )
+    renewal.start()
+
+    deadline = time.monotonic() + 1.0
+    while transport.writes != ["PSI,500"] and time.monotonic() < deadline:
+        time.sleep(0.001)
+
+    assert transport.writes == ["PSI,500"]
+    transport.feed_line("PSI,OK")
+
+    def request_scanner_info() -> None:
+        try:
+            radio.get_scanner_info(timeout=0.5)
+        except BaseException as error:
+            command_errors.append(error)
+
+    request = threading.Thread(target=request_scanner_info, daemon=True)
+    request.start()
+    time.sleep(0.02)
+
+    assert transport.writes == ["PSI,500"]
+    assert renewal.is_alive()
+    assert request.is_alive()
+
+    transport.feed_line("PSI,<XML>,")
+    for line in xml.splitlines():
+        transport.feed_line(line)
+
+    deadline = time.monotonic() + 1.0
+    while transport.writes != ["PSI,500", "GSI"] and time.monotonic() < deadline:
+        time.sleep(0.001)
+
+    assert transport.writes == ["PSI,500", "GSI"]
+    transport.feed_line("GSI,<XML>,")
+    for line in xml.splitlines():
+        transport.feed_line(line)
+
+    renewal.join(timeout=1.0)
+    request.join(timeout=1.0)
+
+    assert not renewal.is_alive()
+    assert not request.is_alive()
+    assert renewal_results == [True]
+    assert not command_errors
+
+    radio._psi_interval_ms = None
+    radio.close()
+
+
+def test_psi_start_keeps_transaction_lock_until_frame_after_ack() -> None:
+    transport = FakeTransport("udp://scanner")
+    radio = SDS200.from_transport(transport, expected_model="SDS200")
+    radio.connect()
+    xml = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">\n'
+        '<Property VOL="10" SQL="2" Sig="0" />\n'
+        "</ScannerInfo>"
+    )
+    start_results: list[ScannerInfo] = []
+    start_errors: list[BaseException] = []
+    command_errors: list[BaseException] = []
+
+    def start_push() -> None:
+        try:
+            start_results.append(radio.start_scanner_info_push(timeout=0.5))
+        except BaseException as error:
+            start_errors.append(error)
+
+    starter = threading.Thread(target=start_push, daemon=True)
+    starter.start()
+
+    deadline = time.monotonic() + 1.0
+    while transport.writes != ["PSI,500"] and time.monotonic() < deadline:
+        time.sleep(0.001)
+
+    assert transport.writes == ["PSI,500"]
+    transport.feed_line("PSI,OK")
+
+    def request_scanner_info() -> None:
+        try:
+            radio.get_scanner_info(timeout=0.5)
+        except BaseException as error:
+            command_errors.append(error)
+
+    request = threading.Thread(target=request_scanner_info, daemon=True)
+    request.start()
+    time.sleep(0.02)
+
+    assert transport.writes == ["PSI,500"]
+    assert starter.is_alive()
+    assert request.is_alive()
+
+    transport.feed_line("PSI,<XML>,")
+    for line in xml.splitlines():
+        transport.feed_line(line)
+
+    deadline = time.monotonic() + 1.0
+    while transport.writes != ["PSI,500", "GSI"] and time.monotonic() < deadline:
+        time.sleep(0.001)
+
+    assert transport.writes == ["PSI,500", "GSI"]
+    transport.feed_line("GSI,<XML>,")
+    for line in xml.splitlines():
+        transport.feed_line(line)
+
+    starter.join(timeout=1.0)
+    request.join(timeout=1.0)
+
+    assert not starter.is_alive()
+    assert not request.is_alive()
+    assert len(start_results) == 1
+    assert not start_errors
+    assert not command_errors
+
+    radio.stop_scanner_info_push()
+    radio.close()
+
+
+def test_stop_waits_for_inflight_psi_start_before_stopping_renewal() -> None:
+    transport = FakeTransport("udp://scanner")
+    radio = SDS200.from_transport(transport, expected_model="SDS200")
+    radio.connect()
+    xml = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">\n'
+        '<Property VOL="10" SQL="2" Sig="0" />\n'
+        "</ScannerInfo>"
+    )
+    start_results: list[ScannerInfo] = []
+    start_errors: list[BaseException] = []
+    stop_errors: list[BaseException] = []
+
+    def start_push() -> None:
+        try:
+            start_results.append(radio.start_scanner_info_push(timeout=0.5))
+        except BaseException as error:
+            start_errors.append(error)
+
+    def stop_push() -> None:
+        try:
+            radio.stop_scanner_info_push()
+        except BaseException as error:
+            stop_errors.append(error)
+
+    starter = threading.Thread(target=start_push, daemon=True)
+    starter.start()
+
+    deadline = time.monotonic() + 1.0
+    while transport.writes != ["PSI,500"] and time.monotonic() < deadline:
+        time.sleep(0.001)
+
+    assert transport.writes == ["PSI,500"]
+    assert radio.psi_active
+
+    stopper = threading.Thread(target=stop_push, daemon=True)
+    stopper.start()
+    time.sleep(0.02)
+
+    assert starter.is_alive()
+    assert stopper.is_alive()
+    assert transport.writes == ["PSI,500"]
+
+    transport.feed_line("PSI,<XML>,")
+    for line in xml.splitlines():
+        transport.feed_line(line)
+
+    starter.join(timeout=1.0)
+    stopper.join(timeout=1.0)
+
+    assert not starter.is_alive()
+    assert not stopper.is_alive()
+    assert len(start_results) == 1
+    assert not start_errors
+    assert not stop_errors
+    assert not radio.psi_active
+    assert radio._psi_renewal_thread is None
+    assert transport.writes == ["PSI,500", "PSI,0"]
+
+    radio.close()
+
+
+def test_close_stops_psi_renewal_after_transport_disconnect() -> None:
+    transport = FakeTransport("udp://scanner")
+    radio = SDS200.from_transport(transport, expected_model="SDS200")
+    radio.connect()
+    radio._psi_interval_ms = 500
+    radio._psi_renewal_interval = 10.0
+    radio._start_psi_renewal()
+
+    renewal_thread = radio._psi_renewal_thread
+    assert renewal_thread is not None
+    assert renewal_thread.is_alive()
+
+    transport.set_connected(False)
+    assert not radio.connected
+    assert radio.psi_active
+
+    radio.close()
+
+    assert radio._psi_renewal_thread is None
+    assert not renewal_thread.is_alive()
+    assert not radio.psi_active
+    assert transport.writes == []
+
+
+def test_recorded_udp_transport_keeps_psi_renewal_support(tmp_path) -> None:
+    transport = FakeTransport("udp://scanner")
+    radio = SDS200.from_transport(
+        transport,
+        expected_model="SDS200",
+        capture_path=tmp_path / "session.jsonl",
+    )
+
+    assert radio._psi_renewal_supported is True

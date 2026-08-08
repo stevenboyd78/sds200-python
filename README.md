@@ -48,6 +48,9 @@ information in this image represents a real system.*
 - Traffic tracing, replayable JSON Lines session capture, and deterministic replay
 - Bounded health history plus failover and preferred-recovery diagnostics
 - Configurable operational logging to stderr, journald, or a logrotate-managed file
+- Proactive in-place renewal of active SDS200 network PSI pushes before the
+  finite push lifetime observed on physical firmware 1.26.01, serialized with
+  scanner commands so renewal does not disturb request/response traffic
 - Automatic rate-limited recovery from connected-but-silent PSI streams in
   both the Textual TUI and foreground daemon ownership runtime
 - JSON Lines events for connection, retry, failover, and state changes

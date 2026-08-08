@@ -87,6 +87,13 @@ from .xml_protocol import ScannerInfoParser, XmlResponseAssembler
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
+# Physical SDS200 1.26.01 testing observed that an otherwise healthy network PSI
+# push stops after roughly 184 seconds. Refresh the active push conservatively
+# before that observed boundary without reopening scanner control.
+_PSI_RENEWAL_INTERVAL_SECONDS = 120.0
+_PSI_RENEWAL_DEFER_SECONDS = 1.0
+_PSI_RENEWAL_TIMEOUT_SECONDS = 2.0
+
 
 @dataclass(slots=True)
 class _PendingResponse:
@@ -166,12 +173,21 @@ class SDSScanner:
         self.trace = TrafficTrace(trace_path)
         self._responses: dict[str, _PendingResponse] = {}
         self._response_lock = threading.RLock()
+        self._command_lock = threading.RLock()
         self._fallback_transport = fallback_transport
         if self._fallback_transport is not None:
             self._fallback_transport.set_recovery_guard(self._recovery_idle)
         self._closed = threading.Event()
         self._closed.set()
         self._psi_interval_ms: int | None = None
+        self._psi_renewal_supported = (
+            self.endpoint.startswith("udp://") or self._fallback_transport is not None
+        )
+        self._psi_renewal_interval = _PSI_RENEWAL_INTERVAL_SECONDS
+        self._psi_renewal_defer = _PSI_RENEWAL_DEFER_SECONDS
+        self._psi_renewal_timeout = _PSI_RENEWAL_TIMEOUT_SECONDS
+        self._psi_renewal_stop = threading.Event()
+        self._psi_renewal_thread: threading.Thread | None = None
         self._health_lock = threading.RLock()
         self._connection_events = 0
         self._last_connection_state: bool | None = None
@@ -478,47 +494,57 @@ class SDSScanner:
             label="Scanner reconnect timeout",
         )
         deadline = monotonic() + normalized_timeout
-        interval_ms = self._psi_interval_ms
-        logger.info(
-            "scanner reconnect starting endpoint=%s psi_interval_ms=%s",
-            self.endpoint,
-            interval_ms,
-        )
-        self._psi_interval_ms = None
-        self.transport.stop()
-        self._closed.set()
+        remaining = deadline - monotonic()
+        if remaining <= 0 or not self._command_lock.acquire(timeout=remaining):
+            raise CommandTimeoutError(
+                "Scanner reconnect timed out waiting for scanner command activity."
+            )
+
         try:
-            remaining = deadline - monotonic()
-            if remaining <= 0:
-                raise CommandTimeoutError(
-                    "Scanner reconnect timed out while stopping the control "
-                    "transport."
-                )
+            interval_ms = self._psi_interval_ms
+            logger.info(
+                "scanner reconnect starting endpoint=%s psi_interval_ms=%s",
+                self.endpoint,
+                interval_ms,
+            )
+            self._stop_psi_renewal()
+            self._psi_interval_ms = None
+            self.transport.stop()
+            self._closed.set()
+            try:
+                remaining = deadline - monotonic()
+                if remaining <= 0:
+                    raise CommandTimeoutError(
+                        "Scanner reconnect timed out while stopping the control "
+                        "transport."
+                    )
 
-            self.connect()
+                self.connect()
 
-            remaining = deadline - monotonic()
-            if remaining <= 0:
-                raise CommandTimeoutError(
-                    "Scanner reconnect timed out while opening the control "
-                    "transport."
-                )
-            if interval_ms is not None:
-                self.start_scanner_info_push(
-                    interval_ms,
-                    timeout=remaining,
-                )
-        except Exception:
-            self._psi_interval_ms = interval_ms
-            raise
-        logger.info(
-            "scanner reconnect completed endpoint=%s psi_interval_ms=%s",
-            self.endpoint,
-            interval_ms,
-        )
+                remaining = deadline - monotonic()
+                if remaining <= 0:
+                    raise CommandTimeoutError(
+                        "Scanner reconnect timed out while opening the control "
+                        "transport."
+                    )
+                if interval_ms is not None:
+                    self.start_scanner_info_push(
+                        interval_ms,
+                        timeout=remaining,
+                    )
+            except Exception:
+                self._psi_interval_ms = interval_ms
+                raise
+            logger.info(
+                "scanner reconnect completed endpoint=%s psi_interval_ms=%s",
+                self.endpoint,
+                interval_ms,
+            )
+        finally:
+            self._command_lock.release()
 
     def close(self) -> None:
-        if self.psi_active and self.connected:
+        if self.psi_active:
             with suppress(SDS200Error, OSError, ValueError):
                 self.stop_scanner_info_push()
         self._psi_interval_ms = None
@@ -582,8 +608,9 @@ class SDSScanner:
         return self.health_history.summary()
 
     def send(self, command: str) -> None:
-        self.trace.tx(command)
-        self.transport.write_command(command)
+        with self._command_lock:
+            self.trace.tx(command)
+            self.transport.write_command(command)
 
     def command(self, command: str, *, timeout: float = 2.0) -> object:
         return self._wait_for_response(
@@ -784,6 +811,110 @@ class SDSScanner:
             firmware=firmware,
         )
 
+    def _renew_psi_if_idle(self) -> bool:
+        """Refresh an active network PSI push without overlapping a command."""
+
+        if (
+            not self._psi_renewal_supported
+            or not self.endpoint.startswith("udp://")
+            or self._psi_renewal_stop.is_set()
+            or not self._command_lock.acquire(blocking=False)
+        ):
+            return False
+
+        try:
+            interval_ms = self._psi_interval_ms
+            if (
+                interval_ms is None
+                or not self.connected
+                or self._psi_renewal_stop.is_set()
+            ):
+                return False
+
+            first_updates: queue.Queue[ScannerInfo] = queue.Queue(maxsize=1)
+
+            def capture_update(response: object) -> None:
+                if isinstance(response, Packet) and response.command == "PSI":
+                    with suppress(queue.Empty):
+                        first_updates.get_nowait()
+                    return
+                if not isinstance(response, ScannerInfo) or response.command != "PSI":
+                    return
+                with suppress(queue.Full):
+                    first_updates.put_nowait(response)
+
+            unsubscribe = self.events.subscribe("psi", capture_update)
+            deadline = monotonic() + self._psi_renewal_timeout
+            try:
+                initial = self.execute(
+                    StartScannerInfoPush(interval_ms),
+                    timeout=max(0.0, deadline - monotonic()),
+                )
+
+                # A ScannerInfo response itself confirms the renewed stream. If
+                # the scanner acknowledges first instead, keep serialization
+                # until the first PSI frame arrives. That frame may already be
+                # queued by the time execute() returns from the acknowledgement.
+                if initial is None:
+                    try:
+                        first_updates.get(
+                            timeout=max(0.0, deadline - monotonic()),
+                        )
+                    except queue.Empty as exc:
+                        raise CommandTimeoutError(
+                            "Timed out waiting for renewed PSI scanner information "
+                            "update."
+                        ) from exc
+            except SDS200Error:
+                logger.warning(
+                    "Could not renew active PSI stream endpoint=%s",
+                    self.endpoint,
+                    exc_info=True,
+                )
+                return False
+            finally:
+                unsubscribe()
+        finally:
+            self._command_lock.release()
+
+        logger.debug(
+            "PSI stream renewed endpoint=%s interval_ms=%d",
+            self.endpoint,
+            interval_ms,
+        )
+        return True
+
+    def _psi_renewal_loop(self) -> None:
+        wait_seconds = self._psi_renewal_interval
+        while not self._psi_renewal_stop.wait(wait_seconds):
+            if not self.endpoint.startswith("udp://") or self._renew_psi_if_idle():
+                wait_seconds = self._psi_renewal_interval
+            else:
+                wait_seconds = min(
+                    self._psi_renewal_defer,
+                    self._psi_renewal_interval,
+                )
+
+    def _start_psi_renewal(self) -> None:
+        if not self._psi_renewal_supported:
+            return
+        self._stop_psi_renewal()
+        self._psi_renewal_stop.clear()
+        thread = threading.Thread(
+            target=self._psi_renewal_loop,
+            name="sds200-psi-renewal",
+            daemon=True,
+        )
+        self._psi_renewal_thread = thread
+        thread.start()
+
+    def _stop_psi_renewal(self) -> None:
+        self._psi_renewal_stop.set()
+        thread = self._psi_renewal_thread
+        if thread is not None and thread is not threading.current_thread():
+            thread.join()
+        self._psi_renewal_thread = None
+
     def start_scanner_info_push(
         self,
         interval_ms: int = 500,
@@ -793,58 +924,79 @@ class SDSScanner:
         if self.psi_active:
             raise RuntimeError("PSI scanner information push is already active.")
 
-        logger.info(
-            "PSI stream starting endpoint=%s interval_ms=%d",
-            self.endpoint,
-            interval_ms,
-        )
-        first_updates: queue.Queue[ScannerInfo] = queue.Queue(maxsize=1)
-
-        def capture_first_update(response: object) -> None:
-            if not isinstance(response, ScannerInfo) or response.command != "PSI":
-                return
-            with suppress(queue.Full):
-                first_updates.put_nowait(response)
-
-        unsubscribe = self.events.subscribe("psi", capture_first_update)
-        command = StartScannerInfoPush(interval_ms)
         deadline = monotonic() + timeout
-        self._psi_interval_ms = interval_ms
-        try:
-            initial = self.execute(
-                command,
-                timeout=max(0.0, deadline - monotonic()),
+        remaining = deadline - monotonic()
+        if remaining <= 0 or not self._command_lock.acquire(timeout=remaining):
+            raise CommandTimeoutError(
+                "Timed out waiting for the first PSI scanner information update."
             )
-            if initial is not None:
-                logger.info("PSI stream started endpoint=%s", self.endpoint)
-                return initial
 
+        try:
+            logger.info(
+                "PSI stream starting endpoint=%s interval_ms=%d",
+                self.endpoint,
+                interval_ms,
+            )
+            first_updates: queue.Queue[ScannerInfo] = queue.Queue(maxsize=1)
+
+            def capture_first_update(response: object) -> None:
+                if isinstance(response, Packet) and response.command == "PSI":
+                    with suppress(queue.Empty):
+                        first_updates.get_nowait()
+                    return
+                if not isinstance(response, ScannerInfo) or response.command != "PSI":
+                    return
+                with suppress(queue.Full):
+                    first_updates.put_nowait(response)
+
+            unsubscribe = self.events.subscribe("psi", capture_first_update)
+            command = StartScannerInfoPush(interval_ms)
+            self._psi_interval_ms = interval_ms
             try:
-                first = first_updates.get(
+                initial = self.execute(
+                    command,
                     timeout=max(0.0, deadline - monotonic()),
                 )
-                logger.info("PSI stream started endpoint=%s", self.endpoint)
-                return first
-            except queue.Empty as exc:
-                raise CommandTimeoutError(
-                    "Timed out waiting for the first PSI scanner information update."
-                ) from exc
-        except Exception:
-            self._psi_interval_ms = None
-            if self.connected:
-                with suppress(SDS200Error, OSError, ValueError):
-                    self.send("PSI,0")
-            raise
+                if initial is not None:
+                    self._start_psi_renewal()
+                    logger.info("PSI stream started endpoint=%s", self.endpoint)
+                    return initial
+
+                # An acknowledgement is not the first streamed scanner-info
+                # frame. Keep command serialization until that first PSI frame
+                # arrives; it may already be queued when execute() returns.
+                try:
+                    first = first_updates.get(
+                        timeout=max(0.0, deadline - monotonic()),
+                    )
+                    self._start_psi_renewal()
+                    logger.info("PSI stream started endpoint=%s", self.endpoint)
+                    return first
+                except queue.Empty as exc:
+                    raise CommandTimeoutError(
+                        "Timed out waiting for the first PSI scanner information update."
+                    ) from exc
+            except Exception:
+                self._stop_psi_renewal()
+                self._psi_interval_ms = None
+                if self.connected:
+                    with suppress(SDS200Error, OSError, ValueError):
+                        self.send("PSI,0")
+                raise
+            finally:
+                unsubscribe()
         finally:
-            unsubscribe()
+            self._command_lock.release()
 
     def stop_scanner_info_push(self) -> None:
-        if not self.psi_active:
-            return
-        logger.info("PSI stream stopping endpoint=%s", self.endpoint)
-        self._psi_interval_ms = None
-        if self.connected:
-            self.send("PSI,0")
+        with self._command_lock:
+            self._stop_psi_renewal()
+            if not self.psi_active:
+                return
+            logger.info("PSI stream stopping endpoint=%s", self.endpoint)
+            self._psi_interval_ms = None
+            if self.connected:
+                self.send("PSI,0")
 
     @contextmanager
     def scanner_info_push(
@@ -881,26 +1033,49 @@ class SDSScanner:
         wire_command: str,
         timeout: float,
     ) -> object:
-        response_queue: queue.Queue[object] = queue.Queue(maxsize=1)
-        pending = _PendingResponse(command=response_command, queue=response_queue)
-        with self._response_lock:
-            if response_command in self._responses:
-                raise RuntimeError(f"A {response_command} command is already pending.")
-            self._responses[response_command] = pending
+        deadline = monotonic() + timeout
+        remaining = deadline - monotonic()
+        if remaining <= 0 or not self._command_lock.acquire(timeout=remaining):
+            raise CommandTimeoutError(
+                f"Timed out waiting for {response_command} response."
+            )
+
         try:
-            self.send(wire_command)
-            try:
-                response = response_queue.get(timeout=timeout)
-                if isinstance(response, CommandRejectedError):
-                    raise response
-                return response
-            except queue.Empty as exc:
+            remaining = deadline - monotonic()
+            if remaining <= 0:
                 raise CommandTimeoutError(
                     f"Timed out waiting for {response_command} response."
-                ) from exc
-        finally:
+                )
+
+            response_queue: queue.Queue[object] = queue.Queue(maxsize=1)
+            pending = _PendingResponse(command=response_command, queue=response_queue)
             with self._response_lock:
-                self._responses.pop(response_command, None)
+                if response_command in self._responses:
+                    raise RuntimeError(
+                        f"A {response_command} command is already pending."
+                    )
+                self._responses[response_command] = pending
+            try:
+                self.send(wire_command)
+                remaining = deadline - monotonic()
+                if remaining <= 0:
+                    raise CommandTimeoutError(
+                        f"Timed out waiting for {response_command} response."
+                    )
+                try:
+                    response = response_queue.get(timeout=remaining)
+                    if isinstance(response, CommandRejectedError):
+                        raise response
+                    return response
+                except queue.Empty as exc:
+                    raise CommandTimeoutError(
+                        f"Timed out waiting for {response_command} response."
+                    ) from exc
+            finally:
+                with self._response_lock:
+                    self._responses.pop(response_command, None)
+        finally:
+            self._command_lock.release()
 
     def _receive_line(self, raw: str) -> None:
         self.trace.rx(raw)
