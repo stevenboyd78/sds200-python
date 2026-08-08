@@ -1,0 +1,39 @@
+# Vendored API documentation assets
+
+The loopback web service self-hosts its interactive API documentation assets so
+opening Swagger UI or ReDoc never requires a CDN or other third-party browser
+request.
+
+## Swagger UI
+
+- Package: `swagger-ui-dist`
+- Version: `5.32.11`
+- License: Apache License 2.0
+- Upstream package: https://www.npmjs.com/package/swagger-ui-dist/v/5.32.11
+
+Vendored files:
+
+- `swagger-ui-5.32.11/swagger-ui-bundle.js`
+  - SHA-256: `fcb81e2c79e7e3b76ddb9bd7fc791552045040fde05c19d3f98f9213e7f7724d`
+- `swagger-ui-5.32.11/swagger-ui.css`
+  - SHA-256: `ca238f7d7c2cf4480c1e77a9c3b9da915ab216e96ffd354e69076560c650c6de`
+- `swagger-ui-5.32.11/LICENSE`
+- `swagger-ui-5.32.11/NOTICE`
+
+## ReDoc
+
+- Package: `redoc`
+- Version: `2.5.3`
+- License: MIT
+- Upstream package: https://www.npmjs.com/package/redoc/v/2.5.3
+
+Vendored files:
+
+- `redoc-2.5.3/redoc.standalone.js`
+  - SHA-256: `1320f442151c57c447d3b70c7ffc6c4f86d08464020fe34c8cc5d3164e9944f0`
+- `redoc-2.5.3/redoc.standalone.js.LICENSE.txt`
+- `redoc-2.5.3/LICENSE`
+
+Do not replace these files without reviewing the upstream release, license and
+notice material, updating the pinned hashes, and rerunning the web packaging and
+security tests.

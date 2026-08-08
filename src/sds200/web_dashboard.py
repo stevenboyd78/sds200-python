@@ -47,6 +47,20 @@ _WEB_RESPONSE_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
 }
+_API_DOCS_RESPONSE_HEADERS = {
+    **_WEB_RESPONSE_HEADERS,
+    "Content-Security-Policy": (
+        "default-src 'none'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "script-src 'self'; "
+        "connect-src 'self'; "
+        "img-src 'self' data:; "
+        "font-src 'self' data:; "
+        "base-uri 'none'; "
+        "form-action 'none'; "
+        "frame-ancestors 'none'"
+    ),
+}
 _EVENT_STREAM_RESPONSE_HEADERS = {
     "Cache-Control": "no-store",
     "Connection": "keep-alive",
@@ -251,6 +265,77 @@ def create_web_dashboard_app(
             media_type="image/svg+xml",
         )
 
+    @app.get(
+        "/api/v1/docs",
+        include_in_schema=False,
+        response_class=HTMLResponse,
+    )
+    def swagger_ui() -> HTMLResponse:
+        return _api_docs_response("api-docs-swagger.html")
+
+    @app.get(
+        "/api/v1/redoc",
+        include_in_schema=False,
+        response_class=HTMLResponse,
+    )
+    def redoc() -> HTMLResponse:
+        return _api_docs_response("api-docs-redoc.html")
+
+    @app.get(
+        "/assets/api-docs/swagger-ui.css",
+        include_in_schema=False,
+        response_class=Response,
+    )
+    def swagger_ui_stylesheet() -> Response:
+        return _asset_response(
+            "vendor/swagger-ui-5.32.11/swagger-ui.css",
+            media_type="text/css",
+        )
+
+    @app.get(
+        "/assets/api-docs/swagger-ui-bundle.js",
+        include_in_schema=False,
+        response_class=Response,
+    )
+    def swagger_ui_bundle() -> Response:
+        return _asset_response(
+            "vendor/swagger-ui-5.32.11/swagger-ui-bundle.js",
+            media_type="application/javascript",
+        )
+
+    @app.get(
+        "/assets/api-docs/swagger-ui-init.js",
+        include_in_schema=False,
+        response_class=Response,
+    )
+    def swagger_ui_init() -> Response:
+        return _asset_response(
+            "api-docs-swagger.js",
+            media_type="application/javascript",
+        )
+
+    @app.get(
+        "/assets/api-docs/redoc.standalone.js",
+        include_in_schema=False,
+        response_class=Response,
+    )
+    def redoc_bundle() -> Response:
+        return _asset_response(
+            "vendor/redoc-2.5.3/redoc.standalone.js",
+            media_type="application/javascript",
+        )
+
+    @app.get(
+        "/assets/api-docs/redoc-init.js",
+        include_in_schema=False,
+        response_class=Response,
+    )
+    def redoc_init() -> Response:
+        return _asset_response(
+            "api-docs-redoc.js",
+            media_type="application/javascript",
+        )
+
     @app.get("/api/v1")
     def api_index() -> dict[str, object]:
         return {
@@ -258,11 +343,14 @@ def create_web_dashboard_app(
             "links": {
                 "audio": "/api/v1/audio",
                 "dashboard": "/",
+                "docs": "/api/v1/docs",
                 "events": "/api/v1/events",
                 "health": "/healthz",
+                "openapi": "/api/v1/openapi.json",
                 "recording": "/api/v1/recording",
                 "recordings": "/api/v1/recordings",
                 "recording_file": "/api/v1/recordings/file/{identifier}",
+                "redoc": "/api/v1/redoc",
                 "snapshot": "/api/v1/snapshot",
                 "status": "/api/v1/status",
             },
@@ -373,7 +461,11 @@ def create_web_dashboard_app(
 
 @cache
 def _read_web_asset(name: str) -> str:
-    return files(_WEB_ASSET_PACKAGE).joinpath(name).read_text(encoding="utf-8")
+    return (
+        files(_WEB_ASSET_PACKAGE)
+        .joinpath(*name.split("/"))
+        .read_text(encoding="utf-8")
+    )
 
 
 def _asset_response(name: str, *, media_type: str) -> Response:
@@ -381,6 +473,13 @@ def _asset_response(name: str, *, media_type: str) -> Response:
         content=_read_web_asset(name),
         media_type=media_type,
         headers=dict(_WEB_RESPONSE_HEADERS),
+    )
+
+
+def _api_docs_response(name: str) -> HTMLResponse:
+    return HTMLResponse(
+        content=_read_web_asset(name),
+        headers=dict(_API_DOCS_RESPONSE_HEADERS),
     )
 
 
