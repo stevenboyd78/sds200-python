@@ -108,6 +108,121 @@
         </dl>
       </section>
 
+      <section class="panel scanner-controls-panel" aria-labelledby="scanner-controls-title">
+        <header class="panel-header">
+          <p class="panel-kicker">Control</p>
+          <h2 id="scanner-controls-title">Scanner controls</h2>
+        </header>
+
+        <p
+          id="scanner-control-status"
+          class="scanner-control-status"
+          role="status"
+          aria-live="polite"
+        >
+          Checking control capabilities.
+        </p>
+
+        <div class="scanner-control-group">
+          <h3>Hold / release</h3>
+          <div class="scanner-controls">
+            <span class="scanner-hold-control">
+              <button
+                id="scanner-hold-system"
+                type="button"
+                aria-describedby="scanner-hold-system-state"
+                aria-pressed="false"
+                disabled
+              >
+                Hold system
+              </button>
+              <span
+                id="scanner-hold-system-state"
+                class="scanner-hold-state"
+                hidden
+              >
+                Held
+              </span>
+            </span>
+            <span class="scanner-hold-control">
+              <button
+                id="scanner-hold-department"
+                type="button"
+                aria-describedby="scanner-hold-department-state"
+                aria-pressed="false"
+                disabled
+              >
+                Hold department
+              </button>
+              <span
+                id="scanner-hold-department-state"
+                class="scanner-hold-state"
+                hidden
+              >
+                Held
+              </span>
+            </span>
+            <span class="scanner-hold-control">
+              <button
+                id="scanner-hold-site"
+                type="button"
+                aria-describedby="scanner-hold-site-state"
+                aria-pressed="false"
+                disabled
+              >
+                Hold site
+              </button>
+              <span
+                id="scanner-hold-site-state"
+                class="scanner-hold-state"
+                hidden
+              >
+                Held
+              </span>
+            </span>
+            <span class="scanner-hold-control">
+              <button
+                id="scanner-hold-channel"
+                type="button"
+                aria-describedby="scanner-hold-channel-state"
+                aria-pressed="false"
+                disabled
+              >
+                Hold channel
+              </button>
+              <span
+                id="scanner-hold-channel-state"
+                class="scanner-hold-state"
+                hidden
+              >
+                Held
+              </span>
+            </span>
+          </div>
+        </div>
+
+        <div class="scanner-control-group">
+          <h3>Channel</h3>
+          <div class="scanner-controls">
+            <button id="scanner-previous" type="button" disabled>
+              Previous channel
+            </button>
+            <button id="scanner-next" type="button" disabled>
+              Next channel
+            </button>
+          </div>
+        </div>
+
+        <div class="scanner-control-group">
+          <h3>Connection</h3>
+          <div class="scanner-controls">
+            <button id="scanner-reconnect" type="button" disabled>
+              Reconnect scanner
+            </button>
+          </div>
+        </div>
+      </section>
+
       <section class="panel" aria-labelledby="runtime-title">
         <header class="panel-header">
           <p class="panel-kicker">Services</p>

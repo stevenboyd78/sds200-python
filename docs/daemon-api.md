@@ -89,8 +89,9 @@ Default server limits are:
 | Request size | 65,536 bytes |
 | Response size | 1,048,576 bytes |
 | Idle client timeout | 5 seconds |
-| Maximum control deadline | 2 seconds |
-| Worker shutdown deadline | 3 seconds |
+| Indexed/reconnect control deadline | 2 seconds |
+| Semantic hold-state deadline | 4 seconds |
+| Worker shutdown deadline | 5 seconds |
 
 The corresponding daemon options are:
 
@@ -166,8 +167,11 @@ messages.
 - every operation available in the running daemon;
 - `read_only: false`;
 - the backward-compatible `read_only_operations` set;
-- the explicit scanner `control_operations` set; and
-- `max_control_timeout`, currently `2.0` seconds.
+- the explicit scanner `control_operations` set;
+- `max_control_timeout`, currently `2.0` seconds for compatibility indexed
+  navigation and reconnect; and
+- `max_hold_state_timeout`, currently `4.0` seconds when
+  `scanner.hold_state` is advertised.
 
 Recording operations appear in `operations` only when a recording manager is
 configured. `recording.status` and `recordings.list` are also advertised as
@@ -247,6 +251,7 @@ scanner command string.
 | Operation | Parameters |
 | --- | --- |
 | `scanner.hold` | Required `target`; optional `first`, `second`, and `timeout` |
+| `scanner.hold_state` | Required `scope` and boolean `held`; optional `timeout` |
 | `scanner.next` | Required `target`; optional `first`, `second`, `count`, and `timeout` |
 | `scanner.previous` | Required `target`; optional `first`, `second`, `count`, and `timeout` |
 | `scanner.reconnect` | Optional `timeout` only |
@@ -269,18 +274,35 @@ Targets are normalized to uppercase. `first` and `second` may be strings,
 integers, or `null`, but may not contain commas or line breaks. Navigation
 `count` defaults to `1` and must be an integer from `1` through `8`.
 
-`timeout` defaults to `2.0` seconds and must be finite, greater than zero, and
-no greater than the advertised maximum.
+Compatibility indexed navigation and reconnect `timeout` values default to
+`2.0` seconds and may not exceed `max_control_timeout`. Semantic
+`scanner.hold_state` defaults to `4.0` seconds and may not exceed
+`max_hold_state_timeout`.
 
-Example hold request:
+Example indexed hold request:
 
 ```json
 {"operation":"scanner.hold","params":{"first":42,"target":"SYS","timeout":1.5},"protocol":"sdsctl.daemon","request_id":"hold-1","version":1}
 ```
 
-There is no `scanner.resume` operation. The documented scanner protocol used by
-this project provides `HLD`, `NXT`, and `PRV`, but no verified resume or
-unhold wire contract. The daemon does not invent one.
+Example semantic desired-state request:
+
+```json
+{"operation":"scanner.hold_state","params":{"held":false,"scope":"channel","timeout":4.0},"protocol":"sdsctl.daemon","request_id":"hold-state-1","version":1}
+```
+
+`scope` is limited to `system`, `department`, `site`, or `channel`. `held` must
+be a JSON boolean. The daemon reads authoritative `GSI` before acting, returns
+success without a key press when the requested state already matches, and
+otherwise executes only the allowlisted verified hold gesture. Enabling a hold
+requires an available current selection. Releasing a held scope remains valid
+even when its current selection index has become the SDS200 unsigned-32
+no-current-selection sentinel.
+
+There is no separate `scanner.resume` operation and no generic public
+`scanner.key` passthrough. Release is the explicit desired state
+`scanner.hold_state(..., held=false)`. The indexed `scanner.hold` contract remains
+unchanged for compatibility.
 
 ### Reconnect availability
 
@@ -298,6 +320,8 @@ A successful control response is returned only after the scanner command has
 completed authoritatively:
 
 - navigation operations require the matching scanner `OK` acknowledgement;
+- semantic hold-state performs an authoritative `GSI` read before the gesture,
+  then polls `GSI` until the requested hold field reaches the desired state;
 - reconnect must reopen the supported control transport and restore an active
   PSI interval before completion;
 - the runtime increments one control sequence after success; and
@@ -482,7 +506,7 @@ error remains authoritative.
 The `daemon.sock` protocol intentionally excludes:
 
 - unrestricted raw scanner-command passthrough;
-- undocumented resume or unhold semantics;
+- generic public `KEY` passthrough and unverified key modes or gestures;
 - streaming event responses on an API connection;
 - binary PCM, PCMU, or finalized-WAV delivery on the API connection;
 - TCP or remote-network exposure;

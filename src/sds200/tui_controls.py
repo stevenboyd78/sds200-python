@@ -4,7 +4,7 @@ import queue
 from collections.abc import Callable
 from dataclasses import dataclass
 from threading import Event, Thread, current_thread
-from typing import Literal
+from typing import Literal, TypeGuard
 
 from .commands import NavigationTarget
 from .state import RadioStateSnapshot
@@ -12,6 +12,13 @@ from .state import RadioStateSnapshot
 ControlOperation = Callable[[], None]
 ControlSuccess = Callable[[], None]
 HoldScope = Literal["system", "department", "site", "channel"]
+
+SCANNER_INDEX_UNAVAILABLE = (1 << 32) - 1
+
+
+def scanner_index_available(value: int | None) -> TypeGuard[int]:
+    # Reject the SDS200 unsigned-32 no-current-selection sentinel.
+    return value is not None and 0 <= value < SCANNER_INDEX_UNAVAILABLE
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,11 +112,13 @@ def hold_selection(
     """Resolve a system, department, site, or channel hold from PSI indexes."""
 
     if scope == "system":
-        if snapshot.system_index is None:
+        if not scanner_index_available(snapshot.system_index):
             return None
         return HoldSelection(scope, "SYS", snapshot.system_index)
     if scope == "department":
-        if snapshot.department_index is None or snapshot.system_index is None:
+        if not scanner_index_available(
+            snapshot.department_index
+        ) or not scanner_index_available(snapshot.system_index):
             return None
         return HoldSelection(
             scope,
@@ -118,10 +127,10 @@ def hold_selection(
             snapshot.system_index,
         )
     if scope == "site":
-        if snapshot.site_index is None:
+        if not scanner_index_available(snapshot.site_index):
             return None
         return HoldSelection(scope, "SITE", snapshot.site_index)
-    if snapshot.channel_index is None:
+    if not scanner_index_available(snapshot.channel_index):
         return None
     if snapshot.channel_kind == "TGID":
         target: NavigationTarget = "TGID"
@@ -137,7 +146,7 @@ def channel_navigation(
 ) -> tuple[NavigationTarget, int] | None:
     """Return a documented channel navigation target when PSI provides an index."""
 
-    if snapshot.channel_index is None:
+    if not scanner_index_available(snapshot.channel_index):
         return None
     if snapshot.channel_kind == "TGID":
         return "TGID", snapshot.channel_index

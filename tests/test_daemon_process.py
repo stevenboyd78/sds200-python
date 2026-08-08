@@ -24,6 +24,7 @@ class FakeRuntime:
         self.start_error = start_error
         self.stop_error = stop_error
         self.start_calls = 0
+        self.poll_calls = 0
         self.stop_calls = 0
 
     def start(self) -> None:
@@ -31,6 +32,9 @@ class FakeRuntime:
         self.start_calls += 1
         if self.start_error is not None:
             raise self.start_error
+
+    def poll(self) -> None:
+        self.poll_calls += 1
 
     def stop(self) -> None:
         self.order.append("runtime.stop")
@@ -479,6 +483,7 @@ def test_process_runs_until_requested_and_stops_before_restoring_signals() -> No
         "signals.exit",
     ]
     assert runtime.start_calls == 1
+    assert runtime.poll_calls == 1
     assert runtime.stop_calls == 1
 
 

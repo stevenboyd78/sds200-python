@@ -8,12 +8,13 @@ import logging
 from collections.abc import AsyncIterator, Callable, Mapping
 from functools import cache
 from importlib.resources import files
-from typing import Protocol, TypeAlias
+from typing import Annotated, Literal, Protocol, TypeAlias
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 
 from . import __version__
+from .daemon_api import DaemonApiOperation
 from .daemon_events import DaemonEvent
 from .daemon_recording_file_client import (
     DaemonRecordingFileDownload,
@@ -23,6 +24,8 @@ from .daemon_recording_file_protocol import RecordingFileResponseStatus
 from .exceptions import DaemonRequestError, SDS200Error
 from .pcmu_protocol import encode_pcmu_delivery
 from .pcmu_subscriptions import PcmuPacketDelivery
+from .state import RadioStateSnapshot
+from .tui_controls import channel_navigation
 
 WEB_DASHBOARD_API_PROTOCOL = "sdsctl.web"
 WEB_DASHBOARD_API_VERSION = 1
@@ -94,6 +97,21 @@ WEB_DASHBOARD_RECORDING_NOT_FOUND_DETAIL = "The recording was not found."
 WEB_DASHBOARD_RECORDING_NOT_PLAYABLE_DETAIL = (
     "The recording is not playable."
 )
+WEB_DASHBOARD_CONTROL_BUSY_DETAIL = (
+    "Another scanner control is already in progress."
+)
+WEB_DASHBOARD_CONTROL_UNAVAILABLE_DETAIL = (
+    "Scanner control is currently unavailable."
+)
+WEB_DASHBOARD_CONTROL_SELECTION_UNAVAILABLE_DETAIL = (
+    "The current scanner selection is unavailable for this control."
+)
+WEB_DASHBOARD_CONTROL_TIMEOUT_DETAIL = "The scanner control timed out."
+WEB_DASHBOARD_CONTROL_REJECTED_DETAIL = "The scanner rejected the control."
+WEB_DASHBOARD_CONTROL_INVALID_DETAIL = "The scanner control request is invalid."
+WEB_DASHBOARD_CONTROL_FAILED_DETAIL = (
+    "The scanner control could not be completed."
+)
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +124,44 @@ class DaemonApiClientLike(Protocol):
 
     def runtime_snapshot(self) -> Mapping[str, object]:
         """Return one authoritative daemon runtime snapshot."""
+
+    def hold_state(
+        self,
+        scope: str,
+        held: bool,
+        *,
+        timeout: float = 4.0,
+    ) -> Mapping[str, object]:
+        """Set one daemon-owned semantic scanner hold state."""
+
+    def next(
+        self,
+        target: str,
+        first: str | int | None = None,
+        second: str | int | None = None,
+        *,
+        count: int = 1,
+        timeout: float = 2.0,
+    ) -> Mapping[str, object]:
+        """Move forward through one daemon-owned scanner selection list."""
+
+    def previous(
+        self,
+        target: str,
+        first: str | int | None = None,
+        second: str | int | None = None,
+        *,
+        count: int = 1,
+        timeout: float = 2.0,
+    ) -> Mapping[str, object]:
+        """Move backward through one daemon-owned scanner selection list."""
+
+    def reconnect(
+        self,
+        *,
+        timeout: float = 2.0,
+    ) -> Mapping[str, object]:
+        """Complete one bounded daemon-owned scanner reconnect."""
 
     def recording_status(self) -> Mapping[str, object]:
         """Return the daemon-owned recording state."""
@@ -351,6 +407,10 @@ def create_web_dashboard_app(
                 "recordings": "/api/v1/recordings",
                 "recording_file": "/api/v1/recordings/file/{identifier}",
                 "redoc": "/api/v1/redoc",
+                "scanner_hold": "/api/v1/scanner/hold/{scope}",
+                "scanner_next": "/api/v1/scanner/next",
+                "scanner_previous": "/api/v1/scanner/previous",
+                "scanner_reconnect": "/api/v1/scanner/reconnect",
                 "snapshot": "/api/v1/snapshot",
                 "status": "/api/v1/status",
             },
@@ -375,6 +435,54 @@ def create_web_dashboard_app(
         return {
             **_api_envelope(),
             "snapshot": _query_daemon(api_client_factory, _daemon_snapshot),
+        }
+
+    @app.post("/api/v1/scanner/hold/{scope}")
+    def scanner_hold(
+        scope: Literal["system", "department", "site", "channel"],
+        payload: Annotated[object | None, Body()] = None,
+    ) -> dict[str, object]:
+        held = _web_hold_state_held(payload)
+        return {
+            **_api_envelope(),
+            "control": _query_scanner_control(
+                api_client_factory,
+                DaemonApiOperation.SCANNER_HOLD_STATE,
+                lambda client: client.hold_state(scope, held),
+            ),
+        }
+
+    @app.post("/api/v1/scanner/next")
+    def scanner_next() -> dict[str, object]:
+        return {
+            **_api_envelope(),
+            "control": _query_scanner_control(
+                api_client_factory,
+                DaemonApiOperation.SCANNER_NEXT,
+                _next_current_channel,
+            ),
+        }
+
+    @app.post("/api/v1/scanner/previous")
+    def scanner_previous() -> dict[str, object]:
+        return {
+            **_api_envelope(),
+            "control": _query_scanner_control(
+                api_client_factory,
+                DaemonApiOperation.SCANNER_PREVIOUS,
+                _previous_current_channel,
+            ),
+        }
+
+    @app.post("/api/v1/scanner/reconnect")
+    def scanner_reconnect() -> dict[str, object]:
+        return {
+            **_api_envelope(),
+            "control": _query_scanner_control(
+                api_client_factory,
+                DaemonApiOperation.SCANNER_RECONNECT,
+                lambda client: client.reconnect(),
+            ),
         }
 
     @app.get("/api/v1/recording")
@@ -515,6 +623,157 @@ def _query_daemon(
             status_code=503,
             detail=WEB_DASHBOARD_UNAVAILABLE_DETAIL,
         ) from None
+
+
+class _WebControlUnavailableError(RuntimeError):
+    pass
+
+
+class _WebControlSelectionError(RuntimeError):
+    pass
+
+
+def _query_scanner_control(
+    api_client_factory: DaemonApiClientFactory,
+    operation: DaemonApiOperation,
+    query: _DaemonQuery,
+) -> dict[str, object]:
+    try:
+        with api_client_factory() as client:
+            _require_web_control_capability(client.hello(), operation)
+            return dict(query(client))
+    except _WebControlSelectionError:
+        raise HTTPException(
+            status_code=409,
+            detail=WEB_DASHBOARD_CONTROL_SELECTION_UNAVAILABLE_DETAIL,
+        ) from None
+    except _WebControlUnavailableError:
+        raise HTTPException(
+            status_code=409,
+            detail=WEB_DASHBOARD_CONTROL_UNAVAILABLE_DETAIL,
+        ) from None
+    except DaemonRequestError as error:
+        status_code, detail = _control_request_error_response(error)
+        logger.warning(
+            "web dashboard scanner control request failed "
+            "error_type=%s code=%s",
+            error.__class__.__name__,
+            error.code,
+        )
+        raise HTTPException(
+            status_code=status_code,
+            detail=detail,
+        ) from None
+    except (SDS200Error, OSError) as error:
+        logger.warning(
+            "web dashboard scanner control connection failed error_type=%s",
+            error.__class__.__name__,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=WEB_DASHBOARD_CONTROL_UNAVAILABLE_DETAIL,
+        ) from None
+
+
+def _web_hold_state_held(payload: object) -> bool:
+    if not isinstance(payload, Mapping) or set(payload) != {"held"}:
+        raise HTTPException(
+            status_code=400,
+            detail=WEB_DASHBOARD_CONTROL_INVALID_DETAIL,
+        )
+    held = payload.get("held")
+    if held is True:
+        return True
+    if held is False:
+        return False
+    raise HTTPException(
+        status_code=400,
+        detail=WEB_DASHBOARD_CONTROL_INVALID_DETAIL,
+    )
+
+
+def _require_web_control_capability(
+    hello: Mapping[str, object],
+    operation: DaemonApiOperation,
+) -> None:
+    operations = hello.get("control_operations")
+    if (
+        hello.get("read_only") is not False
+        or not isinstance(operations, list)
+        or operation.value not in operations
+    ):
+        raise _WebControlUnavailableError
+
+
+def _control_radio_state(
+    snapshot: Mapping[str, object],
+) -> RadioStateSnapshot:
+    radio = snapshot.get("radio_state")
+    if not isinstance(radio, Mapping):
+        raise _WebControlSelectionError
+    return RadioStateSnapshot(
+        system_index=_control_index(radio.get("system_index")),
+        department_index=_control_index(radio.get("department_index")),
+        site_index=_control_index(radio.get("site_index")),
+        channel_index=_control_index(radio.get("channel_index")),
+        channel_kind=_control_text(radio.get("channel_kind")),
+    )
+
+
+def _control_index(value: object) -> int | None:
+    if value is None:
+        return None
+    if type(value) is not int or value < 0:
+        raise _WebControlSelectionError
+    return value
+
+
+def _control_text(value: object) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise _WebControlSelectionError
+    return value
+
+
+def _next_current_channel(
+    client: DaemonApiClientLike,
+) -> Mapping[str, object]:
+    selection = channel_navigation(
+        _control_radio_state(client.runtime_snapshot())
+    )
+    if selection is None:
+        raise _WebControlSelectionError
+    target, first = selection
+    return client.next(target, first)
+
+
+def _previous_current_channel(
+    client: DaemonApiClientLike,
+) -> Mapping[str, object]:
+    selection = channel_navigation(
+        _control_radio_state(client.runtime_snapshot())
+    )
+    if selection is None:
+        raise _WebControlSelectionError
+    target, first = selection
+    return client.previous(target, first)
+
+
+def _control_request_error_response(
+    error: DaemonRequestError,
+) -> tuple[int, str]:
+    if error.code == "control_busy":
+        return 409, WEB_DASHBOARD_CONTROL_BUSY_DETAIL
+    if error.code in {"control_unavailable", "unsupported_operation"}:
+        return 409, WEB_DASHBOARD_CONTROL_UNAVAILABLE_DETAIL
+    if error.code == "control_timeout":
+        return 504, WEB_DASHBOARD_CONTROL_TIMEOUT_DETAIL
+    if error.code == "control_rejected":
+        return 409, WEB_DASHBOARD_CONTROL_REJECTED_DETAIL
+    if error.code == "invalid_parameters":
+        return 400, WEB_DASHBOARD_CONTROL_INVALID_DETAIL
+    return 503, WEB_DASHBOARD_CONTROL_FAILED_DETAIL
 
 
 def _query_recording_daemon(

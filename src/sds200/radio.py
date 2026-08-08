@@ -24,6 +24,7 @@ from .commands import (
     HoldSelection,
     NavigationTarget,
     NextSelection,
+    PressKey,
     PreviousSelection,
     SetSquelch,
     SetVolume,
@@ -642,6 +643,19 @@ class SDSScanner:
             SetSquelch(level, maximum=capabilities.maximum_squelch),
             timeout=timeout,
         )
+
+    def press_hold_key(
+        self,
+        key_code: str,
+        *,
+        timeout: float = 2.0,
+    ) -> None:
+        capabilities = self._model_capabilities(timeout=timeout)
+        if not capabilities.hold_key_control:
+            raise UnsupportedScannerFeatureError(
+                f"{capabilities.model} does not provide hold-related key control."
+            )
+        self.execute(PressKey(key_code), timeout=timeout)
 
     def hold(
         self,

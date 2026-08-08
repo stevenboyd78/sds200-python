@@ -4,8 +4,10 @@ Milestone 20.1 established the optional daemon-backed HTTP service and
 loopback-only command. Milestone 20.2 added the first accessible responsive,
 read-only browser shell. Milestone 20.3 added live ordered browser updates over
 Server-Sent Events. Milestone 20.4 added explicit browser playback of daemon-owned
-PCMU audio. Milestone 20.5 adds daemon-owned recording workflows, finalized
-recording inventory, and safe saved-WAV playback and download.
+PCMU audio. Milestone 20.5 added daemon-owned recording workflows, finalized
+recording inventory, and safe saved-WAV playback and download. Milestone 20.6
+adds capability-negotiated scanner hold, previous/next navigation, and bounded
+reconnect controls without changing daemon scanner ownership.
 
 ## Architecture
 
@@ -258,6 +260,10 @@ shutdown continues.
 | `GET` | `/api/v1/snapshot` | Authoritative daemon runtime snapshot |
 | `GET` | `/api/v1/events` | Snapshot-first ordered daemon Server-Sent Events |
 | `GET` | `/api/v1/audio` | Validated daemon-owned PCMU v1 binary frame stream |
+| `POST` | `/api/v1/scanner/hold/{scope}` | Set desired system, department, site, or channel hold state |
+| `POST` | `/api/v1/scanner/next` | Move to the next documented current channel selection |
+| `POST` | `/api/v1/scanner/previous` | Move to the previous documented current channel selection |
+| `POST` | `/api/v1/scanner/reconnect` | Request one bounded daemon-owned scanner reconnect |
 | `GET` | `/api/v1/recording` | Current daemon-owned recording snapshot |
 | `POST` | `/api/v1/recording/start` | Start one daemon-owned WAV recording |
 | `POST` | `/api/v1/recording/stop` | Stop and finalize the active recording |
@@ -283,7 +289,72 @@ dashboard keeps its stricter `style-src 'self'` policy without this exception.
 
 The service envelope uses protocol `sdsctl.web`, version `1`. Each
 request-response daemon route creates a bounded local API client, negotiates the
-daemon protocol, performs the requested read, and closes the client.
+daemon protocol, performs the requested operation, and closes the client.
+
+Scanner controls are deliberately narrow browser operations rather than a raw
+scanner-command passthrough. Browser hold requests never provide raw `HLD` or
+`KEY` values: `POST /api/v1/scanner/hold/{scope}` accepts exactly one JSON field,
+`{"held": true}` or `{"held": false}`, and forwards the semantic scope plus
+desired state to daemon `scanner.hold_state`. The daemon performs an
+authoritative `GSI` read before deciding whether a verified key gesture is
+needed. Channel next/previous still resolve the current documented selection
+from the daemon snapshot and never accept raw `NXT` or `PRV` targets from the
+browser.
+
+`GET /api/v1/status` already carries the negotiated daemon `hello` result. The
+browser enables semantic hold controls only when the daemon advertises
+`scanner.hold_state`; channel navigation and reconnect continue to negotiate
+`scanner.next`, `scanner.previous`, and `scanner.reconnect` independently.
+Controls additionally require a running runtime and connected scanner. A new
+hold requires a usable current selection, while release remains available when
+the authoritative hold field is `On` even if scanning has already exposed the
+SDS200 unsigned-32 no-current-selection sentinel (`4294967295`). Next/previous
+continue to reject that sentinel.
+
+Hold controls reflect authoritative PSI/GSI hold fields. An unheld scope renders
+`Hold system`, `Hold department`, `Hold site`, or `Hold channel`; an active scope
+keeps its separate `Held` indicator and changes the button to the corresponding
+`Release` action with `aria-pressed="true"`. The daemon no-ops an already
+satisfied desired state, otherwise executes the complete verified SDS200 gesture
+under the mutation lock and polls authoritative `GSI` until only the requested
+hold field converges. This target-field convergence deliberately tolerates the
+temporary unrelated field inconsistencies observed after the Site Hold gesture.
+Reconnect remains available while the scanner is disconnected when the running
+daemon advertises bounded reconnect support.
+
+The browser allows only one scanner-control mutation at a time. The daemon
+runtime independently retains its own nonblocking control lock, so another local
+client still receives the daemon's stable busy response rather than overlapping
+scanner commands. Successful HTTP control responses contain the daemon control
+sequence, operation timestamps, and authoritative completion `snapshot`. The
+browser renders that snapshot immediately when no ordered SSE event arrived
+during the request. If an event did arrive while the control was in flight, the
+browser does not compare the independent control and event sequence spaces or
+use wall-clock timestamps as an ordering surrogate. Instead it performs a fresh
+authoritative status read. If the event stream remains continuously active
+through the bounded reconciliation attempts, its ordered projection is preserved
+and the normal periodic status refresh provides the next complete snapshot
+boundary. A temporarily unavailable reconciliation status read likewise preserves
+the event-derived projection; because the scanner control has already completed,
+that read failure is not reported as a scanner-control failure, and normal status
+refresh supplies a later full snapshot boundary.
+
+Control failures are mapped to stable redacted HTTP errors. Busy, unavailable,
+unsupported, rejected, timeout, invalid-parameter, connection, and generic
+control failures do not expose private daemon paths or low-level exception
+messages.
+
+Physical Milestone 20.6 validation on SDS200 firmware 1.26.01 exercised
+semantic release and re-hold for System, Department, Site, and Channel through
+the loopback web HTTP routes. Channel release authoritatively returned `Off`
+while the current channel index was the SDS200 `4294967295` no-selection
+sentinel; the route later restored Channel Hold after a new TGID became usable.
+A representative real-browser Channel cycle also confirmed the visible
+`Release channel` plus `Held` state, successful Release completion, transition
+to enabled `Hold channel` with the indicator hidden, successful Hold completion,
+and restoration of the Release/`Held` presentation. The daemon and web process
+IDs remained unchanged, PSI stayed active, and daemon-owned audio continued
+advancing throughout the browser validation.
 
 The event route receives its first validated daemon event before starting the
 HTTP response. An absent, refused, inaccessible, incompatible, or malformed
@@ -344,15 +415,18 @@ sdsctl web --no-access-log
 
 ## Current scope
 
-Milestones 20.1 through 20.5 include:
+Milestones 20.1 through 20.6 include:
 
 - the optional `web` package extra;
 - a host-independent FastAPI application factory;
 - versioned health, status, snapshot, metadata, event, audio, and OpenAPI routes;
 - redacted daemon-unavailable responses;
+- capability-negotiated browser scanner hold, previous/next channel navigation,
+  and bounded reconnect controls with authoritative selection resolution,
+  mutation serialization, completion reconciliation, and stable redacted errors;
 - a loopback-only Uvicorn adapter with bounded graceful shutdown;
 - the `sdsctl web` command;
-- a packaged accessible responsive read-only browser shell;
+- a packaged accessible responsive browser shell;
 - snapshot-first same-origin Server-Sent Events;
 - validated daemon sequence identifiers and complete JSON event envelopes;
 - direct incremental scanner, radio, PSI, audio, and daemon updates;
@@ -376,7 +450,6 @@ Milestones 20.1 through 20.5 include:
 - parser, application, event, audio, recording lifecycle, shell, server,
   packaging, and regression tests.
 
-Later Milestone 20 work remains responsible for browser logs, safe scanner
-controls, optional LCARS-inspired and Matrix-inspired themes, expanded SVG
-assets and branding, authentication and secure remote-access planning, and Home
-Assistant integration.
+Later Milestone 20 work remains responsible for browser logs, optional
+LCARS-inspired and Matrix-inspired themes, expanded SVG assets and branding,
+authentication and secure remote-access planning, and Home Assistant integration.

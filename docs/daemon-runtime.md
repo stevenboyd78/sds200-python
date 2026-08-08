@@ -38,9 +38,10 @@ and PCMU services while preserving standalone TUI ownership as the default.
 Milestone 19.11 adds validated saved-destination activation and transactional
 `SIGHUP` replacement. Milestone 20.5 adds a daemon-owned recording manager over
 the shared decoded-PCM router plus a fourth private Unix-domain socket for
-bounded finalized-recording access. Decoded-PCM CLI subscriptions and automatic
-daemon discovery and selection remain follow-on work. The process does not fork
-or create a pidfile.
+bounded finalized-recording access. Milestone 20.6 adds default-on semantic PSI
+silence detection and bounded recovery inside the foreground ownership loop.
+Decoded-PCM CLI subscriptions and automatic daemon discovery and selection remain
+follow-on work. The process does not fork or create a pidfile.
 
 ## Foreground process contract
 
@@ -203,11 +204,42 @@ failure so later owners are still released.
 stopped or failed runtime cannot be restarted; callers must construct a new
 runtime instance.
 
+### PSI silence recovery
+
+The foreground process calls `DaemonRuntime.poll()` from its existing bounded
+process loop; recovery does not add another watchdog thread. `DaemonRuntime`
+subscribes to `scanner.on_psi()` and records a monotonic timestamp for every
+successfully parsed PSI frame, including frames whose radio-state fields did not
+change. This makes the watchdog a semantic PSI-liveness check rather than a
+generic UDP receive timer.
+
+Automatic recovery is enabled by default. The daemon waits 10 seconds after the
+most recent PSI observation before attempting recovery and applies a 60-second
+cooldown after a completed recovery attempt. The command-line policy is:
+
+```text
+--psi-auto-recover / --no-psi-auto-recover
+--psi-recover-after SECONDS
+--psi-recovery-cooldown SECONDS
+```
+
+A stale stream is recovered with the existing bounded `reconnect(timeout=2.0)`
+path, so directly owned SDS200 UDP control transports reopen and restore their
+configured PSI interval. Automatic recovery shares the same nonblocking mutation
+lock used by API, TUI-daemon-client, and browser scanner controls. If another
+mutation owns that slot, `poll()` simply defers recovery and does not consume the
+cooldown; the next process-loop poll may retry once the control completes.
+
+Recovery failures are isolated from the daemon process, logged by exception type,
+and rate-limited by the same cooldown. The RTSP/RTP audio transport is independent
+from scanner control/PSI, so a control-transport reconnect does not intentionally
+stop daemon-owned audio.
+
 ## Daemon-owned scanner controls
 
-`DaemonRuntime` exposes typed `hold()`, `next()`, `previous()`, and
-`reconnect()` methods for the local API. It does not expose raw scanner command
-strings.
+`DaemonRuntime` exposes typed compatibility `hold()`, semantic
+`hold_state()`, `next()`, `previous()`, and `reconnect()` methods for the local
+API. It does not expose raw scanner command strings or a generic key operation.
 
 Every control:
 
@@ -228,13 +260,33 @@ Navigation completion requires the scanner's matching `OK` acknowledgement.
 Explicit `NG`, `ERR`, or `ERROR` responses are classified as scanner rejection.
 Timeout and transport failures remain redacted at the daemon API boundary.
 
+`hold_state(scope, held)` is a separate desired-state contract rather than a
+reinterpretation of indexed `hold()`. It accepts `system`, `department`, `site`,
+or `channel`, reads authoritative `GSI` before deciding whether any key gesture
+is necessary, and no-ops when the requested `On`/`Off` state already matches.
+Enabling a hold requires a real current selection index; the SDS200 unsigned-32
+maximum sentinel is rejected. Releasing an already held scope does not require
+that cached selection to remain available.
+
+The physically verified SDS200 gestures are one `KEY,A,P` for System Hold, one
+`KEY,B,P` for Department Hold, `KEY,F,P` followed by `KEY,B,P` for Site Hold,
+and one `KEY,C,P` for Channel Hold. Every key in a gesture and all authoritative
+completion reads execute inside one daemon mutation. Completion is not inferred
+from the key acknowledgement: the runtime polls `GSI` until the requested hold
+field reaches the desired state. Site completion intentionally ignores temporary
+unrelated field inconsistencies observed during physical validation.
+
+Compatibility navigation and reconnect retain their two-second control maximum.
+Semantic hold-state has a separate four-second maximum so the measured SDS200
+GSI convergence fits inside the bounded API contract.
+
 Daemon reconnect is available only when `SDSScanner` directly owns an SDS200
 `UdpTransport`. Serial, fallback, replay, and injected transports do not
 advertise the bounded reconnect capability and are rejected before mutation.
-This preserves the two-second control deadline and the API shutdown invariant.
 
-There is no resume operation because the documented scanner protocol used by
-the project has no verified resume or unhold wire contract.
+There is no separate `scanner.resume` or unrestricted public `scanner.key`
+operation. Release is expressed idempotently as semantic
+`scanner.hold_state(..., held=False)`.
 
 ## Dynamic PCM destinations
 
@@ -402,6 +454,15 @@ Milestone 19.8 safe-control contracts are covered by hardware-independent tests,
 including acknowledgements, rejection, deadlines, unsupported transports,
 concurrent requests, shutdown interaction, and unchanged read-only operations.
 
+Milestone 20.6 semantic hold-state control was physically validated on
+2026-08-08 against SDS200 firmware 1.26.01. Single `A`, `B`, and `C` key presses
+toggled System, Department, and Channel Hold in both directions; `F` followed by
+`B` toggled Site Hold in both directions without changing Department Hold.
+Measured authoritative `GSI` convergence after acknowledgement ranged from
+0.115 seconds for Channel release to 2.519 seconds for Site activation. Those
+measurements include scanner reporting and polling behavior and are not claimed
+as physical switch latency.
+
 The complete safe-control sequence was physically validated on 2026-08-05
 against the same SDS200:
 
@@ -441,6 +502,22 @@ automatically started playback, toggled playback with `A`, and finalized a
 53.120-second 8 kHz mono WAV plus metadata. Quitting the TUI left the original
 daemon process, scanner connection, PSI, RTSP/RTP audio, and decoded-PCM router
 running. Controlled `SIGTERM` subsequently removed all three sockets.
+
+### Daemon PSI silence recovery validation
+
+Milestone 20.6 PSI recovery was physically validated against SDS200 firmware
+1.26.01 by dropping only inbound UDP packets from scanner port `50536` to the
+daemon's current local scanner-control port. The rule dropped 19 datagrams while
+leaving the separate audio socket untouched.
+
+The running daemon detected 10.1 seconds without a parsed PSI frame, logged one
+stale-stream warning, executed its bounded reconnect, and reopened scanner control
+on a new local UDP port. Ordered `scanner.psi` events resumed immediately and
+continued with live state changes. The daemon PID remained unchanged, the web
+process stayed running, and daemon audio advanced from 3,997 to 4,495 accepted RTP
+packets across the test. This validates recovery from silent PSI without opening
+a second scanner controller or intentionally interrupting the independent audio
+path.
 
 ## Follow-on work
 

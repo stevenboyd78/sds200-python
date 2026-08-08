@@ -269,6 +269,7 @@ button:focus-visible,
 }
 
 .audio-playback-status,
+.scanner-control-status,
 .recording-status,
 .recordings-message {
   min-height: 1.5em;
@@ -278,13 +279,24 @@ button:focus-visible,
 }
 
 .audio-controls,
+.scanner-controls,
 .recording-controls {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
 }
 
+.scanner-control-group {
+  margin-top: var(--space-5);
+}
+
+.scanner-control-group h3 {
+  margin: 0 0 var(--space-3);
+  font-size: 1rem;
+}
+
 .audio-controls button,
+.scanner-controls button,
 .recording-controls button,
 .recording-library button,
 .recording-action {
@@ -300,6 +312,7 @@ button:focus-visible,
 }
 
 .audio-controls button:hover:not(:disabled),
+.scanner-controls button:hover:not(:disabled),
 .recording-controls button:hover:not(:disabled),
 .recording-library button:hover:not(:disabled),
 .recording-action:hover {
@@ -308,13 +321,35 @@ button:focus-visible,
 }
 
 .audio-controls button:disabled,
+.scanner-controls button:disabled,
 .recording-controls button:disabled,
 .recording-library button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
 
+.scanner-hold-control {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.scanner-hold-state {
+  padding: var(--space-2) var(--space-3);
+  border: 0.125rem solid currentcolor;
+  border-radius: 999px;
+  color: var(--accent-strong);
+  font-size: 0.875rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.scanner-hold-state[hidden] {
+  display: none;
+}
+
 #audio-stop,
+#scanner-reconnect,
 #recording-stop,
 #recordings-refresh {
   color: var(--accent-strong);

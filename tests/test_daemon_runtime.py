@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import threading
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
@@ -44,6 +45,7 @@ class FakeScanner:
         self.fail_at = fail_at
         self._connected = False
         self._psi_active = False
+        self._psi_callbacks: list[Callable[[object], None]] = []
         self.state = FakeRadioState()
         self.close_calls = 0
 
@@ -58,6 +60,26 @@ class FakeScanner:
     @property
     def psi_active(self) -> bool:
         return self._psi_active
+
+    @property
+    def supports_bounded_reconnect(self) -> bool:
+        return True
+
+    def on_psi(
+        self,
+        callback: Callable[[object], None],
+    ) -> Callable[[], None]:
+        self._psi_callbacks.append(callback)
+
+        def unsubscribe() -> None:
+            if callback in self._psi_callbacks:
+                self._psi_callbacks.remove(callback)
+
+        return unsubscribe
+
+    def _emit_psi(self) -> None:
+        for callback in tuple(self._psi_callbacks):
+            callback(object())
 
     def connect(self) -> None:
         self.order.append("scanner.connect")
@@ -91,7 +113,15 @@ class FakeScanner:
         if self.fail_at == "psi":
             raise RuntimeError("secret PSI startup detail")
         self._psi_active = True
+        self._emit_psi()
         return object()
+
+    def reconnect(self, *, timeout: float = 2.0) -> None:
+        assert 0 < timeout <= 2.0
+        self.order.append("scanner.reconnect")
+        self._connected = True
+        self._psi_active = True
+        self._emit_psi()
 
     def stop_scanner_info_push(self) -> None:
         self.order.append("psi.stop")
@@ -209,6 +239,67 @@ def make_runtime(
     audio = AudioFanoutSession(AudioStream(transport), (router,))
     runtime = DaemonRuntime(scanner, audio, router)
     return runtime, scanner, transport, router, order
+
+
+def test_runtime_recovers_sustained_silent_psi_with_cooldown() -> None:
+    now = [100.0]
+    order: list[str] = []
+    scanner = FakeScanner(order)
+    transport = TrackingAudioTransport(order)
+    router = TrackingRouter(order)
+    audio = AudioFanoutSession(AudioStream(transport), (router,))
+    runtime = DaemonRuntime(
+        scanner,
+        audio,
+        router,
+        psi_recover_after=5.0,
+        psi_recovery_cooldown=60.0,
+        clock=lambda: now[0],
+    )
+
+    runtime.start()
+
+    now[0] = 104.9
+    runtime.poll()
+    assert order.count("scanner.reconnect") == 0
+
+    now[0] = 105.1
+    runtime.poll()
+    assert order.count("scanner.reconnect") == 1
+
+    now[0] = 164.9
+    runtime.poll()
+    assert order.count("scanner.reconnect") == 1
+
+    now[0] = 165.2
+    runtime.poll()
+    assert order.count("scanner.reconnect") == 2
+
+    runtime.stop()
+
+
+def test_runtime_can_disable_automatic_psi_recovery() -> None:
+    now = [100.0]
+    order: list[str] = []
+    scanner = FakeScanner(order)
+    transport = TrackingAudioTransport(order)
+    router = TrackingRouter(order)
+    audio = AudioFanoutSession(AudioStream(transport), (router,))
+    runtime = DaemonRuntime(
+        scanner,
+        audio,
+        router,
+        psi_auto_recover=False,
+        psi_recover_after=1.0,
+        clock=lambda: now[0],
+    )
+
+    runtime.start()
+    now[0] = 1000.0
+    runtime.poll()
+    runtime.stop()
+
+    assert "scanner.reconnect" not in order
 
 
 def test_runtime_owns_startup_and_reverse_order_shutdown() -> None:

@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 class _DaemonRuntimeLike(Protocol):
     def start(self) -> None: ...
 
+    def poll(self) -> None: ...
+
     def stop(self) -> None: ...
 
 
@@ -292,6 +294,8 @@ class DaemonProcess:
 
                     if self.signals.stop_requested:
                         break
+
+                    self.runtime.poll()
 
                     if self.signals.consume_reload_request():
                         self._reload_destinations()

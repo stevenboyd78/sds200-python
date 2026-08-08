@@ -11,6 +11,7 @@ from sds200.tui_controls import (
     HoldSelection,
     channel_navigation,
     hold_selection,
+    scanner_index_available,
 )
 
 FIXTURE = Path(__file__).parent / "fixtures" / "replay" / "sds100-tui-controls.jsonl"
@@ -50,6 +51,40 @@ def test_hold_selection_uses_documented_scope_indexes() -> None:
     assert hold_selection(RadioStateSnapshot(), "department") is None
     assert hold_selection(RadioStateSnapshot(), "site") is None
     assert hold_selection(RadioStateSnapshot(), "channel") is None
+
+
+def test_selection_helpers_reject_unavailable_scanner_indexes() -> None:
+    unavailable = (1 << 32) - 1
+
+    assert scanner_index_available(0) is True
+    assert scanner_index_available(unavailable - 1) is True
+    assert scanner_index_available(None) is False
+    assert scanner_index_available(-1) is False
+    assert scanner_index_available(unavailable) is False
+    assert scanner_index_available(unavailable + 1) is False
+
+    assert hold_selection(
+        RadioStateSnapshot(system_index=unavailable),
+        "system",
+    ) is None
+    assert hold_selection(
+        RadioStateSnapshot(system_index=100, department_index=unavailable),
+        "department",
+    ) is None
+    assert hold_selection(
+        RadioStateSnapshot(system_index=unavailable, department_index=200),
+        "department",
+    ) is None
+    assert hold_selection(
+        RadioStateSnapshot(site_index=unavailable),
+        "site",
+    ) is None
+    unavailable_channel = RadioStateSnapshot(
+        channel_kind="TGID",
+        channel_index=unavailable,
+    )
+    assert hold_selection(unavailable_channel, "channel") is None
+    assert channel_navigation(unavailable_channel) is None
 
 
 def test_control_worker_serializes_commands_and_reports_results() -> None:

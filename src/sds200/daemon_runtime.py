@@ -25,6 +25,7 @@ from .exceptions import (
     DaemonControlUnavailableError,
     UnsupportedScannerFeatureError,
 )
+from .models import ScannerInfo
 from .state import RadioStateSnapshot
 
 logger = logging.getLogger(__name__)
@@ -45,9 +46,32 @@ class DaemonControlOperation(StrEnum):
     """Capability-checked scanner controls owned by one daemon runtime."""
 
     HOLD = "scanner.hold"
+    HOLD_STATE = "scanner.hold_state"
     NEXT = "scanner.next"
     PREVIOUS = "scanner.previous"
     RECONNECT = "scanner.reconnect"
+
+
+DAEMON_HOLD_STATE_DEFAULT_TIMEOUT = 4.0
+_HOLD_STATE_FIELDS = {
+    "system": "system_hold",
+    "department": "department_hold",
+    "site": "site_hold",
+    "channel": "channel_hold",
+}
+_HOLD_STATE_INDEX_FIELDS = {
+    "system": "system_index",
+    "department": "department_index",
+    "site": "site_index",
+    "channel": "channel_index",
+}
+_HOLD_STATE_KEYS = {
+    "system": ("A",),
+    "department": ("B",),
+    "site": ("F", "B"),
+    "channel": ("C",),
+}
+_SCANNER_INDEX_UNAVAILABLE = (1 << 32) - 1
 
 
 class _RadioStateLike(Protocol):
@@ -71,6 +95,11 @@ class _ScannerLike(Protocol):
     @property
     def state(self) -> _RadioStateLike: ...
 
+    def on_psi(
+        self,
+        callback: Callable[[ScannerInfo], None],
+    ) -> Callable[[], None]: ...
+
     def on_state(
         self,
         callback: Callable[[RadioStateSnapshot], None],
@@ -84,6 +113,19 @@ class _ScannerLike(Protocol):
     def get_model(self, *, timeout: float = 2.0) -> str: ...
 
     def get_firmware(self, *, timeout: float = 2.0) -> str: ...
+
+    def get_scanner_info(
+        self,
+        *,
+        timeout: float = 3.0,
+    ) -> ScannerInfo: ...
+
+    def press_hold_key(
+        self,
+        key_code: str,
+        *,
+        timeout: float = 2.0,
+    ) -> None: ...
 
     def hold(
         self,
@@ -278,12 +320,26 @@ class DaemonRuntime:
         *,
         psi_interval_ms: int = 500,
         psi_timeout: float = 3.0,
+        psi_auto_recover: bool = True,
+        psi_recover_after: float = 10.0,
+        psi_recovery_cooldown: float = 60.0,
+        clock: Callable[[], float] = monotonic,
         now: Callable[[], datetime] = _utc_now,
     ) -> None:
         if psi_interval_ms <= 0:
             raise ValueError("PSI interval must be greater than zero.")
         if psi_timeout <= 0:
             raise ValueError("PSI timeout must be greater than zero.")
+        if type(psi_auto_recover) is not bool:
+            raise TypeError("PSI auto recovery must be a boolean.")
+        if psi_recover_after <= 0:
+            raise ValueError(
+                "PSI recovery threshold must be greater than zero."
+            )
+        if psi_recovery_cooldown < 0:
+            raise ValueError(
+                "PSI recovery cooldown must not be negative."
+            )
         if not any(sink is router for sink in audio.sinks):
             raise ValueError(
                 "Daemon runtime audio fanout must include its PCM sink router."
@@ -295,6 +351,10 @@ class DaemonRuntime:
         self.router = router
         self.psi_interval_ms = psi_interval_ms
         self.psi_timeout = psi_timeout
+        self.psi_auto_recover = psi_auto_recover
+        self.psi_recover_after = float(psi_recover_after)
+        self.psi_recovery_cooldown = float(psi_recovery_cooldown)
+        self._clock = clock
         self._now = now
         self._scanner_model: str | None = None
         self._scanner_firmware: str | None = None
@@ -315,6 +375,9 @@ class DaemonRuntime:
         self._control_sequence = 0
         self._last_failure_at: datetime | None = None
         self._last_error: str | None = None
+        self._psi_unsubscribe: Callable[[], None] | None = None
+        self._last_psi_at: float | None = None
+        self._last_psi_recovery_at: float | None = None
 
     @property
     def running(self) -> bool:
@@ -330,6 +393,155 @@ class DaemonRuntime:
         callback: Callable[[DaemonRuntimeTransition], None],
     ) -> Callable[[], None]:
         return self.events.subscribe("transition", callback)
+
+    def poll(self) -> None:
+        "Recover a sustained silent PSI stream without a watchdog thread."
+
+        if not self.psi_auto_recover:
+            return
+
+        observed_at = self._clock()
+        with self._state_lock:
+            if (
+                self._state is not DaemonRuntimeState.RUNNING
+                or not self.scanner.connected
+                or not self.scanner.psi_active
+            ):
+                return
+            last_psi_at = self._last_psi_at
+            last_recovery_at = self._last_psi_recovery_at
+
+        if last_psi_at is None:
+            return
+
+        age = max(0.0, observed_at - last_psi_at)
+        if age < self.psi_recover_after:
+            return
+        if (
+            last_recovery_at is not None
+            and observed_at - last_recovery_at
+            < self.psi_recovery_cooldown
+        ):
+            return
+
+        # Browser/API mutations share this lock through _execute_control().
+        # Do not turn a transient busy control plane into a recovery failure.
+        if self._control_lock.locked():
+            return
+
+        with self._state_lock:
+            if self._last_psi_at != last_psi_at:
+                return
+
+        logger.warning(
+            "daemon PSI stream stale scanner=%s age_seconds=%.1f "
+            "attempting_reconnect=true",
+            self.scanner.endpoint,
+            age,
+        )
+        try:
+            self.reconnect(timeout=2.0)
+        except DaemonControlBusyError:
+            return
+        except Exception as error:
+            completed_at = self._clock()
+            with self._state_lock:
+                self._last_psi_recovery_at = completed_at
+            logger.warning(
+                "daemon PSI recovery failed scanner=%s error=%s",
+                self.scanner.endpoint,
+                error.__class__.__name__,
+            )
+        else:
+            completed_at = self._clock()
+            with self._state_lock:
+                self._last_psi_recovery_at = completed_at
+            logger.info(
+                "daemon PSI recovery completed scanner=%s",
+                self.scanner.endpoint,
+            )
+
+    def _observe_psi(self, info: ScannerInfo) -> None:
+        del info
+        with self._state_lock:
+            self._last_psi_at = self._clock()
+
+    def hold_state(
+        self,
+        scope: str,
+        held: bool,
+        *,
+        timeout: float = DAEMON_HOLD_STATE_DEFAULT_TIMEOUT,
+    ) -> DaemonControlResult:
+        if not isinstance(scope, str):
+            raise TypeError("Scanner hold scope must be a string.")
+        normalized_scope = scope.strip().lower()
+        if normalized_scope not in _HOLD_STATE_FIELDS:
+            choices = ", ".join(_HOLD_STATE_FIELDS)
+            raise ValueError(
+                f"Scanner hold scope must be one of: {choices}."
+            )
+        if type(held) is not bool:
+            raise TypeError("Scanner held state must be a boolean.")
+
+        field = _HOLD_STATE_FIELDS[normalized_scope]
+        index_field = _HOLD_STATE_INDEX_FIELDS[normalized_scope]
+        key_codes = _HOLD_STATE_KEYS[normalized_scope]
+        desired = "On" if held else "Off"
+
+        def read_authoritative_state(deadline: float) -> RadioStateSnapshot:
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                raise CommandTimeoutError(
+                    "Daemon hold-state control timed out "
+                    "before scanner state read."
+                )
+            self.scanner.get_scanner_info(timeout=remaining)
+            return self.scanner.state.snapshot
+
+        def apply_with_deadline(remaining: float) -> None:
+            deadline = monotonic() + remaining
+            initial = read_authoritative_state(deadline)
+            current = getattr(initial, field)
+            if current not in {"On", "Off"}:
+                raise DaemonControlUnavailableError(
+                    f"Daemon {normalized_scope} hold state is unavailable."
+                )
+            if current == desired:
+                return
+
+            if held:
+                index = getattr(initial, index_field)
+                if (
+                    type(index) is not int
+                    or not 0 <= index < _SCANNER_INDEX_UNAVAILABLE
+                ):
+                    raise DaemonControlUnavailableError(
+                        f"Daemon {normalized_scope} selection is unavailable."
+                    )
+
+            for key_code in key_codes:
+                key_remaining = deadline - monotonic()
+                if key_remaining <= 0:
+                    raise CommandTimeoutError(
+                        "Daemon hold-state control timed out "
+                        "before key execution."
+                    )
+                self.scanner.press_hold_key(
+                    key_code,
+                    timeout=key_remaining,
+                )
+
+            while True:
+                observed = read_authoritative_state(deadline)
+                if getattr(observed, field) == desired:
+                    return
+
+        return self._execute_control(
+            DaemonControlOperation.HOLD_STATE,
+            timeout,
+            apply_with_deadline,
+        )
 
     def hold(
         self,
@@ -434,12 +646,17 @@ class DaemonRuntime:
                 scanner_attempted = True
                 self.scanner.connect()
                 self._probe_scanner_identity()
+                self._psi_unsubscribe = self.scanner.on_psi(
+                    self._observe_psi
+                )
 
                 psi_attempted = True
                 self.scanner.start_scanner_info_push(
                     self.psi_interval_ms,
                     timeout=self.psi_timeout,
                 )
+                with self._state_lock:
+                    self._last_psi_at = self._clock()
 
                 audio_attempted = True
                 self.audio.start()
@@ -457,6 +674,14 @@ class DaemonRuntime:
                     self._cleanup_step(
                         "PSI stream",
                         self.scanner.stop_scanner_info_push,
+                        cleanup_failures,
+                    )
+                psi_unsubscribe = self._psi_unsubscribe
+                self._psi_unsubscribe = None
+                if psi_unsubscribe is not None:
+                    self._cleanup_step(
+                        "PSI observer",
+                        psi_unsubscribe,
                         cleanup_failures,
                     )
                 if scanner_attempted:
@@ -549,6 +774,14 @@ class DaemonRuntime:
                 self._cleanup_step(
                     "PSI stream",
                     self.scanner.stop_scanner_info_push,
+                    failures,
+                )
+            psi_unsubscribe = self._psi_unsubscribe
+            self._psi_unsubscribe = None
+            if psi_unsubscribe is not None:
+                self._cleanup_step(
+                    "PSI observer",
+                    psi_unsubscribe,
                     failures,
                 )
             self._cleanup_step("scanner control", self.scanner.close, failures)

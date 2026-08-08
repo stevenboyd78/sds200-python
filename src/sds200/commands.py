@@ -222,6 +222,18 @@ class StartScannerInfoPush:
         )
 
 
+HoldKeyCode = Literal["F", "A", "B", "C"]
+HOLD_KEY_CODES: tuple[HoldKeyCode, ...] = ("F", "A", "B", "C")
+
+
+def _hold_key_code(value: str) -> str:
+    normalized = value.strip().upper()
+    if normalized not in HOLD_KEY_CODES:
+        choices = ", ".join(HOLD_KEY_CODES)
+        raise ValueError(f"Hold-related key code must be one of: {choices}.")
+    return normalized
+
+
 NavigationTarget = Literal[
     "SYS",
     "DEPT",
@@ -278,6 +290,29 @@ def _parse_acknowledgement(response: object, command: str) -> None:
             f"Scanner rejected {command} command: {response.raw}"
         )
     raise ProtocolError(f"{command} did not return OK: {response.raw}")
+
+
+@dataclass(frozen=True, slots=True)
+class PressKey:
+    """Press one allowlisted SDS hold-related front-panel key."""
+
+    key_code: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "key_code", _hold_key_code(self.key_code))
+
+    @property
+    def wire(self) -> str:
+        # Current SDS specifications require KEY_MODE but do not define its
+        # values. Long-standing Uniden remote protocols define P as one press.
+        return f"KEY,{self.key_code},P"
+
+    @property
+    def response_command(self) -> str:
+        return "KEY"
+
+    def parse_response(self, response: object) -> None:
+        _parse_acknowledgement(response, "KEY")
 
 
 @dataclass(frozen=True, slots=True)

@@ -8,7 +8,9 @@ import pytest
 from sds200.daemon_api import (
     DAEMON_API_CONTROL_OPERATIONS,
     DAEMON_API_DEFAULT_CONTROL_TIMEOUT,
+    DAEMON_API_DEFAULT_HOLD_STATE_TIMEOUT,
     DAEMON_API_MAX_CONTROL_TIMEOUT,
+    DAEMON_API_MAX_HOLD_STATE_TIMEOUT,
     DAEMON_API_PROTOCOL,
     DAEMON_API_READ_ONLY_OPERATIONS,
     DAEMON_API_RECORDING_OPERATIONS,
@@ -85,6 +87,20 @@ class FakeControlRuntime:
             target,
             first,
             second,
+            timeout=timeout,
+        )
+
+    def hold_state(
+        self,
+        scope: str,
+        held: bool,
+        *,
+        timeout: float = DAEMON_API_DEFAULT_HOLD_STATE_TIMEOUT,
+    ) -> FakeControlResult:
+        return self._control(
+            "scanner.hold_state",
+            scope,
+            held,
             timeout=timeout,
         )
 
@@ -189,6 +205,7 @@ def test_capabilities_preserve_reads_and_advertise_controls() -> None:
             for operation in DAEMON_API_CONTROL_OPERATIONS
         ],
         "max_control_timeout": DAEMON_API_MAX_CONTROL_TIMEOUT,
+        "max_hold_state_timeout": DAEMON_API_MAX_HOLD_STATE_TIMEOUT,
         "selected_version": DAEMON_API_VERSION,
     }
 
@@ -220,6 +237,31 @@ def test_hold_uses_strict_parameters_and_authoritative_result() -> None:
     ]
     encoded = json.loads(response.to_json_line())
     assert encoded["result"]["snapshot"]["state"] == "running"
+
+
+def test_hold_state_uses_strict_semantic_parameters() -> None:
+    runtime = FakeControlRuntime()
+    response = DaemonReadOnlyApi(runtime).handle_payload(
+        request_payload(
+            DaemonApiOperation.SCANNER_HOLD_STATE.value,
+            params={
+                "scope": " Site ",
+                "held": False,
+                "timeout": 3.5,
+            },
+        )
+    )
+
+    assert response.error is None
+    assert response.result is not None
+    assert response.result["operation"] == "scanner.hold_state"
+    assert runtime.calls == [
+        (
+            "scanner.hold_state",
+            ("site", False),
+            {"timeout": 3.5},
+        )
+    ]
 
 
 @pytest.mark.parametrize(
@@ -299,6 +341,31 @@ def test_reconnect_accepts_only_a_bounded_timeout() -> None:
 @pytest.mark.parametrize(
     ("operation", "params"),
     [
+        (DaemonApiOperation.SCANNER_HOLD_STATE, {}),
+        (
+            DaemonApiOperation.SCANNER_HOLD_STATE,
+            {"scope": "system"},
+        ),
+        (
+            DaemonApiOperation.SCANNER_HOLD_STATE,
+            {"scope": "favorites", "held": True},
+        ),
+        (
+            DaemonApiOperation.SCANNER_HOLD_STATE,
+            {"scope": "system", "held": 1},
+        ),
+        (
+            DaemonApiOperation.SCANNER_HOLD_STATE,
+            {"scope": "system", "held": True, "extra": 1},
+        ),
+        (
+            DaemonApiOperation.SCANNER_HOLD_STATE,
+            {
+                "scope": "system",
+                "held": True,
+                "timeout": DAEMON_API_MAX_HOLD_STATE_TIMEOUT + 0.1,
+            },
+        ),
         (DaemonApiOperation.SCANNER_HOLD, {}),
         (DaemonApiOperation.SCANNER_HOLD, {"target": ""}),
         (DaemonApiOperation.SCANNER_HOLD, {"target": "INVALID"}),

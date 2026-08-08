@@ -48,7 +48,8 @@ information in this image represents a real system.*
 - Traffic tracing, replayable JSON Lines session capture, and deterministic replay
 - Bounded health history plus failover and preferred-recovery diagnostics
 - Configurable operational logging to stderr, journald, or a logrotate-managed file
-- Automatic rate-limited recovery from a connected-but-stale TUI PSI stream
+- Automatic rate-limited recovery from connected-but-silent PSI streams in
+  both the Textual TUI and foreground daemon ownership runtime
 - JSON Lines events for connection, retry, failover, and state changes
 - Discovery-based repair for stale USB paths and scanner IP addresses
 - Hardware-validated SDS200 network audio over RTSP/RTP
@@ -76,8 +77,9 @@ information in this image represents a real system.*
   reads, safe typed scanner controls, validated gap-detecting event watches, and
   daemon-owned PCMU playback or WAV recording
 - Optional loopback-only daemon-backed HTTP foundation with versioned health,
-  status, snapshot, and OpenAPI endpoints, self-hosted Swagger UI and ReDoc, and
-  redacted daemon failures without third-party browser asset requests
+  status, snapshot, typed scanner-control, and OpenAPI endpoints, self-hosted
+  Swagger UI and ReDoc, and redacted daemon failures without third-party browser
+  asset requests
 - Versioned bounded local daemon PCMU stream over a third private Unix socket with
   accepted RTP payloads, continuity metadata, and independent client-loss counters
 - Optional live playback through the local default or selected audio output device
@@ -277,7 +279,17 @@ The process owns one scanner control session, one PSI stream, one SDS200
 RTSP/RTP session, and one decoded-PCM router. A fallback profile may use serial
 control while its configured network host remains the audio endpoint.
 
-The daemon exposes three versioned local services through private Unix-domain
+For a directly owned SDS200 UDP control transport, the daemon also treats every
+successfully parsed PSI frame as a liveness observation. Automatic recovery is
+enabled by default after 10 seconds without PSI, with a 60-second minimum delay
+between recovery attempts. Configure the policy with `--no-psi-auto-recover`,
+`--psi-recover-after SECONDS`, and `--psi-recovery-cooldown SECONDS`. Recovery
+uses the same nonblocking scanner-mutation slot as API and browser controls, so
+an in-flight control defers the watchdog without consuming its cooldown. The
+bounded reconnect reopens only scanner control/PSI; the independent RTSP/RTP
+audio path remains running.
+
+The daemon exposes four versioned local services through private Unix-domain
 sockets:
 
 - `$XDG_RUNTIME_DIR/sdsctl/daemon.sock`, or the user-state fallback, provides the
@@ -338,12 +350,17 @@ lifecycle transitions. All four owned sockets are removed.
 The command remains in the foreground for service-manager ownership. It does not
 fork, create a pidfile, install a service, expose TCP, accept unrestricted raw
 scanner commands, or provide decoded-PCM client subscriptions. The local API
-supports documented `hold`, `next`, `previous`, and bounded `reconnect`
-operations. Reconnect is available only when the daemon directly owns the SDS200
-UDP control transport; fallback or serial control returns
-`unsupported_operation`. The complete safe-control sequence has been physically
-validated while API, event, PSI, RTSP/RTP, decoded-audio, and two PCMU clients
-remained active, followed by clean `SIGTERM` shutdown and socket removal.
+supports compatibility indexed `hold`, documented `next` and `previous`,
+semantic desired-state `hold_state`, and bounded `reconnect` operations.
+`hold_state` sets System, Department, Site, or Channel Hold explicitly instead of
+exposing a raw scanner key. Reconnect is available only when the daemon directly
+owns the SDS200 UDP control transport; fallback or serial control returns
+`unsupported_operation`. The compatibility safe-control sequence was
+physically validated while API, event, PSI, RTSP/RTP, decoded-audio, and PCMU
+clients remained active, followed by clean controlled shutdown. Milestone 20.6
+separately validated all four semantic hold scopes through the loopback web HTTP
+boundary and a representative Channel release/re-hold through the browser UI
+while daemon/web processes, PSI, and audio remained healthy.
 The daemon-owned audio client has also been physically validated with
 simultaneous default-device playback and WAV recording. It received 258
 consecutive loss-free PCMU frames, finalized a 10.320-second 8 kHz mono WAV,
@@ -389,12 +406,14 @@ are rejected.
 
 ### Loopback web dashboard
 
-Milestone 20.5 adds daemon-owned browser recording workflows to the
-accessible responsive dashboard on top of Milestone 20.4 explicit browser audio
-playback and Milestone 20.3 live same-origin Server-Sent Events. The web service
-remains a daemon client: it does not open scanner hardware or a second RTSP/RTP
-session. Start the foreground daemon, then run the web service in another
-terminal:
+Milestone 20.6 adds daemon-backed browser scanner controls for semantic
+System, Department, Site, and Channel Hold/release, previous/next channel
+navigation, and bounded reconnect on top of Milestone 20.5 daemon-owned
+recording workflows, Milestone 20.4 explicit browser audio playback, and
+Milestone 20.3 live same-origin Server-Sent Events.
+The web service remains a daemon client: it does not open scanner hardware or a
+second RTSP/RTP session. Start the foreground daemon, then run the web service in
+another terminal:
 
 ```bash
 sdsctl --log-level INFO --host 192.168.0.251 daemon
@@ -424,6 +443,15 @@ inventory, and enables same-origin **Play** and **Download** actions for playabl
 completed recordings. Saved playback reads through the private daemon
 recording-file service and does not create a browser PCMU subscription.
 
+Browser hold buttons are desired-state controls. An unheld scope offers
+**Hold system**, **Hold department**, **Hold site**, or **Hold channel**; an
+authoritatively held scope offers the corresponding **Release** action and
+retains its `Held` indicator. The browser sends only the semantic scope and
+`held` boolean. The daemon performs the authoritative `GSI` read, executes the
+verified SDS200 front-panel-key gesture when needed, and waits for the target
+hold field to converge before returning success. The compatibility indexed
+`scanner.hold` API remains available separately.
+
 The interface retains keyboard focus, responsive compact behavior, system light
 and dark modes, reduced-motion support, and text-only rendering of daemon
 values.
@@ -432,8 +460,8 @@ Install it with `python -m pip install "sds200[web]"`. The service listens on
 `127.0.0.1:8000` by default and accepts only `localhost` or explicit loopback IP
 addresses. Wildcard, LAN, public, and non-local hostname bindings are rejected.
 
-Authentication, TLS, browser logs, scanner controls, optional themes, and Home
-Assistant integration remain deferred. Remote exposure is
+Authentication, TLS, browser logs, optional themes, and Home Assistant
+integration remain deferred. Remote exposure is
 intentionally unsupported until authentication and transport-security planning
 is complete. See the [web dashboard guide](docs/web-dashboard.md).
 

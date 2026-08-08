@@ -3,6 +3,7 @@ import pytest
 from sds200.commands import (
     HoldSelection,
     NextSelection,
+    PressKey,
     PreviousSelection,
     SetSquelch,
     SetVolume,
@@ -50,6 +51,27 @@ def test_handheld_volume_and_squelch_limits() -> None:
         SetVolume(16, maximum=15)
     with pytest.raises(ValueError, match="between 0 and 15"):
         SetSquelch(16, maximum=15)
+
+
+def test_hold_related_key_press_wire() -> None:
+    assert PressKey("A").wire == "KEY,A,P"
+    assert PressKey("b").wire == "KEY,B,P"
+    assert PressKey(" F ").wire == "KEY,F,P"
+
+
+@pytest.mark.parametrize("value", ["", "M", "1", "A,P"])
+def test_hold_related_key_press_rejects_other_keys(value: str) -> None:
+    with pytest.raises(ValueError, match="Hold-related key code"):
+        PressKey(value)
+
+
+def test_hold_related_key_press_acknowledgement() -> None:
+    command = PressKey("C")
+    command.parse_response(Packet(command="KEY", fields=("OK",), raw="KEY,OK"))
+    with pytest.raises(CommandRejectedError, match="rejected KEY"):
+        command.parse_response(
+            Packet(command="KEY", fields=("NG",), raw="KEY,NG")
+        )
 
 
 def test_navigation_command_wires() -> None:
