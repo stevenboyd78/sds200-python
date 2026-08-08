@@ -13,15 +13,18 @@ const PCMU_EXPECTED_TIMESTAMP = 1 << 2;
 const MAX_GAP_SAMPLES = 8000;
 
 let currentSnapshot = {};
+let currentDaemonHello = {};
 let eventSource = null;
 let eventStreamConnected = false;
 let lastEventSequence = null;
+let daemonEventGeneration = 0;
 let refreshInProgress = false;
 let currentRecording = {};
 let recordingStatusAvailable = false;
 let recordingRefreshInProgress = false;
 let recordingsRefreshInProgress = false;
 let recordingMutationInProgress = false;
+let scannerControlMutationInProgress = false;
 
 let audioPlaybackGeneration = 0;
 let audioPlaybackActive = false;
@@ -442,6 +445,185 @@ async function performRecordingAction(action) {
   }
 }
 
+function daemonControlSupported(operation) {
+  const operations = Array.isArray(currentDaemonHello.control_operations)
+    ? currentDaemonHello.control_operations
+    : [];
+  return (
+    currentDaemonHello.read_only === false &&
+    operations.includes(operation)
+  );
+}
+
+function scannerIndexAvailable(value) {
+  return Number.isInteger(value) && value >= 0 && value < 0xffffffff;
+}
+
+function setScannerHoldControl(id, scope, available, held) {
+  const button = element(id);
+  const indicator = element(`${id}-state`);
+  button.disabled = !available;
+  button.textContent = held ? `Release ${scope}` : `Hold ${scope}`;
+  button.setAttribute("aria-pressed", held ? "true" : "false");
+  indicator.hidden = !held;
+}
+
+function setScannerControls() {
+  const radio = record(currentSnapshot.radio_state);
+  const idle = !scannerControlMutationInProgress;
+  const running = currentSnapshot.state === "running";
+  const connected = currentSnapshot.scanner_connected === true;
+  const canSelect = idle && running && connected;
+  const canHold = daemonControlSupported("scanner.hold_state");
+  const canNavigateForward = daemonControlSupported("scanner.next");
+  const canNavigateBackward = daemonControlSupported("scanner.previous");
+  const channelAvailable =
+    scannerIndexAvailable(radio.channel_index) &&
+    ["TGID", "ConvFrequency"].includes(radio.channel_kind);
+  const systemHeld = radio.system_hold === "On";
+  const departmentHeld = radio.department_hold === "On";
+  const siteHeld = radio.site_hold === "On";
+  const channelHeld = radio.channel_hold === "On";
+  const systemHoldKnown = systemHeld || radio.system_hold === "Off";
+  const departmentHoldKnown =
+    departmentHeld || radio.department_hold === "Off";
+  const siteHoldKnown = siteHeld || radio.site_hold === "Off";
+  const channelHoldKnown = channelHeld || radio.channel_hold === "Off";
+
+  setScannerHoldControl(
+    "scanner-hold-system",
+    "system",
+    canSelect &&
+      canHold &&
+      systemHoldKnown &&
+      (systemHeld || scannerIndexAvailable(radio.system_index)),
+    systemHeld,
+  );
+  setScannerHoldControl(
+    "scanner-hold-department",
+    "department",
+    canSelect &&
+      canHold &&
+      departmentHoldKnown &&
+      (departmentHeld || scannerIndexAvailable(radio.department_index)),
+    departmentHeld,
+  );
+  setScannerHoldControl(
+    "scanner-hold-site",
+    "site",
+    canSelect &&
+      canHold &&
+      siteHoldKnown &&
+      (siteHeld || scannerIndexAvailable(radio.site_index)),
+    siteHeld,
+  );
+  setScannerHoldControl(
+    "scanner-hold-channel",
+    "channel",
+    canSelect &&
+      canHold &&
+      channelHoldKnown &&
+      (channelHeld || channelAvailable),
+    channelHeld,
+  );
+  element("scanner-next").disabled = !(
+    canSelect &&
+    canNavigateForward &&
+    channelAvailable
+  );
+  element("scanner-previous").disabled = !(
+    canSelect &&
+    canNavigateBackward &&
+    channelAvailable
+  );
+  element("scanner-reconnect").disabled = !(
+    idle &&
+    running &&
+    daemonControlSupported("scanner.reconnect")
+  );
+}
+
+function scannerControlAvailabilityMessage() {
+  const operations = Array.isArray(currentDaemonHello.control_operations)
+    ? currentDaemonHello.control_operations
+    : [];
+  if (
+    currentDaemonHello.read_only !== false ||
+    operations.length === 0
+  ) {
+    return "Scanner controls are unavailable.";
+  }
+  if (currentSnapshot.state !== "running") {
+    return "Scanner controls require a running daemon runtime.";
+  }
+  if (currentSnapshot.scanner_connected !== true) {
+    return daemonControlSupported("scanner.reconnect")
+      ? "Scanner disconnected; reconnect remains available."
+      : "Scanner controls are unavailable while disconnected.";
+  }
+  return "Scanner controls ready.";
+}
+
+async function performScannerControl(path, label, body = null) {
+  if (scannerControlMutationInProgress) {
+    return;
+  }
+
+  const eventGenerationAtStart = daemonEventGeneration;
+  scannerControlMutationInProgress = true;
+  setScannerControls();
+  element("scanner-control-status").textContent = `${label}…`;
+
+  try {
+    const headers = {Accept: "application/json"};
+    const options = {
+      method: "POST",
+      headers,
+      cache: "no-store",
+      credentials: "same-origin",
+    };
+    if (body !== null) {
+      headers["Content-Type"] = "application/json";
+      options.body = JSON.stringify(body);
+    }
+    const response = await fetch(`/api/v1/scanner/${path}`, options);
+
+    let payload = {};
+    try {
+      payload = await response.json();
+    } catch {
+      payload = {};
+    }
+    if (!response.ok) {
+      throw new Error(errorMessage(payload, response));
+    }
+
+    const control = record(record(payload).control);
+    const snapshot = record(control.snapshot);
+    if (Object.keys(snapshot).length === 0) {
+      throw new Error("Scanner control omitted its authoritative snapshot.");
+    }
+
+    if (daemonEventGeneration === eventGenerationAtStart) {
+      currentSnapshot = snapshot;
+      renderSnapshot(currentSnapshot, `${label} completed.`);
+    } else {
+      await reconcileStatusAfterControl();
+    }
+    element("scanner-control-status").textContent = `Completed: ${label}.`;
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Scanner control failed.";
+    await refreshStatus();
+    element("scanner-control-status").textContent = message;
+  } finally {
+    scannerControlMutationInProgress = false;
+    setScannerControls();
+  }
+}
+
 function rssiLabel(value) {
   if (typeof value === "number" && Number.isFinite(value)) {
     return `${value} dBm`;
@@ -509,6 +691,8 @@ function renderSnapshot(snapshot, message = null) {
     renderRecording(recording);
   }
 
+  setScannerControls();
+
   const updatedAt = new Date();
   const updateNode = element("last-update");
   updateNode.dateTime = updatedAt.toISOString();
@@ -517,8 +701,13 @@ function renderSnapshot(snapshot, message = null) {
 
 function renderStatus(payload) {
   const daemon = record(payload.daemon);
+  currentDaemonHello = record(daemon.hello);
   currentSnapshot = record(daemon.snapshot);
   renderSnapshot(currentSnapshot);
+  if (!scannerControlMutationInProgress) {
+    element("scanner-control-status").textContent =
+      scannerControlAvailabilityMessage();
+  }
 }
 
 function eventSequence(envelope, message) {
@@ -545,6 +734,7 @@ function applyDaemonEvent(envelope, message) {
   if (kind === "stream.snapshot") {
     currentSnapshot = payload;
     lastEventSequence = sequence;
+    daemonEventGeneration += 1;
     renderSnapshot(currentSnapshot, "Live daemon events are connected.");
     return;
   }
@@ -557,6 +747,7 @@ function applyDaemonEvent(envelope, message) {
     );
   }
   lastEventSequence = sequence;
+  daemonEventGeneration += 1;
 
   if (kind === "daemon.transition") {
     currentSnapshot = record(payload.snapshot);
@@ -611,6 +802,49 @@ function errorMessage(payload, response) {
   return `Status request failed with HTTP ${response.status}.`;
 }
 
+async function fetchStatusPayload() {
+  const response = await fetch("/api/v1/status", {
+    method: "GET",
+    headers: {Accept: "application/json"},
+    cache: "no-store",
+    credentials: "same-origin",
+  });
+
+  let payload = {};
+  try {
+    payload = await response.json();
+  } catch {
+    payload = {};
+  }
+
+  if (!response.ok) {
+    throw new Error(errorMessage(payload, response));
+  }
+  return payload;
+}
+
+async function reconcileStatusAfterControl() {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const generation = daemonEventGeneration;
+    let payload;
+    try {
+      payload = await fetchStatusPayload();
+    } catch {
+      // The scanner control has already completed successfully. Preserve the
+      // event-derived projection and let normal status refresh reconcile later.
+      return;
+    }
+    if (daemonEventGeneration === generation) {
+      renderStatus(payload);
+      return;
+    }
+  }
+
+  // A busy event stream remained authoritative throughout reconciliation.
+  // Preserve its ordered projection; periodic status refresh supplies the
+  // next complete authoritative snapshot boundary.
+}
+
 async function refreshStatus() {
   if (refreshInProgress || document.hidden) {
     return;
@@ -619,25 +853,7 @@ async function refreshStatus() {
   refreshInProgress = true;
 
   try {
-    const response = await fetch("/api/v1/status", {
-      method: "GET",
-      headers: {Accept: "application/json"},
-      cache: "no-store",
-      credentials: "same-origin",
-    });
-
-    let payload = {};
-    try {
-      payload = await response.json();
-    } catch {
-      payload = {};
-    }
-
-    if (!response.ok) {
-      throw new Error(errorMessage(payload, response));
-    }
-
-    renderStatus(payload);
+    renderStatus(await fetchStatusPayload());
   } catch (error) {
     const message =
       error instanceof Error
@@ -650,6 +866,12 @@ async function refreshStatus() {
     setText("psi-state", "Unavailable");
     setText("audio-state", "Unavailable");
     setText("router-state", "Unavailable");
+    currentDaemonHello = {};
+    setScannerControls();
+    if (!scannerControlMutationInProgress) {
+      element("scanner-control-status").textContent =
+        "Scanner controls are unavailable while daemon status is unavailable.";
+    }
   } finally {
     refreshInProgress = false;
   }
@@ -1164,6 +1386,42 @@ element("recording-stop").addEventListener("click", () => {
 element("recordings-refresh").addEventListener("click", () => {
   void refreshRecordings();
 });
+function performScannerHoldState(scope) {
+  const radio = record(currentSnapshot.radio_state);
+  const current = radio[`${scope}_hold`];
+  if (current !== "On" && current !== "Off") {
+    return;
+  }
+  const held = current !== "On";
+  const action = held ? "Hold" : "Release";
+  void performScannerControl(
+    `hold/${scope}`,
+    `${action} ${scope}`,
+    {held},
+  );
+}
+
+element("scanner-hold-system").addEventListener("click", () => {
+  performScannerHoldState("system");
+});
+element("scanner-hold-department").addEventListener("click", () => {
+  performScannerHoldState("department");
+});
+element("scanner-hold-site").addEventListener("click", () => {
+  performScannerHoldState("site");
+});
+element("scanner-hold-channel").addEventListener("click", () => {
+  performScannerHoldState("channel");
+});
+element("scanner-previous").addEventListener("click", () => {
+  void performScannerControl("previous", "Previous channel");
+});
+element("scanner-next").addEventListener("click", () => {
+  void performScannerControl("next", "Next channel");
+});
+element("scanner-reconnect").addEventListener("click", () => {
+  void performScannerControl("reconnect", "Reconnect scanner");
+});
 
 const savedRecordingPlayer = element("saved-recording-player");
 savedRecordingPlayer.addEventListener("play", () => {
@@ -1181,6 +1439,7 @@ savedRecordingPlayer.addEventListener("error", () => {
 
 initializeAudioPlayback();
 renderRecording({}, false);
+setScannerControls();
 void refreshStatus();
 void refreshRecordingStatus();
 void refreshRecordings();

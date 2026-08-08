@@ -14,6 +14,7 @@ from math import isfinite
 from .commands import NAVIGATION_TARGETS
 from .daemon_api import (
     DAEMON_API_DEFAULT_CONTROL_TIMEOUT,
+    DAEMON_API_DEFAULT_HOLD_STATE_TIMEOUT,
     DAEMON_API_PROTOCOL,
     DAEMON_API_SUPPORTED_VERSIONS,
     DAEMON_API_VERSION,
@@ -220,6 +221,28 @@ class DaemonApiClient:
             params["second"] = normalized_second
         return self._control(DaemonApiOperation.SCANNER_HOLD, params)
 
+    def hold_state(
+        self,
+        scope: str,
+        held: bool,
+        *,
+        timeout: float = DAEMON_API_DEFAULT_HOLD_STATE_TIMEOUT,
+    ) -> dict[str, object]:
+        """Set one daemon-owned semantic scanner hold state."""
+
+        normalized_scope = _hold_state_scope(scope)
+        if type(held) is not bool:
+            raise TypeError("Daemon scanner held state must be a boolean.")
+        normalized_timeout = self._require_hold_state_operation(timeout)
+        return self._control(
+            DaemonApiOperation.SCANNER_HOLD_STATE,
+            {
+                "scope": normalized_scope,
+                "held": held,
+                "timeout": normalized_timeout,
+            },
+        )
+
     def next(
         self,
         target: str,
@@ -324,7 +347,24 @@ class DaemonApiClient:
         timeout: float,
     ) -> float:
         hello = self.hello()
+        self._require_advertised_control(hello, operation)
+        maximum = hello["max_control_timeout"]
+        assert isinstance(maximum, (int, float))
+        return _bounded_control_timeout(timeout, maximum=float(maximum))
 
+    def _require_hold_state_operation(self, timeout: float) -> float:
+        operation = DaemonApiOperation.SCANNER_HOLD_STATE
+        hello = self.hello()
+        self._require_advertised_control(hello, operation)
+        maximum = hello["max_hold_state_timeout"]
+        assert isinstance(maximum, (int, float))
+        return _bounded_control_timeout(timeout, maximum=float(maximum))
+
+    def _require_advertised_control(
+        self,
+        hello: Mapping[str, object],
+        operation: DaemonApiOperation,
+    ) -> None:
         if hello["read_only"] is True:
             raise DaemonProtocolError(
                 "The connected daemon is read-only and does not support "
@@ -339,9 +379,6 @@ class DaemonApiClient:
             )
 
         self._require_operation(operation)
-        maximum = hello["max_control_timeout"]
-        assert isinstance(maximum, (int, float))
-        return _bounded_control_timeout(timeout, maximum=float(maximum))
 
     def request(
         self,
@@ -477,6 +514,21 @@ class DaemonApiClient:
         raise DaemonUnavailableError(
             f"Could not connect to daemon socket {path}: {detail}"
         ) from error
+
+
+def _hold_state_scope(value: object) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(
+            "Daemon scanner hold-state scope must be a non-empty string."
+        )
+    normalized = value.strip().lower()
+    choices = ("system", "department", "site", "channel")
+    if normalized not in choices:
+        raise ValueError(
+            "Daemon scanner hold-state scope must be one of: "
+            f"{', '.join(choices)}."
+        )
+    return normalized
 
 
 def _navigation_parameters(
@@ -778,6 +830,27 @@ def _validate_hello_result(result: Mapping[str, object]) -> None:
         if not isfinite(normalized_timeout) or normalized_timeout <= 0:
             raise DaemonProtocolError(
                 "The daemon hello result advertised an invalid control timeout."
+            )
+
+    hold_state_advertised = (
+        DaemonApiOperation.SCANNER_HOLD_STATE.value in control_operations
+    )
+    if hold_state_advertised or "max_hold_state_timeout" in result:
+        max_hold_state_timeout = result.get("max_hold_state_timeout")
+        if isinstance(max_hold_state_timeout, bool) or not isinstance(
+            max_hold_state_timeout,
+            (int, float),
+        ):
+            raise DaemonProtocolError(
+                "The daemon hello result omitted a valid hold-state timeout."
+            )
+        normalized_hold_state_timeout = float(max_hold_state_timeout)
+        if (
+            not isfinite(normalized_hold_state_timeout)
+            or normalized_hold_state_timeout <= 0
+        ):
+            raise DaemonProtocolError(
+                "The daemon hello result advertised an invalid hold-state timeout."
             )
 
     operation_set = set(operations)

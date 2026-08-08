@@ -91,6 +91,20 @@ class FakeControlRuntime(FakeRuntime):
             timeout=timeout,
         )
 
+    def hold_state(
+        self,
+        scope: str,
+        held: bool,
+        *,
+        timeout: float = 4.0,
+    ) -> FakeControlResult:
+        return self._control(
+            "scanner.hold_state",
+            scope,
+            held,
+            timeout=timeout,
+        )
+
     def next(
         self,
         target: str,
@@ -292,6 +306,7 @@ def test_client_executes_typed_controls_on_one_negotiated_socket(
     with server, DaemonApiClient(location) as client:
         results = (
             client.hold("sys", 42, timeout=1.5),
+            client.hold_state(" Site ", False, timeout=3.5),
             client.next("dept", 7, 42, count=2, timeout=1.5),
             client.previous("tgid", 99, count=3, timeout=1.5),
             client.reconnect(timeout=1.5),
@@ -299,9 +314,10 @@ def test_client_executes_typed_controls_on_one_negotiated_socket(
 
         assert client.connected is True
 
-    assert [result["sequence"] for result in results] == [1, 2, 3, 4]
+    assert [result["sequence"] for result in results] == [1, 2, 3, 4, 5]
     assert [result["operation"] for result in results] == [
         "scanner.hold",
+        "scanner.hold_state",
         "scanner.next",
         "scanner.previous",
         "scanner.reconnect",
@@ -311,6 +327,11 @@ def test_client_executes_typed_controls_on_one_negotiated_socket(
             "scanner.hold",
             ("SYS", 42, None),
             {"timeout": 1.5},
+        ),
+        (
+            "scanner.hold_state",
+            ("site", False),
+            {"timeout": 3.5},
         ),
         (
             "scanner.next",
@@ -330,8 +351,8 @@ def test_client_executes_typed_controls_on_one_negotiated_socket(
     ]
     server_snapshot = server.snapshot()
     assert server_snapshot.accepted_clients == 1
-    assert server_snapshot.requests == 5
-    assert server_snapshot.responses == 5
+    assert server_snapshot.requests == 6
+    assert server_snapshot.responses == 6
 
 
 @pytest.mark.parametrize(
@@ -339,6 +360,9 @@ def test_client_executes_typed_controls_on_one_negotiated_socket(
     [
         ("hold", ("INVALID",), {}, ValueError),
         ("hold", ("SYS", "1,2"), {}, ValueError),
+        ("hold_state", ("favorites", True), {}, ValueError),
+        ("hold_state", ("system", 1), {}, TypeError),
+        ("hold_state", ("system", True), {"timeout": 4.1}, ValueError),
         ("next", ("TGID",), {"count": 0}, ValueError),
         ("next", ("TGID",), {"count": True}, TypeError),
         ("reconnect", (), {"timeout": 2.1}, ValueError),
@@ -608,6 +632,50 @@ def test_client_raises_structured_daemon_request_error(tmp_path: Path) -> None:
     assert server_snapshot.accepted_clients == 1
     assert server_snapshot.requests == 2
     assert server_snapshot.responses == 2
+
+
+def test_client_requires_hold_state_timeout_when_operation_is_advertised(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "hold-state-hello.sock"
+    response = (
+        json.dumps(
+            {
+                "protocol": DAEMON_API_PROTOCOL,
+                "version": DAEMON_API_VERSION,
+                "request_id": "sdsctl-1",
+                "ok": True,
+                "result": {
+                    "protocol": DAEMON_API_PROTOCOL,
+                    "supported_versions": [DAEMON_API_VERSION],
+                    "operations": [
+                        DaemonApiOperation.HELLO.value,
+                        DaemonApiOperation.SCANNER_HOLD_STATE.value,
+                    ],
+                    "read_only": False,
+                    "read_only_operations": [
+                        DaemonApiOperation.HELLO.value,
+                    ],
+                    "control_operations": [
+                        DaemonApiOperation.SCANNER_HOLD_STATE.value,
+                    ],
+                    "max_control_timeout": 2.0,
+                    "selected_version": DAEMON_API_VERSION,
+                },
+            }
+        )
+        + "\n"
+    ).encode("utf-8")
+    thread = start_scripted_server(path, response)
+    client = DaemonApiClient(
+        DaemonSocketLocation(path, DaemonSocketSource.EXPLICIT)
+    )
+
+    with pytest.raises(DaemonProtocolError, match="hold-state timeout"):
+        client.hello()
+
+    thread.join(timeout=1.0)
+    assert client.connected is False
 
 
 def test_client_accepts_legacy_read_only_version_one_hello(

@@ -8,6 +8,7 @@ import pytest
 from sds200.daemon_api import (
     DAEMON_API_CONTROL_OPERATIONS,
     DAEMON_API_MAX_CONTROL_TIMEOUT,
+    DAEMON_API_MAX_HOLD_STATE_TIMEOUT,
     DAEMON_API_MAX_REQUEST_ID_LENGTH,
     DAEMON_API_PROTOCOL,
     DAEMON_API_READ_ONLY_OPERATIONS,
@@ -185,6 +186,7 @@ def test_hello_negotiates_version_and_lists_capabilities(
             for operation in DAEMON_API_CONTROL_OPERATIONS
         ],
         "max_control_timeout": DAEMON_API_MAX_CONTROL_TIMEOUT,
+        "max_hold_state_timeout": DAEMON_API_MAX_HOLD_STATE_TIMEOUT,
         "selected_version": DAEMON_API_VERSION,
     }
     assert runtime.snapshot_calls == 0

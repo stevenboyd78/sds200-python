@@ -677,6 +677,35 @@ def build_parser(
         help="Timeout for the initial PSI response (default: 3.0)",
     )
     daemon.add_argument(
+        "--psi-auto-recover",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Reconnect automatically after sustained silent PSI "
+            "(default: enabled)"
+        ),
+    )
+    daemon.add_argument(
+        "--psi-recover-after",
+        type=_positive_float,
+        default=10.0,
+        metavar="SECONDS",
+        help=(
+            "Reconnect after PSI remains silent this long "
+            "(default: 10.0)"
+        ),
+    )
+    daemon.add_argument(
+        "--psi-recovery-cooldown",
+        type=_non_negative_float,
+        default=60.0,
+        metavar="SECONDS",
+        help=(
+            "Minimum delay between automatic PSI reconnect attempts "
+            "(default: 60.0)"
+        ),
+    )
+    daemon.add_argument(
         "--rtsp-port",
         type=_remote_port,
         default=DEFAULT_RTSP_PORT,
@@ -2551,6 +2580,9 @@ def _run_daemon(
         router,
         psi_interval_ms=args.interval,
         psi_timeout=args.psi_timeout,
+        psi_auto_recover=args.psi_auto_recover,
+        psi_recover_after=args.psi_recover_after,
+        psi_recovery_cooldown=args.psi_recovery_cooldown,
     )
     recording_manager = DaemonRecordingManager(
         runtime,

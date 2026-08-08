@@ -454,7 +454,7 @@ def test_daemon_cli_constructs_one_runtime_and_process(
     assert api_server.max_request_bytes == 64 * 1024
     assert api_server.max_response_bytes == 1024 * 1024
     assert api_server.client_timeout == 5.0
-    assert api_server.shutdown_timeout == 3.0
+    assert api_server.shutdown_timeout == 5.0
     assert api_server.listener.location.source is DaemonSocketSource.USER_STATE
     assert api_server.listener.location.path == (
         paths.user_state_dir / "daemon.sock"
@@ -794,7 +794,7 @@ def test_daemon_cli_explicit_socket_path_overrides_runtime_environment(
             "--api-client-timeout",
             "9",
             "--api-shutdown-timeout",
-            "4",
+            "6",
             "--event-socket-path",
             str(explicit_events),
             "--event-queue-capacity",
@@ -865,7 +865,7 @@ def test_daemon_cli_explicit_socket_path_overrides_runtime_environment(
     assert api_server.max_request_bytes == 4096
     assert api_server.max_response_bytes == 8192
     assert api_server.client_timeout == 9.0
-    assert api_server.shutdown_timeout == 4.0
+    assert api_server.shutdown_timeout == 6.0
 
     assert isinstance(event_server, cli.DaemonEventServer)
     assert isinstance(event_server.stream, cli.DaemonEventStream)

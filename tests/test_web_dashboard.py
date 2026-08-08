@@ -39,11 +39,13 @@ class FakeDaemonApiClient:
         snapshot: Mapping[str, object] | None = None,
         error: BaseException | None = None,
         recording_error: BaseException | None = None,
+        control_error: BaseException | None = None,
     ) -> None:
         self.hello_result = dict(hello or {})
         self.snapshot_result = dict(snapshot or {})
         self.error = error
         self.recording_error = recording_error
+        self.control_error = control_error
         self.entered = False
         self.closed = False
         self.hello_calls = 0
@@ -52,6 +54,7 @@ class FakeDaemonApiClient:
         self.recording_start_calls = 0
         self.recording_stop_calls = 0
         self.recordings_list_calls = 0
+        self.control_calls: list[tuple[object, ...]] = []
 
     def __enter__(self) -> Self:
         self.entered = True
@@ -103,6 +106,65 @@ class FakeDaemonApiClient:
             "issues": [],
             "entries": [{"audio": "2026/test.wav"}],
         }
+
+    def hold_state(
+        self,
+        scope: str,
+        held: bool,
+        *,
+        timeout: float = 4.0,
+    ) -> dict[str, object]:
+        self.control_calls.append(("hold_state", scope, held, timeout))
+        self._raise_control_error()
+        return self._control_result("scanner.hold_state")
+
+    def next(
+        self,
+        target: str,
+        first: str | int | None = None,
+        second: str | int | None = None,
+        *,
+        count: int = 1,
+        timeout: float = 2.0,
+    ) -> dict[str, object]:
+        self.control_calls.append(
+            ("next", target, first, second, count, timeout)
+        )
+        self._raise_control_error()
+        return self._control_result("scanner.next")
+
+    def previous(
+        self,
+        target: str,
+        first: str | int | None = None,
+        second: str | int | None = None,
+        *,
+        count: int = 1,
+        timeout: float = 2.0,
+    ) -> dict[str, object]:
+        self.control_calls.append(
+            ("previous", target, first, second, count, timeout)
+        )
+        self._raise_control_error()
+        return self._control_result("scanner.previous")
+
+    def reconnect(self, *, timeout: float = 2.0) -> dict[str, object]:
+        self.control_calls.append(("reconnect", timeout))
+        self._raise_control_error()
+        return self._control_result("scanner.reconnect")
+
+    def _control_result(self, operation: str) -> dict[str, object]:
+        return {
+            "sequence": len(self.control_calls),
+            "operation": operation,
+            "started_at": "2026-08-08T00:00:00+00:00",
+            "completed_at": "2026-08-08T00:00:00+00:00",
+            "snapshot": dict(self.snapshot_result),
+        }
+
+    def _raise_control_error(self) -> None:
+        if self.control_error is not None:
+            raise self.control_error
 
     def _raise_recording_error(self) -> None:
         if self.recording_error is not None:
@@ -340,6 +402,18 @@ def test_web_dashboard_shell_does_not_connect_to_daemon() -> None:
     assert 'id="recording-stop"' in response.text
     assert 'id="recordings-list"' in response.text
     assert 'id="saved-recording-player"' in response.text
+    assert 'id="scanner-control-status"' in response.text
+    assert "<h3>Hold / release</h3>" in response.text
+    assert 'id="scanner-hold-channel"' in response.text
+    assert 'id="scanner-hold-system-state"' in response.text
+    assert 'id="scanner-hold-department-state"' in response.text
+    assert 'id="scanner-hold-site-state"' in response.text
+    assert 'id="scanner-hold-channel-state"' in response.text
+    assert 'aria-describedby="scanner-hold-channel-state"' in response.text
+    assert response.text.count('aria-pressed="false"') == 4
+    assert 'id="scanner-previous"' in response.text
+    assert 'id="scanner-next"' in response.text
+    assert 'id="scanner-reconnect"' in response.text
     assert "media-src 'self'" in response.headers["content-security-policy"]
     assert "Milestone 20.2" not in response.text
     assert 'href="/assets/favicon.svg"' in response.text
@@ -368,6 +442,14 @@ def test_web_dashboard_serves_packaged_static_assets() -> None:
     assert "--content-width:" in stylesheet.text
     assert "@media (prefers-reduced-motion: reduce)" in stylesheet.text
     assert ".recording-panel" in stylesheet.text
+    assert ".scanner-controls" in stylesheet.text
+    assert ".scanner-control-status" in stylesheet.text
+    assert ".scanner-hold-control" in stylesheet.text
+    assert ".scanner-hold-state" in stylesheet.text
+    assert ".scanner-hold-state[hidden]" in stylesheet.text
+    assert ".scanner-hold-active" not in stylesheet.text
+    assert "#scanner-previous," not in stylesheet.text
+    assert "#scanner-reconnect," in stylesheet.text
     assert ".recording-list" in stylesheet.text
     assert ".saved-playback" in stylesheet.text
 
@@ -388,6 +470,25 @@ def test_web_dashboard_serves_packaged_static_assets() -> None:
     assert 'fetch("/api/v1/recordings"' in script.text
     assert 'performRecordingAction("start")' in script.text
     assert 'performRecordingAction("stop")' in script.text
+    assert 'performScannerHoldState("channel")' in script.text
+    assert 'performScannerControl("reconnect", "Reconnect scanner")' in script.text
+    assert 'daemonControlSupported("scanner.hold_state")' in script.text
+    assert "setScannerHoldControl" in script.text
+    assert 'radio.channel_hold === "On"' in script.text
+    assert "button.disabled = !available" in script.text
+    assert 'button.setAttribute("aria-pressed"' in script.text
+    assert "JSON.stringify(body)" in script.text
+    assert "indicator.hidden = !held" in script.text
+    assert '"scanner-hold-active"' not in script.text
+    assert "scannerControlMutationInProgress" in script.text
+    assert "control.snapshot" in script.text
+    assert "daemonEventGeneration" in script.text
+    assert "eventGenerationAtStart" in script.text
+    assert "reconcileStatusAfterControl" in script.text
+    assert "fetchStatusPayload" in script.text
+    assert "The scanner control has already completed successfully." in script.text
+    assert "daemonEventGeneration === eventGenerationAtStart" in script.text
+    assert "value < 0xffffffff" in script.text
     assert 'kind === "recording.state"' in script.text
     assert "recordingStatusAvailable" in script.text
     assert "recording: payload" in script.text
@@ -456,6 +557,10 @@ def test_web_dashboard_api_index_advertises_endpoints() -> None:
         "recordings": "/api/v1/recordings",
         "recording_file": "/api/v1/recordings/file/{identifier}",
         "redoc": "/api/v1/redoc",
+        "scanner_hold": "/api/v1/scanner/hold/{scope}",
+        "scanner_next": "/api/v1/scanner/next",
+        "scanner_previous": "/api/v1/scanner/previous",
+        "scanner_reconnect": "/api/v1/scanner/reconnect",
         "snapshot": "/api/v1/snapshot",
         "status": "/api/v1/status",
     }
@@ -727,6 +832,289 @@ def test_web_dashboard_redacts_daemon_failures() -> None:
     assert "/private/sdsctl/daemon.sock" not in response.text
     assert daemon_client.closed is True
 
+
+
+def _web_control_hello(*operations: str) -> dict[str, object]:
+    return {
+        "read_only": False,
+        "control_operations": list(operations),
+    }
+
+
+def _web_control_snapshot() -> dict[str, object]:
+    return {
+        "state": "running",
+        "scanner_connected": True,
+        "radio_state": {
+            "system_index": 100,
+            "system_hold": "Off",
+            "department_index": 200,
+            "department_hold": "On",
+            "site_index": 300,
+            "site_hold": "Off",
+            "channel_index": 400,
+            "channel_kind": "TGID",
+            "channel_hold": "On",
+        },
+    }
+
+
+def test_web_dashboard_scanner_controls_resolve_current_snapshot() -> None:
+    daemon_client = FakeDaemonApiClient(
+        hello=_web_control_hello(
+            "scanner.hold_state",
+            "scanner.next",
+            "scanner.previous",
+            "scanner.reconnect",
+        ),
+        snapshot=_web_control_snapshot(),
+    )
+    app = create_web_dashboard_app(lambda: daemon_client)
+
+    with TestClient(app) as client:
+        system = client.post(
+            "/api/v1/scanner/hold/system",
+            json={"held": True},
+        )
+        department = client.post(
+            "/api/v1/scanner/hold/department",
+            json={"held": False},
+        )
+        site = client.post(
+            "/api/v1/scanner/hold/site",
+            json={"held": True},
+        )
+        channel = client.post(
+            "/api/v1/scanner/hold/channel",
+            json={"held": False},
+        )
+        previous = client.post("/api/v1/scanner/previous")
+        next_response = client.post("/api/v1/scanner/next")
+        reconnect = client.post("/api/v1/scanner/reconnect")
+
+    for response in (
+        system,
+        department,
+        site,
+        channel,
+        previous,
+        next_response,
+        reconnect,
+    ):
+        assert response.status_code == 200
+        assert response.json()["control"]["snapshot"] == _web_control_snapshot()
+
+    assert daemon_client.control_calls == [
+        ("hold_state", "system", True, 4.0),
+        ("hold_state", "department", False, 4.0),
+        ("hold_state", "site", True, 4.0),
+        ("hold_state", "channel", False, 4.0),
+        ("previous", "TGID", 400, None, 1, 2.0),
+        ("next", "TGID", 400, None, 1, 2.0),
+        ("reconnect", 2.0),
+    ]
+    assert daemon_client.hello_calls == 7
+    assert daemon_client.snapshot_calls == 2
+
+
+def test_web_dashboard_rejects_unadvertised_scanner_control() -> None:
+    daemon_client = FakeDaemonApiClient(
+        hello=_web_control_hello("scanner.reconnect"),
+        snapshot=_web_control_snapshot(),
+    )
+    app = create_web_dashboard_app(lambda: daemon_client)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/scanner/hold/channel",
+            json={"held": True},
+        )
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "detail": web_dashboard.WEB_DASHBOARD_CONTROL_UNAVAILABLE_DETAIL,
+    }
+    assert daemon_client.snapshot_calls == 0
+    assert daemon_client.control_calls == []
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        None,
+        {},
+        {"held": "true"},
+        {"held": True, "extra": 1},
+    ],
+)
+def test_web_dashboard_rejects_invalid_hold_state_body(
+    payload: object,
+) -> None:
+    daemon_client = FakeDaemonApiClient(
+        hello=_web_control_hello("scanner.hold_state"),
+        snapshot=_web_control_snapshot(),
+    )
+    app = create_web_dashboard_app(lambda: daemon_client)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/scanner/hold/system",
+            json=payload,
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "detail": web_dashboard.WEB_DASHBOARD_CONTROL_INVALID_DETAIL,
+    }
+    assert daemon_client.hello_calls == 0
+    assert daemon_client.control_calls == []
+
+
+def test_web_dashboard_rejects_unavailable_current_selection() -> None:
+    snapshot = _web_control_snapshot()
+    snapshot["radio_state"] = {
+        "channel_index": 400,
+        "channel_kind": "SrchFrequency",
+    }
+    daemon_client = FakeDaemonApiClient(
+        hello=_web_control_hello("scanner.next"),
+        snapshot=snapshot,
+    )
+    app = create_web_dashboard_app(lambda: daemon_client)
+
+    with TestClient(app) as client:
+        response = client.post("/api/v1/scanner/next")
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "detail": (
+            web_dashboard.WEB_DASHBOARD_CONTROL_SELECTION_UNAVAILABLE_DETAIL
+        ),
+    }
+    assert daemon_client.control_calls == []
+
+
+@pytest.mark.parametrize(
+    ("code", "status_code", "detail"),
+    [
+        (
+            "control_busy",
+            409,
+            web_dashboard.WEB_DASHBOARD_CONTROL_BUSY_DETAIL,
+        ),
+        (
+            "control_unavailable",
+            409,
+            web_dashboard.WEB_DASHBOARD_CONTROL_UNAVAILABLE_DETAIL,
+        ),
+        (
+            "unsupported_operation",
+            409,
+            web_dashboard.WEB_DASHBOARD_CONTROL_UNAVAILABLE_DETAIL,
+        ),
+        (
+            "control_timeout",
+            504,
+            web_dashboard.WEB_DASHBOARD_CONTROL_TIMEOUT_DETAIL,
+        ),
+        (
+            "control_rejected",
+            409,
+            web_dashboard.WEB_DASHBOARD_CONTROL_REJECTED_DETAIL,
+        ),
+        (
+            "invalid_parameters",
+            400,
+            web_dashboard.WEB_DASHBOARD_CONTROL_INVALID_DETAIL,
+        ),
+        (
+            "control_failed",
+            503,
+            web_dashboard.WEB_DASHBOARD_CONTROL_FAILED_DETAIL,
+        ),
+    ],
+)
+def test_web_dashboard_maps_scanner_control_errors(
+    code: str,
+    status_code: int,
+    detail: str,
+) -> None:
+    daemon_client = FakeDaemonApiClient(
+        hello=_web_control_hello("scanner.reconnect"),
+        snapshot=_web_control_snapshot(),
+        control_error=DaemonRequestError(
+            code,
+            "secret daemon detail /private/control.sock",
+            request_id="control-web-1",
+        ),
+    )
+    app = create_web_dashboard_app(lambda: daemon_client)
+
+    with TestClient(app) as client:
+        response = client.post("/api/v1/scanner/reconnect")
+
+    assert response.status_code == status_code
+    assert response.json() == {"detail": detail}
+    assert "secret" not in response.text
+    assert "/private/control.sock" not in response.text
+
+
+def test_web_dashboard_redacts_scanner_control_connection_failures() -> None:
+    daemon_client = FakeDaemonApiClient(
+        error=DaemonUnavailableError("/private/sdsctl/daemon.sock"),
+    )
+    app = create_web_dashboard_app(lambda: daemon_client)
+
+    with TestClient(app) as client:
+        response = client.post("/api/v1/scanner/reconnect")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": web_dashboard.WEB_DASHBOARD_CONTROL_UNAVAILABLE_DETAIL,
+    }
+    assert "/private/sdsctl/daemon.sock" not in response.text
+    assert daemon_client.control_calls == []
+
+
+def test_web_dashboard_semantic_release_does_not_depend_on_cached_index() -> None:
+    unavailable = (1 << 32) - 1
+    daemon_client = FakeDaemonApiClient(
+        hello=_web_control_hello(
+            "scanner.hold_state",
+            "scanner.next",
+            "scanner.previous",
+        ),
+        snapshot={
+            "state": "running",
+            "scanner_connected": True,
+            "radio_state": {
+                "channel_kind": "TGID",
+                "channel_index": unavailable,
+                "channel_hold": "On",
+            },
+        },
+    )
+    app = create_web_dashboard_app(lambda: daemon_client)
+
+    with TestClient(app) as client:
+        channel_release = client.post(
+            "/api/v1/scanner/hold/channel",
+            json={"held": False},
+        )
+        next_channel = client.post("/api/v1/scanner/next")
+        previous_channel = client.post("/api/v1/scanner/previous")
+
+    assert channel_release.status_code == 200
+    for response in (next_channel, previous_channel):
+        assert response.status_code == 409
+        assert response.json() == {
+            "detail": (
+                web_dashboard.WEB_DASHBOARD_CONTROL_SELECTION_UNAVAILABLE_DETAIL
+            ),
+        }
+    assert daemon_client.control_calls == [
+        ("hold_state", "channel", False, 4.0),
+    ]
 
 
 def test_web_dashboard_recording_routes_proxy_daemon_api() -> None:
@@ -1007,6 +1395,10 @@ def test_web_dashboard_serves_local_interactive_docs_without_daemon() -> None:
     assert "/api/v1/events" in openapi_response.json()["paths"]
     assert "/api/v1/audio" in openapi_response.json()["paths"]
     assert "/api/v1/recording" in openapi_response.json()["paths"]
+    assert "/api/v1/scanner/hold/{scope}" in openapi_response.json()["paths"]
+    assert "/api/v1/scanner/next" in openapi_response.json()["paths"]
+    assert "/api/v1/scanner/previous" in openapi_response.json()["paths"]
+    assert "/api/v1/scanner/reconnect" in openapi_response.json()["paths"]
     assert "/api/v1/recordings" in openapi_response.json()["paths"]
     assert (
         "/api/v1/recordings/file/{identifier}"

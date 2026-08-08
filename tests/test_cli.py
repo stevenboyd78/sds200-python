@@ -47,6 +47,25 @@ def test_global_logging_options_parse_before_subcommand(tmp_path: Path) -> None:
     assert args.log_file == path
 
 
+def test_daemon_psi_recovery_options_parse() -> None:
+    args = cli.build_parser().parse_args(
+        [
+            "--host",
+            "192.168.0.251",
+            "daemon",
+            "--no-psi-auto-recover",
+            "--psi-recover-after",
+            "20",
+            "--psi-recovery-cooldown",
+            "90",
+        ]
+    )
+
+    assert not args.psi_auto_recover
+    assert args.psi_recover_after == 20.0
+    assert args.psi_recovery_cooldown == 90.0
+
+
 def test_tui_psi_recovery_options_parse() -> None:
     args = cli.build_parser().parse_args(
         [

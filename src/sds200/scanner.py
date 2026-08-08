@@ -20,6 +20,7 @@ class ScannerCapabilities:
     scanner_info: bool
     scanner_info_push: bool
     navigation_control: bool
+    hold_key_control: bool
     validation_status: ValidationStatus
     maximum_volume: int
     maximum_squelch: int
@@ -35,6 +36,7 @@ _CAPABILITIES: dict[ScannerModel, ScannerCapabilities] = {
         scanner_info=True,
         scanner_info_push=True,
         navigation_control=True,
+        hold_key_control=True,
         validation_status="hardware-validated",
         maximum_volume=15,
         maximum_squelch=15,
@@ -48,6 +50,7 @@ _CAPABILITIES: dict[ScannerModel, ScannerCapabilities] = {
         scanner_info=True,
         scanner_info_push=True,
         navigation_control=True,
+        hold_key_control=False,
         validation_status="specification-only",
         maximum_volume=15,
         maximum_squelch=15,
@@ -61,6 +64,7 @@ _CAPABILITIES: dict[ScannerModel, ScannerCapabilities] = {
         scanner_info=True,
         scanner_info_push=True,
         navigation_control=True,
+        hold_key_control=True,
         validation_status="hardware-validated",
         maximum_volume=29,
         maximum_squelch=19,

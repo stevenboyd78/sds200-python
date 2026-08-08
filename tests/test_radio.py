@@ -346,6 +346,51 @@ def test_typed_navigation_uses_model_check_and_acknowledgement() -> None:
     assert not thread.is_alive()
 
 
+def test_sds200_press_hold_key_uses_typed_key_command() -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport, expected_model="SDS200")
+
+    with radio:
+        def respond() -> None:
+            while transport.writes != ["MDL"]:
+                time.sleep(0.005)
+            transport.feed_line("MDL,SDS200")
+            while transport.writes != ["MDL", "KEY,C,P"]:
+                time.sleep(0.005)
+            transport.feed_line("KEY,OK")
+
+        thread = threading.Thread(target=respond, daemon=True)
+        thread.start()
+        radio.press_hold_key("C", timeout=1.0)
+        thread.join(timeout=1.0)
+
+    assert not thread.is_alive()
+    assert transport.writes == ["MDL", "KEY,C,P"]
+
+
+def test_sds150_rejects_unverified_hold_key_control_before_key_command() -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport, expected_model="SDS150")
+
+    with radio:
+        def respond() -> None:
+            while transport.writes != ["MDL"]:
+                time.sleep(0.005)
+            transport.feed_line("MDL,SDS150GBT")
+
+        thread = threading.Thread(target=respond, daemon=True)
+        thread.start()
+        with pytest.raises(
+            UnsupportedScannerFeatureError,
+            match="hold-related key control",
+        ):
+            radio.press_hold_key("C", timeout=1.0)
+        thread.join(timeout=1.0)
+
+    assert not thread.is_alive()
+    assert transport.writes == ["MDL"]
+
+
 def test_preferred_recovery_restarts_active_psi_stream() -> None:
     transport = FakeTransport()
     radio = SDS200.from_transport(transport, expected_model="SDS200")

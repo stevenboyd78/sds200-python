@@ -8,6 +8,24 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Added
 
+- Milestone 20.6 loopback browser scanner controls for semantic system,
+  department, site, and channel hold/release, previous/next channel navigation,
+  and bounded reconnect. The web layer negotiates daemon-advertised
+  capabilities, sends explicit hold desired state without raw scanner targets
+  or keys, preserves documented snapshot-based selection resolution for channel
+  navigation, prevents overlapping browser control mutations, maps stable
+  redacted failures, and renders authoritative completion snapshots without
+  disturbing ordered SSE reconciliation or daemon scanner ownership.
+- Foreground-daemon PSI silence recovery using every successfully parsed PSI
+  frame as the liveness signal, with default-on bounded recovery after 10 seconds,
+  a 60-second retry cooldown, command-line policy controls, and the existing
+  daemon mutation lock so automatic reconnect cannot overlap browser or local
+  scanner controls. A busy mutation defers recovery without consuming cooldown.
+- Physical SDS200 validation of the daemon PSI watchdog by dropping only inbound
+  UDP control/PSI datagrams to the daemon's original local control port. The same
+  daemon process detected 10.1 seconds of PSI silence, reopened the scanner
+  transport on a new local port, resumed ordered PSI events, and kept independent
+  RTSP/RTP audio advancing while the web process remained running.
 - Self-hosted interactive Swagger UI and ReDoc at `/api/v1/docs` and
   `/api/v1/redoc`, backed by the existing local OpenAPI schema and version-pinned
   packaged Swagger UI 5.32.11 and ReDoc 2.5.3 assets with upstream license and
@@ -191,6 +209,25 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   16 API pings, 82 ordered events without a gap, and two matching loss-free PCMU
   streams of 410 frames and 131,200 payload bytes each. Controlled `SIGTERM`
   returned exit status 0 and removed all three sockets.
+- Added semantic desired-state `scanner.hold_state` control for system,
+  department, site, and channel hold/release without changing the compatibility
+  indexed `scanner.hold` operation. The daemon performs an authoritative `GSI`
+  read before deciding whether a gesture is needed, no-ops when the requested
+  state already matches, executes the complete verified gesture under one
+  mutation lock, and polls authoritative `GSI` until the target hold field
+  converges.
+- Physical SDS200 firmware 1.26.01 validation confirmed one `KEY,A,P` toggles
+  System Hold, one `KEY,B,P` toggles Department Hold, `KEY,F,P` followed by
+  `KEY,B,P` toggles Site Hold, and one `KEY,C,P` toggles Channel Hold in both
+  directions. Browser hold controls now send explicit `held: true|false`
+  desired state, render held scopes as actionable Release controls, and never
+  expose a generic raw `KEY` operation.
+- Physical end-to-end Milestone 20.6 web validation exercised semantic
+  release/re-hold for all four scopes through the loopback HTTP routes,
+  including Channel release across the `4294967295` no-selection interval. A
+  real browser then confirmed the Channel Release/Held -> Hold -> Release/Held
+  UI cycle and completion messages while daemon/web process IDs remained
+  unchanged and PSI plus daemon-owned audio stayed healthy.
 - Physical SDS200 validation of `sdsctl daemon-client audio` with simultaneous
   default-device playback and WAV recording through the private PCMU socket.
   The client received 258 consecutive frames from stream sequence 16 through

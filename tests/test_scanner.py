@@ -36,6 +36,9 @@ def test_model_capabilities_include_handheld_limits() -> None:
     assert sds200.network_control is True
     assert sds200.battery_level is False
     assert sds200.charge_status is False
+    assert sds100.hold_key_control is True
+    assert sds150.hold_key_control is False
+    assert sds200.hold_key_control is True
 
 
 def test_infer_model_from_linux_by_id_name() -> None:

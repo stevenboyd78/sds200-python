@@ -30,6 +30,9 @@ DAEMON_API_SUPPORTED_VERSIONS = (DAEMON_API_VERSION,)
 DAEMON_API_MAX_REQUEST_ID_LENGTH = 128
 DAEMON_API_DEFAULT_CONTROL_TIMEOUT = 2.0
 DAEMON_API_MAX_CONTROL_TIMEOUT = 2.0
+DAEMON_API_DEFAULT_HOLD_STATE_TIMEOUT = 4.0
+DAEMON_API_MAX_HOLD_STATE_TIMEOUT = 4.0
+_HOLD_STATE_SCOPES = ("system", "department", "site", "channel")
 
 
 class DaemonApiOperation(StrEnum):
@@ -46,6 +49,7 @@ class DaemonApiOperation(StrEnum):
     RECORDING_STOP = "recording.stop"
     RECORDINGS_LIST = "recordings.list"
     SCANNER_HOLD = "scanner.hold"
+    SCANNER_HOLD_STATE = "scanner.hold_state"
     SCANNER_NEXT = "scanner.next"
     SCANNER_PREVIOUS = "scanner.previous"
     SCANNER_RECONNECT = "scanner.reconnect"
@@ -69,6 +73,7 @@ DAEMON_API_RECORDING_OPERATIONS = (
 )
 DAEMON_API_CONTROL_OPERATIONS = (
     DaemonApiOperation.SCANNER_HOLD,
+    DaemonApiOperation.SCANNER_HOLD_STATE,
     DaemonApiOperation.SCANNER_NEXT,
     DaemonApiOperation.SCANNER_PREVIOUS,
     DaemonApiOperation.SCANNER_RECONNECT,
@@ -126,6 +131,14 @@ class _ControlRuntimeLike(_RuntimeLike, Protocol):
         second: str | int | None = None,
         *,
         timeout: float = DAEMON_API_DEFAULT_CONTROL_TIMEOUT,
+    ) -> _ControlResultLike: ...
+
+    def hold_state(
+        self,
+        scope: str,
+        held: bool,
+        *,
+        timeout: float = DAEMON_API_DEFAULT_HOLD_STATE_TIMEOUT,
     ) -> _ControlResultLike: ...
 
     def next(
@@ -405,7 +418,10 @@ class DaemonReadOnlyApi:
 
     @property
     def maximum_request_seconds(self) -> float:
-        return DAEMON_API_MAX_CONTROL_TIMEOUT
+        return max(
+            DAEMON_API_MAX_CONTROL_TIMEOUT,
+            DAEMON_API_MAX_HOLD_STATE_TIMEOUT,
+        )
 
     def handle_payload(self, payload: object) -> DaemonApiResponse:
         try:
@@ -583,6 +599,12 @@ class DaemonReadOnlyApi:
                     _navigation_value(params.get("second")),
                     timeout=_control_timeout(params),
                 ).as_dict()
+            if operation is DaemonApiOperation.SCANNER_HOLD_STATE:
+                return runtime.hold_state(
+                    _hold_state_scope(params),
+                    _hold_state_held(params),
+                    timeout=_hold_state_timeout(params),
+                ).as_dict()
             if operation is DaemonApiOperation.SCANNER_NEXT:
                 return runtime.next(
                     _control_target(params),
@@ -671,6 +693,7 @@ class DaemonReadOnlyApi:
                 for operation in DAEMON_API_CONTROL_OPERATIONS
             ],
             "max_control_timeout": DAEMON_API_MAX_CONTROL_TIMEOUT,
+            "max_hold_state_timeout": DAEMON_API_MAX_HOLD_STATE_TIMEOUT,
         }
 
 
@@ -702,6 +725,18 @@ def _validate_control_params(
     operation: DaemonApiOperation,
     params: Mapping[str, object],
 ) -> None:
+    if operation is DaemonApiOperation.SCANNER_HOLD_STATE:
+        unexpected = sorted(set(params) - {"scope", "held", "timeout"})
+        if unexpected:
+            raise _ControlParameterError(
+                "scanner.hold_state received unexpected parameters: "
+                f"{unexpected!r}."
+            )
+        _hold_state_scope(params)
+        _hold_state_held(params)
+        _hold_state_timeout(params)
+        return
+
     if operation is DaemonApiOperation.SCANNER_RECONNECT:
         unexpected = sorted(set(params) - {"timeout"})
         if unexpected:
@@ -732,6 +767,30 @@ def _validate_control_params(
     _control_timeout(params)
     if "count" in allowed:
         _navigation_count(params)
+
+
+def _hold_state_scope(params: Mapping[str, object]) -> str:
+    value = params.get("scope")
+    if not isinstance(value, str) or not value.strip():
+        raise _ControlParameterError(
+            "Scanner hold-state controls require a non-empty string scope."
+        )
+    normalized = value.strip().lower()
+    if normalized not in _HOLD_STATE_SCOPES:
+        choices = ", ".join(_HOLD_STATE_SCOPES)
+        raise _ControlParameterError(
+            f"Scanner hold-state scope must be one of: {choices}."
+        )
+    return normalized
+
+
+def _hold_state_held(params: Mapping[str, object]) -> bool:
+    value = params.get("held")
+    if type(value) is not bool:
+        raise _ControlParameterError(
+            "Scanner hold-state held value must be a boolean."
+        )
+    return value
 
 
 def _control_target(params: Mapping[str, object]) -> str:
@@ -780,6 +839,30 @@ def _navigation_count(params: Mapping[str, object]) -> int:
             "Navigation count must be between 1 and 8."
         )
     return value
+
+
+def _hold_state_timeout(params: Mapping[str, object]) -> float:
+    value = params.get(
+        "timeout",
+        DAEMON_API_DEFAULT_HOLD_STATE_TIMEOUT,
+    )
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise _ControlParameterError(
+            "Hold-state control timeout must be a number."
+        )
+
+    normalized = float(value)
+    if (
+        not isfinite(normalized)
+        or normalized <= 0
+        or normalized > DAEMON_API_MAX_HOLD_STATE_TIMEOUT
+    ):
+        raise _ControlParameterError(
+            "Hold-state control timeout must be finite, greater than zero, "
+            "and no more than "
+            f"{DAEMON_API_MAX_HOLD_STATE_TIMEOUT:g} seconds."
+        )
+    return normalized
 
 
 def _control_timeout(params: Mapping[str, object]) -> float:
