@@ -30,6 +30,12 @@ class _DaemonDestinationReloaderLike(Protocol):
     def reload(self) -> DaemonDestinationReloadResult: ...
 
 
+class _DaemonMqttServiceLike(Protocol):
+    def start(self) -> None: ...
+
+    def stop(self) -> None: ...
+
+
 class _DaemonRecordingManagerLike(Protocol):
     def close(self) -> None: ...
 
@@ -222,6 +228,7 @@ class DaemonProcess:
         destination_reloader: (
             _DaemonDestinationReloaderLike | None
         ) = None,
+        mqtt_service: _DaemonMqttServiceLike | None = None,
         recording_manager: _DaemonRecordingManagerLike | None = None,
         recording_file_server: (
             _DaemonRecordingFileServerLike | None
@@ -248,6 +255,7 @@ class DaemonProcess:
         self.runtime = runtime
         self.destination_coordinator = destination_coordinator
         self.destination_reloader = destination_reloader
+        self.mqtt_service = mqtt_service
         self.recording_manager = recording_manager
         self.recording_file_server = recording_file_server
         self.api_server = api_server
@@ -261,6 +269,7 @@ class DaemonProcess:
             event_server_attempted = False
             pcmu_server_attempted = False
             runtime_attempted = False
+            mqtt_service_attempted = False
             destination_coordinator_attempted = False
             recording_file_server_attempted = False
             api_server_attempted = False
@@ -276,6 +285,10 @@ class DaemonProcess:
 
                 runtime_attempted = True
                 self.runtime.start()
+
+                if self.mqtt_service is not None:
+                    mqtt_service_attempted = True
+                    self.mqtt_service.start()
 
                 if self.destination_coordinator is not None:
                     destination_coordinator_attempted = True
@@ -309,6 +322,7 @@ class DaemonProcess:
                     stop_destination_coordinator=(
                         destination_coordinator_attempted
                     ),
+                    stop_mqtt_service=mqtt_service_attempted,
                     stop_runtime=runtime_attempted,
                     stop_pcmu_server=pcmu_server_attempted,
                     stop_event_server=event_server_attempted,
@@ -331,6 +345,7 @@ class DaemonProcess:
                     stop_destination_coordinator=(
                         destination_coordinator_attempted
                     ),
+                    stop_mqtt_service=mqtt_service_attempted,
                     stop_runtime=runtime_attempted,
                     stop_pcmu_server=pcmu_server_attempted,
                     stop_event_server=event_server_attempted,
@@ -387,6 +402,7 @@ class DaemonProcess:
         stop_recording_file_server: bool,
         stop_recording_manager: bool,
         stop_destination_coordinator: bool,
+        stop_mqtt_service: bool,
         stop_runtime: bool,
         stop_pcmu_server: bool,
         stop_event_server: bool,
@@ -420,6 +436,12 @@ class DaemonProcess:
         ):
             try:
                 self.destination_coordinator.stop()
+            except BaseException as error:
+                failures.append(error)
+
+        if stop_mqtt_service and self.mqtt_service is not None:
+            try:
+                self.mqtt_service.stop()
             except BaseException as error:
                 failures.append(error)
 
