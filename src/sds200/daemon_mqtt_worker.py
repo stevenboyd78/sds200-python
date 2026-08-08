@@ -36,6 +36,39 @@ DaemonMqttWorkerState = Literal[
 ]
 
 
+@dataclass(frozen=True, slots=True)
+class DaemonMqttBrokerMessage:
+    # One immutable inbound MQTT message handed off by a broker adapter.
+
+    topic: str
+    payload: bytes
+    qos: int
+    retain: bool
+    duplicate: bool
+    message_id: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.topic, str) or not self.topic:
+            raise ValueError("MQTT inbound message topic must not be empty.")
+        if not isinstance(self.payload, bytes):
+            raise TypeError("MQTT inbound message payload must be bytes.")
+        if isinstance(self.qos, bool) or not isinstance(self.qos, int):
+            raise TypeError("MQTT inbound message QoS must be an integer.")
+        if not 0 <= self.qos <= 2:
+            raise ValueError("MQTT inbound message QoS must be between 0 and 2.")
+        if not isinstance(self.retain, bool):
+            raise TypeError("MQTT inbound retain flag must be a boolean.")
+        if not isinstance(self.duplicate, bool):
+            raise TypeError("MQTT inbound duplicate flag must be a boolean.")
+        if (
+            isinstance(self.message_id, bool)
+            or not isinstance(self.message_id, int)
+        ):
+            raise TypeError("MQTT inbound message ID must be an integer.")
+        if self.message_id < 0:
+            raise ValueError("MQTT inbound message ID must not be negative.")
+
+
 class DaemonMqttBrokerConnection(Protocol):
     """One interruptible blocking broker connection owned by the MQTT worker."""
 
@@ -49,6 +82,16 @@ class DaemonMqttBrokerConnection(Protocol):
         qos: int,
         retain: bool,
     ) -> None: ...
+
+    def subscribe(self, topic: str, *, qos: int) -> None: ...
+
+    def receive(
+        self,
+        *,
+        timeout: float,
+    ) -> DaemonMqttBrokerMessage | None: ...
+
+    def acknowledge(self, message: DaemonMqttBrokerMessage) -> None: ...
 
     def check(self) -> None: ...
 

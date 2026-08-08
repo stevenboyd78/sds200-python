@@ -17,6 +17,7 @@ from sds200 import (
     DaemonMqttWorker,
     ReconnectPolicy,
 )
+from sds200.daemon_mqtt_worker import DaemonMqttBrokerMessage
 
 SNAPSHOT: dict[str, object] = {
     "state": "running",
@@ -111,6 +112,20 @@ class FakeBrokerConnection:
         self.publications.append(
             Published(topic, payload, qos, retain)
         )
+
+    def subscribe(self, topic: str, *, qos: int) -> None:
+        del topic, qos
+
+    def receive(
+        self,
+        *,
+        timeout: float,
+    ) -> DaemonMqttBrokerMessage | None:
+        del timeout
+        return None
+
+    def acknowledge(self, message: DaemonMqttBrokerMessage) -> None:
+        del message
 
     def check(self) -> None:
         return
