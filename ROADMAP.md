@@ -11,27 +11,24 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 20.6 — Browser scanner controls
+### Milestone 20.8 — Native daemon MQTT foundation
 
-- Expose the daemon's existing typed `hold`, `next`, `previous`, and bounded
-  `reconnect` operations through the loopback web dashboard.
-- Add self-hosted interactive Swagger UI and ReDoc routes over the existing
-  OpenAPI schema using version-pinned packaged assets, no third-party browser
-  requests, and the existing loopback-only security boundary.
-- Keep scanner ownership in the daemon; the web process must use the versioned
-  daemon API and must not open scanner control hardware directly.
-- Negotiate advertised capabilities and disable or reject unavailable controls
-  rather than inferring support from scanner presentation state.
-- Prevent overlapping browser mutations, surface stable redacted daemon errors,
-  and reconcile successful mutations from authoritative completion snapshots
-  plus ordered events.
-- Preserve responsive layouts, keyboard access, visible focus, reduced-motion
-  behavior, and state meaning that does not depend on color alone.
-- Keep the existing loopback-only security boundary. Authentication, TLS, proxy
-  trust, and supported remote exposure remain separate future work.
-- Add host-independent regression coverage followed by physical SDS200
-  validation without interrupting daemon-owned PSI, audio, recording, event, or
-  PCMU services.
+- Add a strict optional version 1 `daemon-mqtt.toml` integration manifest and
+  explicit `--mqtt-config` override without expanding flat application
+  configuration.
+- Keep MQTT optional through a dedicated `sds200[mqtt]` extra and preflight the
+  broker dependency before scanner construction only when MQTT is configured.
+- Run one failure-isolated daemon-owned broker worker that consumes the existing
+  authoritative daemon event stream rather than opening scanner hardware or
+  creating parallel state subscriptions.
+- Publish retained availability, canonical semantic state, and non-retained
+  semantic events while suppressing packet-rate PSI traffic.
+- Use worker-owned reconnect/backoff, authoritative resynchronization after event
+  sequence gaps, environment-referenced password secrets, redacted diagnostics,
+  and deterministic shutdown before the scanner ownership runtime stops.
+- Keep this slice publication-only. Inbound MQTT controls, Home Assistant MQTT
+  Discovery, Home Assistant App packaging/Ingress, and the bundled Lovelace card
+  remain later Milestone 20 work.
 
 ## Deferred hardware validation
 
@@ -85,31 +82,29 @@ begins.
   recording survival across browser and web-process disconnects, daemon-shutdown
   finalization, regression coverage, packaging validation, and physical SDS200
   validation.
-- Bind to localhost by default.
-- Require explicit authentication and transport-security planning before remote
-  exposure.
-- Complete the remaining browser operational-log and safe scanner-control
-  workflows over existing daemon-owned services.
-- Establish a reusable design system with shared color, typography, spacing,
-  panel, status-indicator, icon, motion, and responsive-layout tokens.
-- Keep an accessible conventional theme as the baseline, with readable contrast,
-  keyboard navigation, reduced-motion behavior, and state meaning that does not
-  depend on color or decorative styling alone.
-- Add optional LCARS-inspired and futuristic Matrix-inspired themes over the same
-  dashboard structure and behavior rather than maintaining separate interfaces.
-- Create and organize scalable SVG assets for scanner controls, navigation,
-  connection and reliability states, audio and recording states, diagrams,
-  dashboard illustrations, and project branding.
-- Prefer CSS- and token-driven SVG styling so shared assets can adapt across
-  themes without unnecessary duplication.
-- Preserve one canonical project identity while providing coordinated default,
-  LCARS-inspired, and Matrix-inspired logo variants for the dashboard,
-  documentation, and other project presentation surfaces.
-- Reuse shared theme primitives, SVG assets, and branding treatments in other
-  interfaces where practical.
-- Add Home Assistant integration through the daemon API rather than opening a
-  second scanner connection.
-- Evaluate HACS distribution after the integration contract stabilizes.
+- Milestone 20.6 completed capability-negotiated browser semantic scanner
+  controls, bounded reconnect, stable redacted failures, authoritative
+  reconciliation, self-hosted interactive API documentation, regression
+  coverage, and physical SDS200 validation.
+- Milestone 20.7 completed browser-local system-adaptive, LCARS-inspired,
+  Matrix-inspired, First Responder, and Amateur Radio themes over one shared
+  accessible dashboard, deterministic documentation captures, packaging
+  coverage, and CodeQL hardening.
+- Milestone 20.8 establishes the native daemon MQTT publication substrate:
+  strict optional configuration, optional Paho packaging, retained availability,
+  canonical semantic state, non-retained semantic events, PSI suppression,
+  worker-owned retry/backoff, and daemon lifecycle ownership.
+- Route future MQTT commands through the daemon's existing semantic control
+  operations; never expose unrestricted raw scanner keys or open a second scanner
+  session.
+- Add Home Assistant MQTT Discovery entities after the command/state contract is
+  stable, then package one Home Assistant App that hosts the daemon and web
+  dashboard with Ingress.
+- Bundle a Lovelace SDS200 card with the Home Assistant App rather than requiring
+  HACS for the primary integration path.
+- Keep optional authenticated/TLS remote exposure or a secure LAN gateway as a
+  separate later boundary; the current web service remains loopback-only and the
+  current MQTT foundation does not add remote scanner ownership.
 
 ### Milestone 21 — Favorites Workspace foundation
 

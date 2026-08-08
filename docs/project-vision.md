@@ -197,8 +197,25 @@ design before any supported remote access.
 
 ### Home Assistant
 
-Home Assistant should integrate through the daemon API rather than opening another
-scanner connection.
+Home Assistant must preserve the same single-owner daemon boundary rather than
+opening another scanner control or RTSP/RTP session. Milestone 20.8 establishes a
+generic daemon-owned MQTT publication substrate over the existing authoritative
+event stream. It is intentionally not coupled to Home Assistant Discovery yet.
+
+The intended sequence is:
+
+- retain generic semantic daemon/scanner/radio/audio/recording/destination state
+  and availability on MQTT without publishing every 500 ms PSI packet;
+- route future MQTT commands through the daemon's existing semantic scanner
+  control operations rather than raw scanner keys;
+- add Home Assistant MQTT Discovery entities after the generic state and command
+  contracts stabilize;
+- package one Home Assistant App that hosts the daemon and web dashboard and uses
+  Ingress for the full dashboard;
+- bundle an SDS200 Lovelace card with that App so the primary integration does not
+  require HACS; and
+- treat authenticated/TLS LAN gateways or broader remote access as a later
+  explicit security boundary.
 
 Potential entities and events include:
 
@@ -210,7 +227,8 @@ Potential entities and events include:
 - destination health;
 - safe supported controls and scanner events.
 
-HACS packaging should wait until the API and entity model are stable.
+HACS may still be evaluated later as an optional distribution channel, but it is
+not a dependency of the planned primary Home Assistant integration.
 
 ### Future GUI and themes
 

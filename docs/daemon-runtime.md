@@ -40,6 +40,10 @@ Milestone 19.11 adds validated saved-destination activation and transactional
 the shared decoded-PCM router plus a fourth private Unix-domain socket for
 bounded finalized-recording access. Milestone 20.6 adds default-on semantic PSI
 silence detection and bounded recovery inside the foreground ownership loop.
+Milestone 20.8 adds an optional daemon-owned MQTT publication worker over the
+existing authoritative event stream. It publishes semantic state without opening
+scanner hardware, skips packet-rate PSI events, and isolates broker retry/backoff
+from scanner, PSI, audio, recording, and local-service ownership.
 Decoded-PCM CLI subscriptions and automatic daemon discovery and selection remain
 follow-on work. The process does not fork or create a pidfile.
 
@@ -62,8 +66,11 @@ The command constructs exactly one `DaemonRuntime`, one `PcmSinkRouter`, one
 bounded `DaemonApiServer`, one `DaemonEventStream`, one bounded
 `DaemonEventServer`, one `PcmuStream`, one bounded `DaemonPcmuServer`, one
 `DaemonRecordingManager`, one bounded `DaemonRecordingFileServer`, one
-`DaemonDestinationCoordinator`, and one `DaemonDestinationReloader`. The API
-class retains its historical public name while exposing backward-compatible
+`DaemonDestinationCoordinator`, and one `DaemonDestinationReloader`. When a
+daemon MQTT manifest is present, construction also creates one
+`DaemonMqttWorker` using the existing `DaemonEventStream`; an absent manifest
+creates no MQTT worker and does not require Paho MQTT. The API class retains its
+historical public name while exposing backward-compatible
 reads, explicit safe controls, and daemon recording operations. The PCMU stream
 subscribes to the same authoritative transport used by the decoded-PCM fanout.
 The coordinator activates the validated startup destination set against the
@@ -117,18 +124,23 @@ At the process-host level, startup occurs in this order:
 1. bind and start the local `DaemonEventServer`;
 2. bind and start the local `DaemonPcmuServer`;
 3. start `DaemonRuntime`;
-4. activate the validated daemon destination configuration;
-5. bind and start the local `DaemonRecordingFileServer`;
-6. bind and start the local `DaemonApiServer`; and
-7. wait for `SIGHUP`, `SIGINT`, `SIGTERM`, or another process-loop failure.
+4. start the optional daemon MQTT worker;
+5. activate the validated daemon destination configuration;
+6. bind and start the local `DaemonRecordingFileServer`;
+7. bind and start the local `DaemonApiServer`; and
+8. wait for `SIGHUP`, `SIGINT`, `SIGTERM`, or another process-loop failure.
 
 Starting the event service first allows an already connected client to observe
 runtime startup transitions. Starting the PCMU service before the runtime allows
 clients to subscribe before the shared transport begins publishing accepted
-packets. Starting the recording-file service after runtime and destination
-activation makes finalized inventory access available before recording API
-requests are admitted. Starting the API last ensures every admitted request
-observes an initialized runtime and configured recording service.
+packets. MQTT starts only after the runtime is authoritative, so its first broker
+session can publish a running snapshot, but before destinations so it can observe
+their later health. Broker connectivity is handled inside the MQTT worker and
+does not make scanner ownership depend on broker availability. Starting the
+recording-file service after runtime and destination activation makes finalized
+inventory access available before recording API requests are admitted. Starting
+the API last ensures every admitted request observes an initialized runtime and
+configured recording service.
 
 Shutdown occurs in this order:
 
@@ -139,19 +151,24 @@ Shutdown occurs in this order:
 5. close the daemon recording manager, finalizing an active recording when
    possible;
 6. stop all configured daemon-owned destinations;
-7. stop the daemon runtime while the event service remains available for final
+7. publish retained MQTT `offline` when possible and stop the optional MQTT
+   worker;
+8. stop the daemon runtime while the event service remains available for final
    lifecycle transitions;
-8. close the PCMU listener, publisher subscription, and connected clients;
-9. wait for bounded PCMU worker completion;
-10. close the event listener and connected subscribers; and
-11. wait for bounded event-worker completion.
+9. close the PCMU listener, publisher subscription, and connected clients;
+10. wait for bounded PCMU worker completion;
+11. close the event listener and connected subscribers; and
+12. wait for bounded event-worker completion.
 
 If any component startup fails, cleanup is attempted for every component whose
 startup was attempted. Cleanup continues after an individual failure, while the
-primary startup or process error remains authoritative. See the
-[local daemon API guide](daemon-api.md) and
-[local daemon event stream guide](daemon-events.md) for their socket, framing,
-permission, limit, and failure-isolation contracts.
+primary startup or process error remains authoritative. The MQTT worker is
+stopped before runtime cleanup so a session that reached retained `online` can
+attempt retained `offline`; unexpected broker loss instead relies on its retained
+offline last will. See the [daemon MQTT guide](daemon-mqtt.md),
+[local daemon API guide](daemon-api.md), and
+[local daemon event stream guide](daemon-events.md) for their publication,
+socket, framing, permission, limit, and failure-isolation contracts.
 
 ## Ownership graph
 
