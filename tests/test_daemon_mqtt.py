@@ -58,6 +58,7 @@ def test_mqtt_configuration_loads_minimal_document_with_defaults(
     assert configuration.topic_prefix == "sdsctl"
     assert configuration.qos == 1
     assert configuration.retain is True
+    assert configuration.commands_enabled is False
     assert configuration.keepalive_seconds == 60
     assert configuration.reconnect_policy == ReconnectPolicy()
 
@@ -85,6 +86,7 @@ def test_mqtt_configuration_loads_complete_document(
         'topic_prefix = "radio/sds200"\n'
         'qos = 2\n'
         'retain = false\n'
+        'commands_enabled = true\n'
         'keepalive_seconds = 45\n'
         'reconnect_initial_delay = 0.5\n'
         'reconnect_multiplier = 1.5\n'
@@ -104,6 +106,7 @@ def test_mqtt_configuration_loads_complete_document(
         topic_prefix="radio/sds200",
         qos=2,
         retain=False,
+        commands_enabled=True,
         keepalive_seconds=45,
         reconnect_policy=ReconnectPolicy(
             initial_delay=0.5,
@@ -161,6 +164,13 @@ def test_mqtt_configuration_is_immutable() -> None:
                 retain=1,  # type: ignore[arg-type]
             ),
             "retain setting must be a boolean",
+        ),
+        (
+            lambda: DaemonMqttConfiguration(
+                host="mqtt.example.test",
+                commands_enabled=1,  # type: ignore[arg-type]
+            ),
+            "commands_enabled setting must be a boolean",
         ),
         (
             lambda: DaemonMqttConfiguration(
@@ -242,6 +252,13 @@ def test_mqtt_configuration_rejects_unsafe_values(
             'host = "mqtt.example.test"\n'
             'qos = "1"\n',
             "QoS must be an integer",
+        ),
+        (
+            "version = 1\n"
+            "[broker]\n"
+            'host = "mqtt.example.test"\n'
+            'commands_enabled = "yes"\n',
+            "commands_enabled must be a boolean",
         ),
         (
             "version = 1\n"

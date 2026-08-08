@@ -130,6 +130,7 @@ class DaemonMqttConfiguration:
     topic_prefix: str = "sdsctl"
     qos: DaemonMqttQos = 1
     retain: bool = True
+    commands_enabled: bool = False
     keepalive_seconds: int = 60
     reconnect_policy: ReconnectPolicy = field(default_factory=ReconnectPolicy)
 
@@ -183,6 +184,10 @@ class DaemonMqttConfiguration:
         object.__setattr__(self, "qos", _require_qos(self.qos))
         if not isinstance(self.retain, bool):
             raise TypeError("MQTT retain setting must be a boolean.")
+        if not isinstance(self.commands_enabled, bool):
+            raise TypeError(
+                "MQTT commands_enabled setting must be a boolean."
+            )
         object.__setattr__(
             self,
             "keepalive_seconds",
@@ -221,6 +226,7 @@ class DaemonMqttConfiguration:
                 "topic_prefix": self.topic_prefix,
                 "qos": self.qos,
                 "retain": self.retain,
+                "commands_enabled": self.commands_enabled,
                 "keepalive_seconds": self.keepalive_seconds,
                 "reconnect_initial_delay": (
                     self.reconnect_policy.initial_delay
@@ -318,6 +324,7 @@ def load_daemon_mqtt_configuration(
         "topic_prefix",
         "qos",
         "retain",
+        "commands_enabled",
         "keepalive_seconds",
         "reconnect_initial_delay",
         "reconnect_multiplier",
@@ -390,6 +397,11 @@ def load_daemon_mqtt_configuration(
                 raw_broker,
                 "retain",
                 default=True,
+            ),
+            commands_enabled=_boolean_field(
+                raw_broker,
+                "commands_enabled",
+                default=False,
             ),
             keepalive_seconds=_integer_field(
                 raw_broker,
