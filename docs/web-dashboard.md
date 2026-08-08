@@ -264,8 +264,22 @@ shutdown continues.
 | `GET` | `/api/v1/recordings` | Bounded newest-first finalized recording inventory |
 | `GET` | `/api/v1/recordings/file/{identifier}` | Stream one finalized playable WAV by inventory-relative identifier |
 | `GET` | `/api/v1/openapi.json` | Machine-readable API schema |
+| `GET` | `/api/v1/docs` | Self-hosted interactive Swagger UI |
+| `GET` | `/api/v1/redoc` | Self-hosted ReDoc API reference |
 
-Interactive Swagger and ReDoc routes are disabled.
+Swagger UI and ReDoc are served entirely from version-pinned assets packaged
+with `sds200`. Loading either documentation page does not contact the scanner
+daemon and does not require a CDN, Google Fonts, or another third-party browser
+request. Both documentation UIs read the same local `/api/v1/openapi.json`
+schema. Swagger UI is interactive: its **Try it out** feature can invoke
+same-origin API operations, including mutating operations such as recording
+start and stop, so use those controls deliberately.
+
+The documentation pages keep `script-src 'self'` and `connect-src 'self'`.
+Their docs-specific Content Security Policy allows inline styles because the
+vendored Swagger UI and ReDoc runtimes generate style attributes or style
+elements while rendering. Inline scripts remain prohibited, and the normal
+dashboard keeps its stricter `style-src 'self'` policy without this exception.
 
 The service envelope uses protocol `sdsctl.web`, version `1`. Each
 request-response daemon route creates a bounded local API client, negotiates the

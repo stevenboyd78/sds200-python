@@ -330,6 +330,7 @@ def test_web_dashboard_shell_does_not_connect_to_daemon() -> None:
     assert response.headers["x-frame-options"] == "DENY"
     assert response.headers["referrer-policy"] == "no-referrer"
     assert "default-src 'none'" in response.headers["content-security-policy"]
+    assert "'unsafe-inline'" not in response.headers["content-security-policy"]
     assert "<title>sdsctl scanner dashboard</title>" in response.text
     assert 'id="main-content"' in response.text
     assert 'id="status-badge"' in response.text
@@ -447,11 +448,14 @@ def test_web_dashboard_api_index_advertises_endpoints() -> None:
     assert response.json()["links"] == {
         "audio": "/api/v1/audio",
         "dashboard": "/",
+        "docs": "/api/v1/docs",
         "events": "/api/v1/events",
         "health": "/healthz",
+        "openapi": "/api/v1/openapi.json",
         "recording": "/api/v1/recording",
         "recordings": "/api/v1/recordings",
         "recording_file": "/api/v1/recordings/file/{identifier}",
+        "redoc": "/api/v1/redoc",
         "snapshot": "/api/v1/snapshot",
         "status": "/api/v1/status",
     }
@@ -908,18 +912,98 @@ def test_web_dashboard_redacts_recording_file_connection_failures() -> None:
     assert "/private/sdsctl/recordings.sock" not in response.text
 
 
-def test_web_dashboard_disables_interactive_docs() -> None:
-    app = create_web_dashboard_app(FakeDaemonApiClient)
+def test_web_dashboard_serves_local_interactive_docs_without_daemon() -> None:
+    def forbidden_factory() -> FakeDaemonApiClient:
+        raise AssertionError("API documentation must not connect to the daemon")
+
+    app = create_web_dashboard_app(forbidden_factory)
 
     with TestClient(app) as client:
-        docs_response = client.get("/docs")
-        redoc_response = client.get("/redoc")
+        swagger_response = client.get("/api/v1/docs")
+        redoc_response = client.get("/api/v1/redoc")
+        swagger_css = client.get("/assets/api-docs/swagger-ui.css")
+        swagger_bundle = client.get("/assets/api-docs/swagger-ui-bundle.js")
+        swagger_init = client.get("/assets/api-docs/swagger-ui-init.js")
+        redoc_bundle = client.get("/assets/api-docs/redoc.standalone.js")
+        redoc_init = client.get("/assets/api-docs/redoc-init.js")
+        legacy_docs_response = client.get("/docs")
+        legacy_redoc_response = client.get("/redoc")
         openapi_response = client.get("/api/v1/openapi.json")
 
-    assert docs_response.status_code == 404
-    assert redoc_response.status_code == 404
+    assert swagger_response.status_code == 200
+    assert swagger_response.headers["content-type"].startswith("text/html")
+    assert swagger_response.headers["cache-control"] == "no-store"
+    swagger_csp = swagger_response.headers["content-security-policy"]
+    assert "default-src 'none'" in swagger_csp
+    assert "style-src 'self' 'unsafe-inline'" in swagger_csp
+    assert "script-src 'self'" in swagger_csp
+    assert "connect-src 'self'" in swagger_csp
+    assert "https:" not in swagger_csp
+    assert 'href="/assets/api-docs/swagger-ui.css"' in swagger_response.text
+    assert (
+        'src="/assets/api-docs/swagger-ui-bundle.js"'
+        in swagger_response.text
+    )
+    assert 'src="/assets/api-docs/swagger-ui-init.js"' in swagger_response.text
+    assert "https://" not in swagger_response.text
+    assert "http://" not in swagger_response.text
+    assert "<style" not in swagger_response.text
+    assert "<script>" not in swagger_response.text
+
+    assert redoc_response.status_code == 200
+    assert redoc_response.headers["content-type"].startswith("text/html")
+    assert redoc_response.headers["cache-control"] == "no-store"
+    redoc_csp = redoc_response.headers["content-security-policy"]
+    assert "style-src 'self' 'unsafe-inline'" in redoc_csp
+    assert "script-src 'self'" in redoc_csp
+    assert "connect-src 'self'" in redoc_csp
+    assert "https:" not in redoc_csp
+    assert 'src="/assets/api-docs/redoc.standalone.js"' in redoc_response.text
+    assert 'src="/assets/api-docs/redoc-init.js"' in redoc_response.text
+    assert "https://" not in redoc_response.text
+    assert "http://" not in redoc_response.text
+    assert "<style" not in redoc_response.text
+    assert "<script>" not in redoc_response.text
+
+    assert swagger_css.status_code == 200
+    assert swagger_css.headers["content-type"].startswith("text/css")
+    assert len(swagger_css.content) == 178977
+
+    assert swagger_bundle.status_code == 200
+    assert swagger_bundle.headers["content-type"].startswith(
+        "application/javascript"
+    )
+    assert len(swagger_bundle.content) == 1551729
+
+    assert swagger_init.status_code == 200
+    assert swagger_init.headers["content-type"].startswith(
+        "application/javascript"
+    )
+    assert 'url: "/api/v1/openapi.json"' in swagger_init.text
+    assert "validatorUrl: null" in swagger_init.text
+    assert "https://" not in swagger_init.text
+    assert "http://" not in swagger_init.text
+
+    assert redoc_bundle.status_code == 200
+    assert redoc_bundle.headers["content-type"].startswith(
+        "application/javascript"
+    )
+    assert len(redoc_bundle.content) == 1097271
+
+    assert redoc_init.status_code == 200
+    assert redoc_init.headers["content-type"].startswith(
+        "application/javascript"
+    )
+    assert '"/api/v1/openapi.json"' in redoc_init.text
+    assert "https://" not in redoc_init.text
+    assert "http://" not in redoc_init.text
+
+    assert legacy_docs_response.status_code == 404
+    assert legacy_redoc_response.status_code == 404
     assert openapi_response.status_code == 200
     assert openapi_response.json()["info"]["version"] == __version__
+    assert "/api/v1/docs" not in openapi_response.json()["paths"]
+    assert "/api/v1/redoc" not in openapi_response.json()["paths"]
     assert "/api/v1/events" in openapi_response.json()["paths"]
     assert "/api/v1/audio" in openapi_response.json()["paths"]
     assert "/api/v1/recording" in openapi_response.json()["paths"]

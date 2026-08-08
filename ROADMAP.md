@@ -15,6 +15,9 @@ and ideas that are not ready for scheduling are recorded in
 
 - Expose the daemon's existing typed `hold`, `next`, `previous`, and bounded
   `reconnect` operations through the loopback web dashboard.
+- Add self-hosted interactive Swagger UI and ReDoc routes over the existing
+  OpenAPI schema using version-pinned packaged assets, no third-party browser
+  requests, and the existing loopback-only security boundary.
 - Keep scanner ownership in the daemon; the web process must use the versioned
   daemon API and must not open scanner control hardware directly.
 - Negotiate advertised capabilities and disable or reject unavailable controls

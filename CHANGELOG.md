@@ -8,6 +8,12 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Added
 
+- Self-hosted interactive Swagger UI and ReDoc at `/api/v1/docs` and
+  `/api/v1/redoc`, backed by the existing local OpenAPI schema and version-pinned
+  packaged Swagger UI 5.32.11 and ReDoc 2.5.3 assets with upstream license and
+  notice material. Documentation pages keep same-origin scripts and connections,
+  make no daemon request merely by loading, and use a narrowly scoped
+  style-only CSP exception without weakening the normal dashboard policy.
 - Milestone 20.5 daemon-owned browser recording workflows over the existing
   decoded-PCM router, with repeatable collision-safe WAV capture, adjacent
   metadata sidecars, bounded newest-first finalized inventory, stable recording

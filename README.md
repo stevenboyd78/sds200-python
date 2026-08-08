@@ -76,7 +76,8 @@ information in this image represents a real system.*
   reads, safe typed scanner controls, validated gap-detecting event watches, and
   daemon-owned PCMU playback or WAV recording
 - Optional loopback-only daemon-backed HTTP foundation with versioned health,
-  status, snapshot, and OpenAPI endpoints plus redacted daemon failures
+  status, snapshot, and OpenAPI endpoints, self-hosted Swagger UI and ReDoc, and
+  redacted daemon failures without third-party browser asset requests
 - Versioned bounded local daemon PCMU stream over a third private Unix socket with
   accepted RTP payloads, continuity metadata, and independent client-loss counters
 - Optional live playback through the local default or selected audio output device
