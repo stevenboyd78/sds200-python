@@ -50,6 +50,8 @@ class DaemonMqttBrokerConnection(Protocol):
         retain: bool,
     ) -> None: ...
 
+    def check(self) -> None: ...
+
     def interrupt(self) -> None: ...
 
     def close(self) -> None: ...
@@ -347,6 +349,7 @@ class DaemonMqttWorker:
 
                 secret_values: tuple[str, ...] = ()
                 connection: DaemonMqttBrokerConnection | None = None
+                availability_online = False
                 terminal_failure = False
                 try:
                     password = self._resolve_password()
@@ -380,15 +383,11 @@ class DaemonMqttWorker:
                         )
 
                     self._publish_availability(connection, online=True)
+                    availability_online = True
                     self._consume_connected(connection)
                     with self._condition:
                         stopping = self._stopping
                     if stopping:
-                        self._publish_availability(
-                            connection,
-                            online=False,
-                            suppress_errors=True,
-                        )
                         return
                     raise RuntimeError(
                         "Daemon MQTT event subscription ended unexpectedly."
@@ -413,6 +412,12 @@ class DaemonMqttWorker:
                     if subscription is not None:
                         subscription.close()
                     if connection is not None:
+                        if availability_online:
+                            self._publish_availability(
+                                connection,
+                                online=False,
+                                suppress_errors=True,
+                            )
                         try:
                             connection.close()
                         except Exception as error:
@@ -457,6 +462,7 @@ class DaemonMqttWorker:
                 if self._stopping:
                     return
 
+            connection.check()
             try:
                 event = subscription.get(
                     timeout=self.event_poll_interval
@@ -778,7 +784,7 @@ class DaemonMqttWorker:
                 f"{self.config.topic_prefix}/availability",
                 b"online" if online else b"offline",
                 qos=self.config.qos,
-                retain=self.config.retain,
+                retain=True,
             )
         except Exception:
             if suppress_errors:
@@ -788,8 +794,7 @@ class DaemonMqttWorker:
         observed_at = _require_aware_datetime(self._now())
         with self._condition:
             self._publications += 1
-            if self.config.retain:
-                self._retained_publications += 1
+            self._retained_publications += 1
             self._last_published_at = observed_at
 
     def _mark_connection_healthy(self) -> None:

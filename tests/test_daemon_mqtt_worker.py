@@ -112,6 +112,9 @@ class FakeBrokerConnection:
             Published(topic, payload, qos, retain)
         )
 
+    def check(self) -> None:
+        return
+
     def interrupt(self) -> None:
         self.interrupted = True
 
@@ -215,6 +218,43 @@ def test_worker_publishes_availability_and_authoritative_snapshot_topics() -> No
     assert snapshot.connected is False
     assert snapshot.successful_connections == 1
     assert snapshot.retained_publications >= 8
+
+
+def test_availability_remains_retained_when_state_retention_is_disabled() -> None:
+    stream = FakeEventStream()
+    connection = FakeBrokerConnection()
+    worker = make_worker(
+        stream,
+        lambda config, password: connection,
+        config=DaemonMqttConfiguration(
+            host="mqtt.example.test",
+            retain=False,
+        ),
+    )
+
+    worker.start()
+    wait_until(lambda: len(connection.publications) >= 7)
+
+    assert connection.publications[0] == Published(
+        "sdsctl/availability",
+        b"online",
+        1,
+        True,
+    )
+    assert all(
+        not publication.retain
+        for publication in connection.publications[1:7]
+    )
+
+    worker.stop()
+
+    assert connection.publications[-1] == Published(
+        "sdsctl/availability",
+        b"offline",
+        1,
+        True,
+    )
+    assert worker.snapshot().retained_publications == 2
 
 
 def test_worker_publishes_semantic_changes_but_skips_packet_rate_psi() -> None:
@@ -331,6 +371,53 @@ def test_destination_health_uses_stable_encoded_per_destination_topic() -> None:
     worker.stop()
 
 
+def test_worker_detects_broker_health_failure_without_semantic_event() -> None:
+    stream = FakeEventStream()
+    first = FakeBrokerConnection()
+    second = FakeBrokerConnection()
+    calls = 0
+
+    def first_check() -> None:
+        nonlocal calls
+        calls += 1
+        if calls >= 3:
+            raise OSError("broker disconnected")
+
+    first.check = first_check  # type: ignore[method-assign]
+    connections = [first, second]
+
+    def factory(
+        config: DaemonMqttConfiguration,
+        password: str | None,
+    ) -> FakeBrokerConnection:
+        del config, password
+        return connections.pop(0)
+
+    worker = make_worker(
+        stream,
+        factory,
+        config=DaemonMqttConfiguration(
+            host="mqtt.example.test",
+            reconnect_policy=ReconnectPolicy(
+                initial_delay=0.01,
+                multiplier=1.0,
+                max_delay=0.01,
+                max_attempts=2,
+            ),
+        ),
+    )
+    worker.start()
+
+    wait_until(lambda: worker.snapshot().successful_connections == 2)
+    wait_until(lambda: len(second.publications) >= 7)
+
+    snapshot = worker.snapshot()
+    assert snapshot.connection_attempts == 2
+    assert snapshot.failures == 1
+    assert first.closed
+    worker.stop()
+
+
 def test_worker_reconnects_with_fresh_snapshot_after_broker_failure() -> None:
     stream = FakeEventStream()
     first = FakeBrokerConnection(connect_error=OSError("broker unavailable"))
@@ -440,6 +527,63 @@ def test_initial_publish_failures_exhaust_bounded_retries() -> None:
     assert len(connections) == 2
     assert all(connection.closed for connection in connections)
 
+    worker.stop()
+
+
+def test_local_session_failure_publishes_offline_before_retry_close() -> None:
+    class FailingEventStream(FakeEventStream):
+        def subscribe(self):
+            raise RuntimeError("local event subscription failure")
+
+    stream = FailingEventStream()
+    connections: list[FakeBrokerConnection] = []
+
+    def factory(
+        config: DaemonMqttConfiguration,
+        password: str | None,
+    ) -> FakeBrokerConnection:
+        del config, password
+        connection = FakeBrokerConnection()
+        connections.append(connection)
+        return connection
+
+    worker = make_worker(
+        stream,
+        factory,
+        config=DaemonMqttConfiguration(
+            host="mqtt.example.test",
+            reconnect_policy=ReconnectPolicy(
+                initial_delay=0.01,
+                multiplier=1.0,
+                max_delay=0.01,
+                max_attempts=1,
+            ),
+        ),
+    )
+    worker.start()
+    wait_until(lambda: worker.snapshot().state == "failed")
+
+    assert len(connections) == 2
+    for connection in connections:
+        assert connection.publications == [
+            Published(
+                "sdsctl/availability",
+                b"online",
+                1,
+                True,
+            ),
+            Published(
+                "sdsctl/availability",
+                b"offline",
+                1,
+                True,
+            ),
+        ]
+        assert connection.closed
+
+    snapshot = worker.snapshot()
+    assert snapshot.failures == 2
+    assert snapshot.retained_publications == 4
     worker.stop()
 
 
