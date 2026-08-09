@@ -6,7 +6,10 @@ from pathlib import Path
 import pytest
 
 from sds200 import DaemonSocketLocation, cli, web_dashboard
-from sds200.web_server import WEB_DASHBOARD_DEFAULT_HOST, WEB_DASHBOARD_DEFAULT_PORT
+from sds200.web_server import (
+    WEB_DASHBOARD_DEFAULT_PORT,
+    WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_HOST,
+)
 
 
 class FakeDaemonApiClient:
@@ -96,6 +99,7 @@ def test_web_parser_uses_loopback_defaults() -> None:
     args = cli.build_parser().parse_args(["web"])
 
     assert args.action == "web"
+    assert args.home_assistant_ingress is False
     assert args.daemon_socket_path is None
     assert args.daemon_event_socket_path is None
     assert args.daemon_pcmu_socket_path is None
@@ -106,9 +110,18 @@ def test_web_parser_uses_loopback_defaults() -> None:
     assert args.daemon_pcmu_max_endpoint_bytes is None
     assert args.daemon_pcmu_max_frame_bytes is None
     assert args.daemon_recording_file_max_content_bytes is None
-    assert args.listen_address == WEB_DASHBOARD_DEFAULT_HOST
+    assert args.listen_address is None
     assert args.listen_port == WEB_DASHBOARD_DEFAULT_PORT
     assert args.access_log is True
+
+
+def test_web_parser_accepts_home_assistant_ingress() -> None:
+    args = cli.build_parser().parse_args(
+        ["web", "--home-assistant-ingress"]
+    )
+
+    assert args.home_assistant_ingress is True
+    assert args.listen_address is None
 
 
 def test_web_parser_accepts_explicit_local_options() -> None:
@@ -209,13 +222,16 @@ def test_web_cli_builds_daemon_clients_and_runs_server(
     captured_pcmu_factories: list[Callable[[], object]] = []
     captured_recording_file_factories: list[Callable[[], object]] = []
     app = object()
-    server_calls: list[tuple[object, str, int, bool]] = []
+    captured_ingress_modes: list[bool] = []
+    server_calls: list[tuple[object, str, int, bool, bool]] = []
 
     def fake_create_app(
         api_client_factory: Callable[[], object],
         event_client_factory: Callable[[], object],
         pcmu_client_factory: Callable[[], object],
         recording_file_client_factory: Callable[[], object],
+        *,
+        home_assistant_ingress: bool = False,
     ) -> object:
         captured_api_factories.append(api_client_factory)
         captured_event_factories.append(event_client_factory)
@@ -223,6 +239,7 @@ def test_web_cli_builds_daemon_clients_and_runs_server(
         captured_recording_file_factories.append(
             recording_file_client_factory
         )
+        captured_ingress_modes.append(home_assistant_ingress)
         return app
 
     def fake_run_server(
@@ -231,8 +248,17 @@ def test_web_cli_builds_daemon_clients_and_runs_server(
         host: str,
         port: int,
         access_log: bool,
+        home_assistant_ingress: bool = False,
     ) -> int:
-        server_calls.append((selected_app, host, port, access_log))
+        server_calls.append(
+            (
+                selected_app,
+                host,
+                port,
+                access_log,
+                home_assistant_ingress,
+            )
+        )
         return 0
 
     monkeypatch.setattr(cli, "DaemonApiClient", FakeDaemonApiClient)
@@ -287,7 +313,8 @@ def test_web_cli_builds_daemon_clients_and_runs_server(
     )
 
     assert result == 0
-    assert server_calls == [(app, "127.0.0.1", 8123, False)]
+    assert server_calls == [(app, "127.0.0.1", 8123, False, False)]
+    assert captured_ingress_modes == [False]
     assert len(captured_api_factories) == 1
     assert len(captured_event_factories) == 1
     assert len(captured_pcmu_factories) == 1
@@ -325,6 +352,113 @@ def test_web_cli_builds_daemon_clients_and_runs_server(
     assert recording_file_client.location.source.value == "explicit"
     assert recording_file_client.timeout == 2.5
     assert recording_file_client.max_content_bytes == 1048576
+
+
+def test_web_cli_home_assistant_ingress_binds_wildcard_and_enables_guard(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    app = object()
+    create_calls: list[bool] = []
+    server_calls: list[tuple[object, str, int, bool, bool]] = []
+
+    def fake_create_app(
+        api_client_factory: Callable[[], object],
+        event_client_factory: Callable[[], object],
+        pcmu_client_factory: Callable[[], object],
+        recording_file_client_factory: Callable[[], object],
+        *,
+        home_assistant_ingress: bool = False,
+    ) -> object:
+        del (
+            api_client_factory,
+            event_client_factory,
+            pcmu_client_factory,
+            recording_file_client_factory,
+        )
+        create_calls.append(home_assistant_ingress)
+        return app
+
+    def fake_run_server(
+        selected_app: object,
+        *,
+        host: str,
+        port: int,
+        access_log: bool,
+        home_assistant_ingress: bool = False,
+    ) -> int:
+        server_calls.append(
+            (
+                selected_app,
+                host,
+                port,
+                access_log,
+                home_assistant_ingress,
+            )
+        )
+        return 0
+
+    monkeypatch.setattr(
+        web_dashboard,
+        "create_web_dashboard_app",
+        fake_create_app,
+    )
+    monkeypatch.setattr(cli, "run_web_dashboard_server", fake_run_server)
+
+    result = cli.main(
+        [
+            "web",
+            "--home-assistant-ingress",
+            "--daemon-socket-path",
+            str(tmp_path / "daemon.sock"),
+            "--daemon-event-socket-path",
+            str(tmp_path / "events.sock"),
+            "--daemon-pcmu-socket-path",
+            str(tmp_path / "pcmu.sock"),
+            "--daemon-recording-file-socket-path",
+            str(tmp_path / "recordings.sock"),
+            "--listen-port",
+            "8099",
+        ],
+        environ={},
+    )
+
+    assert result == 0
+    assert create_calls == [True]
+    assert server_calls == [
+        (
+            app,
+            WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_HOST,
+            8099,
+            True,
+            True,
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    "address",
+    ["127.0.0.1", "::1"],
+)
+def test_web_cli_home_assistant_ingress_rejects_listen_address(
+    address: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    result = cli.main(
+        [
+            "web",
+            "--home-assistant-ingress",
+            "--listen-address",
+            address,
+        ],
+        environ={},
+    )
+
+    assert result == 2
+    assert (
+        "--listen-address cannot be used with --home-assistant-ingress"
+        in capsys.readouterr().err
+    )
 
 
 def test_web_cli_rejects_scanner_connection_options(

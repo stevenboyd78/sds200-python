@@ -183,6 +183,7 @@ from .tui_logging import TuiLogBuffer, capture_package_logs
 from .web_server import (
     WEB_DASHBOARD_DEFAULT_HOST,
     WEB_DASHBOARD_DEFAULT_PORT,
+    WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_HOST,
     WEB_DASHBOARD_INSTALL_ERROR,
     normalize_web_dashboard_host,
     run_web_dashboard_server,
@@ -1256,8 +1257,15 @@ def build_parser(
 
     web = subparsers.add_parser(
         "web",
+        help="Serve the optional daemon-backed web dashboard",
+    )
+    web.add_argument(
+        "--home-assistant-ingress",
+        action="store_true",
         help=(
-            "Serve the optional loopback-only daemon-backed web dashboard"
+            "Serve in Home Assistant App Ingress mode on "
+            f"{WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_HOST}; requests are "
+            "restricted to the Supervisor Ingress peer"
         ),
     )
     web.add_argument(
@@ -1359,7 +1367,7 @@ def build_parser(
     web.add_argument(
         "--listen-address",
         type=_web_listen_address,
-        default=WEB_DASHBOARD_DEFAULT_HOST,
+        default=None,
         metavar="ADDRESS",
         help=(
             "Loopback listen address; remote exposure is intentionally "
@@ -3586,6 +3594,16 @@ def _run_web(
 ) -> int:
     _reject_daemon_client_scanner_options(args)
 
+    if (
+        args.home_assistant_ingress
+        and args.listen_address is not None
+    ):
+        raise ValueError(
+            "--listen-address cannot be used with "
+            "--home-assistant-ingress; Home Assistant Ingress binds "
+            f"{WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_HOST}."
+        )
+
     try:
         from .web_dashboard import create_web_dashboard_app
     except ModuleNotFoundError as error:
@@ -3686,13 +3704,20 @@ def _run_web(
         event_client_factory,
         pcmu_client_factory,
         recording_file_client_factory,
+        home_assistant_ingress=args.home_assistant_ingress,
+    )
+    server_host = (
+        WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_HOST
+        if args.home_assistant_ingress
+        else (args.listen_address or WEB_DASHBOARD_DEFAULT_HOST)
     )
 
     return run_web_dashboard_server(
         app,
-        host=args.listen_address,
+        host=server_host,
         port=args.listen_port,
         access_log=args.access_log,
+        home_assistant_ingress=args.home_assistant_ingress,
     )
 
 
