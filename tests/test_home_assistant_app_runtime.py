@@ -8,6 +8,7 @@ from sds200.home_assistant_app import HomeAssistantAppOptions
 from sds200.home_assistant_app_runtime import (
     HOME_ASSISTANT_APP_INGRESS_PORT,
     HOME_ASSISTANT_APP_RECORDING_DIRECTORY,
+    HOME_ASSISTANT_APP_RTP_PORT,
     HOME_ASSISTANT_APP_RUNTIME_DIRECTORY,
     HomeAssistantAppRuntimePaths,
     build_home_assistant_daemon_command,
@@ -87,6 +88,8 @@ def test_home_assistant_daemon_command_uses_explicit_private_paths() -> None:
         "--host",
         "192.0.2.25",
         "daemon",
+        "--rtp-bind-port",
+        str(HOME_ASSISTANT_APP_RTP_PORT),
         "--mqtt-config",
         "/run/sdsctl/daemon-mqtt.toml",
         "--recording-directory",

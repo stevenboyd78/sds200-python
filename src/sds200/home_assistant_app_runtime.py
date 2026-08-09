@@ -16,6 +16,7 @@ HOME_ASSISTANT_APP_RUNTIME_DIRECTORY = Path("/run/sdsctl")
 HOME_ASSISTANT_APP_MQTT_CONFIG_FILENAME = "daemon-mqtt.toml"
 HOME_ASSISTANT_APP_RECORDING_DIRECTORY = Path("/data/recordings")
 HOME_ASSISTANT_APP_INGRESS_PORT = 8099
+HOME_ASSISTANT_APP_RTP_PORT = 50000
 HOME_ASSISTANT_APP_EXECUTABLE = "sdsctl"
 
 
@@ -132,6 +133,8 @@ def build_home_assistant_daemon_command(
         "--host",
         options.scanner_host,
         "daemon",
+        "--rtp-bind-port",
+        str(HOME_ASSISTANT_APP_RTP_PORT),
         "--mqtt-config",
         os.fspath(paths.mqtt_configuration),
         "--recording-directory",
@@ -191,6 +194,7 @@ __all__ = [
     "HOME_ASSISTANT_APP_INGRESS_PORT",
     "HOME_ASSISTANT_APP_MQTT_CONFIG_FILENAME",
     "HOME_ASSISTANT_APP_RECORDING_DIRECTORY",
+    "HOME_ASSISTANT_APP_RTP_PORT",
     "HOME_ASSISTANT_APP_RUNTIME_DIRECTORY",
     "HomeAssistantAppRuntimePaths",
     "build_home_assistant_daemon_command",

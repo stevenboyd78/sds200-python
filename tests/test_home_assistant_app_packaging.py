@@ -4,7 +4,10 @@ import re
 from pathlib import Path
 
 from sds200 import __version__
-from sds200.home_assistant_app_runtime import HOME_ASSISTANT_APP_INGRESS_PORT
+from sds200.home_assistant_app_runtime import (
+    HOME_ASSISTANT_APP_INGRESS_PORT,
+    HOME_ASSISTANT_APP_RTP_PORT,
+)
 from sds200.home_assistant_app_supervisor import (
     HOME_ASSISTANT_APP_DAEMON_STOP_TIMEOUT,
     HOME_ASSISTANT_APP_FORCE_STOP_TIMEOUT,
@@ -73,6 +76,18 @@ def test_home_assistant_app_manifest_uses_ingress_and_required_mqtt_service() ->
         _integer_scalar(manifest, "ingress_port")
         == HOME_ASSISTANT_APP_INGRESS_PORT
     )
+    assert (
+        "ports:\n"
+        f"  {HOME_ASSISTANT_APP_RTP_PORT}/udp: "
+        f"{HOME_ASSISTANT_APP_RTP_PORT}\n"
+        in manifest
+    )
+    assert (
+        "ports_description:\n"
+        f'  {HOME_ASSISTANT_APP_RTP_PORT}/udp: "SDS200 RTP audio"\n'
+        in manifest
+    )
+    assert "host_network: true\n" not in manifest
     assert 'options:\n  mqtt_topic_prefix: "sdsctl"\n' in manifest
     assert 'scanner_host: ""' not in manifest
     assert 'scanner_host: "str(1,)"\n' in manifest

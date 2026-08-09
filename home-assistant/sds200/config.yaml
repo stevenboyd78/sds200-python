@@ -16,6 +16,10 @@ services:
 ingress: true
 ingress_port: 8099
 ingress_stream: true
+ports:
+  50000/udp: 50000
+ports_description:
+  50000/udp: "SDS200 RTP audio"
 panel_title: "sds200"
 timeout: 60
 options:
