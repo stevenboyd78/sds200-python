@@ -679,8 +679,12 @@ def test_web_dashboard_serves_packaged_static_assets() -> None:
     assert "FALLBACK_REFRESH_INTERVAL_MS" in script.text
     assert "RECONCILE_INTERVAL_MS" in script.text
     assert 'fetch(webUrl("api/v1/audio")' in script.text
-    assert 'audioWorklet.addModule(webUrl("assets/audio-worklet.js"))' in script.text
+    assert 'audioWorklet.addModule(' in script.text
+    assert 'webUrl("assets/audio-worklet.js")' in script.text
     assert "new AudioWorkletNode" in script.text
+    assert "context.audioWorklet !== undefined" in script.text
+    assert 'typeof context.createScriptProcessor === "function"' in script.text
+    assert "class PcmuScriptProcessor" in script.text
     assert "new AbortController" in script.text
     assert "getBigUint64" in script.text
     assert "PCMU stream gap does not match daemon queue-loss counters" in script.text

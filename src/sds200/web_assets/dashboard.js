@@ -11,6 +11,10 @@ const PCMU_TIMESTAMP_BACKWARDS = 1 << 3;
 const PCMU_EXPECTED_SEQUENCE = 1 << 1;
 const PCMU_EXPECTED_TIMESTAMP = 1 << 2;
 const MAX_GAP_SAMPLES = 8000;
+const PCMU_SAMPLE_RATE = 8000;
+const AUDIO_FALLBACK_BUFFER_CAPACITY_SAMPLES = 16000;
+const AUDIO_FALLBACK_START_THRESHOLD_SAMPLES = 480;
+const AUDIO_FALLBACK_SCRIPT_BUFFER_SIZE = 1024;
 
 let currentSnapshot = {};
 let currentDaemonHello = {};
@@ -42,6 +46,7 @@ function webUrl(path) {
 let audioReader = null;
 let audioContext = null;
 let audioWorkletNode = null;
+let audioScriptProcessor = null;
 let audioLastStreamSequence = null;
 let audioLastPacketsDropped = null;
 let audioLastPayloadBytesDropped = null;
@@ -1143,6 +1148,134 @@ class PcmuFrameParser {
   }
 }
 
+function decodePcmuSample(value) {
+  const inverted = (~value) & 0xff;
+  const sign = inverted & 0x80;
+  const exponent = (inverted >> 4) & 0x07;
+  const mantissa = inverted & 0x0f;
+  let sample = ((mantissa << 3) + 0x84) << exponent;
+  sample -= 0x84;
+  if (sign !== 0) {
+    sample = -sample;
+  }
+  return Math.max(-1, Math.min(1, sample / 32768));
+}
+
+class PcmuScriptProcessor {
+  constructor(context) {
+    this.buffer = new Float32Array(
+      AUDIO_FALLBACK_BUFFER_CAPACITY_SAMPLES,
+    );
+    this.readIndex = 0;
+    this.writeIndex = 0;
+    this.queuedSamples = 0;
+    this.phase = 0;
+    this.started = false;
+    this.sourceStep = PCMU_SAMPLE_RATE / context.sampleRate;
+
+    this.node = context.createScriptProcessor(
+      AUDIO_FALLBACK_SCRIPT_BUFFER_SIZE,
+      0,
+      1,
+    );
+    this.node.onaudioprocess = (event) => {
+      this.process(event.outputBuffer.getChannelData(0));
+    };
+  }
+
+  connect(destination) {
+    this.node.connect(destination);
+  }
+
+  disconnect() {
+    this.node.onaudioprocess = null;
+    this.node.disconnect();
+  }
+
+  reset() {
+    this.readIndex = 0;
+    this.writeIndex = 0;
+    this.queuedSamples = 0;
+    this.phase = 0;
+    this.started = false;
+  }
+
+  enqueueSample(sample) {
+    if (this.queuedSamples === this.buffer.length) {
+      this.readIndex = (this.readIndex + 1) % this.buffer.length;
+      this.queuedSamples -= 1;
+      this.phase = 0;
+    }
+
+    this.buffer[this.writeIndex] = sample;
+    this.writeIndex = (this.writeIndex + 1) % this.buffer.length;
+    this.queuedSamples += 1;
+  }
+
+  enqueueSilence(count) {
+    const bounded = Math.min(count, this.buffer.length);
+    for (let index = 0; index < bounded; index += 1) {
+      this.enqueueSample(0);
+    }
+  }
+
+  enqueuePayload(payload) {
+    for (let index = 0; index < payload.length; index += 1) {
+      this.enqueueSample(decodePcmuSample(payload[index]));
+    }
+  }
+
+  enqueuePacket(payload, gapSamples, reset) {
+    if (reset) {
+      this.reset();
+    }
+
+    this.enqueueSilence(gapSamples);
+    this.enqueuePayload(payload);
+  }
+
+  peek(offset) {
+    const index = (this.readIndex + offset) % this.buffer.length;
+    return this.buffer[index];
+  }
+
+  consumeOne() {
+    if (this.queuedSamples === 0) {
+      return;
+    }
+    this.readIndex = (this.readIndex + 1) % this.buffer.length;
+    this.queuedSamples -= 1;
+  }
+
+  process(output) {
+    if (
+      !this.started &&
+      this.queuedSamples >= AUDIO_FALLBACK_START_THRESHOLD_SAMPLES
+    ) {
+      this.started = true;
+    }
+
+    for (let index = 0; index < output.length; index += 1) {
+      if (!this.started || this.queuedSamples < 2) {
+        output[index] = 0;
+        this.started = false;
+        this.phase = 0;
+        continue;
+      }
+
+      const first = this.peek(0);
+      const second = this.peek(1);
+      output[index] = first + (second - first) * this.phase;
+
+      this.phase += this.sourceStep;
+      while (this.phase >= 1 && this.queuedSamples > 1) {
+        this.consumeOne();
+        this.phase -= 1;
+      }
+    }
+  }
+}
+
 function renderAudioTelemetry(frame) {
   const now = performance.now();
   if (now - audioLastTelemetryUpdate < 500 && audioPacketsReceived !== 1) {
@@ -1160,7 +1293,7 @@ function renderAudioTelemetry(frame) {
 }
 
 function deliverPcmuFrame(frame) {
-  if (audioWorkletNode === null) {
+  if (audioWorkletNode === null && audioScriptProcessor === null) {
     throw new Error("Browser audio processor is unavailable.");
   }
 
@@ -1224,16 +1357,24 @@ function deliverPcmuFrame(frame) {
   audioPacketsReceived += 1;
   audioRtpMissingPackets += frame.missingPackets;
 
-  const payloadBuffer = frame.payload.buffer;
-  audioWorkletNode.port.postMessage(
-    {
-      type: "packet",
-      payload: payloadBuffer,
-      gapSamples: Number(gapSamples),
+  if (audioWorkletNode !== null) {
+    const payloadBuffer = frame.payload.buffer;
+    audioWorkletNode.port.postMessage(
+      {
+        type: "packet",
+        payload: payloadBuffer,
+        gapSamples: Number(gapSamples),
+        reset,
+      },
+      [payloadBuffer],
+    );
+  } else {
+    audioScriptProcessor.enqueuePacket(
+      frame.payload,
+      Number(gapSamples),
       reset,
-    },
-    [payloadBuffer],
-  );
+    );
+  }
 
   if (audioPacketsReceived === 1) {
     setAudioControls("Playing", true);
@@ -1257,6 +1398,11 @@ function releaseAudioResources() {
     audioWorkletNode = null;
   }
 
+  if (audioScriptProcessor !== null) {
+    audioScriptProcessor.disconnect();
+    audioScriptProcessor = null;
+  }
+
   if (audioContext !== null) {
     void audioContext.close().catch(() => {});
     audioContext = null;
@@ -1275,11 +1421,8 @@ async function startAudioPlayback() {
     return;
   }
 
-  if (
-    typeof AudioContext === "undefined" ||
-    typeof AudioWorkletNode === "undefined"
-  ) {
-    setAudioControls("AudioWorklet is not supported by this browser.", false);
+  if (typeof AudioContext === "undefined") {
+    setAudioControls("Web Audio is not supported by this browser.", false);
     element("audio-play").disabled = true;
     return;
   }
@@ -1294,18 +1437,35 @@ async function startAudioPlayback() {
     const context = new AudioContext({latencyHint: "interactive"});
     audioContext = context;
 
-    await context.audioWorklet.addModule(webUrl("assets/audio-worklet.js"));
-    if (generation !== audioPlaybackGeneration) {
-      return;
+    if (
+      context.audioWorklet !== undefined &&
+      typeof AudioWorkletNode !== "undefined"
+    ) {
+      await context.audioWorklet.addModule(
+        webUrl("assets/audio-worklet.js"),
+      );
+      if (generation !== audioPlaybackGeneration) {
+        return;
+      }
+
+      const worklet = new AudioWorkletNode(context, "sds200-pcmu", {
+        numberOfInputs: 0,
+        numberOfOutputs: 1,
+        outputChannelCount: [1],
+      });
+      audioWorkletNode = worklet;
+      worklet.connect(context.destination);
+    } else if (typeof context.createScriptProcessor === "function") {
+      const processor = new PcmuScriptProcessor(context);
+      audioScriptProcessor = processor;
+      processor.connect(context.destination);
+    } else {
+      throw new Error(
+        "Browser audio playback requires HTTPS or a compatible " +
+        "Web Audio fallback.",
+      );
     }
 
-    const worklet = new AudioWorkletNode(context, "sds200-pcmu", {
-      numberOfInputs: 0,
-      numberOfOutputs: 1,
-      outputChannelCount: [1],
-    });
-    audioWorkletNode = worklet;
-    worklet.connect(context.destination);
     await context.resume();
 
     if (generation !== audioPlaybackGeneration) {
