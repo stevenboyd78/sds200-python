@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.19.0-dev
+## 0.20.0
 
 - Initial Home Assistant App packaging for the existing SDS200 daemon and web
   dashboard.

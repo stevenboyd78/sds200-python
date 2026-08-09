@@ -212,15 +212,54 @@ service directly and review its sanitized error:
 sdsctl web
 ```
 
-The supported web service binds only to localhost or an explicit loopback
-address. Wildcard, LAN, and public binds are intentionally rejected until
-authentication and transport-security support exists.
+The standalone `sdsctl web` service binds only to localhost or an explicit
+loopback address. Wildcard, LAN, and public standalone binds remain intentionally
+rejected until authentication and transport-security support exists. The Home
+Assistant App uses a separate explicit Ingress mode and does not publish the
+dashboard port directly to the LAN.
 
 See the canonical
 [web dashboard guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/web-dashboard.md)
 and
 [daemon deployment guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/daemon-deployment.md)
 for exact socket paths, permissions, and service behavior.
+
+## Home Assistant App problems
+
+### Repository is not visible
+
+After adding `https://github.com/stevenboyd78/sds200-python` under
+**Settings > Apps > App store > Repositories**, refresh the browser. If the
+repository still does not appear, inspect the Supervisor log under
+**Settings > System > Logs** for repository or App configuration errors.
+
+### App does not start
+
+Confirm:
+
+- `scanner_host` contains the reachable SDS200 LAN hostname or address;
+- the Home Assistant MQTT service is available;
+- the App log does not report an unsupported TLS-enabled MQTT service; and
+- host UDP `50000` is available.
+
+The App intentionally fails startup rather than persisting the Supervisor MQTT
+password or silently weakening an unsupported MQTT transport configuration.
+
+### Scanner state works but audio stays buffering
+
+Start a daemon-owned recording from the dashboard and watch its packet and sample
+counters. If both remain at zero, verify the App Network configuration maps
+`50000/udp` to host UDP `50000` and confirm the scanner can route RTP to the Home
+Assistant host.
+
+If recording packets advance but browser audio still buffers, collect the App
+log and browser context details before changing the RTP mapping.
+
+### MQTT Discovery entities are missing
+
+Confirm Home Assistant's MQTT integration is active and inspect the App log for
+MQTT service or broker connection errors. The v0.20.0 App publishes ten read-only
+Discovery entities and does not enable semantic MQTT command subscriptions.
 
 ## Capture detailed diagnostics
 

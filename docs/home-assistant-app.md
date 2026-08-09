@@ -34,11 +34,15 @@ does not expose them as LAN TCP services.
 
 The App requires:
 
-- Home Assistant with Supervisor/App support;
+- Home Assistant OS with Apps/Supervisor support;
 - a LAN-connected Uniden SDS200 reachable from the Home Assistant host;
 - an available Home Assistant MQTT service;
 - host UDP port `50000` available for SDS200 RTP audio; and
 - browser access to the Home Assistant frontend for Ingress.
+
+Home Assistant OS is the physically validated release target. Other historical
+or development Supervisor-based installation types are not part of the v0.20.0
+release validation matrix.
 
 The current Home Assistant MQTT adapter supports the non-TLS MQTT service shape
 used by the tested deployment. If Supervisor reports the selected MQTT service
@@ -166,10 +170,28 @@ when the daemon's authoritative snapshot contains them.
 Discovery adds no Home Assistant command topic and no second scanner-control
 path.
 
-## Installation and local HAOS development
+## Installation from the Home Assistant App repository
+
+For a normal published installation:
+
+1. open **Settings > Apps** in Home Assistant;
+2. open **App store**;
+3. open the top-right three-dot menu and choose **Repositories**;
+4. add `https://github.com/stevenboyd78/sds200-python`;
+5. open the new repository and select **sds200**;
+6. install the App;
+7. configure `scanner_host` and, if needed, `mqtt_topic_prefix`;
+8. start the App and open **Web UI**.
 
 Published releases use the image configured in
-`home-assistant/sds200/config.yaml`.
+`home-assistant/sds200/config.yaml`. The App version and package version match
+the release tag, and the release workflow publishes amd64 and aarch64 images
+plus the generic multi-architecture GHCR image.
+
+The repository installation path is the normal distribution mechanism.
+Copying files into `/addons` is not required for a published release.
+
+## Local HAOS development
 
 For development against physical hardware, Home Assistant supports local Apps
 under `/addons/<slug>`. The repository Dockerfile requires the project source
