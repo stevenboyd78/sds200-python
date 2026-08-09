@@ -90,21 +90,30 @@ begins.
   Matrix-inspired, First Responder, and Amateur Radio themes over one shared
   accessible dashboard, deterministic documentation captures, packaging
   coverage, and CodeQL hardening.
-- Milestone 20.8 establishes the native daemon MQTT publication substrate:
+- Milestone 20.8 completed the native daemon MQTT publication substrate:
   strict optional configuration, optional Paho packaging, retained availability,
   canonical semantic state, non-retained semantic events, PSI suppression,
   worker-owned retry/backoff, and daemon lifecycle ownership.
-- Route future MQTT commands through the daemon's existing semantic control
-  operations; never expose unrestricted raw scanner keys or open a second scanner
-  session.
-- Add Home Assistant MQTT Discovery entities after the command/state contract is
-  stable, then package one Home Assistant App that hosts the daemon and web
-  dashboard with Ingress.
+- Milestone 20.9 completed opt-in semantic MQTT scanner commands through the
+  daemon's existing control dispatcher, including bounded transport input,
+  correlated responses, retained-command rejection, manual acknowledgement, and
+  request-ID deduplication without unrestricted raw scanner keys.
+- Milestone 20.10 completed read-only Home Assistant MQTT device Discovery over
+  the generic daemon state contract, with ten entities, namespace-derived device
+  identity, birth-triggered republication, and no Home Assistant-specific scanner
+  owner or command path.
+- Milestone 20.11 completed Home Assistant App packaging around the existing
+  daemon and web dashboard, Supervisor MQTT service adaptation, Ingress path
+  portability and peer enforcement, persistent recordings, fixed UDP 50000 RTP
+  publication without host networking, multi-architecture image automation, and
+  physical HAOS validation of scanner control, live audio, recording persistence,
+  App restart, and all ten MQTT Discovery entities.
 - Bundle a Lovelace SDS200 card with the Home Assistant App rather than requiring
   HACS for the primary integration path.
-- Keep optional authenticated/TLS remote exposure or a secure LAN gateway as a
-  separate later boundary; the current web service remains loopback-only and the
-  current MQTT foundation does not add remote scanner ownership.
+- Keep authenticated/TLS LAN access, a network transport for remote daemon-backed
+  CLI/TUI/GUI clients, and any optional host-network App variant as a separate
+  later security boundary. The current daemon client interfaces remain private
+  Unix-domain sockets, so host networking alone would not expose them remotely.
 
 ### Milestone 21 — Favorites Workspace foundation
 

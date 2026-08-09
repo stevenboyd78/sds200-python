@@ -8,6 +8,24 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Added
 
+- Milestone 20.11 Home Assistant App packaging around the existing single-owner
+  daemon and web dashboard, with Supervisor-managed startup, required MQTT service
+  discovery, strict `/data/options.json` configuration, private runtime sockets,
+  persistent `/data/recordings`, amd64/aarch64 images, release-only GHCR
+  publication, and Home Assistant Ingress on port 8099 without creating another
+  scanner, PSI, RTSP/RTP, or control owner.
+- Home Assistant Ingress path portability for dashboard, API documentation,
+  scanner controls, SSE, browser PCMU, and saved-recording requests; an explicit
+  Ingress peer guard that admits only the Supervisor proxy; Ingress-compatible
+  frame policy; and a browser-audio compatibility fallback when AudioWorklet is
+  unavailable in a non-secure Home Assistant browser context.
+- A fixed Home Assistant App RTP destination on UDP port 50000 with an explicit
+  Supervisor port mapping so SDS200 RTP sent back to the HAOS host reaches the
+  container-owned daemon audio socket without enabling host networking. Physical
+  HAOS validation with SDS200 firmware 1.26.01 confirmed live scanner state,
+  Channel Hold/release, browser audio, recording and WAV playback, recording
+  persistence across App restart, clean stop/start lifecycle, and all ten
+  Home Assistant MQTT Discovery entities with correct model and firmware metadata.
 - Milestone 20.10 optional Home Assistant MQTT device Discovery over the existing
   generic daemon MQTT state contract. Discovery is disabled by default, derives a
   stable device identity from the configured MQTT topic prefix, publishes ten
