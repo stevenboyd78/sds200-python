@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import queue
 import threading
 import time
 from collections.abc import Callable, Mapping
@@ -11,6 +12,9 @@ from typing import Any
 import pytest
 
 from sds200 import (
+    DAEMON_API_PROTOCOL,
+    DAEMON_API_VERSION,
+    DaemonApiResponse,
     DaemonEventKind,
     DaemonEventPublisher,
     DaemonMqttConfiguration,
@@ -90,6 +94,11 @@ class FakeBrokerConnection:
         self.interrupted = False
         self.closed = False
         self.publications: list[Published] = []
+        self.subscriptions: list[tuple[str, int]] = []
+        self.inbound_messages: queue.Queue[DaemonMqttBrokerMessage] = (
+            queue.Queue()
+        )
+        self.acknowledged: list[DaemonMqttBrokerMessage] = []
 
     def connect(self) -> None:
         if self.connect_error is not None:
@@ -114,18 +123,23 @@ class FakeBrokerConnection:
         )
 
     def subscribe(self, topic: str, *, qos: int) -> None:
-        del topic, qos
+        self.subscriptions.append((topic, qos))
 
     def receive(
         self,
         *,
         timeout: float,
     ) -> DaemonMqttBrokerMessage | None:
-        del timeout
-        return None
+        try:
+            return self.inbound_messages.get(timeout=timeout)
+        except queue.Empty:
+            return None
 
     def acknowledge(self, message: DaemonMqttBrokerMessage) -> None:
-        del message
+        self.acknowledged.append(message)
+
+    def deliver(self, message: DaemonMqttBrokerMessage) -> None:
+        self.inbound_messages.put(message)
 
     def check(self) -> None:
         return
@@ -135,6 +149,62 @@ class FakeBrokerConnection:
 
     def close(self) -> None:
         self.closed = True
+
+
+class FakeControlApi:
+    def __init__(self) -> None:
+        self.calls: list[object] = []
+
+    def handle_control_payload(
+        self,
+        payload: object,
+    ) -> DaemonApiResponse:
+        self.calls.append(payload)
+        assert isinstance(payload, Mapping)
+        request_id = payload["request_id"]
+        operation = payload["operation"]
+        assert isinstance(request_id, str)
+        assert isinstance(operation, str)
+        return DaemonApiResponse.success(
+            request_id,
+            {"operation": operation},
+        )
+
+
+def command_payload(
+    request_id: str,
+    *,
+    operation: str = "scanner.next",
+) -> bytes:
+    return json.dumps(
+        {
+            "protocol": DAEMON_API_PROTOCOL,
+            "version": DAEMON_API_VERSION,
+            "request_id": request_id,
+            "operation": operation,
+            "params": {"target": "SYS"},
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+
+
+def command_message(
+    request_id: str,
+    *,
+    operation: str = "scanner.next",
+    retain: bool = False,
+    duplicate: bool = False,
+    message_id: int = 1,
+) -> DaemonMqttBrokerMessage:
+    return DaemonMqttBrokerMessage(
+        topic="sdsctl/commands",
+        payload=command_payload(request_id, operation=operation),
+        qos=1,
+        retain=retain,
+        duplicate=duplicate,
+        message_id=message_id,
+    )
 
 
 def wait_until(
@@ -161,21 +231,261 @@ def make_worker(
     ],
     *,
     config: DaemonMqttConfiguration | None = None,
+    control_api: FakeControlApi | None = None,
     environ: Mapping[str, str] | None = None,
+    max_command_bytes: int | None = None,
+    command_cache_capacity: int | None = None,
     now: Callable[[], datetime] | None = None,
 ) -> DaemonMqttWorker:
     kwargs: dict[str, object] = {}
+    if max_command_bytes is not None:
+        kwargs["max_command_bytes"] = max_command_bytes
+    if command_cache_capacity is not None:
+        kwargs["command_cache_capacity"] = command_cache_capacity
     if now is not None:
         kwargs["now"] = now
     return DaemonMqttWorker(
         config or DaemonMqttConfiguration(host="mqtt.example.test"),
         stream,
         factory,
+        control_api=control_api,
         environ=environ,
         event_poll_interval=0.01,
         stop_timeout=1.0,
         **kwargs,  # type: ignore[arg-type]
     )
+
+
+def test_commands_require_explicit_control_api() -> None:
+    stream = FakeEventStream()
+    connection = FakeBrokerConnection()
+
+    with pytest.raises(ValueError, match="require a daemon control API"):
+        make_worker(
+            stream,
+            lambda config, password: connection,
+            config=DaemonMqttConfiguration(
+                host="mqtt.example.test",
+                commands_enabled=True,
+            ),
+        )
+
+
+def test_worker_executes_commands_after_initial_snapshot() -> None:
+    stream = FakeEventStream()
+    connection = FakeBrokerConnection()
+    control_api = FakeControlApi()
+    worker = make_worker(
+        stream,
+        lambda config, password: connection,
+        config=DaemonMqttConfiguration(
+            host="mqtt.example.test",
+            commands_enabled=True,
+        ),
+        control_api=control_api,
+    )
+
+    worker.start()
+    wait_until(lambda: connection.subscriptions == [("sdsctl/commands", 1)])
+    assert len(connection.publications) >= 7
+
+    message = command_message("mqtt-1", message_id=17)
+    connection.deliver(message)
+    wait_until(lambda: len(connection.acknowledged) == 1)
+
+    responses = [
+        item
+        for item in connection.publications
+        if item.topic == "sdsctl/responses"
+    ]
+    assert len(responses) == 1
+    assert responses[0].retain is False
+    assert decode_json(responses[0]) == {
+        "ok": True,
+        "protocol": DAEMON_API_PROTOCOL,
+        "request_id": "mqtt-1",
+        "result": {"operation": "scanner.next"},
+        "version": DAEMON_API_VERSION,
+    }
+    assert control_api.calls == [json.loads(message.payload)]
+    assert connection.acknowledged == [message]
+
+    worker.stop()
+
+
+def test_worker_rejects_retained_commands_without_dispatch() -> None:
+    stream = FakeEventStream()
+    connection = FakeBrokerConnection()
+    control_api = FakeControlApi()
+    worker = make_worker(
+        stream,
+        lambda config, password: connection,
+        config=DaemonMqttConfiguration(
+            host="mqtt.example.test",
+            commands_enabled=True,
+        ),
+        control_api=control_api,
+    )
+
+    worker.start()
+    wait_until(lambda: bool(connection.subscriptions))
+    message = command_message(
+        "mqtt-retained",
+        retain=True,
+        message_id=18,
+    )
+    connection.deliver(message)
+    wait_until(lambda: connection.acknowledged == [message])
+
+    response = next(
+        decode_json(item)
+        for item in connection.publications
+        if item.topic == "sdsctl/responses"
+    )
+    assert response["request_id"] == "mqtt-retained"
+    assert response["ok"] is False
+    assert response["error"]["code"] == "invalid_request"
+    assert "Retained MQTT" in response["error"]["message"]
+    assert control_api.calls == []
+
+    worker.stop()
+
+
+def test_worker_replays_cached_response_for_duplicate_request() -> None:
+    stream = FakeEventStream()
+    connection = FakeBrokerConnection()
+    control_api = FakeControlApi()
+    worker = make_worker(
+        stream,
+        lambda config, password: connection,
+        config=DaemonMqttConfiguration(
+            host="mqtt.example.test",
+            commands_enabled=True,
+        ),
+        control_api=control_api,
+    )
+
+    worker.start()
+    wait_until(lambda: bool(connection.subscriptions))
+
+    first = command_message("mqtt-duplicate", message_id=20)
+    duplicate = command_message(
+        "mqtt-duplicate",
+        duplicate=True,
+        message_id=21,
+    )
+    connection.deliver(first)
+    wait_until(lambda: len(connection.acknowledged) == 1)
+    connection.deliver(duplicate)
+    wait_until(lambda: len(connection.acknowledged) == 2)
+
+    responses = [
+        item.payload
+        for item in connection.publications
+        if item.topic == "sdsctl/responses"
+    ]
+    assert len(responses) == 2
+    assert responses[0] == responses[1]
+    assert len(control_api.calls) == 1
+
+    worker.stop()
+
+
+def test_worker_rejects_request_id_reuse_with_different_command() -> None:
+    stream = FakeEventStream()
+    connection = FakeBrokerConnection()
+    control_api = FakeControlApi()
+    worker = make_worker(
+        stream,
+        lambda config, password: connection,
+        config=DaemonMqttConfiguration(
+            host="mqtt.example.test",
+            commands_enabled=True,
+        ),
+        control_api=control_api,
+    )
+
+    worker.start()
+    wait_until(lambda: bool(connection.subscriptions))
+
+    connection.deliver(command_message("mqtt-reuse", message_id=30))
+    wait_until(lambda: len(connection.acknowledged) == 1)
+    connection.deliver(
+        command_message(
+            "mqtt-reuse",
+            operation="scanner.previous",
+            message_id=31,
+        )
+    )
+    wait_until(lambda: len(connection.acknowledged) == 2)
+
+    responses = [
+        decode_json(item)
+        for item in connection.publications
+        if item.topic == "sdsctl/responses"
+    ]
+    assert len(responses) == 2
+    assert responses[0]["ok"] is True
+    assert responses[1]["ok"] is False
+    assert responses[1]["error"]["code"] == "invalid_request"
+    assert "reused" in responses[1]["error"]["message"]
+    assert len(control_api.calls) == 1
+
+    worker.stop()
+
+
+def test_worker_bounds_and_rejects_invalid_command_payloads() -> None:
+    stream = FakeEventStream()
+    connection = FakeBrokerConnection()
+    control_api = FakeControlApi()
+    worker = make_worker(
+        stream,
+        lambda config, password: connection,
+        config=DaemonMqttConfiguration(
+            host="mqtt.example.test",
+            commands_enabled=True,
+        ),
+        control_api=control_api,
+        max_command_bytes=16,
+    )
+
+    worker.start()
+    wait_until(lambda: bool(connection.subscriptions))
+
+    invalid = DaemonMqttBrokerMessage(
+        topic="sdsctl/commands",
+        payload=b"{not-json",
+        qos=1,
+        retain=False,
+        duplicate=False,
+        message_id=40,
+    )
+    oversized = DaemonMqttBrokerMessage(
+        topic="sdsctl/commands",
+        payload=b"x" * 17,
+        qos=1,
+        retain=False,
+        duplicate=False,
+        message_id=41,
+    )
+    connection.deliver(invalid)
+    wait_until(lambda: len(connection.acknowledged) == 1)
+    connection.deliver(oversized)
+    wait_until(lambda: len(connection.acknowledged) == 2)
+
+    responses = [
+        decode_json(item)
+        for item in connection.publications
+        if item.topic == "sdsctl/responses"
+    ]
+    assert [item["error"]["code"] for item in responses] == [
+        "invalid_request",
+        "request_too_large",
+    ]
+    assert all(item["request_id"] is None for item in responses)
+    assert control_api.calls == []
+
+    worker.stop()
 
 
 def test_worker_publishes_availability_and_authoritative_snapshot_topics() -> None:

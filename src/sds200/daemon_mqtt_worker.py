@@ -5,6 +5,7 @@ import logging
 import os
 import queue
 import threading
+from collections import OrderedDict
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -12,6 +13,11 @@ from math import isfinite
 from typing import Literal, Protocol
 from urllib.parse import quote
 
+from .daemon_api import (
+    DaemonApiErrorCode,
+    DaemonApiRequest,
+    DaemonApiResponse,
+)
 from .daemon_events import (
     DaemonEvent,
     DaemonEventKind,
@@ -24,6 +30,8 @@ logger = logging.getLogger(__name__)
 
 DAEMON_MQTT_DEFAULT_EVENT_POLL_INTERVAL = 0.25
 DAEMON_MQTT_DEFAULT_STOP_TIMEOUT = 5.0
+DAEMON_MQTT_DEFAULT_MAX_COMMAND_BYTES = 64 * 1024
+DAEMON_MQTT_DEFAULT_COMMAND_CACHE_CAPACITY = 64
 
 DaemonMqttWorkerState = Literal[
     "idle",
@@ -108,6 +116,19 @@ DaemonMqttBrokerFactory = Callable[
 
 class _DaemonEventStreamLike(Protocol):
     def subscribe(self) -> DaemonEventSubscription: ...
+
+
+class _DaemonControlApiLike(Protocol):
+    def handle_control_payload(
+        self,
+        payload: object,
+    ) -> DaemonApiResponse: ...
+
+
+@dataclass(frozen=True, slots=True)
+class _CachedCommandResponse:
+    request_payload: bytes
+    response_payload: bytes
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,6 +218,14 @@ def _require_positive_seconds(label: str, value: object) -> float:
     return normalized
 
 
+def _require_positive_integer(label: str, value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{label} must be an integer.")
+    if value <= 0:
+        raise ValueError(f"{label} must be greater than zero.")
+    return value
+
+
 def _json_compatible(value: object) -> object:
     if isinstance(value, Mapping):
         converted: dict[str, object] = {}
@@ -244,9 +273,14 @@ class DaemonMqttWorker:
         event_stream: _DaemonEventStreamLike,
         broker_factory: DaemonMqttBrokerFactory,
         *,
+        control_api: _DaemonControlApiLike | None = None,
         environ: Mapping[str, str] | None = None,
         event_poll_interval: float = DAEMON_MQTT_DEFAULT_EVENT_POLL_INTERVAL,
         stop_timeout: float = DAEMON_MQTT_DEFAULT_STOP_TIMEOUT,
+        max_command_bytes: int = DAEMON_MQTT_DEFAULT_MAX_COMMAND_BYTES,
+        command_cache_capacity: int = (
+            DAEMON_MQTT_DEFAULT_COMMAND_CACHE_CAPACITY
+        ),
         now: Callable[[], datetime] = _utc_now,
     ) -> None:
         if not isinstance(config, DaemonMqttConfiguration):
@@ -261,14 +295,29 @@ class DaemonMqttWorker:
             "Daemon MQTT stop timeout",
             stop_timeout,
         )
+        validated_max_command_bytes = _require_positive_integer(
+            "Daemon MQTT maximum command size",
+            max_command_bytes,
+        )
+        validated_command_cache_capacity = _require_positive_integer(
+            "Daemon MQTT command cache capacity",
+            command_cache_capacity,
+        )
+        if config.commands_enabled and control_api is None:
+            raise ValueError(
+                "Daemon MQTT commands require a daemon control API."
+            )
 
         initial_at = _require_aware_datetime(now())
         self.config = config
         self.event_stream = event_stream
         self.broker_factory = broker_factory
+        self.control_api = control_api
         self._environ = None if environ is None else dict(environ)
         self.event_poll_interval = validated_event_poll_interval
         self.stop_timeout = validated_stop_timeout
+        self.max_command_bytes = validated_max_command_bytes
+        self.command_cache_capacity = validated_command_cache_capacity
         self._now = now
 
         self._condition = threading.Condition(threading.RLock())
@@ -296,6 +345,10 @@ class DaemonMqttWorker:
         self._last_published_at: datetime | None = None
         self._last_failure_at: datetime | None = None
         self._last_error: str | None = None
+        self._command_responses: OrderedDict[
+            str,
+            _CachedCommandResponse,
+        ] = OrderedDict()
 
     @property
     def running(self) -> bool:
@@ -500,12 +553,18 @@ class DaemonMqttWorker:
             self._active_subscription = subscription
 
         expected_sequence: int | None = None
+        commands_subscribed = False
         while True:
             with self._condition:
                 if self._stopping:
                     return
 
             connection.check()
+            if commands_subscribed:
+                message = connection.receive(timeout=0.0)
+                if message is not None:
+                    self._handle_command(connection, message)
+
             try:
                 event = subscription.get(
                     timeout=self.event_poll_interval
@@ -521,6 +580,12 @@ class DaemonMqttWorker:
             if event.kind == DaemonEventKind.SNAPSHOT:
                 expected_sequence = event.sequence + 1
                 self._publish_event(connection, event)
+                if self.config.commands_enabled and not commands_subscribed:
+                    connection.subscribe(
+                        self._command_topic,
+                        qos=self.config.qos,
+                    )
+                    commands_subscribed = True
                 self._mark_connection_healthy()
                 continue
 
@@ -544,6 +609,141 @@ class DaemonMqttWorker:
 
             expected_sequence = event.sequence + 1
             self._publish_event(connection, event)
+
+    @property
+    def _command_topic(self) -> str:
+        return f"{self.config.topic_prefix}/commands"
+
+    @property
+    def _response_topic(self) -> str:
+        return f"{self.config.topic_prefix}/responses"
+
+    def _handle_command(
+        self,
+        connection: DaemonMqttBrokerConnection,
+        message: DaemonMqttBrokerMessage,
+    ) -> None:
+        if message.topic != self._command_topic:
+            raise RuntimeError(
+                "MQTT broker delivered a message outside the command topic."
+            )
+
+        if len(message.payload) > self.max_command_bytes:
+            response = DaemonApiResponse.failure(
+                None,
+                DaemonApiErrorCode.REQUEST_TOO_LARGE,
+                "The MQTT command request exceeded the configured size limit.",
+            )
+            self._publish_command_response(connection, response)
+            connection.acknowledge(message)
+            return
+
+        try:
+            payload = json.loads(message.payload)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            response = DaemonApiResponse.failure(
+                None,
+                DaemonApiErrorCode.INVALID_REQUEST,
+                "MQTT command must contain one valid UTF-8 JSON value.",
+            )
+            self._publish_command_response(connection, response)
+            connection.acknowledge(message)
+            return
+
+        request_id = self._command_request_id(payload)
+        if message.retain:
+            response = DaemonApiResponse.failure(
+                request_id,
+                DaemonApiErrorCode.INVALID_REQUEST,
+                "Retained MQTT command messages are not accepted.",
+            )
+            self._publish_command_response(connection, response)
+            connection.acknowledge(message)
+            return
+
+        if request_id is not None:
+            cached = self._command_responses.get(request_id)
+            if cached is not None:
+                self._command_responses.move_to_end(request_id)
+                if cached.request_payload == message.payload:
+                    self._publish_command_payload(
+                        connection,
+                        cached.response_payload,
+                    )
+                else:
+                    conflict = DaemonApiResponse.failure(
+                        request_id,
+                        DaemonApiErrorCode.INVALID_REQUEST,
+                        "MQTT request identifier was reused with a "
+                        "different command.",
+                    )
+                    self._publish_command_response(connection, conflict)
+                connection.acknowledge(message)
+                return
+
+        control_api = self.control_api
+        if control_api is None:
+            raise RuntimeError(
+                "MQTT command processing has no daemon control API."
+            )
+        response = control_api.handle_control_payload(payload)
+        response_payload = _json_payload(response.as_dict())
+
+        if request_id is not None:
+            self._remember_command_response(
+                request_id,
+                message.payload,
+                response_payload,
+            )
+
+        self._publish_command_payload(connection, response_payload)
+        connection.acknowledge(message)
+
+    def _command_request_id(self, payload: object) -> str | None:
+        try:
+            return DaemonApiRequest.from_payload(payload).request_id
+        except (TypeError, ValueError):
+            return None
+
+    def _remember_command_response(
+        self,
+        request_id: str,
+        request_payload: bytes,
+        response_payload: bytes,
+    ) -> None:
+        self._command_responses[request_id] = _CachedCommandResponse(
+            request_payload=request_payload,
+            response_payload=response_payload,
+        )
+        self._command_responses.move_to_end(request_id)
+        while len(self._command_responses) > self.command_cache_capacity:
+            self._command_responses.popitem(last=False)
+
+    def _publish_command_response(
+        self,
+        connection: DaemonMqttBrokerConnection,
+        response: DaemonApiResponse,
+    ) -> None:
+        self._publish_command_payload(
+            connection,
+            _json_payload(response.as_dict()),
+        )
+
+    def _publish_command_payload(
+        self,
+        connection: DaemonMqttBrokerConnection,
+        payload: bytes,
+    ) -> None:
+        connection.publish(
+            self._response_topic,
+            payload,
+            qos=self.config.qos,
+            retain=False,
+        )
+        observed_at = _require_aware_datetime(self._now())
+        with self._condition:
+            self._publications += 1
+            self._last_published_at = observed_at
 
     def _publish_event(
         self,
