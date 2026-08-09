@@ -60,10 +60,8 @@ jobs:
               exit 1
             fi
             publish=true
-          elif (
-            [[ "${app_version}" != "${package_version}" ]]
-            && [[ "${app_version}" != "${package_version}-dev" ]]
-          ); then
+          elif [[ "${app_version}" != "${package_version}" ]] && \
+            [[ "${app_version}" != "${package_version}-dev" ]]; then
             echo "App version ${app_version} does not track package version ${package_version}" >&2
             exit 1
           fi
