@@ -105,6 +105,95 @@ def test_home_assistant_app_dockerfile_builds_local_source_with_required_extras(
     )
 
 
+def test_home_assistant_app_dockerfile_has_complete_app_image_labels() -> None:
+    dockerfile = _APP_DOCKERFILE.read_text(encoding="utf-8")
+
+    for required in (
+        'io.hass.name="sds200"',
+        'io.hass.description="Uniden SDS200 scanner daemon and web dashboard for Home Assistant"',
+        'io.hass.url="https://github.com/stevenboyd78/sds200-python"',
+        'io.hass.type="app"',
+        'org.opencontainers.image.licenses="MIT"',
+    ):
+        assert required in dockerfile
+
+
+def test_home_assistant_app_image_workflow_uses_current_builder_actions() -> None:
+    workflow = (
+        _REPOSITORY_ROOT
+        / ".github"
+        / "workflows"
+        / "home-assistant-app-image.yml"
+    ).read_text(encoding="utf-8")
+
+    assert 'ARCHITECTURES: \'["amd64", "aarch64"]\'' in workflow
+    assert (
+        "home-assistant/builder/actions/prepare-multi-arch-matrix@2026.06.0"
+        in workflow
+    )
+    assert "home-assistant/builder/actions/build-image@2026.06.0" in workflow
+    assert (
+        "home-assistant/builder/actions/publish-multi-arch-manifest@2026.06.0"
+        in workflow
+    )
+    assert "context: .\n" in workflow
+    assert "file: ${{ env.APP_DOCKERFILE }}\n" in workflow
+
+
+def test_home_assistant_app_image_workflow_limits_publish_credentials_to_release_job() -> None:
+    workflow = (
+        _REPOSITORY_ROOT
+        / ".github"
+        / "workflows"
+        / "home-assistant-app-image.yml"
+    ).read_text(encoding="utf-8")
+
+    validation_job = workflow.split("  build:\n", 1)[1].split(
+        "  publish-arch:\n",
+        1,
+    )[0]
+    publish_job = workflow.split("  publish-arch:\n", 1)[1].split(
+        "  manifest:\n",
+        1,
+    )[0]
+
+    assert "if: needs.metadata.outputs.publish != 'true'\n" in validation_job
+    assert "      contents: read\n" in validation_job
+    assert "id-token: write" not in validation_job
+    assert "packages: write" not in validation_job
+    assert 'container-registry-password: "unused"\n' in validation_job
+    assert "push: false\n" in validation_job
+    assert "secrets.GITHUB_TOKEN" not in validation_job
+
+    assert "if: needs.metadata.outputs.publish == 'true'\n" in publish_job
+    assert "id-token: write\n" in publish_job
+    assert "packages: write\n" in publish_job
+    assert "container-registry-password: ${{ secrets.GITHUB_TOKEN }}\n" in publish_job
+    assert "push: true\n" in publish_job
+
+
+def test_home_assistant_app_image_workflow_publishes_only_release_versions() -> None:
+    workflow = (
+        _REPOSITORY_ROOT
+        / ".github"
+        / "workflows"
+        / "home-assistant-app-image.yml"
+    ).read_text(encoding="utf-8")
+
+    assert 'tags:\n      - "v*"\n' in workflow
+    assert 'release_version="${GITHUB_REF#refs/tags/v}"' in workflow
+    assert '"${app_version}" != "${release_version}"' in workflow
+    assert '"${package_version}" != "${release_version}"' in workflow
+    assert "push: true\n" in workflow
+    assert "if: needs.metadata.outputs.publish == 'true'\n" in workflow
+    assert (
+        "image-tags: |\n"
+        "            ${{ needs.metadata.outputs.app_version }}\n"
+        "            latest\n"
+        in workflow
+    )
+
+
 def test_home_assistant_app_docker_context_is_minimal_and_source_complete() -> None:
     dockerignore = _DOCKERIGNORE.read_text(encoding="utf-8")
 

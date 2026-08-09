@@ -1,0 +1,174 @@
+name: Home Assistant App Image
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ARCHITECTURES: '["amd64", "aarch64"]'
+  IMAGE_NAME: "sds200-home-assistant"
+  APP_CONFIG: "home-assistant/sds200/config.yaml"
+  APP_DOCKERFILE: "home-assistant/sds200/Dockerfile"
+
+jobs:
+  metadata:
+    name: Prepare App image build
+    runs-on: ubuntu-24.04
+    outputs:
+      app_version: ${{ steps.version.outputs.app_version }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      publish: ${{ steps.version.outputs.publish }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Validate App version
+        id: version
+        shell: bash
+        run: |
+          app_version="$(
+            sed -n 's/^version: "\([^"]*\)"$/\1/p' "${APP_CONFIG}"
+          )"
+          package_version="$(
+            python -c \
+              'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])'
+          )"
+
+          if [[ -z "${app_version}" ]]; then
+            echo "Unable to read Home Assistant App version from ${APP_CONFIG}" >&2
+            exit 1
+          fi
+
+          publish=false
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            release_version="${GITHUB_REF#refs/tags/v}"
+            if [[ "${app_version}" != "${release_version}" ]]; then
+              echo "App version ${app_version} does not match release tag ${release_version}" >&2
+              exit 1
+            fi
+            if [[ "${package_version}" != "${release_version}" ]]; then
+              echo "Package version ${package_version} does not match release tag ${release_version}" >&2
+              exit 1
+            fi
+            publish=true
+          elif (
+            [[ "${app_version}" != "${package_version}" ]]
+            && [[ "${app_version}" != "${package_version}-dev" ]]
+          ); then
+            echo "App version ${app_version} does not track package version ${package_version}" >&2
+            exit 1
+          fi
+
+          echo "app_version=${app_version}" >> "${GITHUB_OUTPUT}"
+          echo "publish=${publish}" >> "${GITHUB_OUTPUT}"
+
+      - name: Prepare architecture matrix
+        id: matrix
+        uses: home-assistant/builder/actions/prepare-multi-arch-matrix@2026.06.0
+        with:
+          architectures: ${{ env.ARCHITECTURES }}
+          image-name: ${{ env.IMAGE_NAME }}
+
+  build:
+    name: Validate ${{ matrix.arch }} App image
+    if: needs.metadata.outputs.publish != 'true'
+    needs: metadata
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.metadata.outputs.matrix) }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Build App image
+        uses: home-assistant/builder/actions/build-image@2026.06.0
+        with:
+          arch: ${{ matrix.arch }}
+          container-registry-password: "unused"
+          context: .
+          file: ${{ env.APP_DOCKERFILE }}
+          image: ${{ matrix.image }}
+          image-tags: ${{ needs.metadata.outputs.app_version }}
+          labels: |
+            io.hass.name=sds200
+            io.hass.description=Uniden SDS200 scanner daemon and web dashboard for Home Assistant
+            io.hass.url=https://github.com/stevenboyd78/sds200-python
+            io.hass.type=app
+            org.opencontainers.image.title=sds200 Home Assistant App
+            org.opencontainers.image.description=Uniden SDS200 scanner daemon and web dashboard for Home Assistant
+            org.opencontainers.image.licenses=MIT
+          push: false
+          version: ${{ needs.metadata.outputs.app_version }}
+
+  publish-arch:
+    name: Publish ${{ matrix.arch }} App image
+    if: needs.metadata.outputs.publish == 'true'
+    needs: metadata
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.metadata.outputs.matrix) }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Build and publish App image
+        uses: home-assistant/builder/actions/build-image@2026.06.0
+        with:
+          arch: ${{ matrix.arch }}
+          container-registry-password: ${{ secrets.GITHUB_TOKEN }}
+          context: .
+          file: ${{ env.APP_DOCKERFILE }}
+          image: ${{ matrix.image }}
+          image-tags: ${{ needs.metadata.outputs.app_version }}
+          labels: |
+            io.hass.name=sds200
+            io.hass.description=Uniden SDS200 scanner daemon and web dashboard for Home Assistant
+            io.hass.url=https://github.com/stevenboyd78/sds200-python
+            io.hass.type=app
+            org.opencontainers.image.title=sds200 Home Assistant App
+            org.opencontainers.image.description=Uniden SDS200 scanner daemon and web dashboard for Home Assistant
+            org.opencontainers.image.licenses=MIT
+          push: true
+          version: ${{ needs.metadata.outputs.app_version }}
+
+  manifest:
+    name: Publish multi-architecture App image
+    if: needs.metadata.outputs.publish == 'true'
+    needs:
+      - metadata
+      - publish-arch
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+
+    steps:
+      - name: Publish multi-architecture manifest
+        uses: home-assistant/builder/actions/publish-multi-arch-manifest@2026.06.0
+        with:
+          architectures: ${{ env.ARCHITECTURES }}
+          container-registry-password: ${{ secrets.GITHUB_TOKEN }}
+          image-name: ${{ env.IMAGE_NAME }}
+          image-tags: |
+            ${{ needs.metadata.outputs.app_version }}
+            latest
