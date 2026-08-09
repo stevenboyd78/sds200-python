@@ -190,6 +190,7 @@ from .daemon_ipc import (
 from .daemon_mqtt import (
     DAEMON_MQTT_CONFIG_VERSION,
     DaemonMqttConfiguration,
+    DaemonMqttHomeAssistantConfiguration,
     DaemonMqttQos,
     default_daemon_mqtt_config_path,
     load_daemon_mqtt_configuration,
@@ -686,6 +687,7 @@ __all__ = [
     "DaemonDestinationResources",
     "DaemonDestinationReplacementPreview",
     "DaemonMqttConfiguration",
+    "DaemonMqttHomeAssistantConfiguration",
     "DaemonMqttQos",
     "DaemonMqttWorker",
     "DaemonMqttWorkerSnapshot",
