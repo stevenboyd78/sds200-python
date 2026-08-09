@@ -29,6 +29,16 @@ let scannerControlMutationInProgress = false;
 let audioPlaybackGeneration = 0;
 let audioPlaybackActive = false;
 let audioAbortController = null;
+const dashboardScriptUrl = document.currentScript?.src;
+if (!dashboardScriptUrl) {
+  throw new Error("Dashboard script URL is unavailable.");
+}
+const webRootUrl = new URL("../", dashboardScriptUrl);
+
+function webUrl(path) {
+  return new URL(path, webRootUrl).toString();
+}
+
 let audioReader = null;
 let audioContext = null;
 let audioWorkletNode = null;
@@ -166,7 +176,7 @@ function recordingFileUrl(identifier) {
     .split("/")
     .map((component) => encodeURIComponent(component))
     .join("/");
-  return `/api/v1/recordings/file/${encoded}`;
+  return webUrl(`api/v1/recordings/file/${encoded}`);
 }
 
 function setRecordingControls(recording) {
@@ -349,7 +359,7 @@ async function refreshRecordingStatus() {
 
   recordingRefreshInProgress = true;
   try {
-    const response = await fetch("/api/v1/recording", {
+    const response = await fetch(webUrl("api/v1/recording"), {
       method: "GET",
       headers: {Accept: "application/json"},
       cache: "no-store",
@@ -387,7 +397,7 @@ async function refreshRecordings() {
   recordingsRefreshInProgress = true;
   setRecordingControls(currentRecording);
   try {
-    const response = await fetch("/api/v1/recordings", {
+    const response = await fetch(webUrl("api/v1/recordings"), {
       method: "GET",
       headers: {Accept: "application/json"},
       cache: "no-store",
@@ -427,7 +437,7 @@ async function performRecordingAction(action) {
     action === "start" ? "Starting…" : "Stopping…";
 
   try {
-    const response = await fetch(`/api/v1/recording/${action}`, {
+    const response = await fetch(webUrl(`api/v1/recording/${action}`), {
       method: "POST",
       headers: {Accept: "application/json"},
       cache: "no-store",
@@ -606,7 +616,7 @@ async function performScannerControl(path, label, body = null) {
       headers["Content-Type"] = "application/json";
       options.body = JSON.stringify(body);
     }
-    const response = await fetch(`/api/v1/scanner/${path}`, options);
+    const response = await fetch(webUrl(`api/v1/scanner/${path}`), options);
 
     let payload = {};
     try {
@@ -823,7 +833,7 @@ function errorMessage(payload, response) {
 }
 
 async function fetchStatusPayload() {
-  const response = await fetch("/api/v1/status", {
+  const response = await fetch(webUrl("api/v1/status"), {
     method: "GET",
     headers: {Accept: "application/json"},
     cache: "no-store",
@@ -913,7 +923,7 @@ function startEventStream() {
     return;
   }
 
-  eventSource = new EventSource("/api/v1/events");
+  eventSource = new EventSource(webUrl("api/v1/events"));
 
   eventSource.onopen = () => {
     eventStreamConnected = true;
@@ -1284,7 +1294,7 @@ async function startAudioPlayback() {
     const context = new AudioContext({latencyHint: "interactive"});
     audioContext = context;
 
-    await context.audioWorklet.addModule("/assets/audio-worklet.js");
+    await context.audioWorklet.addModule(webUrl("assets/audio-worklet.js"));
     if (generation !== audioPlaybackGeneration) {
       return;
     }
@@ -1305,7 +1315,7 @@ async function startAudioPlayback() {
     const controller = new AbortController();
     audioAbortController = controller;
 
-    const response = await fetch("/api/v1/audio", {
+    const response = await fetch(webUrl("api/v1/audio"), {
       method: "GET",
       headers: {Accept: "application/octet-stream"},
       cache: "no-store",
