@@ -4,7 +4,11 @@ from dataclasses import dataclass
 
 import pytest
 
-from sds200 import DaemonMqttConfiguration, DaemonMqttError
+from sds200 import (
+    DaemonMqttConfiguration,
+    DaemonMqttError,
+    DaemonMqttHomeAssistantConfiguration,
+)
 from sds200.daemon_mqtt_paho import (
     PahoMqttBrokerConnection,
     PahoMqttBrokerFactory,
@@ -408,16 +412,54 @@ def test_commands_enabled_uses_manual_ack_and_inbound_queue() -> None:
     connection.close()
 
 
-def test_commands_disabled_rejects_subscription_without_manual_ack() -> None:
+def test_inbound_subscriptions_are_disabled_without_an_inbound_feature() -> None:
     client = FakeClient()
     connection = make_connection(client)
     connection.connect()
 
     assert client.manual_ack_calls == []
-    with pytest.raises(DaemonMqttError, match="subscriptions are disabled"):
+    with pytest.raises(
+        DaemonMqttError,
+        match="inbound subscriptions are disabled",
+    ):
         connection.subscribe("sdsctl/commands", qos=1)
 
     assert client.subscribe_calls == []
+    connection.close()
+
+
+def test_home_assistant_subscription_works_without_command_manual_ack() -> None:
+    client = FakeClient()
+    connection = make_connection(
+        client,
+        config=DaemonMqttConfiguration(
+            host="mqtt.example.test",
+            home_assistant=DaemonMqttHomeAssistantConfiguration(
+                enabled=True,
+            ),
+        ),
+    )
+    connection.connect()
+
+    assert client.manual_ack_calls == []
+    connection.subscribe("homeassistant/status", qos=0)
+    assert client.subscribe_calls == [("homeassistant/status", 0)]
+
+    client.emit_message(
+        topic="homeassistant/status",
+        payload=b"online",
+        qos=0,
+        message_id=18,
+    )
+    message = connection.receive(timeout=0.1)
+    assert message == DaemonMqttBrokerMessage(
+        topic="homeassistant/status",
+        payload=b"online",
+        qos=0,
+        retain=False,
+        duplicate=False,
+        message_id=18,
+    )
     connection.close()
 
 

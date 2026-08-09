@@ -18,6 +18,7 @@ from sds200 import (
     DaemonEventKind,
     DaemonEventPublisher,
     DaemonMqttConfiguration,
+    DaemonMqttHomeAssistantConfiguration,
     DaemonMqttWorker,
     ReconnectPolicy,
 )
@@ -1184,3 +1185,132 @@ def test_worker_rejects_invalid_construction_and_is_one_shot() -> None:
 
     with pytest.raises(RuntimeError, match="only be started once"):
         worker.start()
+
+def test_worker_publishes_discovery_and_republishes_on_home_assistant_birth() -> None:
+    stream = FakeEventStream()
+    connection = FakeBrokerConnection()
+    worker = make_worker(
+        stream,
+        lambda config, password: connection,
+        config=DaemonMqttConfiguration(
+            host="mqtt.example.test",
+            home_assistant=DaemonMqttHomeAssistantConfiguration(
+                enabled=True,
+            ),
+        ),
+    )
+
+    worker.start()
+    wait_until(
+        lambda: connection.subscriptions == [("homeassistant/status", 0)]
+    )
+    wait_until(
+        lambda: sum(
+            item.topic.startswith("homeassistant/device/sds200_")
+            and item.topic.endswith("/config")
+            for item in connection.publications
+        )
+        == 1
+    )
+    first = next(
+        item
+        for item in connection.publications
+        if item.topic.startswith("homeassistant/device/sds200_")
+        and item.topic.endswith("/config")
+    )
+    assert first.qos == 1
+    assert first.retain is False
+    payload = decode_json(first)
+    assert payload["availability_topic"] == "sdsctl/availability"
+    assert payload["components"]["channel"]["state_topic"] == (
+        "sdsctl/state/radio"
+    )
+
+    birth = DaemonMqttBrokerMessage(
+        topic="homeassistant/status",
+        payload=b"online",
+        qos=0,
+        retain=False,
+        duplicate=False,
+        message_id=60,
+    )
+    connection.deliver(birth)
+    wait_until(
+        lambda: sum(
+            item.topic == first.topic
+            for item in connection.publications
+        )
+        == 2
+    )
+    assert connection.acknowledged == []
+
+    worker.stop()
+
+
+def test_worker_ignores_non_birth_home_assistant_status_payload() -> None:
+    stream = FakeEventStream()
+    connection = FakeBrokerConnection()
+    worker = make_worker(
+        stream,
+        lambda config, password: connection,
+        config=DaemonMqttConfiguration(
+            host="mqtt.example.test",
+            home_assistant=DaemonMqttHomeAssistantConfiguration(
+                enabled=True,
+            ),
+        ),
+    )
+
+    worker.start()
+    wait_until(lambda: bool(connection.subscriptions))
+    wait_until(
+        lambda: any(
+            item.topic.startswith("homeassistant/device/sds200_")
+            and item.topic.endswith("/config")
+            for item in connection.publications
+        )
+    )
+    discovery_topic = next(
+        item.topic
+        for item in connection.publications
+        if item.topic.startswith("homeassistant/device/sds200_")
+        and item.topic.endswith("/config")
+    )
+    baseline = sum(
+        item.topic == discovery_topic
+        for item in connection.publications
+    )
+
+    connection.deliver(
+        DaemonMqttBrokerMessage(
+            topic="homeassistant/status",
+            payload=b"offline",
+            qos=0,
+            retain=False,
+            duplicate=False,
+            message_id=61,
+        )
+    )
+    stream.publish(
+        DaemonEventKind.RADIO_STATE,
+        {
+            "fields": ["channel"],
+            "previous": {"channel": "Primary"},
+            "current": {"channel": "Secondary"},
+        },
+    )
+    wait_until(
+        lambda: any(
+            item.topic == "sdsctl/events"
+            for item in connection.publications
+        )
+    )
+    assert (
+        sum(
+            item.topic == discovery_topic
+            for item in connection.publications
+        )
+        == baseline
+    )
+
+    worker.stop()

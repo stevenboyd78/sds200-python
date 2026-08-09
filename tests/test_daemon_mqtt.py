@@ -221,6 +221,17 @@ def test_mqtt_configuration_is_immutable() -> None:
         (
             lambda: DaemonMqttConfiguration(
                 host="mqtt.example.test",
+                commands_enabled=True,
+                home_assistant=DaemonMqttHomeAssistantConfiguration(
+                    enabled=True,
+                    birth_topic="sdsctl/commands",
+                ),
+            ),
+            "birth topic must not equal the MQTT command topic",
+        ),
+        (
+            lambda: DaemonMqttConfiguration(
+                host="mqtt.example.test",
                 topic_prefix="/sdsctl",
             ),
             "must not start or end",

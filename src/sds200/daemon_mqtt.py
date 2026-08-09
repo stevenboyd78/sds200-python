@@ -245,6 +245,16 @@ class DaemonMqttConfiguration:
                 "MQTT home_assistant setting must be a "
                 "DaemonMqttHomeAssistantConfiguration."
             )
+        if (
+            self.commands_enabled
+            and self.home_assistant.enabled
+            and self.home_assistant.birth_topic
+            == f"{self.topic_prefix}/commands"
+        ):
+            raise ValueError(
+                "Home Assistant birth topic must not equal "
+                "the MQTT command topic."
+            )
         object.__setattr__(
             self,
             "keepalive_seconds",

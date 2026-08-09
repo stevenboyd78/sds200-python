@@ -363,9 +363,12 @@ class PahoMqttBrokerConnection:
         self.check()
 
     def subscribe(self, topic: str, *, qos: int) -> None:
-        if not self.config.commands_enabled:
+        if not (
+            self.config.commands_enabled
+            or self.config.home_assistant.enabled
+        ):
             raise DaemonMqttError(
-                "MQTT command subscriptions are disabled."
+                "MQTT inbound subscriptions are disabled."
             )
         if not isinstance(topic, str) or not topic:
             raise ValueError("MQTT subscription topic must not be empty.")
@@ -534,7 +537,10 @@ class PahoMqttBrokerConnection:
         message: _PahoInboundMessage,
     ) -> None:
         del client, userdata
-        if not self.config.commands_enabled:
+        if not (
+            self.config.commands_enabled
+            or self.config.home_assistant.enabled
+        ):
             return
 
         try:
