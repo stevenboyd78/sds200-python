@@ -203,6 +203,8 @@ def test_home_assistant_app_docker_context_is_minimal_and_source_complete() -> N
         "!README.md\n",
         "!LICENSE\n",
         "!src/**\n",
+        "**/__pycache__/\n",
+        "**/*.py[cod]\n",
         "!home-assistant/sds200/Dockerfile\n",
     ):
         assert required in dockerignore
