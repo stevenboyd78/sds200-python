@@ -201,8 +201,10 @@ Home Assistant must preserve the same single-owner daemon boundary rather than
 opening another scanner control or RTSP/RTP session. Milestone 20.8 establishes a
 generic daemon-owned MQTT publication substrate over the existing authoritative
 event stream. Milestone 20.9 adds optional semantic MQTT scanner commands through
-the existing daemon control boundary. The generic MQTT contract remains
-intentionally independent of Home Assistant Discovery.
+the existing daemon control boundary. Milestone 20.10 adds read-only Home
+Assistant MQTT device discovery as an adapter over that generic contract,
+including Home Assistant birth-triggered republication while leaving scanner
+ownership and semantic state authoritative in the daemon.
 
 The intended sequence is:
 
@@ -211,8 +213,12 @@ The intended sequence is:
 - route MQTT commands through the daemon's existing semantic scanner control
   operations rather than raw scanner keys, implemented as the opt-in Milestone
   20.9 command/response contract;
-- add Home Assistant MQTT Discovery entities after the generic state and command
-  contracts stabilize;
+- expose Home Assistant MQTT device Discovery over the stable generic state and
+  availability contract, implemented as read-only Milestone 20.10 entities with
+  deterministic namespace-derived device identity and birth-triggered
+  republication;
+- add a deliberate Home Assistant control adapter rather than binding static
+  Discovery button payloads directly to request-ID-deduplicated generic commands;
 - package one Home Assistant App that hosts the daemon and web dashboard and uses
   Ingress for the full dashboard;
 - bundle an SDS200 Lovelace card with that App so the primary integration does not
@@ -220,15 +226,11 @@ The intended sequence is:
 - treat authenticated/TLS LAN gateways or broader remote access as a later
   explicit security boundary.
 
-Potential entities and events include:
-
-- connection and availability state;
-- current system, department, site, and channel;
-- scanner mode and hold state;
-- signal and RSSI;
-- audio, playback, and recording status;
-- destination health;
-- safe supported controls and scanner events.
+Milestone 20.10 currently discovers daemon state, scanner connectivity, current
+system/department/channel, signal, RSSI, audio-running state, and recording
+active/status. Site, scanner mode and hold state, destination health, safe
+Home Assistant controls, and richer scanner events remain candidates for later
+Home Assistant slices.
 
 HACS may still be evaluated later as an optional distribution channel, but it is
 not a dependency of the planned primary Home Assistant integration.

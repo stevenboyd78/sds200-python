@@ -7,9 +7,10 @@ RTSP/RTP audio session.
 
 Milestone 20.9 adds explicitly opt-in semantic scanner controls on that same
 worker. MQTT commands reuse the daemon's existing versioned control dispatcher
-and therefore preserve the single-owner scanner boundary. Home Assistant MQTT
-Discovery, Home Assistant App packaging, Ingress, and the Lovelace card remain
-later work.
+and therefore preserve the single-owner scanner boundary. Milestone 20.10 adds
+optional Home Assistant MQTT device discovery over the same generic state and
+availability topics. Home Assistant App packaging, Ingress, the bundled Lovelace
+card, and Home Assistant-specific controls remain later work.
 
 ## Installation
 
@@ -56,6 +57,12 @@ keepalive_seconds = 60
 reconnect_initial_delay = 1.0
 reconnect_multiplier = 2.0
 reconnect_max_delay = 30.0
+
+[home_assistant]
+enabled = false
+discovery_prefix = "homeassistant"
+birth_topic = "homeassistant/status"
+birth_payload = "online"
 ```
 
 Supported broker fields are:
@@ -76,6 +83,18 @@ Supported broker fields are:
 | `reconnect_multiplier` | `2.0` | Exponential retry multiplier |
 | `reconnect_max_delay` | `30.0` | Retry-delay ceiling |
 | `reconnect_max_attempts` | unset | Optional bounded retry budget; unset retries indefinitely |
+
+The optional `[home_assistant]` table supports:
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `enabled` | `false` | Publish Home Assistant MQTT device discovery and subscribe to the configured birth topic |
+| `discovery_prefix` | `homeassistant` | Home Assistant MQTT discovery prefix |
+| `birth_topic` | `homeassistant/status` | Exact Home Assistant birth/status topic to subscribe to at QoS 0 |
+| `birth_payload` | `online` | Exact UTF-8 payload that triggers discovery republication |
+
+The Home Assistant birth topic must not equal `<topic_prefix>/commands` when both
+Discovery and semantic commands are enabled.
 
 The daemon loads and validates this document before scanner construction. If the
 file is absent, MQTT is disabled. If the file is present but invalid, or Paho is
@@ -107,6 +126,19 @@ Every topic is rooted at `topic_prefix`.
 
 Destination IDs are percent-encoded into one safe MQTT topic segment.
 
+When Home Assistant Discovery is enabled, the worker also publishes one
+non-retained device-discovery document at:
+
+```text
+<discovery_prefix>/device/sds200_<identity>/config
+```
+
+The identity is derived deterministically from `topic_prefix`, so it is stable
+across daemon and broker reconnects while that MQTT namespace stays the same.
+Changing `topic_prefix` intentionally creates a different Home Assistant device
+identity. Two scanners must not share the same broker and exact topic prefix
+because their generic MQTT state topics would already collide.
+
 `retain = false` disables retention for canonical semantic state only.
 Availability is always retained so consumers can recover daemon availability
 without waiting for another state change. The Paho session also configures a
@@ -119,8 +151,12 @@ After a broker connection succeeds the worker:
 1. publishes retained `online`;
 2. subscribes to the existing daemon event stream;
 3. receives that stream's authoritative `stream.snapshot`;
-4. expands the snapshot into canonical state topics; and
-5. only then resets its reconnect attempt counter and treats the session as
+4. expands the snapshot into canonical state topics;
+5. when Home Assistant Discovery is enabled, subscribes to the configured birth
+   topic at QoS 0 and publishes the device-discovery document;
+6. when semantic commands are enabled, subscribes to `<prefix>/commands` at the
+   configured QoS; and
+7. only then resets its reconnect attempt counter and treats the session as
    healthy.
 
 Later daemon transitions refresh the canonical runtime-derived topics from the
@@ -183,6 +219,62 @@ accumulate an offline command backlog.
 If the daemon event sequence has a gap, the worker closes that subscription,
 opens a new one, and waits for a fresh authoritative snapshot before continuing.
 This avoids trying to reconstruct missing semantic state from partial events.
+A replacement authoritative snapshot also republishes Home Assistant Discovery
+when enabled.
+
+## Home Assistant MQTT Discovery
+
+Discovery is disabled by default and is an adapter over the generic daemon MQTT
+contract, not a second state or control system. Enable it with:
+
+```toml
+[home_assistant]
+enabled = true
+```
+
+The worker publishes one Home Assistant **device discovery** document containing
+ten read-only components backed by existing semantic MQTT topics:
+
+| Component | Platform | Source |
+| --- | --- | --- |
+| Daemon state | sensor | `<prefix>/state/daemon` |
+| Scanner connected | binary sensor | `<prefix>/state/scanner/connection` |
+| System | sensor | `<prefix>/state/radio` |
+| Department | sensor | `<prefix>/state/radio` |
+| Channel | sensor | `<prefix>/state/radio` |
+| Signal | sensor | `<prefix>/state/radio` |
+| RSSI | sensor | `<prefix>/state/radio` |
+| Audio running | binary sensor | `<prefix>/state/audio` |
+| Recording active | binary sensor | `<prefix>/state/recording` |
+| Recording status | sensor | `<prefix>/state/recording` |
+
+The shared device metadata uses Uniden as manufacturer, scanner model and
+firmware when they are available in the authoritative snapshot, the existing
+`<prefix>/availability` topic, and the configured MQTT QoS. Discovery contains no
+`command_topic` and does not expose raw scanner keys.
+
+The discovery document is deliberately non-retained. It is published from every
+authoritative MQTT snapshot, including broker reconnect and event-sequence
+resynchronization. The worker also subscribes to the configured Home Assistant
+birth topic at QoS 0. An inbound message republishes Discovery only when both the
+topic and UTF-8 payload exactly match the configured `birth_topic` and
+`birth_payload`; other payloads on that topic are ignored.
+
+Home Assistant birth traffic and semantic commands can coexist on the same Paho
+connection. Birth messages use QoS 0 and are not application-acknowledged.
+Command manual acknowledgement, request-ID deduplication, and worker-thread
+dispatch remain unchanged. The configuration rejects a birth topic that is the
+same as `<prefix>/commands` when both features are enabled.
+
+Milestone 20.10 Discovery is read-only. Repeated Home Assistant button presses
+cannot safely reuse a static daemon command request identifier, so controls are
+not wired directly to the generic Milestone 20.9 command topic. A deliberate
+Home Assistant control adapter remains follow-on work.
+
+With the default `retain = true`, Home Assistant can consume retained canonical
+state immediately after Discovery. If `retain = false`, Discovery still works,
+but an entity may remain unknown until its corresponding semantic state is
+published again.
 
 ## Broker lifecycle and failure isolation
 
@@ -238,8 +330,10 @@ MQTT command subscriptions materially increase the broker trust boundary. Leave
 `commands_enabled = false` unless broker publishers are authorized to operate the
 scanner. When enabled, controls are still limited to the daemon's existing
 semantic operations and never expose unrestricted raw scanner-key passthrough.
-Because the current adapter does not configure TLS, do not enable commands across
-an untrusted network.
+Home Assistant Discovery itself is read-only, but its birth-topic subscription
+still accepts broker-delivered input into the MQTT worker; keep the broker within
+the same trusted boundary. Because the current adapter does not configure TLS, do
+not enable commands across an untrusted network.
 
 See [Daemon ownership runtime](daemon-runtime.md),
 [Daemon deployment and upgrade guide](daemon-deployment.md), and
