@@ -138,12 +138,38 @@ sdsctl --host SCANNER_IP info
 
 Only scan networks you own or are authorized to probe.
 
-## Upgrade from v0.18.x
+## Install the Home Assistant App
 
-The v0.19.0 release keeps the distribution and Python import package named
+Home Assistant OS users can install the published App without copying a Local
+App into `/addons`.
+
+1. Open **Settings > Apps > App store**.
+2. Open the top-right three-dot menu and choose **Repositories**.
+3. Add `https://github.com/stevenboyd78/sds200-python`.
+4. Open the repository's **sds200** App.
+5. Install it.
+6. Set `scanner_host` to the SDS200 LAN hostname or IP address.
+7. Start the App and open **Web UI**.
+
+The App requires the Home Assistant MQTT service and uses UDP `50000` for
+scanner RTP audio. See the canonical
+[Home Assistant App guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/home-assistant-app.md)
+before changing network or MQTT settings.
+
+The Local App workflow under `/addons` remains available for development but is
+not required for normal release installation.
+
+## Upgrade to v0.20.0
+
+The v0.20.0 release keeps the distribution and Python import package named
 `sds200` and keeps the executable named `sdsctl`. Application and service paths
 use the `sdsctl` namespace, while existing scanner and remote-audio profiles
 remain under the legacy `sds200` configuration root.
+
+v0.20.0 adds the Home Assistant App distribution path, Ingress dashboard,
+Supervisor MQTT adaptation, persistent App recordings, and release-built amd64
+and aarch64 images. Existing standalone, daemon, TUI, and web workflows remain
+available.
 
 No file is moved or rewritten automatically. Before upgrading, back up system
 and user configuration, legacy profile files, destination manifests, recordings,

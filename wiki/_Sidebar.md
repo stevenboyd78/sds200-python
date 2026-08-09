@@ -11,6 +11,7 @@
 - [Textual TUI](https://github.com/stevenboyd78/sds200-python/blob/main/docs/tui.md)
 - [Network audio](https://github.com/stevenboyd78/sds200-python/blob/main/docs/audio.md)
 - [Web dashboard](https://github.com/stevenboyd78/sds200-python/blob/main/docs/web-dashboard.md)
+- [Home Assistant App](https://github.com/stevenboyd78/sds200-python/blob/main/docs/home-assistant-app.md)
 - [Operational logging](https://github.com/stevenboyd78/sds200-python/blob/main/docs/logging.md)
 - [Daemon deployment](https://github.com/stevenboyd78/sds200-python/blob/main/docs/daemon-deployment.md)
 - [Layered configuration](https://github.com/stevenboyd78/sds200-python/blob/main/docs/configuration.md)

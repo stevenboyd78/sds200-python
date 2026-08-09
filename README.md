@@ -521,11 +521,18 @@ See the [web dashboard guide](docs/web-dashboard.md).
 
 ### Home Assistant App
 
-Milestone 20.11 packages the existing foreground daemon and web dashboard as one
-Home Assistant App while preserving the daemon as the only scanner, PSI, and
-RTSP/RTP owner. Supervisor supplies the configured MQTT service, the dashboard is
+v0.20.0 packages the existing foreground daemon and web dashboard as one Home
+Assistant App while preserving the daemon as the only scanner, PSI, and RTSP/RTP
+owner. Supervisor supplies the configured MQTT service, the dashboard is
 presented through authenticated Ingress, and recordings are stored persistently
 under `/data/recordings`.
+
+For normal Home Assistant OS installation, add
+`https://github.com/stevenboyd78/sds200-python` as a third-party App repository
+from **Settings > Apps > App store > Repositories**, then install **sds200** from
+that repository. Published releases use the versioned multi-architecture GHCR
+image referenced by the committed App manifest. The `/addons` Local App workflow
+is reserved for development and hardware testing.
 
 The App requires an SDS200 LAN host and exposes only UDP port `50000` for the
 scanner's inbound RTP audio. The daemon binds that fixed RTP port and Supervisor

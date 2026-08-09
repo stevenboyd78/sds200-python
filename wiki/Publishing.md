@@ -127,6 +127,16 @@ Open the repository's Wiki tab and verify:
 - canonical repository links open the intended default-branch documents;
 - removed source pages are no longer published.
 
+## Release synchronization
+
+When a release changes wiki source, publish the reviewed wiki after the
+release-preparation pull request is merged and before the release tag is
+created. This keeps the public task-oriented guidance synchronized with the
+release commit before package and Home Assistant App publication begins.
+
+Do not publish release-branch-only wiki content before it has merged into
+`main`.
+
 ## Preventing drift
 
 - Treat direct wiki-editor changes as emergency edits.

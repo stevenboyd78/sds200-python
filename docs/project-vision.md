@@ -244,7 +244,7 @@ Home Assistant controls, and richer scanner events remain candidates for later
 Home Assistant slices.
 
 HACS may still be evaluated later as an optional distribution channel, but it is
-not a dependency of the planned primary Home Assistant integration.
+not a dependency of the primary Home Assistant App repository distribution path.
 
 ### Future GUI and themes
 

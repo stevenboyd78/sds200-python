@@ -2,10 +2,23 @@
 
 ## Requirements
 
-- Home Assistant with App/Supervisor support
+- Home Assistant OS with Apps/Supervisor support
 - LAN-connected Uniden SDS200
 - Home Assistant MQTT service
 - UDP port `50000` available on the Home Assistant host
+
+## Installation
+
+For normal installation:
+
+1. open **Settings > Apps > App store**;
+2. open the top-right three-dot menu and choose **Repositories**;
+3. add `https://github.com/stevenboyd78/sds200-python`;
+4. select the **sds200** App from the repository;
+5. install it, then configure the scanner host.
+
+Published versions use the release image from GHCR. Local `/addons` staging is
+only for development builds.
 
 ## Configuration
 
@@ -89,6 +102,12 @@ The current MQTT adapter does not configure TLS. Keep Home Assistant, the MQTT
 broker, and the scanner on trusted networks.
 
 ## Troubleshooting
+
+### Repository does not appear in the App store
+
+Refresh the browser after adding the repository. If the repository still does
+not appear, inspect the Home Assistant Supervisor log for repository or App
+configuration errors.
 
 ### Local App changes do not appear
 

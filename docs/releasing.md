@@ -7,8 +7,13 @@ version before starting.
 
 - Confirm the default branch is clean and current.
 - Confirm `pyproject.toml` and `sds200.__version__` both contain the intended release version.
+- Confirm `home-assistant/sds200/config.yaml` contains that same release version.
+- Confirm the Home Assistant App changelog contains that release version.
 - Confirm `sdsctl -V` and `sdsctl --version` report that same version.
-- Update `CHANGELOG.md`.
+- Update `CHANGELOG.md` and leave a fresh `Unreleased` section.
+- Audit every repository Markdown file for stale release, milestone, installation,
+  security, and deferred-feature wording.
+- Update reviewed wiki source under `wiki/` whenever a user-facing workflow changed.
 - Verify README examples against the current CLI.
 - Confirm no traces, scanner identifiers, private IP details, or credentials
   were committed accidentally.
@@ -19,6 +24,10 @@ version before starting.
 - Suggested repository topics:
   `uniden`, `sds100`, `sds150`, `sds200`, `radio-scanner`, `python`, `serial`, `udp`.
 
+Before release validation, run a semantic search for stale version and feature
+language in addition to the normal broken-link checker. Historical changelog and
+roadmap references may remain when they accurately describe older releases.
+
 ## 2. Run validation
 
 ```bash
@@ -28,6 +37,9 @@ ruff check .
 mypy src/sds200
 pytest
 python scripts/check_docs.py
+git diff --check
+
+python -m pytest -q tests/test_home_assistant_app_packaging.py
 
 rm -rf build dist
 python -m build
@@ -158,11 +170,25 @@ transports tested, audio soak duration, packet count, sample count, and RTP
 reliability counters in the release notes. Do not publish private channel,
 recorded audio, or network data.
 
-## 4. Publish through Trusted Publishing
+## 4. Publish reviewed wiki source
+
+If the release changes files under `wiki/`, merge the release-preparation pull
+request first, then publish those reviewed files to the separate GitHub Wiki
+repository using [Publishing the Wiki](../wiki/Publishing.md).
+
+Verify that the published Home page, sidebar, installation guide, and
+troubleshooting guide match the merged repository source before creating the
+release tag.
+
+## 5. Tag and publish through release workflows
 
 The `pypi` GitHub environment and PyPI Trusted Publisher must match
 `.github/workflows/release.yml`. No long-lived PyPI token is stored in the
 repository.
+
+For releases that contain the Home Assistant App,
+`.github/workflows/home-assistant-app-image.yml` must also be present on the
+tagged commit. The App version, package version, and `vVERSION` tag must match.
 
 ```bash
 git switch main
@@ -172,12 +198,43 @@ git tag -a vVERSION -m "sds200-python vVERSION"
 git push origin vVERSION
 ```
 
-The tag-triggered workflow verifies that the tag matches `pyproject.toml`,
-runs the release checks, builds the distributions, and publishes them through
-GitHub OIDC. Wait for both workflow jobs to pass before creating the GitHub
-release.
+The tag starts both release paths:
 
-## 5. Create the GitHub release
+- the Python release workflow verifies the tag, runs the release checks, builds
+  the distributions, and publishes them to PyPI through GitHub OIDC; and
+- the Home Assistant App image workflow verifies that the package and App
+  versions match the tag, publishes amd64 and aarch64 GHCR images, and creates
+  the generic multi-architecture image manifest.
+
+Wait for both workflows to pass before creating the GitHub release.
+
+## 6. Verify Home Assistant repository installation
+
+Before creating the GitHub release, validate the public Home Assistant
+distribution path on Home Assistant OS.
+
+1. Confirm the tagged amd64 and aarch64 images and generic multi-architecture
+   GHCR image were published.
+2. Confirm the image can be pulled without repository-development credentials.
+3. In Home Assistant, open **Settings > Apps > App store**, open the top-right
+   three-dot menu, choose **Repositories**, and add
+   `https://github.com/stevenboyd78/sds200-python`.
+4. Confirm the **sds200** App appears as repository-managed rather than Local and
+   shows the release version and documentation.
+5. Install the repository App, set `scanner_host`, and start it.
+6. Validate Ingress loading, live scanner state, at least one semantic scanner
+   control, browser audio, recording, saved playback, App restart, and all ten
+   MQTT Discovery entities.
+7. Confirm recordings expected to persist across the repository App restart are
+   still available.
+8. Record the Home Assistant OS/Supervisor version and SDS200 firmware used for
+   the smoke test in the release evidence.
+
+Do not assume data from a previously staged Local App belongs to the
+repository-managed App. Preserve any recordings or configuration needed from
+the development installation before replacing it.
+
+## 7. Create the GitHub release
 
 - Create a release from tag `vVERSION`.
 - Title it `sds200-python vVERSION`.
@@ -190,7 +247,7 @@ release.
 - Attach the wheel and source distribution from `dist/` if desired.
 - Confirm GitHub marks the newest normal release as **Latest**.
 
-## 6. Verify the published package
+## 8. Verify the published package
 
 Install the exact release in a clean environment after the Trusted Publishing workflow succeeds:
 

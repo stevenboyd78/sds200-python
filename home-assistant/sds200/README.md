@@ -3,6 +3,11 @@
 The sds200 Home Assistant App runs the existing single-owner SDS200 daemon and
 web dashboard under Home Assistant Supervisor.
 
+For a published release, add
+`https://github.com/stevenboyd78/sds200-python` as a third-party repository from
+**Settings > Apps > App store > Repositories**, then install **sds200** from that
+repository. Local `/addons` staging is intended only for development.
+
 It provides:
 
 - the full scanner dashboard through authenticated Home Assistant Ingress;

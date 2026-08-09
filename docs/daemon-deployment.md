@@ -12,7 +12,7 @@ supervised by systemd or another process manager.
 
 ## Compatibility and migration
 
-The v0.19.0 release preserves these existing names and files:
+The v0.20.0 release preserves these existing names and files:
 
 - the Python distribution remains `sds200`;
 - the import package remains `sds200`;
@@ -387,7 +387,7 @@ sudo -u sdsctl /opt/sdsctl/bin/sdsctl tui \
 
 Closing a daemon-backed CLI or TUI client does not stop daemon ownership.
 
-## Upgrade from v0.18.x
+## Upgrade to v0.20.0
 
 1. Record the installed version and service state.
 2. Stop the service.
@@ -405,7 +405,7 @@ Example:
 ```bash
 sudo systemctl stop sdsctl.service
 
-sudo /opt/sdsctl/bin/python -m pip install --upgrade "sds200==0.19.0"
+sudo /opt/sdsctl/bin/python -m pip install --upgrade "sds200==0.20.0"
 
 /opt/sdsctl/bin/sdsctl --version
 /opt/sdsctl/bin/python -c \

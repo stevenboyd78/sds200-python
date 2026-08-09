@@ -28,6 +28,9 @@ The project is not affiliated with or endorsed by Uniden.
 - [Web dashboard guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/web-dashboard.md)
   — loopback browser monitoring, live events, audio playback, recording, and
   finalized-WAV playback/download.
+- [Home Assistant App guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/home-assistant-app.md)
+  — repository installation, Ingress, scanner controls, audio, persistent
+  recordings, MQTT Discovery, and security boundaries.
 - [Daemon deployment and upgrade guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/daemon-deployment.md)
   — systemd, destination manifests, local clients, migration, and upgrades.
 
@@ -102,6 +105,20 @@ recordings.
 See the canonical
 [web dashboard guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/web-dashboard.md)
 for security boundaries and exact behavior.
+
+### Install the Home Assistant App
+
+On Home Assistant OS, add
+`https://github.com/stevenboyd78/sds200-python` under
+**Settings > Apps > App store > Repositories**, then install **sds200**.
+
+The published App uses Home Assistant Ingress for its dashboard, obtains the
+configured MQTT service from Supervisor, persists recordings under `/data`, and
+publishes UDP `50000` for SDS200 RTP audio.
+
+See the canonical
+[Home Assistant App guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/home-assistant-app.md)
+for configuration and security details.
 
 ## Project documentation
 
