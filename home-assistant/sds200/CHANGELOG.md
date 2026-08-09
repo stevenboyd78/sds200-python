@@ -2,6 +2,7 @@
 
 ## 0.20.0
 
+- Project-consistent Home Assistant App icon and logo presentation assets.
 - Initial Home Assistant App packaging for the existing SDS200 daemon and web
   dashboard.
 - Supervisor MQTT service adaptation with ten read-only MQTT Discovery entities.

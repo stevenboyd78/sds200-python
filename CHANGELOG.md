@@ -10,6 +10,7 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Added
 
+- Project-consistent icon and logo assets for Home Assistant App presentation.
 - Milestone 20.11 Home Assistant App packaging around the existing single-owner
   daemon and web dashboard, with Supervisor-managed startup, required MQTT service
   discovery, strict `/data/options.json` configuration, private runtime sockets,
