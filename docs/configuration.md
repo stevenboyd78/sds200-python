@@ -148,8 +148,12 @@ Its `[broker]` table configures host, port, client ID, username, password
 environment-variable reference, topic prefix, QoS, semantic-state retention,
 keepalive, and reconnect policy. Milestone 20.9 adds `commands_enabled`, which
 defaults to `false` and explicitly opts the same worker into the daemon's
-semantic scanner-control request/response contract. An absent file means MQTT is
-disabled and does not require the optional Paho dependency.
+semantic scanner-control request/response contract. Milestone 20.10 adds an
+optional strict `[home_assistant]` table with `enabled`, `discovery_prefix`,
+`birth_topic`, and `birth_payload`. Discovery is disabled by default and uses the
+existing semantic state and availability topics rather than creating another
+scanner owner or state path. An absent file means MQTT is disabled and does not
+require the optional Paho dependency.
 
 The daemon accepts `--mqtt-config PATH` as an explicit manifest override and
 loads and validates that document before constructing scanner hardware. Resolved

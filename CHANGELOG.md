@@ -8,6 +8,16 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Added
 
+- Milestone 20.10 optional Home Assistant MQTT device Discovery over the existing
+  generic daemon MQTT state contract. Discovery is disabled by default, derives a
+  stable device identity from the configured MQTT topic prefix, publishes ten
+  read-only daemon/scanner/radio/audio/recording entities after authoritative
+  snapshots, and republishes after broker reconnect, event-stream
+  resynchronization, or an exact configured Home Assistant birth message. The
+  birth subscription uses QoS 0 without changing semantic-command manual
+  acknowledgement or request-ID deduplication, and configurations reject a birth
+  topic that collides with the command topic. No Home Assistant control topic,
+  second scanner owner, PSI stream, or RTSP/RTP session is introduced.
 - Milestone 20.9 opt-in daemon MQTT scanner controls through the existing
   semantic daemon API boundary. `commands_enabled` defaults to false; enabled
   workers subscribe only after the authoritative initial snapshot, accept only

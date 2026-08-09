@@ -78,7 +78,8 @@ information in this image represents a real system.*
   sequence-gap resynchronization
 - Optional daemon-owned MQTT publication with retained availability, canonical
   semantic state topics, non-retained ordered semantic events, bounded reconnect
-  backoff, and packet-rate PSI suppression without opening another scanner session
+  backoff, packet-rate PSI suppression, and read-only Home Assistant MQTT device
+  Discovery without opening another scanner session
 - Explicit `sdsctl daemon-client` workflows for negotiated status and snapshot
   reads, safe typed scanner controls, validated gap-detecting event watches, and
   daemon-owned PCMU playback or WAV recording
@@ -141,10 +142,11 @@ Install optional daemon MQTT support:
 python -m pip install "sds200[mqtt]"
 ```
 
-The MQTT extra installs Paho MQTT 2.x. Milestone 20.9 can also accept
-explicitly enabled semantic scanner controls over MQTT. Commands are disabled by
-default and reuse the daemon's existing control API rather than raw scanner keys.
-Home Assistant MQTT Discovery remains a later slice.
+The MQTT extra installs Paho MQTT 2.x. Semantic scanner controls remain
+explicitly opt-in and reuse the daemon's existing control API rather than raw
+scanner keys. Milestone 20.10 can also publish read-only Home Assistant MQTT
+device Discovery and republish it on the configured Home Assistant birth signal;
+Discovery is disabled by default.
 
 Install optional local audio playback support:
 
@@ -422,10 +424,14 @@ semantic state derived from the existing authoritative event stream. Packet-rate
 accepts only the daemon API's semantic scanner-control operations, and publishes
 non-retained correlated responses to `<prefix>/responses`. Retained commands are
 rejected, and recent request IDs are deduplicated within the daemon process.
-Broker failures remain isolated in the MQTT worker and use configured reconnect
-backoff rather than interrupting scanner ownership. See the
-[daemon MQTT guide](docs/daemon-mqtt.md) for the version 1 manifest, exact topic
-and command contracts, retention behavior, secrets, and security boundary.
+When `[home_assistant].enabled = true`, the worker publishes read-only Home
+Assistant MQTT device Discovery from authoritative snapshots and republishes it
+for an exact configured Home Assistant birth message. Discovery reuses the
+existing availability and semantic state topics and adds no Home Assistant
+command topic. Broker failures remain isolated in the MQTT worker and use
+configured reconnect backoff rather than interrupting scanner ownership. See the
+[daemon MQTT guide](docs/daemon-mqtt.md) for the version 1 manifest, exact topic,
+Discovery, entity, identity, command, retention, secrets, and security contracts.
 
 Decoded-PCM subscriptions and automatic daemon selection remain follow-on work.
 See the

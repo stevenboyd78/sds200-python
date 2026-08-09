@@ -59,21 +59,19 @@ def _require_environment_variable(value: object) -> str | None:
     return variable
 
 
+def _require_topic_name(value: object, *, label: str) -> str:
+    topic = _require_text(value, label=label)
+    if topic.startswith("/") or topic.endswith("/"):
+        raise ValueError(f"{label} must not start or end with '/'.")
+    if "//" in topic:
+        raise ValueError(f"{label} must not contain empty topic levels.")
+    if "#" in topic or "+" in topic:
+        raise ValueError(f"{label} must not contain subscription wildcards.")
+    return topic
+
+
 def _require_topic_prefix(value: object) -> str:
-    prefix = _require_text(value, label="MQTT topic prefix")
-    if prefix.startswith("/") or prefix.endswith("/"):
-        raise ValueError(
-            "MQTT topic prefix must not start or end with '/'."
-        )
-    if "//" in prefix:
-        raise ValueError(
-            "MQTT topic prefix must not contain empty topic levels."
-        )
-    if "#" in prefix or "+" in prefix:
-        raise ValueError(
-            "MQTT topic prefix must not contain subscription wildcards."
-        )
-    return prefix
+    return _require_topic_name(value, label="MQTT topic prefix")
 
 
 def _require_integer(
@@ -119,6 +117,54 @@ def _require_qos(value: object) -> DaemonMqttQos:
 
 
 @dataclass(frozen=True, slots=True)
+class DaemonMqttHomeAssistantConfiguration:
+    """Optional Home Assistant MQTT Discovery settings."""
+
+    enabled: bool = False
+    discovery_prefix: str = "homeassistant"
+    birth_topic: str = "homeassistant/status"
+    birth_payload: str = "online"
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.enabled, bool):
+            raise TypeError(
+                "Home Assistant discovery enabled setting must be a boolean."
+            )
+        object.__setattr__(
+            self,
+            "discovery_prefix",
+            _require_topic_name(
+                self.discovery_prefix,
+                label="Home Assistant discovery prefix",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "birth_topic",
+            _require_topic_name(
+                self.birth_topic,
+                label="Home Assistant birth topic",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "birth_payload",
+            _require_text(
+                self.birth_payload,
+                label="Home Assistant birth payload",
+            ),
+        )
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "enabled": self.enabled,
+            "discovery_prefix": self.discovery_prefix,
+            "birth_topic": self.birth_topic,
+            "birth_payload": self.birth_payload,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class DaemonMqttConfiguration:
     """Validated broker settings for one optional daemon-owned MQTT service."""
 
@@ -131,6 +177,9 @@ class DaemonMqttConfiguration:
     qos: DaemonMqttQos = 1
     retain: bool = True
     commands_enabled: bool = False
+    home_assistant: DaemonMqttHomeAssistantConfiguration = field(
+        default_factory=DaemonMqttHomeAssistantConfiguration
+    )
     keepalive_seconds: int = 60
     reconnect_policy: ReconnectPolicy = field(default_factory=ReconnectPolicy)
 
@@ -188,6 +237,24 @@ class DaemonMqttConfiguration:
             raise TypeError(
                 "MQTT commands_enabled setting must be a boolean."
             )
+        if not isinstance(
+            self.home_assistant,
+            DaemonMqttHomeAssistantConfiguration,
+        ):
+            raise TypeError(
+                "MQTT home_assistant setting must be a "
+                "DaemonMqttHomeAssistantConfiguration."
+            )
+        if (
+            self.commands_enabled
+            and self.home_assistant.enabled
+            and self.home_assistant.birth_topic
+            == f"{self.topic_prefix}/commands"
+        ):
+            raise ValueError(
+                "Home Assistant birth topic must not equal "
+                "the MQTT command topic."
+            )
         object.__setattr__(
             self,
             "keepalive_seconds",
@@ -241,6 +308,7 @@ class DaemonMqttConfiguration:
                     self.reconnect_policy.max_attempts
                 ),
             },
+            "home_assistant": self.home_assistant.as_dict(),
         }
 
 
@@ -285,7 +353,7 @@ def load_daemon_mqtt_configuration(
     unexpected_top_level = sorted(
         str(field)
         for field in document
-        if field not in {"version", "broker"}
+        if field not in {"version", "broker", "home_assistant"}
     )
     if unexpected_top_level:
         fields = ", ".join(
@@ -313,6 +381,34 @@ def load_daemon_mqtt_configuration(
         raise ConfigurationError(
             "Daemon MQTT configuration "
             f"{config_path} must contain a [broker] table."
+        )
+
+    raw_home_assistant = document.get("home_assistant", {})
+    if not isinstance(raw_home_assistant, Mapping):
+        raise ConfigurationError(
+            "Daemon MQTT configuration "
+            f"{config_path} home_assistant must be a table."
+        )
+
+    allowed_home_assistant_fields = {
+        "enabled",
+        "discovery_prefix",
+        "birth_topic",
+        "birth_payload",
+    }
+    unexpected_home_assistant_fields = sorted(
+        str(field)
+        for field in raw_home_assistant
+        if field not in allowed_home_assistant_fields
+    )
+    if unexpected_home_assistant_fields:
+        fields = ", ".join(
+            repr(field)
+            for field in unexpected_home_assistant_fields
+        )
+        raise ConfigurationError(
+            "Daemon MQTT Home Assistant configuration "
+            f"{config_path} has unsupported field(s): {fields}."
         )
 
     allowed_fields = {
@@ -347,6 +443,29 @@ def load_daemon_mqtt_configuration(
         )
 
     try:
+        home_assistant_enabled = raw_home_assistant.get("enabled", False)
+        if not isinstance(home_assistant_enabled, bool):
+            raise TypeError(
+                "Home Assistant discovery enabled setting must be a boolean."
+            )
+        home_assistant = DaemonMqttHomeAssistantConfiguration(
+            enabled=home_assistant_enabled,
+            discovery_prefix=_string_field(
+                raw_home_assistant,
+                "discovery_prefix",
+                default="homeassistant",
+            ),
+            birth_topic=_string_field(
+                raw_home_assistant,
+                "birth_topic",
+                default="homeassistant/status",
+            ),
+            birth_payload=_string_field(
+                raw_home_assistant,
+                "birth_payload",
+                default="online",
+            ),
+        )
         reconnect_policy = ReconnectPolicy(
             initial_delay=_number_field(
                 raw_broker,
@@ -403,6 +522,7 @@ def load_daemon_mqtt_configuration(
                 "commands_enabled",
                 default=False,
             ),
+            home_assistant=home_assistant,
             keepalive_seconds=_integer_field(
                 raw_broker,
                 "keepalive_seconds",

@@ -11,6 +11,7 @@ from sds200 import (
     DAEMON_MQTT_CONFIG_VERSION,
     ConfigurationError,
     DaemonMqttConfiguration,
+    DaemonMqttHomeAssistantConfiguration,
     ReconnectPolicy,
     default_daemon_mqtt_config_path,
     load_daemon_mqtt_configuration,
@@ -59,6 +60,9 @@ def test_mqtt_configuration_loads_minimal_document_with_defaults(
     assert configuration.qos == 1
     assert configuration.retain is True
     assert configuration.commands_enabled is False
+    assert configuration.home_assistant == (
+        DaemonMqttHomeAssistantConfiguration()
+    )
     assert configuration.keepalive_seconds == 60
     assert configuration.reconnect_policy == ReconnectPolicy()
 
@@ -67,6 +71,12 @@ def test_mqtt_configuration_loads_minimal_document_with_defaults(
     broker = serialized["broker"]
     assert isinstance(broker, dict)
     assert broker["host"] == "mqtt.example.test"
+    assert serialized["home_assistant"] == {
+        "enabled": False,
+        "discovery_prefix": "homeassistant",
+        "birth_topic": "homeassistant/status",
+        "birth_payload": "online",
+    }
     json.dumps(serialized)
 
 
@@ -91,7 +101,13 @@ def test_mqtt_configuration_loads_complete_document(
         'reconnect_initial_delay = 0.5\n'
         'reconnect_multiplier = 1.5\n'
         'reconnect_max_delay = 12.0\n'
-        'reconnect_max_attempts = 7\n',
+        'reconnect_max_attempts = 7\n'
+        '\n'
+        '[home_assistant]\n'
+        'enabled = true\n'
+        'discovery_prefix = "ha"\n'
+        'birth_topic = "ha/status"\n'
+        'birth_payload = "ready"\n',
         encoding="utf-8",
     )
 
@@ -107,6 +123,12 @@ def test_mqtt_configuration_loads_complete_document(
         qos=2,
         retain=False,
         commands_enabled=True,
+        home_assistant=DaemonMqttHomeAssistantConfiguration(
+            enabled=True,
+            discovery_prefix="ha",
+            birth_topic="ha/status",
+            birth_payload="ready",
+        ),
         keepalive_seconds=45,
         reconnect_policy=ReconnectPolicy(
             initial_delay=0.5,
@@ -171,6 +193,41 @@ def test_mqtt_configuration_is_immutable() -> None:
                 commands_enabled=1,  # type: ignore[arg-type]
             ),
             "commands_enabled setting must be a boolean",
+        ),
+        (
+            lambda: DaemonMqttHomeAssistantConfiguration(
+                enabled=1,  # type: ignore[arg-type]
+            ),
+            "discovery enabled setting must be a boolean",
+        ),
+        (
+            lambda: DaemonMqttHomeAssistantConfiguration(
+                discovery_prefix="homeassistant/+",
+            ),
+            "discovery prefix must not contain subscription wildcards",
+        ),
+        (
+            lambda: DaemonMqttHomeAssistantConfiguration(
+                birth_topic="/homeassistant/status",
+            ),
+            "birth topic must not start or end",
+        ),
+        (
+            lambda: DaemonMqttHomeAssistantConfiguration(
+                birth_payload="",
+            ),
+            "birth payload must not be empty",
+        ),
+        (
+            lambda: DaemonMqttConfiguration(
+                host="mqtt.example.test",
+                commands_enabled=True,
+                home_assistant=DaemonMqttHomeAssistantConfiguration(
+                    enabled=True,
+                    birth_topic="sdsctl/commands",
+                ),
+            ),
+            "birth topic must not equal the MQTT command topic",
         ),
         (
             lambda: DaemonMqttConfiguration(
@@ -259,6 +316,31 @@ def test_mqtt_configuration_rejects_unsafe_values(
             'host = "mqtt.example.test"\n'
             'commands_enabled = "yes"\n',
             "commands_enabled must be a boolean",
+        ),
+        (
+            "version = 1\n"
+            'home_assistant = "invalid"\n'
+            "[broker]\n"
+            'host = "mqtt.example.test"\n',
+            "home_assistant must be a table",
+        ),
+        (
+            "version = 1\n"
+            "[broker]\n"
+            'host = "mqtt.example.test"\n'
+            "\n"
+            "[home_assistant]\n"
+            "future = true\n",
+            "Home Assistant configuration .* unsupported field",
+        ),
+        (
+            "version = 1\n"
+            "[broker]\n"
+            'host = "mqtt.example.test"\n'
+            "\n"
+            "[home_assistant]\n"
+            'enabled = "yes"\n',
+            "Home Assistant discovery enabled setting must be a boolean",
         ),
         (
             "version = 1\n"

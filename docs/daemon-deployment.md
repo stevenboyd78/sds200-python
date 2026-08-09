@@ -182,6 +182,12 @@ keepalive_seconds = 60
 reconnect_initial_delay = 1.0
 reconnect_multiplier = 2.0
 reconnect_max_delay = 30.0
+
+[home_assistant]
+enabled = false
+discovery_prefix = "homeassistant"
+birth_topic = "homeassistant/status"
+birth_payload = "online"
 ```
 
 Omit `reconnect_max_attempts` to keep retrying indefinitely; set it when the
@@ -210,9 +216,20 @@ Milestone 20.9 can additionally subscribe to semantic scanner commands when
 `commands_enabled = true`. Leave that setting false unless broker publishers are
 trusted to operate the scanner. Commands reuse the same daemon control API as
 local clients, reject retained requests, publish non-retained correlated
-responses, and never expose raw scanner keys. Home Assistant MQTT Discovery is
-still deferred. See [Daemon MQTT publication](daemon-mqtt.md) for the exact
-topics, deduplication behavior, retention rules, and command security boundary.
+responses, and never expose raw scanner keys.
+
+Milestone 20.10 can publish read-only Home Assistant MQTT device discovery when
+`[home_assistant].enabled = true`. The worker publishes Discovery after an
+authoritative snapshot, republishes it after broker reconnect or event-stream
+resynchronization, and subscribes to the configured Home Assistant birth topic at
+QoS 0 so an exact configured birth payload republishes Discovery. The discovered
+entities reuse the daemon's existing retained availability and semantic state
+topics; no Home Assistant-specific scanner owner, PSI stream, or command path is
+created. Home Assistant App packaging, Ingress, the bundled Lovelace card, and
+Home Assistant-specific controls remain follow-on work. See
+[Daemon MQTT publication](daemon-mqtt.md) for the exact topics, entity set,
+identity semantics, deduplication behavior, retention rules, and security
+boundary.
 
 ## systemd service
 

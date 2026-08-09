@@ -45,9 +45,12 @@ existing authoritative event stream. It publishes semantic state without opening
 scanner hardware, skips packet-rate PSI events, and isolates broker retry/backoff
 from scanner, PSI, audio, recording, and local-service ownership. Milestone 20.9
 adds explicitly opt-in MQTT scanner controls through the same semantic daemon API
-dispatcher used by local clients, without adding another scanner owner.
-Decoded-PCM CLI subscriptions and automatic daemon discovery and selection remain
-follow-on work. The process does not fork or create a pidfile.
+dispatcher used by local clients, without adding another scanner owner. Milestone
+20.10 adds optional read-only Home Assistant MQTT device discovery over those
+existing semantic topics, including birth-triggered republication, without adding
+another scanner owner or control path. Decoded-PCM CLI subscriptions and automatic
+daemon discovery and selection remain follow-on work. The process does not fork
+or create a pidfile.
 
 ## Foreground process contract
 
@@ -139,9 +142,11 @@ Starting the event service first allows an already connected client to observe
 runtime startup transitions. Starting the PCMU service before the runtime allows
 clients to subscribe before the shared transport begins publishing accepted
 packets. MQTT starts only after the runtime is authoritative, so its first broker
-session can publish a running snapshot, but before destinations so it can observe
-their later health. Broker connectivity is handled inside the MQTT worker and
-does not make scanner ownership depend on broker availability. Starting the
+session can publish a running snapshot and, when enabled, Home Assistant device
+Discovery, but before destinations so it can observe their later health. Broker
+connectivity and Home Assistant birth-topic handling stay inside the MQTT worker
+and do not make scanner ownership depend on broker or Home Assistant
+availability. Starting the
 recording-file service after runtime and destination activation makes finalized
 inventory access available before recording API requests are admitted. Starting
 the API last ensures every admitted request observes an initialized runtime and

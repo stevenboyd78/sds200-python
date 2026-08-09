@@ -190,9 +190,15 @@ from .daemon_ipc import (
 from .daemon_mqtt import (
     DAEMON_MQTT_CONFIG_VERSION,
     DaemonMqttConfiguration,
+    DaemonMqttHomeAssistantConfiguration,
     DaemonMqttQos,
     default_daemon_mqtt_config_path,
     load_daemon_mqtt_configuration,
+)
+from .daemon_mqtt_home_assistant import (
+    DAEMON_MQTT_HOME_ASSISTANT_SUPPORT_URL,
+    DaemonMqttHomeAssistantDiscovery,
+    build_home_assistant_device_discovery,
 )
 from .daemon_mqtt_paho import (
     DAEMON_MQTT_INSTALL_ERROR,
@@ -685,7 +691,10 @@ __all__ = [
     "DaemonDestinationReplacementResult",
     "DaemonDestinationResources",
     "DaemonDestinationReplacementPreview",
+    "DAEMON_MQTT_HOME_ASSISTANT_SUPPORT_URL",
     "DaemonMqttConfiguration",
+    "DaemonMqttHomeAssistantConfiguration",
+    "DaemonMqttHomeAssistantDiscovery",
     "DaemonMqttQos",
     "DaemonMqttWorker",
     "DaemonMqttWorkerSnapshot",
@@ -918,6 +927,7 @@ __all__ = [
     "create_broadcastify_metadata_publisher",
     "create_broadcastify_sink",
     "default_daemon_destination_config_path",
+    "build_home_assistant_device_discovery",
     "default_daemon_mqtt_config_path",
     "default_remote_audio_profile_path",
     "decode_mulaw",

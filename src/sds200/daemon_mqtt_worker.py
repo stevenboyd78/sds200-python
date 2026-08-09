@@ -25,6 +25,10 @@ from .daemon_events import (
     DaemonEventSubscriptionClosed,
 )
 from .daemon_mqtt import DaemonMqttConfiguration
+from .daemon_mqtt_home_assistant import (
+    DaemonMqttHomeAssistantDiscovery,
+    build_home_assistant_device_discovery,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -554,16 +558,22 @@ class DaemonMqttWorker:
 
         expected_sequence: int | None = None
         commands_subscribed = False
+        home_assistant_subscribed = False
+        discovery: DaemonMqttHomeAssistantDiscovery | None = None
         while True:
             with self._condition:
                 if self._stopping:
                     return
 
             connection.check()
-            if commands_subscribed:
+            if commands_subscribed or home_assistant_subscribed:
                 message = connection.receive(timeout=0.0)
                 if message is not None:
-                    self._handle_command(connection, message)
+                    self._handle_inbound_message(
+                        connection,
+                        message,
+                        discovery=discovery,
+                    )
 
             try:
                 event = subscription.get(
@@ -580,6 +590,21 @@ class DaemonMqttWorker:
             if event.kind == DaemonEventKind.SNAPSHOT:
                 expected_sequence = event.sequence + 1
                 self._publish_event(connection, event)
+                discovery = build_home_assistant_device_discovery(
+                    self.config,
+                    event.payload,
+                )
+                if discovery is not None:
+                    if not home_assistant_subscribed:
+                        connection.subscribe(
+                            self.config.home_assistant.birth_topic,
+                            qos=0,
+                        )
+                        home_assistant_subscribed = True
+                    self._publish_home_assistant_discovery(
+                        connection,
+                        discovery,
+                    )
                 if self.config.commands_enabled and not commands_subscribed:
                     connection.subscribe(
                         self._command_topic,
@@ -609,6 +634,58 @@ class DaemonMqttWorker:
 
             expected_sequence = event.sequence + 1
             self._publish_event(connection, event)
+
+    def _handle_inbound_message(
+        self,
+        connection: DaemonMqttBrokerConnection,
+        message: DaemonMqttBrokerMessage,
+        *,
+        discovery: DaemonMqttHomeAssistantDiscovery | None,
+    ) -> None:
+        home_assistant = self.config.home_assistant
+        if (
+            home_assistant.enabled
+            and message.topic == home_assistant.birth_topic
+        ):
+            if (
+                message.payload
+                == home_assistant.birth_payload.encode("utf-8")
+            ):
+                if discovery is None:
+                    raise RuntimeError(
+                        "Home Assistant birth arrived before discovery was available."
+                    )
+                self._publish_home_assistant_discovery(
+                    connection,
+                    discovery,
+                )
+            return
+
+        if self.config.commands_enabled and message.topic == self._command_topic:
+            self._handle_command(connection, message)
+            return
+
+        raise RuntimeError(
+            "MQTT broker delivered a message outside configured inbound topics."
+        )
+
+    def _publish_home_assistant_discovery(
+        self,
+        connection: DaemonMqttBrokerConnection,
+        discovery: DaemonMqttHomeAssistantDiscovery,
+    ) -> None:
+        connection.publish(
+            discovery.topic,
+            discovery.payload,
+            qos=self.config.qos,
+            retain=discovery.retain,
+        )
+        observed_at = _require_aware_datetime(self._now())
+        with self._condition:
+            self._publications += 1
+            if discovery.retain:
+                self._retained_publications += 1
+            self._last_published_at = observed_at
 
     @property
     def _command_topic(self) -> str:
