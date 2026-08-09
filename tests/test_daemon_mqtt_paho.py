@@ -9,6 +9,7 @@ from sds200.daemon_mqtt_paho import (
     PahoMqttBrokerConnection,
     PahoMqttBrokerFactory,
 )
+from sds200.daemon_mqtt_worker import DaemonMqttBrokerMessage
 
 
 @dataclass
@@ -29,6 +30,21 @@ class FakeCallbackApiVersion:
     VERSION2 = object()
 
 
+@dataclass(frozen=True)
+class FakeReasonCode:
+    is_failure: bool = False
+
+
+@dataclass(frozen=True)
+class FakeInboundMessage:
+    topic: str
+    payload: bytes
+    qos: int
+    retain: bool
+    dup: bool
+    mid: int
+
+
 class FakeClient:
     def __init__(
         self,
@@ -37,23 +53,35 @@ class FakeClient:
         connect_result: int = 0,
         publish_result: int = 0,
         published: bool = True,
+        subscribe_result: int = 0,
+        subscribe_failure: bool = False,
+        emit_suback: bool = True,
     ) -> None:
         self.connect_reason = connect_reason
         self.connect_result = connect_result
         self.publish_result = publish_result
         self.published = published
+        self.subscribe_result = subscribe_result
+        self.subscribe_failure = subscribe_failure
+        self.emit_suback = emit_suback
         self.on_connect = None
         self.on_connect_fail = None
         self.on_disconnect = None
+        self.on_message = None
+        self.on_subscribe = None
         self.connect_timeout = 0.0
         self.username_calls: list[tuple[str, str | None]] = []
         self.will_calls: list[tuple[str, bytes | None, int, bool]] = []
         self.connect_calls: list[tuple[str, int, int]] = []
         self.publish_calls: list[tuple[str, bytes, int, bool]] = []
+        self.subscribe_calls: list[tuple[str, int]] = []
+        self.manual_ack_calls: list[bool] = []
+        self.ack_calls: list[tuple[int, int]] = []
         self.disconnect_calls = 0
         self.loop_start_calls = 0
         self.loop_stop_calls = 0
         self.wait_calls: list[float | None] = []
+        self._next_message_id = 1
 
     def username_pw_set(
         self,
@@ -106,6 +134,31 @@ class FakeClient:
             wait_calls=self.wait_calls,
         )
 
+    def subscribe(
+        self,
+        topic: str,
+        qos: int = 0,
+    ) -> tuple[int, int]:
+        self.subscribe_calls.append((topic, qos))
+        message_id = self._next_message_id
+        self._next_message_id += 1
+        if self.emit_suback and self.on_subscribe is not None:
+            self.on_subscribe(
+                self,
+                None,
+                message_id,
+                [FakeReasonCode(self.subscribe_failure)],
+                None,
+            )
+        return self.subscribe_result, message_id
+
+    def manual_ack_set(self, on: bool) -> None:
+        self.manual_ack_calls.append(on)
+
+    def ack(self, mid: int, qos: int) -> int:
+        self.ack_calls.append((mid, qos))
+        return 0
+
     def disconnect(self) -> int:
         self.disconnect_calls += 1
         return 0
@@ -122,6 +175,30 @@ class FakeClient:
             object(),
             reason,
             None,
+        )
+
+    def emit_message(
+        self,
+        *,
+        topic: str = "sdsctl/commands",
+        payload: bytes = b"{}",
+        qos: int = 1,
+        retain: bool = False,
+        duplicate: bool = False,
+        message_id: int = 42,
+    ) -> None:
+        assert self.on_message is not None
+        self.on_message(
+            self,
+            None,
+            FakeInboundMessage(
+                topic=topic,
+                payload=payload,
+                qos=qos,
+                retain=retain,
+                dup=duplicate,
+                mid=message_id,
+            ),
         )
 
 
@@ -291,6 +368,97 @@ def test_connection_rejects_invalid_timeouts() -> None:
             mqtt=module,  # type: ignore[arg-type]
             publish_timeout=float("nan"),
         )
+
+
+def test_commands_enabled_uses_manual_ack_and_inbound_queue() -> None:
+    client = FakeClient()
+    connection = make_connection(
+        client,
+        config=DaemonMqttConfiguration(
+            host="mqtt.example.test",
+            commands_enabled=True,
+        ),
+    )
+
+    assert client.manual_ack_calls == [True]
+
+    connection.connect()
+    connection.subscribe("sdsctl/commands", qos=1)
+    assert client.subscribe_calls == [("sdsctl/commands", 1)]
+
+    client.emit_message(
+        payload=b'{"request_id":"mqtt-1"}',
+        duplicate=True,
+        message_id=17,
+    )
+    message = connection.receive(timeout=0.1)
+
+    assert message == DaemonMqttBrokerMessage(
+        topic="sdsctl/commands",
+        payload=b'{"request_id":"mqtt-1"}',
+        qos=1,
+        retain=False,
+        duplicate=True,
+        message_id=17,
+    )
+
+    assert message is not None
+    connection.acknowledge(message)
+    assert client.ack_calls == [(17, 1)]
+    connection.close()
+
+
+def test_commands_disabled_rejects_subscription_without_manual_ack() -> None:
+    client = FakeClient()
+    connection = make_connection(client)
+    connection.connect()
+
+    assert client.manual_ack_calls == []
+    with pytest.raises(DaemonMqttError, match="subscriptions are disabled"):
+        connection.subscribe("sdsctl/commands", qos=1)
+
+    assert client.subscribe_calls == []
+    connection.close()
+
+
+def test_subscription_rejection_is_reported() -> None:
+    client = FakeClient(subscribe_failure=True)
+    connection = make_connection(
+        client,
+        config=DaemonMqttConfiguration(
+            host="mqtt.example.test",
+            commands_enabled=True,
+        ),
+    )
+    connection.connect()
+
+    with pytest.raises(DaemonMqttError, match="rejected subscription"):
+        connection.subscribe("sdsctl/commands", qos=1)
+
+    connection.close()
+
+
+def test_inbound_queue_overflow_marks_connection_failed() -> None:
+    client = FakeClient()
+    module = FakePahoModule(client)
+    connection = PahoMqttBrokerConnection(
+        DaemonMqttConfiguration(
+            host="mqtt.example.test",
+            commands_enabled=True,
+        ),
+        None,
+        mqtt=module,  # type: ignore[arg-type]
+        inbound_queue_capacity=1,
+    )
+    connection.connect()
+
+    client.emit_message(message_id=1)
+    client.emit_message(message_id=2)
+
+    with pytest.raises(DaemonMqttError, match="queue capacity"):
+        connection.check()
+
+    connection.close()
 
 
 def test_connection_publishes_and_waits_for_completion() -> None:

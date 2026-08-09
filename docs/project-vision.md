@@ -200,14 +200,17 @@ design before any supported remote access.
 Home Assistant must preserve the same single-owner daemon boundary rather than
 opening another scanner control or RTSP/RTP session. Milestone 20.8 establishes a
 generic daemon-owned MQTT publication substrate over the existing authoritative
-event stream. It is intentionally not coupled to Home Assistant Discovery yet.
+event stream. Milestone 20.9 adds optional semantic MQTT scanner commands through
+the existing daemon control boundary. The generic MQTT contract remains
+intentionally independent of Home Assistant Discovery.
 
 The intended sequence is:
 
 - retain generic semantic daemon/scanner/radio/audio/recording/destination state
   and availability on MQTT without publishing every 500 ms PSI packet;
-- route future MQTT commands through the daemon's existing semantic scanner
-  control operations rather than raw scanner keys;
+- route MQTT commands through the daemon's existing semantic scanner control
+  operations rather than raw scanner keys, implemented as the opt-in Milestone
+  20.9 command/response contract;
 - add Home Assistant MQTT Discovery entities after the generic state and command
   contracts stabilize;
 - package one Home Assistant App that hosts the daemon and web dashboard and uses

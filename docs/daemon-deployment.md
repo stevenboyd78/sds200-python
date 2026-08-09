@@ -177,6 +177,7 @@ password_environment_variable = "SDSCTL_MQTT_PASSWORD"
 topic_prefix = "sdsctl/scanner"
 qos = 1
 retain = true
+commands_enabled = false
 keepalive_seconds = 60
 reconnect_initial_delay = 1.0
 reconnect_multiplier = 2.0
@@ -205,10 +206,13 @@ not configure TLS. Username/password authentication does not encrypt the
 credential or payload. Keep the broker on a trusted local network, localhost, or
 a trusted VPN; do not route this foundation across an untrusted network.
 
-Milestone 20.8 is publication-only. It does not subscribe to command topics,
-expose raw scanner keys, or publish Home Assistant MQTT Discovery yet. See
-[Daemon MQTT publication](daemon-mqtt.md) for the exact topics and retention
-contract.
+Milestone 20.9 can additionally subscribe to semantic scanner commands when
+`commands_enabled = true`. Leave that setting false unless broker publishers are
+trusted to operate the scanner. Commands reuse the same daemon control API as
+local clients, reject retained requests, publish non-retained correlated
+responses, and never expose raw scanner keys. Home Assistant MQTT Discovery is
+still deferred. See [Daemon MQTT publication](daemon-mqtt.md) for the exact
+topics, deduplication behavior, retention rules, and command security boundary.
 
 ## systemd service
 

@@ -2622,13 +2622,14 @@ def _run_daemon(
         shutdown_timeout=args.recording_file_shutdown_timeout,
     )
 
+    daemon_api = DaemonReadOnlyApi(
+        runtime,
+        recording_manager=recording_manager,
+    )
     listener = DaemonSocketListener(socket_location)
     api_server = DaemonApiServer(
         listener,
-        DaemonReadOnlyApi(
-            runtime,
-            recording_manager=recording_manager,
-        ),
+        daemon_api,
         max_clients=args.api_max_clients,
         max_request_bytes=args.api_max_request_bytes,
         max_response_bytes=args.api_max_response_bytes,
@@ -2662,6 +2663,7 @@ def _run_daemon(
                 mqtt_configuration,
                 event_stream,
                 mqtt_broker_factory,
+                control_api=daemon_api,
                 environ=environ,
             )
 

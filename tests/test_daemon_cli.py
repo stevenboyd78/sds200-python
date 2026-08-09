@@ -615,7 +615,8 @@ def test_daemon_cli_wires_explicit_mqtt_manifest_into_process(
         "version = 1\n"
         "[broker]\n"
         'host = "mqtt.example.test"\n'
-        'topic_prefix = "radio/sds200"\n',
+        'topic_prefix = "radio/sds200"\n'
+        'commands_enabled = true\n',
         encoding="utf-8",
     )
     paths = resolve_configuration_paths(
@@ -638,11 +639,13 @@ def test_daemon_cli_wires_explicit_mqtt_manifest_into_process(
             event_stream: object,
             broker_factory: object,
             *,
+            control_api: object = None,
             environ: object = None,
         ) -> None:
             self.config = config
             self.event_stream = event_stream
             self.broker_factory = broker_factory
+            self.control_api = control_api
             self.environ = environ
             workers.append(self)
 
@@ -669,10 +672,10 @@ def test_daemon_cli_wires_explicit_mqtt_manifest_into_process(
                 destination_reloader,
                 recording_manager,
                 recording_file_server,
-                api_server,
                 pcmu_server,
             )
             self.mqtt_service = mqtt_service
+            self.api_server = api_server
             self.event_server = event_server
             processes.append(self)
 
@@ -720,8 +723,10 @@ def test_daemon_cli_wires_explicit_mqtt_manifest_into_process(
     process = processes[0]
     assert worker.config.host == "mqtt.example.test"  # type: ignore[attr-defined]
     assert worker.config.topic_prefix == "radio/sds200"  # type: ignore[attr-defined]
+    assert worker.config.commands_enabled is True  # type: ignore[attr-defined]
     assert worker.broker_factory is factories[0]  # type: ignore[attr-defined]
     assert worker.event_stream is process.event_server.stream  # type: ignore[attr-defined]
+    assert worker.control_api is process.api_server.api  # type: ignore[attr-defined]
     assert worker.environ == {}  # type: ignore[attr-defined]
     assert process.mqtt_service is worker  # type: ignore[attr-defined]
 
