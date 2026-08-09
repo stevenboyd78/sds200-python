@@ -391,6 +391,104 @@ def test_worker_replays_cached_response_for_duplicate_request() -> None:
     worker.stop()
 
 
+def test_worker_replays_cached_response_after_response_publish_failure() -> None:
+    class FailFirstResponseConnection(FakeBrokerConnection):
+        def __init__(self) -> None:
+            super().__init__()
+            self.failed_response_publication = False
+
+        def publish(
+            self,
+            topic: str,
+            payload: bytes,
+            *,
+            qos: int,
+            retain: bool,
+        ) -> None:
+            if (
+                topic == "sdsctl/responses"
+                and not self.failed_response_publication
+            ):
+                self.failed_response_publication = True
+                raise OSError("broker response publish failure")
+            super().publish(
+                topic,
+                payload,
+                qos=qos,
+                retain=retain,
+            )
+
+    stream = FakeEventStream()
+    first = FailFirstResponseConnection()
+    second = FakeBrokerConnection()
+    control_api = FakeControlApi()
+    connections: list[FakeBrokerConnection] = [first, second]
+
+    def factory(
+        config: DaemonMqttConfiguration,
+        password: str | None,
+    ) -> FakeBrokerConnection:
+        del config, password
+        return connections.pop(0)
+
+    worker = make_worker(
+        stream,
+        factory,
+        config=DaemonMqttConfiguration(
+            host="mqtt.example.test",
+            commands_enabled=True,
+            reconnect_policy=ReconnectPolicy(
+                initial_delay=0.01,
+                multiplier=1.0,
+                max_delay=0.01,
+                max_attempts=2,
+            ),
+        ),
+        control_api=control_api,
+    )
+
+    worker.start()
+    wait_until(lambda: first.subscriptions == [("sdsctl/commands", 1)])
+
+    first_message = command_message(
+        "mqtt-publish-retry",
+        message_id=50,
+    )
+    first.deliver(first_message)
+
+    wait_until(lambda: first.failed_response_publication)
+    wait_until(lambda: worker.snapshot().failures == 1)
+    wait_until(lambda: second.subscriptions == [("sdsctl/commands", 1)])
+
+    duplicate = command_message(
+        "mqtt-publish-retry",
+        duplicate=True,
+        message_id=51,
+    )
+    second.deliver(duplicate)
+    wait_until(lambda: second.acknowledged == [duplicate])
+
+    responses = [
+        item
+        for item in second.publications
+        if item.topic == "sdsctl/responses"
+    ]
+    assert len(responses) == 1
+    assert decode_json(responses[0]) == {
+        "ok": True,
+        "protocol": DAEMON_API_PROTOCOL,
+        "request_id": "mqtt-publish-retry",
+        "result": {"operation": "scanner.next"},
+        "version": DAEMON_API_VERSION,
+    }
+    assert len(control_api.calls) == 1
+    assert first.acknowledged == []
+    assert first.closed
+
+    worker.stop()
+    assert second.closed
+
+
 def test_worker_rejects_request_id_reuse_with_different_command() -> None:
     stream = FakeEventStream()
     connection = FakeBrokerConnection()
