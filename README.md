@@ -87,6 +87,10 @@ information in this image represents a real system.*
   status, snapshot, typed scanner-control, and OpenAPI endpoints, self-hosted
   Swagger UI and ReDoc, and redacted daemon failures without third-party browser
   asset requests
+- Home Assistant App packaging that supervises the existing daemon and dashboard,
+  uses Supervisor MQTT service discovery and authenticated Ingress, persists
+  recordings under `/data`, and publishes a fixed UDP RTP port without enabling
+  host networking or creating another scanner owner
 - Versioned bounded local daemon PCMU stream over a third private Unix socket with
   accepted RTP payloads, continuity metadata, and independent client-loss counters
 - Optional live playback through the local default or selected audio output device
@@ -509,10 +513,39 @@ Install it with `python -m pip install "sds200[web]"`. The service listens on
 `127.0.0.1:8000` by default and accepts only `localhost` or explicit loopback IP
 addresses. Wildcard, LAN, public, and non-local hostname bindings are rejected.
 
-Authentication, TLS, browser logs, additional shared branding assets, and Home
-Assistant integration remain deferred. Remote exposure is intentionally
-unsupported until authentication and transport-security planning is complete.
+Authentication, TLS, browser logs, and additional shared branding assets
+remain deferred for standalone remote web exposure. The standalone `sdsctl web`
+listener remains intentionally loopback-only. Home Assistant uses a separate
+explicit Ingress mode instead of weakening that default.
 See the [web dashboard guide](docs/web-dashboard.md).
+
+### Home Assistant App
+
+Milestone 20.11 packages the existing foreground daemon and web dashboard as one
+Home Assistant App while preserving the daemon as the only scanner, PSI, and
+RTSP/RTP owner. Supervisor supplies the configured MQTT service, the dashboard is
+presented through authenticated Ingress, and recordings are stored persistently
+under `/data/recordings`.
+
+The App requires an SDS200 LAN host and exposes only UDP port `50000` for the
+scanner's inbound RTP audio. The daemon binds that fixed RTP port and Supervisor
+maps host UDP `50000` to the container. Host networking is intentionally not
+enabled. The daemon API, event, PCMU, and recording-file interfaces remain
+private Unix-domain sockets inside the App.
+
+The App configuration accepts the required `scanner_host` and optional
+`mqtt_topic_prefix`, which defaults to `sdsctl`. Home Assistant MQTT Discovery is
+enabled by the App adapter and publishes the same ten read-only entities defined
+by the generic daemon MQTT contract.
+
+Browser audio continues to prefer AudioWorklet. When Home Assistant is opened
+from a browser context where AudioWorklet is unavailable, the dashboard falls
+back to a compatible Web Audio processor while preserving the same daemon-owned
+PCMU stream.
+
+See the [Home Assistant App guide](docs/home-assistant-app.md) for architecture,
+installation, configuration, networking, Ingress, local HAOS development,
+persistent recordings, MQTT entities, security boundaries, and troubleshooting.
 
 ### SDS200 network audio playback and recording
 
@@ -857,6 +890,7 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting and
 - [Daemon deployment and upgrades](docs/daemon-deployment.md)
 - [Foreground daemon and ownership runtime](docs/daemon-runtime.md)
 - [Daemon MQTT publication](docs/daemon-mqtt.md)
+- [Home Assistant App](docs/home-assistant-app.md)
 - [Local daemon API](docs/daemon-api.md)
 - [Web dashboard](docs/web-dashboard.md)
 - [Local daemon event stream](docs/daemon-events.md)

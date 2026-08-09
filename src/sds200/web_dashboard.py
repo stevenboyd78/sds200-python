@@ -11,7 +11,9 @@ from importlib.resources import files
 from typing import Annotated, Literal, Protocol, TypeAlias
 
 from fastapi import Body, FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, Response, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
+from starlette.datastructures import MutableHeaders
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from . import __version__
 from .daemon_api import DaemonApiOperation
@@ -30,6 +32,10 @@ from .tui_controls import channel_navigation
 WEB_DASHBOARD_API_PROTOCOL = "sdsctl.web"
 WEB_DASHBOARD_API_VERSION = 1
 WEB_DASHBOARD_UNAVAILABLE_DETAIL = "The scanner daemon is unavailable."
+WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_CLIENT = "172.30.32.2"
+WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_FORBIDDEN_DETAIL = (
+    "Home Assistant Ingress access is required."
+)
 
 _WEB_ASSET_PACKAGE = "sds200.web_assets"
 _WEB_RESPONSE_HEADERS = {
@@ -237,6 +243,62 @@ _DaemonQuery: TypeAlias = Callable[
 ]
 
 
+class _HomeAssistantIngressMiddleware:
+    "Restrict and frame-enable the explicit Home Assistant Ingress mode."
+
+    def __init__(self, app: ASGIApp) -> None:
+        self._app = app
+
+    async def __call__(
+        self,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+    ) -> None:
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+
+        client = scope.get("client")
+        if (
+            client is None
+            or client[0] != WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_CLIENT
+        ):
+            response = JSONResponse(
+                {
+                    "detail": (
+                        WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_FORBIDDEN_DETAIL
+                    )
+                },
+                status_code=403,
+                headers={
+                    "Cache-Control": "no-store",
+                    "X-Content-Type-Options": "nosniff",
+                },
+            )
+            await response(scope, receive, send)
+            return
+
+        async def ingress_send(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(raw=message["headers"])
+                if "x-frame-options" in headers:
+                    del headers["x-frame-options"]
+                content_security_policy = headers.get(
+                    "content-security-policy"
+                )
+                if content_security_policy is not None:
+                    headers["content-security-policy"] = (
+                        content_security_policy.replace(
+                            "frame-ancestors 'none'",
+                            "frame-ancestors 'self'",
+                        )
+                    )
+            await send(message)
+
+        await self._app(scope, receive, ingress_send)
+
+
 def create_web_dashboard_app(
     api_client_factory: DaemonApiClientFactory,
     event_client_factory: DaemonEventClientFactory | None = None,
@@ -244,6 +306,8 @@ def create_web_dashboard_app(
     recording_file_client_factory: (
         DaemonRecordingFileClientFactory | None
     ) = None,
+    *,
+    home_assistant_ingress: bool = False,
 ) -> FastAPI:
     """Create the daemon-backed web application without scanner ownership."""
 
@@ -260,6 +324,10 @@ def create_web_dashboard_app(
         raise TypeError(
             "Daemon recording-file client factory must be callable or None."
         )
+    if type(home_assistant_ingress) is not bool:
+        raise TypeError(
+            "Home Assistant Ingress setting must be boolean."
+        )
 
     app = FastAPI(
         title="sdsctl web dashboard",
@@ -268,6 +336,8 @@ def create_web_dashboard_app(
         redoc_url=None,
         openapi_url="/api/v1/openapi.json",
     )
+    if home_assistant_ingress:
+        app.add_middleware(_HomeAssistantIngressMiddleware)
 
     @app.get(
         "/",

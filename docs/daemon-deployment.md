@@ -225,11 +225,13 @@ resynchronization, and subscribes to the configured Home Assistant birth topic a
 QoS 0 so an exact configured birth payload republishes Discovery. The discovered
 entities reuse the daemon's existing retained availability and semantic state
 topics; no Home Assistant-specific scanner owner, PSI stream, or command path is
-created. Home Assistant App packaging, Ingress, the bundled Lovelace card, and
+created. Milestone 20.11 packages that same daemon and the existing web dashboard
+as a Home Assistant App with Supervisor MQTT service adaptation and Ingress while
+preserving the single-owner boundary. The bundled Lovelace card and richer
 Home Assistant-specific controls remain follow-on work. See
 [Daemon MQTT publication](daemon-mqtt.md) for the exact topics, entity set,
 identity semantics, deduplication behavior, retention rules, and security
-boundary.
+boundary, and [Home Assistant App](home-assistant-app.md) for the App runtime.
 
 ## systemd service
 

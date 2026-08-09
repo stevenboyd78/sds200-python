@@ -376,6 +376,72 @@ def test_web_dashboard_requires_callable_recording_file_client_factory() -> None
         )
 
 
+def test_web_dashboard_rejects_non_boolean_home_assistant_ingress() -> None:
+    with pytest.raises(
+        TypeError,
+        match="Home Assistant Ingress setting must be boolean",
+    ):
+        create_web_dashboard_app(
+            FakeDaemonApiClient,
+            home_assistant_ingress=1,  # type: ignore[arg-type]
+        )
+
+
+def test_web_dashboard_home_assistant_ingress_rejects_other_clients() -> None:
+    def forbidden_factory() -> FakeDaemonApiClient:
+        raise AssertionError("rejected ingress request must not reach daemon")
+
+    app = create_web_dashboard_app(
+        forbidden_factory,
+        home_assistant_ingress=True,
+    )
+
+    with TestClient(
+        app,
+        client=("172.30.32.3", 50000),
+    ) as client:
+        response = client.get("/api/v1/status")
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": (
+            web_dashboard.WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_FORBIDDEN_DETAIL
+        )
+    }
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
+def test_web_dashboard_home_assistant_ingress_allows_supervisor_client() -> None:
+    def forbidden_factory() -> FakeDaemonApiClient:
+        raise AssertionError("dashboard shell must not connect to daemon")
+
+    app = create_web_dashboard_app(
+        forbidden_factory,
+        home_assistant_ingress=True,
+    )
+
+    with TestClient(
+        app,
+        client=(
+            web_dashboard.WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_CLIENT,
+            50000,
+        ),
+    ) as client:
+        shell = client.get("/")
+        stylesheet = client.get("/assets/dashboard.css")
+        docs = client.get("/api/v1/docs")
+
+    for response in (shell, stylesheet, docs):
+        assert response.status_code == 200
+        assert "x-frame-options" not in response.headers
+        content_security_policy = response.headers[
+            "content-security-policy"
+        ]
+        assert "frame-ancestors 'self'" in content_security_policy
+        assert "frame-ancestors 'none'" not in content_security_policy
+
+
 def test_web_dashboard_shell_does_not_connect_to_daemon() -> None:
     def forbidden_factory() -> FakeDaemonApiClient:
         raise AssertionError("dashboard shell must not connect to the daemon")
@@ -416,7 +482,7 @@ def test_web_dashboard_shell_does_not_connect_to_daemon() -> None:
     assert 'id="scanner-reconnect"' in response.text
     assert "media-src 'self'" in response.headers["content-security-policy"]
     assert "Milestone 20.2" not in response.text
-    assert 'href="/assets/favicon.svg"' in response.text
+    assert 'href="assets/favicon.svg"' in response.text
     assert 'type="image/svg+xml"' in response.text
     assert 'id="theme-select"' in response.text
     assert '<option value="system">System</option>' in response.text
@@ -424,12 +490,12 @@ def test_web_dashboard_shell_does_not_connect_to_daemon() -> None:
     assert '<option value="matrix">Matrix-inspired</option>' in response.text
     assert '<option value="first-responder">First Responder</option>' in response.text
     assert '<option value="amateur-radio">Amateur Radio</option>' in response.text
-    assert 'src="/assets/theme-bootstrap.js"' in response.text
-    assert 'href="/assets/dashboard.css"' in response.text
-    assert response.text.index('src="/assets/theme-bootstrap.js"') < response.text.index(
-        'href="/assets/dashboard.css"'
+    assert 'src="assets/theme-bootstrap.js"' in response.text
+    assert 'href="assets/dashboard.css"' in response.text
+    assert response.text.index('src="assets/theme-bootstrap.js"') < response.text.index(
+        'href="assets/dashboard.css"'
     )
-    assert 'src="/assets/dashboard.js"' in response.text
+    assert 'src="assets/dashboard.js"' in response.text
     assert "<style" not in response.text
     assert "<script>" not in response.text
 
@@ -608,18 +674,22 @@ def test_web_dashboard_serves_packaged_static_assets() -> None:
     assert script.status_code == 200
     assert script.headers["content-type"].startswith("application/javascript")
     assert script.headers["cache-control"] == "no-store"
-    assert 'fetch("/api/v1/status"' in script.text
-    assert 'new EventSource("/api/v1/events")' in script.text
+    assert 'fetch(webUrl("api/v1/status")' in script.text
+    assert 'new EventSource(webUrl("api/v1/events"))' in script.text
     assert "FALLBACK_REFRESH_INTERVAL_MS" in script.text
     assert "RECONCILE_INTERVAL_MS" in script.text
-    assert 'fetch("/api/v1/audio"' in script.text
-    assert 'audioWorklet.addModule("/assets/audio-worklet.js")' in script.text
+    assert 'fetch(webUrl("api/v1/audio")' in script.text
+    assert 'audioWorklet.addModule(' in script.text
+    assert 'webUrl("assets/audio-worklet.js")' in script.text
     assert "new AudioWorkletNode" in script.text
+    assert "context.audioWorklet !== undefined" in script.text
+    assert 'typeof context.createScriptProcessor === "function"' in script.text
+    assert "class PcmuScriptProcessor" in script.text
     assert "new AbortController" in script.text
     assert "getBigUint64" in script.text
     assert "PCMU stream gap does not match daemon queue-loss counters" in script.text
-    assert 'fetch("/api/v1/recording"' in script.text
-    assert 'fetch("/api/v1/recordings"' in script.text
+    assert 'fetch(webUrl("api/v1/recording")' in script.text
+    assert 'fetch(webUrl("api/v1/recordings")' in script.text
     assert 'performRecordingAction("start")' in script.text
     assert 'performRecordingAction("stop")' in script.text
     assert 'performScannerHoldState("channel")' in script.text
@@ -1482,12 +1552,12 @@ def test_web_dashboard_serves_local_interactive_docs_without_daemon() -> None:
     assert "script-src 'self'" in swagger_csp
     assert "connect-src 'self'" in swagger_csp
     assert "https:" not in swagger_csp
-    assert 'href="/assets/api-docs/swagger-ui.css"' in swagger_response.text
+    assert 'href="../../assets/api-docs/swagger-ui.css"' in swagger_response.text
     assert (
-        'src="/assets/api-docs/swagger-ui-bundle.js"'
+        'src="../../assets/api-docs/swagger-ui-bundle.js"'
         in swagger_response.text
     )
-    assert 'src="/assets/api-docs/swagger-ui-init.js"' in swagger_response.text
+    assert 'src="../../assets/api-docs/swagger-ui-init.js"' in swagger_response.text
     assert "https://" not in swagger_response.text
     assert "http://" not in swagger_response.text
     assert "<style" not in swagger_response.text
@@ -1501,8 +1571,8 @@ def test_web_dashboard_serves_local_interactive_docs_without_daemon() -> None:
     assert "script-src 'self'" in redoc_csp
     assert "connect-src 'self'" in redoc_csp
     assert "https:" not in redoc_csp
-    assert 'src="/assets/api-docs/redoc.standalone.js"' in redoc_response.text
-    assert 'src="/assets/api-docs/redoc-init.js"' in redoc_response.text
+    assert 'src="../../assets/api-docs/redoc.standalone.js"' in redoc_response.text
+    assert 'src="../../assets/api-docs/redoc-init.js"' in redoc_response.text
     assert "https://" not in redoc_response.text
     assert "http://" not in redoc_response.text
     assert "<style" not in redoc_response.text
@@ -1522,7 +1592,7 @@ def test_web_dashboard_serves_local_interactive_docs_without_daemon() -> None:
     assert swagger_init.headers["content-type"].startswith(
         "application/javascript"
     )
-    assert 'url: "/api/v1/openapi.json"' in swagger_init.text
+    assert 'url: "openapi.json"' in swagger_init.text
     assert "validatorUrl: null" in swagger_init.text
     assert "https://" not in swagger_init.text
     assert "http://" not in swagger_init.text
@@ -1537,7 +1607,7 @@ def test_web_dashboard_serves_local_interactive_docs_without_daemon() -> None:
     assert redoc_init.headers["content-type"].startswith(
         "application/javascript"
     )
-    assert '"/api/v1/openapi.json"' in redoc_init.text
+    assert '"openapi.json"' in redoc_init.text
     assert "https://" not in redoc_init.text
     assert "http://" not in redoc_init.text
 

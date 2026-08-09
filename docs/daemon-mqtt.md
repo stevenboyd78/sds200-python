@@ -9,8 +9,10 @@ Milestone 20.9 adds explicitly opt-in semantic scanner controls on that same
 worker. MQTT commands reuse the daemon's existing versioned control dispatcher
 and therefore preserve the single-owner scanner boundary. Milestone 20.10 adds
 optional Home Assistant MQTT device discovery over the same generic state and
-availability topics. Home Assistant App packaging, Ingress, the bundled Lovelace
-card, and Home Assistant-specific controls remain later work.
+availability topics. Milestone 20.11 consumes that contract from a Home Assistant
+App that hosts the existing daemon and web dashboard with Supervisor MQTT service
+adaptation and Ingress. The bundled Lovelace card and richer Home
+Assistant-specific controls remain later work.
 
 ## Installation
 

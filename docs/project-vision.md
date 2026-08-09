@@ -204,9 +204,12 @@ event stream. Milestone 20.9 adds optional semantic MQTT scanner commands throug
 the existing daemon control boundary. Milestone 20.10 adds read-only Home
 Assistant MQTT device discovery as an adapter over that generic contract,
 including Home Assistant birth-triggered republication while leaving scanner
-ownership and semantic state authoritative in the daemon.
+ownership and semantic state authoritative in the daemon. Milestone 20.11 packages
+that existing ownership runtime and dashboard as one Home Assistant App with
+Supervisor MQTT service adaptation, authenticated Ingress, persistent recordings,
+and a narrowly published RTP UDP port.
 
-The intended sequence is:
+The implemented sequence is:
 
 - retain generic semantic daemon/scanner/radio/audio/recording/destination state
   and availability on MQTT without publishing every 500 ms PSI packet;
@@ -216,19 +219,27 @@ The intended sequence is:
 - expose Home Assistant MQTT device Discovery over the stable generic state and
   availability contract, implemented as read-only Milestone 20.10 entities with
   deterministic namespace-derived device identity and birth-triggered
-  republication;
+  republication; and
+- package one Home Assistant App around the existing daemon and web dashboard,
+  implemented in Milestone 20.11 with Supervisor MQTT service adaptation,
+  Ingress, persistent `/data` recordings, and fixed UDP RTP publication without
+  enabling host networking.
+
+Remaining Home Assistant work includes:
+
 - add a deliberate Home Assistant control adapter rather than binding static
   Discovery button payloads directly to request-ID-deduplicated generic commands;
-- package one Home Assistant App that hosts the daemon and web dashboard and uses
-  Ingress for the full dashboard;
-- bundle an SDS200 Lovelace card with that App so the primary integration does not
+- bundle an SDS200 Lovelace card with the App so the primary integration does not
   require HACS; and
-- treat authenticated/TLS LAN gateways or broader remote access as a later
-  explicit security boundary.
+- treat authenticated/TLS LAN gateways, remote daemon-backed CLI/TUI/GUI
+  transports, or an optional host-network deployment variant as a later explicit
+  security boundary.
 
 Milestone 20.10 currently discovers daemon state, scanner connectivity, current
 system/department/channel, signal, RSSI, audio-running state, and recording
-active/status. Site, scanner mode and hold state, destination health, safe
+active/status. Milestone 20.11 physically validated those ten entities from the
+App along with scanner controls, Ingress audio, persistent recordings, and App
+restart. Site, scanner mode and hold state, destination health, safe
 Home Assistant controls, and richer scanner events remain candidates for later
 Home Assistant slices.
 

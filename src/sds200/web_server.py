@@ -1,4 +1,4 @@
-"""Loopback-only server adapter for the optional web dashboard."""
+"""Web server adapter with an explicit Home Assistant Ingress mode."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from ipaddress import ip_address
 from typing import Any, Protocol, cast
 
 WEB_DASHBOARD_DEFAULT_HOST = "127.0.0.1"
+WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_HOST = "0.0.0.0"
 WEB_DASHBOARD_DEFAULT_PORT = 8000
 WEB_DASHBOARD_DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT = 2
 WEB_DASHBOARD_INSTALL_ERROR = (
@@ -88,11 +89,26 @@ def run_web_dashboard_server(
     host: str = WEB_DASHBOARD_DEFAULT_HOST,
     port: int = WEB_DASHBOARD_DEFAULT_PORT,
     access_log: bool = True,
+    home_assistant_ingress: bool = False,
     server_factory: WebDashboardServerFactory | None = None,
 ) -> int:
-    """Run one loopback-only web server until shutdown."""
+    """Run one web server with an explicit Home Assistant Ingress mode."""
 
-    normalized_host = normalize_web_dashboard_host(host)
+    if type(home_assistant_ingress) is not bool:
+        raise TypeError(
+            "Home Assistant Ingress server setting must be boolean."
+        )
+
+    if home_assistant_ingress:
+        if host != WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_HOST:
+            raise ValueError(
+                "Home Assistant Ingress web server must listen on "
+                f"{WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_HOST}."
+            )
+        normalized_host = WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_HOST
+    else:
+        normalized_host = normalize_web_dashboard_host(host)
+
     normalized_port = normalize_web_dashboard_port(port)
 
     if type(access_log) is not bool:
@@ -148,6 +164,7 @@ __all__ = [
     "WEB_DASHBOARD_DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT",
     "WEB_DASHBOARD_DEFAULT_HOST",
     "WEB_DASHBOARD_DEFAULT_PORT",
+    "WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_HOST",
     "WEB_DASHBOARD_INSTALL_ERROR",
     "WebDashboardServer",
     "WebDashboardServerFactory",

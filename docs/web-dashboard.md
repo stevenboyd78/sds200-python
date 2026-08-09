@@ -11,7 +11,10 @@ reconnect controls without changing daemon scanner ownership. Milestone 20.7
 adds browser-local system-adaptive, LCARS-inspired, Matrix-inspired,
 First Responder, and Amateur Radio themes over the same accessible dashboard
 structure, including immersive full-screen desktop compositions and compact
-responsive fallbacks for the four custom environments.
+responsive fallbacks for the four custom environments. Milestone 20.11 adds an
+explicit Home Assistant Ingress mode, prefixed-path-safe assets and API requests,
+Ingress framing policy, and browser-audio compatibility for non-secure Home
+Assistant browser contexts without changing standalone loopback defaults.
 
 ## Architecture
 
@@ -545,5 +548,7 @@ Milestones 20.1 through 20.7 include:
   packaging, and regression tests.
 
 Later work remains responsible for browser logs, additional shared branding
-assets, authentication and secure remote-access planning, and Home Assistant
-integration.
+assets, and authentication and secure remote-access planning for standalone
+network exposure. Home Assistant App operation is documented separately in
+[Home Assistant App](home-assistant-app.md); it uses Supervisor Ingress rather
+than exposing the standalone web listener to the LAN.

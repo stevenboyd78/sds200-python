@@ -1,0 +1,12 @@
+*
+!.dockerignore
+!pyproject.toml
+!README.md
+!LICENSE
+!src/
+!src/**
+**/__pycache__/
+**/*.py[cod]
+!home-assistant/
+!home-assistant/sds200/
+!home-assistant/sds200/Dockerfile

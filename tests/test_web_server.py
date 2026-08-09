@@ -9,6 +9,7 @@ from sds200.web_server import (
     WEB_DASHBOARD_DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT,
     WEB_DASHBOARD_DEFAULT_HOST,
     WEB_DASHBOARD_DEFAULT_PORT,
+    WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_HOST,
     _default_server_factory,
     normalize_web_dashboard_host,
     normalize_web_dashboard_port,
@@ -128,6 +129,52 @@ def test_run_web_dashboard_server_defaults_are_loopback_only() -> None:
             True,
         )
     ]
+
+
+def test_run_web_dashboard_server_allows_home_assistant_ingress() -> None:
+    app = object()
+    factory = FakeServerFactory()
+
+    assert run_web_dashboard_server(
+        app,
+        host=WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_HOST,
+        port=8099,
+        home_assistant_ingress=True,
+        server_factory=factory,
+    ) == 0
+
+    assert factory.calls == [
+        (
+            app,
+            WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_HOST,
+            8099,
+            True,
+        )
+    ]
+    assert factory.server.run_calls == 1
+
+
+def test_run_web_dashboard_server_ingress_requires_wildcard_host() -> None:
+    with pytest.raises(
+        ValueError,
+        match="must listen on 0.0.0.0",
+    ):
+        run_web_dashboard_server(
+            object(),
+            host="192.168.0.25",
+            home_assistant_ingress=True,
+        )
+
+
+def test_run_web_dashboard_server_requires_boolean_ingress_setting() -> None:
+    with pytest.raises(
+        TypeError,
+        match="Ingress server setting must be boolean",
+    ):
+        run_web_dashboard_server(
+            object(),
+            home_assistant_ingress=1,  # type: ignore[arg-type]
+        )
 
 
 def test_default_server_factory_bounds_graceful_shutdown(
