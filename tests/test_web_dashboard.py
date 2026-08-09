@@ -376,6 +376,72 @@ def test_web_dashboard_requires_callable_recording_file_client_factory() -> None
         )
 
 
+def test_web_dashboard_rejects_non_boolean_home_assistant_ingress() -> None:
+    with pytest.raises(
+        TypeError,
+        match="Home Assistant Ingress setting must be boolean",
+    ):
+        create_web_dashboard_app(
+            FakeDaemonApiClient,
+            home_assistant_ingress=1,  # type: ignore[arg-type]
+        )
+
+
+def test_web_dashboard_home_assistant_ingress_rejects_other_clients() -> None:
+    def forbidden_factory() -> FakeDaemonApiClient:
+        raise AssertionError("rejected ingress request must not reach daemon")
+
+    app = create_web_dashboard_app(
+        forbidden_factory,
+        home_assistant_ingress=True,
+    )
+
+    with TestClient(
+        app,
+        client=("172.30.32.3", 50000),
+    ) as client:
+        response = client.get("/api/v1/status")
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": (
+            web_dashboard.WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_FORBIDDEN_DETAIL
+        )
+    }
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
+def test_web_dashboard_home_assistant_ingress_allows_supervisor_client() -> None:
+    def forbidden_factory() -> FakeDaemonApiClient:
+        raise AssertionError("dashboard shell must not connect to daemon")
+
+    app = create_web_dashboard_app(
+        forbidden_factory,
+        home_assistant_ingress=True,
+    )
+
+    with TestClient(
+        app,
+        client=(
+            web_dashboard.WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_CLIENT,
+            50000,
+        ),
+    ) as client:
+        shell = client.get("/")
+        stylesheet = client.get("/assets/dashboard.css")
+        docs = client.get("/api/v1/docs")
+
+    for response in (shell, stylesheet, docs):
+        assert response.status_code == 200
+        assert "x-frame-options" not in response.headers
+        content_security_policy = response.headers[
+            "content-security-policy"
+        ]
+        assert "frame-ancestors 'self'" in content_security_policy
+        assert "frame-ancestors 'none'" not in content_security_policy
+
+
 def test_web_dashboard_shell_does_not_connect_to_daemon() -> None:
     def forbidden_factory() -> FakeDaemonApiClient:
         raise AssertionError("dashboard shell must not connect to the daemon")
