@@ -424,6 +424,20 @@ class DaemonReadOnlyApi:
         )
 
     def handle_payload(self, payload: object) -> DaemonApiResponse:
+        return self._handle_payload(payload, control_only=False)
+
+    def handle_control_payload(
+        self,
+        payload: object,
+    ) -> DaemonApiResponse:
+        return self._handle_payload(payload, control_only=True)
+
+    def _handle_payload(
+        self,
+        payload: object,
+        *,
+        control_only: bool,
+    ) -> DaemonApiResponse:
         try:
             request = DaemonApiRequest.from_payload(payload)
         except _RequestValidationError as error:
@@ -456,6 +470,14 @@ class DaemonReadOnlyApi:
                 request.request_id,
                 DaemonApiErrorCode.UNKNOWN_OPERATION,
                 f"Unknown daemon API operation: {request.operation!r}.",
+            )
+
+        if control_only and operation not in DAEMON_API_CONTROL_OPERATIONS:
+            return DaemonApiResponse.failure(
+                request.request_id,
+                DaemonApiErrorCode.UNKNOWN_OPERATION,
+                "Operation is not available on the daemon scanner-control "
+                f"interface: {request.operation!r}.",
             )
 
         if operation in DAEMON_API_CONTROL_OPERATIONS:

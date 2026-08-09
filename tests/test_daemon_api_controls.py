@@ -180,6 +180,71 @@ def request_payload(
     return payload
 
 
+@pytest.mark.parametrize(
+    "operation",
+    [
+        DaemonApiOperation.HELLO,
+        DaemonApiOperation.PING,
+        DaemonApiOperation.RUNTIME_SNAPSHOT,
+        DaemonApiOperation.RECORDING_START,
+    ],
+)
+def test_control_payload_rejects_non_control_operations(
+    operation: DaemonApiOperation,
+) -> None:
+    runtime = FakeControlRuntime()
+    response = DaemonReadOnlyApi(runtime).handle_control_payload(
+        request_payload(operation.value)
+    )
+
+    assert response.request_id == "control-1"
+    assert response.result is None
+    assert response.error is not None
+    assert response.error.code is DaemonApiErrorCode.UNKNOWN_OPERATION
+    assert "scanner-control interface" in response.error.message
+    assert runtime.calls == []
+
+
+def test_control_payload_reuses_strict_control_dispatch() -> None:
+    runtime = FakeControlRuntime()
+    api = DaemonReadOnlyApi(runtime)
+
+    success = api.handle_control_payload(
+        request_payload(
+            DaemonApiOperation.SCANNER_NEXT.value,
+            params={
+                "target": "sys",
+                "first": 42,
+                "count": 2,
+                "timeout": 1.5,
+            },
+        )
+    )
+    rejected = api.handle_control_payload(
+        request_payload(
+            DaemonApiOperation.SCANNER_NEXT.value,
+            request_id="control-2",
+            params={"target": "SYS", "count": 9},
+        )
+    )
+
+    assert success.error is None
+    assert success.result is not None
+    assert success.result["operation"] == "scanner.next"
+    assert runtime.calls == [
+        (
+            "scanner.next",
+            ("SYS", 42, None),
+            {"count": 2, "timeout": 1.5},
+        )
+    ]
+
+    assert rejected.result is None
+    assert rejected.error is not None
+    assert rejected.error.code is DaemonApiErrorCode.INVALID_PARAMETERS
+    assert rejected.request_id == "control-2"
+
+
 def test_capabilities_preserve_reads_and_advertise_controls() -> None:
     response = DaemonReadOnlyApi(FakeControlRuntime()).handle_payload(
         request_payload(DaemonApiOperation.HELLO.value)
