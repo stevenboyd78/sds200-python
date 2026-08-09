@@ -43,7 +43,9 @@ silence detection and bounded recovery inside the foreground ownership loop.
 Milestone 20.8 adds an optional daemon-owned MQTT publication worker over the
 existing authoritative event stream. It publishes semantic state without opening
 scanner hardware, skips packet-rate PSI events, and isolates broker retry/backoff
-from scanner, PSI, audio, recording, and local-service ownership.
+from scanner, PSI, audio, recording, and local-service ownership. Milestone 20.9
+adds explicitly opt-in MQTT scanner controls through the same semantic daemon API
+dispatcher used by local clients, without adding another scanner owner.
 Decoded-PCM CLI subscriptions and automatic daemon discovery and selection remain
 follow-on work. The process does not fork or create a pidfile.
 
@@ -69,9 +71,12 @@ bounded `DaemonApiServer`, one `DaemonEventStream`, one bounded
 `DaemonDestinationCoordinator`, and one `DaemonDestinationReloader`. When a
 daemon MQTT manifest is present, construction also creates one
 `DaemonMqttWorker` using the existing `DaemonEventStream`; an absent manifest
-creates no MQTT worker and does not require Paho MQTT. The API class retains its
-historical public name while exposing backward-compatible
-reads, explicit safe controls, and daemon recording operations. The PCMU stream
+creates no MQTT worker and does not require Paho MQTT. The process constructs one
+`DaemonReadOnlyApi` instance and shares it with both `DaemonApiServer` and the
+MQTT worker, so enabled MQTT commands reuse the exact local semantic-control
+boundary. The API class retains its historical public name while exposing
+backward-compatible reads, explicit safe controls, and daemon recording
+operations. The PCMU stream
 subscribes to the same authoritative transport used by the decoded-PCM fanout.
 The coordinator activates the validated startup destination set against the
 shared decoded-PCM router, while the recording manager attaches and detaches its

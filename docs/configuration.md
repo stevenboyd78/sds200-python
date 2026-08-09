@@ -146,8 +146,10 @@ Milestone 20.8 adds a separate strict version 1
 `daemon-mqtt.toml` document for the optional daemon-owned broker integration.
 Its `[broker]` table configures host, port, client ID, username, password
 environment-variable reference, topic prefix, QoS, semantic-state retention,
-keepalive, and reconnect policy. An absent file means MQTT is disabled and does
-not require the optional Paho dependency.
+keepalive, and reconnect policy. Milestone 20.9 adds `commands_enabled`, which
+defaults to `false` and explicitly opts the same worker into the daemon's
+semantic scanner-control request/response contract. An absent file means MQTT is
+disabled and does not require the optional Paho dependency.
 
 The daemon accepts `--mqtt-config PATH` as an explicit manifest override and
 loads and validates that document before constructing scanner hardware. Resolved

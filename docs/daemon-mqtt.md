@@ -5,10 +5,11 @@ semantic state from the existing authoritative `DaemonEventStream`; it does not
 open scanner control hardware, create another PSI subscription, or open another
 RTSP/RTP audio session.
 
-This milestone is the generic broker substrate for later automation and Home
-Assistant work. It is publication-only: inbound MQTT commands, Home Assistant
-MQTT Discovery, Home Assistant App packaging, Ingress, and the Lovelace card are
-not part of this contract yet.
+Milestone 20.9 adds explicitly opt-in semantic scanner controls on that same
+worker. MQTT commands reuse the daemon's existing versioned control dispatcher
+and therefore preserve the single-owner scanner boundary. Home Assistant MQTT
+Discovery, Home Assistant App packaging, Ingress, and the Lovelace card remain
+later work.
 
 ## Installation
 
@@ -50,6 +51,7 @@ password_environment_variable = "SDSCTL_MQTT_PASSWORD"
 topic_prefix = "sdsctl/scanner"
 qos = 1
 retain = true
+commands_enabled = false
 keepalive_seconds = 60
 reconnect_initial_delay = 1.0
 reconnect_multiplier = 2.0
@@ -68,6 +70,7 @@ Supported broker fields are:
 | `topic_prefix` | `sdsctl` | Root topic; wildcards and empty levels are rejected |
 | `qos` | `1` | MQTT QoS `0`, `1`, or `2` |
 | `retain` | `true` | Whether canonical semantic state topics are retained |
+| `commands_enabled` | `false` | Explicitly enable semantic scanner-control subscriptions |
 | `keepalive_seconds` | `60` | MQTT keepalive |
 | `reconnect_initial_delay` | `1.0` | First worker-owned retry delay |
 | `reconnect_multiplier` | `2.0` | Exponential retry multiplier |
@@ -99,6 +102,8 @@ Every topic is rooted at `topic_prefix`.
 | `<prefix>/state/recording` | follows `retain` | current daemon recording state |
 | `<prefix>/state/destinations/<id>` | follows `retain` | one decoded-PCM destination health snapshot |
 | `<prefix>/events` | never | original non-snapshot semantic daemon event JSON envelope |
+| `<prefix>/commands` | rejected if retained | inbound version 1 daemon API scanner-control request |
+| `<prefix>/responses` | never | correlated version 1 daemon API response |
 
 Destination IDs are percent-encoded into one safe MQTT topic segment.
 
@@ -130,6 +135,51 @@ Every other non-snapshot semantic daemon event is also copied to
 `<prefix>/events` as the original JSON event envelope without its trailing
 newline. That event topic is never retained.
 
+## Semantic scanner commands
+
+Commands remain disabled unless the manifest explicitly sets
+`commands_enabled = true`. After the worker has published the authoritative
+initial state for a broker session, it subscribes to `<prefix>/commands` at the
+configured QoS. The Paho callback thread only validates the transport shape and
+enqueues the message; scanner-control execution occurs on the MQTT worker thread.
+
+Command payloads use the same strict version 1 `sdsctl.daemon` request envelope
+documented by the [local daemon API](daemon-api.md). MQTT admits only these
+semantic scanner operations:
+
+- `scanner.hold`
+- `scanner.hold_state`
+- `scanner.next`
+- `scanner.previous`
+- `scanner.reconnect`
+
+Read-only API operations, recording operations, unknown operations, and arbitrary
+raw scanner keys are not available through the MQTT command input. Parameter
+validation, bounded control deadlines, scanner capability checks, authoritative
+control results, and stable redacted error codes are shared with `daemon.sock`
+through the same `DaemonReadOnlyApi` instance.
+
+Each accepted or rejected command publishes one non-retained
+`<prefix>/responses` object using the normal daemon API response envelope. The
+MQTT payload omits the JSON-Lines trailing newline used by the Unix-socket API.
+The worker rejects command payloads larger than 64 KiB before JSON decoding and
+rejects retained command messages without dispatching scanner control.
+
+The worker keeps a bounded process-local cache of the 64 most recent valid
+request IDs. A redelivery with the same request ID and identical payload bytes
+replays the cached response without executing the scanner control again. Reusing
+the same request ID with different payload bytes is rejected. The response is
+cached before broker publication and acknowledgement, so a publication or
+acknowledgement failure cannot make an immediate QoS redelivery repeat a
+non-idempotent `next`, `previous`, or reconnect operation. Cache entries do not
+survive daemon restart, and an evicted request ID can be executed again; callers
+must therefore generate unique request IDs.
+
+When commands are enabled, the Paho adapter uses manual acknowledgement. QoS 1
+and QoS 2 messages are acknowledged only after the response has been published.
+The Paho session uses a clean session, so the daemon does not intentionally
+accumulate an offline command backlog.
+
 If the daemon event sequence has a gap, the worker closes that subscription,
 opens a new one, and waits for a fresh authoritative snapshot before continuing.
 This avoids trying to reconstruct missing semantic state from partial events.
@@ -145,11 +195,13 @@ wait for Paho publication completion. While the daemon event stream is idle, the
 worker checks broker health every event-poll iteration so an asynchronous
 disconnect does not require a later scanner event to be detected.
 
-Connection, publication, event-subscription, and broker-health failures are
-recorded in the MQTT worker snapshot and enter the configured reconnect policy.
-They do not raise through daemon event callbacks and do not stop scanner control,
-PSI, audio, recording, local API/event/PCMU services, or decoded-PCM
-destinations.
+Connection, publication, subscription, inbound-queue, acknowledgement, and
+broker-health failures are recorded in the MQTT worker snapshot and enter the
+configured reconnect policy. The inbound Paho queue is bounded to 32 messages;
+overflow fails the broker session instead of silently dropping an unacknowledged
+command. Broker failures do not raise through daemon event callbacks and do not
+stop scanner control, PSI, audio, recording, local API/event/PCMU services, or
+decoded-PCM destinations.
 
 If `reconnect_max_attempts` is exhausted, the MQTT worker enters its terminal
 `failed` state and waits for daemon shutdown. The rest of the daemon continues
@@ -182,10 +234,12 @@ Keep the broker on localhost, a trusted local network, or a trusted VPN. Do not
 treat broker authentication alone as transport security, and do not expose this
 foundation over an untrusted network.
 
-Milestone 20.8 also has no inbound MQTT command subscription. Future control work
-must route through the daemon's existing semantic operations and preserve the
-single-owner scanner boundary; unrestricted raw scanner-key control is not part
-of the MQTT design.
+MQTT command subscriptions materially increase the broker trust boundary. Leave
+`commands_enabled = false` unless broker publishers are authorized to operate the
+scanner. When enabled, controls are still limited to the daemon's existing
+semantic operations and never expose unrestricted raw scanner-key passthrough.
+Because the current adapter does not configure TLS, do not enable commands across
+an untrusted network.
 
 See [Daemon ownership runtime](daemon-runtime.md),
 [Daemon deployment and upgrade guide](daemon-deployment.md), and

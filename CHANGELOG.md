@@ -8,6 +8,15 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Added
 
+- Milestone 20.9 opt-in daemon MQTT scanner controls through the existing
+  semantic daemon API boundary. `commands_enabled` defaults to false; enabled
+  workers subscribe only after the authoritative initial snapshot, accept only
+  hold/hold-state/next/previous/reconnect operations, reject retained and
+  oversized requests, publish non-retained correlated responses, use Paho manual
+  acknowledgements, and keep a bounded process-local request-ID response cache so
+  immediate QoS redelivery does not repeat non-idempotent controls. The Paho
+  callback remains transport-only, the inbound queue is bounded, and the local
+  socket server and MQTT worker share one `DaemonReadOnlyApi` dispatcher.
 - Milestone 20.8 native daemon MQTT foundation with a strict optional version 1
   `daemon-mqtt.toml` broker manifest, `--mqtt-config` override, a separate
   `sds200[mqtt]` Paho MQTT 2.x extra, environment-referenced password secrets,

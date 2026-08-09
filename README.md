@@ -141,9 +141,10 @@ Install optional daemon MQTT support:
 python -m pip install "sds200[mqtt]"
 ```
 
-The MQTT extra installs Paho MQTT 2.x. Milestone 20.8 publishes daemon-owned
-semantic state and events only; inbound MQTT scanner commands and Home Assistant
-Discovery are later slices.
+The MQTT extra installs Paho MQTT 2.x. Milestone 20.9 can also accept
+explicitly enabled semantic scanner controls over MQTT. Commands are disabled by
+default and reuse the daemon's existing control API rather than raw scanner keys.
+Home Assistant MQTT Discovery remains a later slice.
 
 Install optional local audio playback support:
 
@@ -415,13 +416,16 @@ Use `--mqtt-config PATH` or the default
 `${XDG_CONFIG_HOME:-~/.config}/sdsctl/daemon-mqtt.toml`. When the file is absent,
 the daemon does not load or require the external Paho MQTT package. When present,
 the daemon publishes retained `online`/`offline` availability plus canonical
-semantic state derived from
-the existing authoritative event stream. Packet-rate `scanner.psi` events are
-never forwarded to MQTT. Broker connection and publication failures remain
-isolated in the MQTT worker and use configured reconnect backoff rather than
-interrupting scanner ownership. See the [daemon MQTT guide](docs/daemon-mqtt.md)
-for the version 1 manifest, exact topic contract, retention behavior, secrets, and
-current security boundary.
+semantic state derived from the existing authoritative event stream. Packet-rate
+`scanner.psi` events are never forwarded to MQTT. When
+`commands_enabled = true`, the same worker subscribes to `<prefix>/commands`,
+accepts only the daemon API's semantic scanner-control operations, and publishes
+non-retained correlated responses to `<prefix>/responses`. Retained commands are
+rejected, and recent request IDs are deduplicated within the daemon process.
+Broker failures remain isolated in the MQTT worker and use configured reconnect
+backoff rather than interrupting scanner ownership. See the
+[daemon MQTT guide](docs/daemon-mqtt.md) for the version 1 manifest, exact topic
+and command contracts, retention behavior, secrets, and security boundary.
 
 Decoded-PCM subscriptions and automatic daemon selection remain follow-on work.
 See the
