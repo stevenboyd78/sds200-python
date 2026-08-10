@@ -88,9 +88,9 @@ information in this image represents a real system.*
   Swagger UI and ReDoc, and redacted daemon failures without third-party browser
   asset requests
 - Home Assistant App packaging that supervises the existing daemon and dashboard,
-  uses Supervisor MQTT service discovery and authenticated Ingress, persists
-  recordings under `/data`, and publishes a fixed UDP RTP port without enabling
-  host networking or creating another scanner owner
+  uses Supervisor MQTT service discovery and authenticated Ingress, stores
+  recordings in configurable Home Assistant media storage, and publishes a fixed
+  UDP RTP port without enabling host networking or creating another scanner owner
 - Versioned bounded local daemon PCMU stream over a third private Unix socket with
   accepted RTP payloads, continuity metadata, and independent client-loss counters
 - Optional live playback through the local default or selected audio output device
@@ -521,11 +521,11 @@ See the [web dashboard guide](docs/web-dashboard.md).
 
 ### Home Assistant App
 
-v0.20.0 packages the existing foreground daemon and web dashboard as one Home
-Assistant App while preserving the daemon as the only scanner, PSI, and RTSP/RTP
-owner. Supervisor supplies the configured MQTT service, the dashboard is
-presented through authenticated Ingress, and recordings are stored persistently
-under `/data/recordings`.
+The Home Assistant App packages the existing foreground daemon and web dashboard
+while preserving the daemon as the only scanner, PSI, and RTSP/RTP owner.
+Supervisor supplies the configured MQTT service, the dashboard is presented
+through authenticated Ingress, and recordings are stored in configurable Home
+Assistant media storage, defaulting to `/media/sdsctl/recordings`.
 
 For normal Home Assistant OS installation, add
 `https://github.com/stevenboyd78/sds200-python` as a third-party App repository
@@ -540,10 +540,11 @@ maps host UDP `50000` to the container. Host networking is intentionally not
 enabled. The daemon API, event, PCMU, and recording-file interfaces remain
 private Unix-domain sockets inside the App.
 
-The App configuration accepts the required `scanner_host` and optional
-`mqtt_topic_prefix`, which defaults to `sdsctl`. Home Assistant MQTT Discovery is
-enabled by the App adapter and publishes the same ten read-only entities defined
-by the generic daemon MQTT contract.
+The App configuration accepts the required `scanner_host`, optional
+`mqtt_topic_prefix` defaulting to `sdsctl`, and optional media-relative
+`recording_directory` defaulting to `sdsctl/recordings`. Home Assistant MQTT
+Discovery is enabled by the App adapter and publishes the same ten read-only
+entities defined by the generic daemon MQTT contract.
 
 Browser audio continues to prefer AudioWorklet. When Home Assistant is opened
 from a browser context where AudioWorklet is unavailable, the dashboard falls

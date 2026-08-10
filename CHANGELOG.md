@@ -6,6 +6,29 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+### Added
+
+- Home Assistant App `recording_directory` option for a media-relative recording
+  library under `/media`, defaulting to `sdsctl/recordings`, with a writable
+  Supervisor media mapping.
+
+### Changed
+
+- Home Assistant App dashboard layout now groups daemon runtime with scanner
+  connection, keeps scanner reconnect with connection state, separates active
+  capture from finalized recordings, and gives the recording library a dedicated
+  responsive grid area.
+- Home Assistant App sidebar presentation now requests the `mdi:radio-tower`
+  icon.
+
+### Fixed
+
+- Home Assistant App startup safely migrates legacy v0.20.0 recordings and
+  metadata sidecars from `/data/recordings` into the configured media library.
+  Migration preflights destination conflicts, never overwrites differing files,
+  byte-verifies copied files before removing their sources, and can resume after
+  an interrupted partial migration.
+
 ## [0.20.0] - 2026-08-09
 
 ### Added

@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Recordings now use writable Home Assistant media storage, defaulting to
+  `/media/sdsctl/recordings`, with a configurable media-relative
+  `recording_directory`.
+- Existing v0.20.0 files under `/data/recordings`, including metadata sidecars
+  and nested library paths, migrate safely without overwriting destination
+  conflicts.
+- The dashboard groups daemon runtime with scanner connection, moves scanner
+  reconnect into that panel, separates active capture from recent recordings,
+  and gives the finalized library more vertical room.
+- The Home Assistant sidebar panel requests the `mdi:radio-tower` icon.
+
 ## 0.20.0
 
 - Project-consistent Home Assistant App icon and logo presentation assets.
