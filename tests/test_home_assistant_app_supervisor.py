@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import signal
 import subprocess
 from collections.abc import Mapping, Sequence
@@ -22,6 +23,7 @@ from sds200.home_assistant_app_supervisor import (
     HomeAssistantAppSupervisor,
     migrate_home_assistant_app_recordings,
     prepare_home_assistant_app_launch_plan,
+    run_home_assistant_app,
 )
 
 
@@ -397,6 +399,179 @@ def test_prepare_launch_plan_generates_config_and_separates_child_secrets(
     assert plan.web_environment == {"PATH": "/usr/bin"}
     assert HOME_ASSISTANT_SUPERVISOR_TOKEN_VARIABLE not in plan.web_environment
     assert HOME_ASSISTANT_APP_MQTT_PASSWORD_VARIABLE not in plan.web_environment
+
+
+def test_run_home_assistant_app_installs_lovelace_card_before_supervisor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = launch_plan(tmp_path)
+    events: list[str] = []
+
+    def fake_prepare(**kwargs: object) -> HomeAssistantAppLaunchPlan:
+        del kwargs
+        events.append("prepare")
+        return plan
+
+    class FakeSupervisor:
+        def __init__(
+            self,
+            received: HomeAssistantAppLaunchPlan,
+        ) -> None:
+            assert received is plan
+
+        def run(self) -> int:
+            events.append("supervisor")
+            return 7
+
+    def installer() -> Path:
+        events.append("install")
+        return tmp_path / "sds200-card.js"
+
+    monkeypatch.setattr(
+        "sds200.home_assistant_app_supervisor."
+        "prepare_home_assistant_app_launch_plan",
+        fake_prepare,
+    )
+    monkeypatch.setattr(
+        "sds200.home_assistant_app_supervisor."
+        "HomeAssistantAppSupervisor",
+        FakeSupervisor,
+    )
+
+    assert (
+        run_home_assistant_app(
+            lovelace_card_installer=installer,
+        )
+        == 7
+    )
+    assert events == [
+        "prepare",
+        "install",
+        "supervisor",
+    ]
+
+
+@pytest.mark.parametrize(
+    "installation_error",
+    [
+        SDS200Error("unsafe Lovelace target"),
+        PermissionError(
+            "read-only Home Assistant configuration"
+        ),
+    ],
+)
+def test_run_home_assistant_app_isolates_lovelace_installation_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    installation_error: Exception,
+) -> None:
+    plan = launch_plan(tmp_path)
+    events: list[str] = []
+
+    def fake_prepare(**kwargs: object) -> HomeAssistantAppLaunchPlan:
+        del kwargs
+        events.append("prepare")
+        return plan
+
+    class FakeSupervisor:
+        def __init__(
+            self,
+            received: HomeAssistantAppLaunchPlan,
+        ) -> None:
+            assert received is plan
+
+        def run(self) -> int:
+            events.append("supervisor")
+            return 11
+
+    def installer() -> Path:
+        events.append("install")
+        raise installation_error
+
+    monkeypatch.setattr(
+        "sds200.home_assistant_app_supervisor."
+        "prepare_home_assistant_app_launch_plan",
+        fake_prepare,
+    )
+    monkeypatch.setattr(
+        "sds200.home_assistant_app_supervisor."
+        "HomeAssistantAppSupervisor",
+        FakeSupervisor,
+    )
+
+    caplog.set_level(logging.WARNING)
+
+    assert (
+        run_home_assistant_app(
+            lovelace_card_installer=installer,
+        )
+        == 11
+    )
+    assert events == [
+        "prepare",
+        "install",
+        "supervisor",
+    ]
+    assert (
+        "Home Assistant Lovelace card installation failed"
+        in caplog.text
+    )
+    assert installation_error.__class__.__name__ in caplog.text
+
+
+def test_run_home_assistant_app_custom_paths_do_not_install_lovelace_card(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = launch_plan(tmp_path)
+    paths = runtime_paths(tmp_path)
+    events: list[str] = []
+
+    def fake_prepare(**kwargs: object) -> HomeAssistantAppLaunchPlan:
+        assert kwargs["paths"] is paths
+        events.append("prepare")
+        return plan
+
+    class FakeSupervisor:
+        def __init__(
+            self,
+            received: HomeAssistantAppLaunchPlan,
+        ) -> None:
+            assert received is plan
+
+        def run(self) -> int:
+            events.append("supervisor")
+            return 13
+
+    def forbidden_installer() -> Path:
+        raise AssertionError(
+            "custom runtime paths must not install into Home Assistant"
+        )
+
+    monkeypatch.setattr(
+        "sds200.home_assistant_app_supervisor."
+        "prepare_home_assistant_app_launch_plan",
+        fake_prepare,
+    )
+    monkeypatch.setattr(
+        "sds200.home_assistant_app_supervisor."
+        "HomeAssistantAppSupervisor",
+        FakeSupervisor,
+    )
+
+    assert (
+        run_home_assistant_app(
+            paths=paths,
+            lovelace_card_installer=forbidden_installer,
+        )
+        == 13
+    )
+    assert events == [
+        "prepare",
+        "supervisor",
+    ]
 
 
 def test_supervisor_starts_web_only_after_daemon_readiness(

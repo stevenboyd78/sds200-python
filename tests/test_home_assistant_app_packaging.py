@@ -109,7 +109,16 @@ def test_home_assistant_app_manifest_uses_ingress_and_required_mqtt_service() ->
         in manifest
     )
     assert "host_network: true\n" not in manifest
-    assert "map:\n  - type: media\n    read_only: false\n" in manifest
+    assert (
+        "map:\n"
+        "  - type: media\n"
+        "    read_only: false\n"
+        "  - type: homeassistant_config\n"
+        "    read_only: false\n"
+        "    path: /homeassistant\n"
+        in manifest
+    )
+    assert "homeassistant_api: true\n" not in manifest
     assert 'panel_icon: "mdi:radio-tower"\n' in manifest
     assert (
         'options:\n'
@@ -163,6 +172,36 @@ def test_home_assistant_app_configuration_translations_cover_schema() -> None:
     assert "Home Assistant /media root" in translations
     assert "sdsctl/recordings" in translations
     assert "/media/sdsctl/recordings" in translations
+
+
+def test_home_assistant_app_image_includes_packaged_lovelace_card() -> None:
+    card = (
+        _REPOSITORY_ROOT
+        / "src"
+        / "sds200"
+        / "web_assets"
+        / "sds200-card.js"
+    )
+
+    assert card.is_file()
+    assert (card.parent / "__init__.py").is_file()
+
+    text = card.read_text(encoding="utf-8")
+    assert 'const SDS200_CARD_TYPE = "sds200-card";' in text
+    assert "window.customCards" in text
+    assert "customElements.define" in text
+    assert "new CustomEvent(" in text
+    assert '"context-request"' in text
+    assert 'event.context = "states";' in text
+    assert "event.subscribe = true;" in text
+    assert "disconnectedCallback()" in text
+    assert "static getConfigForm()" in text
+    assert "getGridOptions()" in text
+    assert "this._hass.states" not in text
+    assert "fetch(" not in text
+    assert "WebSocket" not in text
+    assert "innerHTML" not in text
+    assert "callService" not in text
 
 
 def test_home_assistant_app_outer_timeout_covers_ordered_child_shutdown() -> None:

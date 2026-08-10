@@ -16,6 +16,9 @@ services:
 map:
   - type: media
     read_only: false
+  - type: homeassistant_config
+    read_only: false
+    path: /homeassistant
 ingress: true
 ingress_port: 8099
 ingress_stream: true
