@@ -137,6 +137,34 @@ def test_load_home_assistant_app_options_rejects_invalid_documents(
         load_home_assistant_app_options(path)
 
 
+
+@pytest.mark.parametrize(
+    "recording_directory",
+    [
+        "",
+        " sdsctl/recordings",
+        "sdsctl/recordings ",
+        "sdsctl/\x00recordings",
+        "sdsctl/\nrecordings",
+        "sdsctl/\trecordings",
+        r"sdsctl\recordings",
+        ".",
+        "sdsctl/./recordings",
+        "sdsctl/../recordings",
+        "sdsctl/recordings/",
+        "/sdsctl/recordings",
+    ],
+)
+def test_home_assistant_app_options_rejects_unsafe_recording_directories(
+    recording_directory: str,
+) -> None:
+    with pytest.raises(ValueError):
+        HomeAssistantAppOptions(
+            scanner_host="192.0.2.25",
+            recording_directory=recording_directory,
+        )
+
+
 def test_parse_home_assistant_mqtt_service_response_validates_envelope() -> None:
     service = parse_home_assistant_mqtt_service_response(
         mqtt_service_payload()

@@ -282,7 +282,14 @@ def migrate_home_assistant_app_recordings(
         raise ValueError(
             "Home Assistant recording migration paths must be absolute."
         )
-    if source == target or not source.exists():
+    if source == target:
+        return 0
+    if source.is_symlink():
+        raise SDS200Error(
+            "Legacy Home Assistant recording migration refuses symlinks: "
+            f"{source}"
+        )
+    if not source.exists():
         return 0
     if not source.is_dir():
         raise SDS200Error(
@@ -295,22 +302,22 @@ def migrate_home_assistant_app_recordings(
         mode=HOME_ASSISTANT_APP_RECORDING_DIRECTORY_MODE,
     )
 
-    source_files = sorted(
-        path
-        for path in source.rglob("*")
-        if not path.is_dir()
-    )
+    source_entries = sorted(source.rglob("*"))
+    for source_entry in source_entries:
+        if source_entry.is_symlink():
+            raise SDS200Error(
+                "Legacy Home Assistant recording migration refuses symlinks: "
+                f"{source_entry}"
+            )
+
+    source_files = [
+        path for path in source_entries if path.is_file()
+    ]
 
     # Preflight the complete migration before moving anything. Existing
     # identical destination files are safe leftovers from an interrupted
     # migration; differing collisions abort without overwriting either copy.
     for source_file in source_files:
-        if source_file.is_symlink():
-            raise SDS200Error(
-                "Legacy Home Assistant recording migration refuses symlinks: "
-                f"{source_file}"
-            )
-
         relative = source_file.relative_to(source)
         destination_file = target / relative
         if not destination_file.exists():
@@ -358,7 +365,7 @@ def migrate_home_assistant_app_recordings(
         migrated += 1
 
     directories = sorted(
-        (path for path in source.rglob("*") if path.is_dir()),
+        (path for path in source_entries if path.is_dir()),
         key=lambda path: len(path.parts),
         reverse=True,
     )
