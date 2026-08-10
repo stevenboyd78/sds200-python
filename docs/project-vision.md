@@ -226,18 +226,26 @@ The implemented sequence is:
   from legacy `/data/recordings`, and fixed UDP RTP publication without enabling
   host networking.
 
-Milestone 20.12.1 adds Home Assistant configuration translations so the App
-Configuration page gives the scanner host, MQTT topic prefix, and recording
+Milestone 20.12.1 completed Home Assistant configuration translations so the App
+Configuration page can give the scanner host, MQTT topic prefix, and recording
 directory user-facing names and descriptions. The recording directory description
 explicitly identifies `/media` as its root without changing the existing strict
-media-relative path contract.
+media-relative path contract. Automated validation is complete; repository-managed
+physical rendering is deferred until the next versioned App publication because
+20.12.1 retained App version 0.20.1 and App image publication is tag-gated.
+
+Milestone 20.12.2 is the active Home Assistant slice. It will bundle a first-party
+SDS200 Lovelace card without requiring HACS, reuse the existing Home Assistant
+entity and authoritative daemon-state contracts, and remain read-only with respect
+to scanner control. Milestone 20.12.3 remains the separate deliberate Home
+Assistant control-adapter boundary.
 
 Remaining Home Assistant work includes:
 
+- complete the bundled SDS200 Lovelace card and its supported resource delivery
+  and registration path;
 - add a deliberate Home Assistant control adapter rather than binding static
   Discovery button payloads directly to request-ID-deduplicated generic commands;
-- bundle an SDS200 Lovelace card with the App so the primary integration does not
-  require HACS; and
 - treat authenticated/TLS LAN gateways, remote daemon-backed CLI/TUI/GUI
   transports, or an optional host-network deployment variant as a later explicit
   security boundary.

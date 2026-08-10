@@ -11,20 +11,23 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 20.12.1 — Home Assistant configuration UX and roadmap synchronization
+### Milestone 20.12.2 — Bundled Lovelace SDS200 card
 
-- Add Home Assistant App configuration translations for `scanner_host`,
-  `mqtt_topic_prefix`, and `recording_directory`.
-- Make the Home Assistant Configuration page explicitly state that
-  `recording_directory` is relative to the Home Assistant `/media` root and show
-  the default resolved path `/media/sdsctl/recordings`.
-- Keep the runtime option schema, validation rules, storage ownership, and
-  single-owner daemon architecture unchanged.
-- Synchronize roadmap and project-vision state after the completed v0.20.1
-  Home Assistant corrective release.
-- Keep the bundled Lovelace card and deliberate Home Assistant control adapter
-  as separate follow-on slices so configuration UX does not expand the scanner
-  control or security boundary.
+- Define a supported first-party delivery and registration path for an SDS200
+  Lovelace card through the Home Assistant App distribution path without making
+  HACS a dependency.
+- Reuse the existing Home Assistant MQTT Discovery entities and authoritative
+  daemon-owned state rather than opening scanner, PSI, RTSP/RTP, audio, or
+  recording sessions from the card.
+- Keep this slice read-only from the Home Assistant control perspective; the
+  deliberate Home Assistant control adapter remains Milestone 20.12.3.
+- Use Home Assistant's supported `states` data context and built-in graphical
+  form schema rather than depending on unstable private frontend internals.
+- Add deterministic packaging and frontend tests before physical HAOS
+  validation.
+- During the next versioned App publication, validate both the bundled card and
+  the deferred Milestone 20.12.1 Configuration-page translations on physical
+  HAOS.
 
 ## Deferred hardware validation
 
@@ -108,10 +111,16 @@ begins.
   into writable Home Assistant `/media`, safely migrating legacy
   `/data/recordings`, improving the dashboard layout, and validating
   repository-managed upgrade and reinstall behavior on physical HAOS.
-- Milestone 20.12.1 is active for Home Assistant configuration translations and
+- Milestone 20.12.1 completed Home Assistant configuration translations and
   post-v0.20.1 roadmap synchronization without changing runtime semantics.
-- Milestone 20.12.2 will bundle a Lovelace SDS200 card with the Home Assistant
-  App rather than requiring HACS for the primary integration path.
+  Automated validation is complete; repository-managed physical rendering of
+  those translations is deferred until the next versioned App publication
+  because the slice retained App version 0.20.1 and image publication is
+  tag-gated.
+- Milestone 20.12.2 is active to bundle a first-party Lovelace SDS200 card with
+  the Home Assistant App distribution path without requiring HACS. The card
+  remains read-only with respect to scanner control and reuses the existing Home
+  Assistant entity/state contract.
 - Milestone 20.12.3 will add a deliberate Home Assistant control adapter over
   the existing semantic daemon-control boundary rather than binding static
   Discovery payloads directly to generic request-ID commands.

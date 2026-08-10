@@ -38,6 +38,9 @@ from .home_assistant_app_runtime import (
     build_home_assistant_web_command,
     default_home_assistant_app_runtime_paths,
 )
+from .home_assistant_lovelace import (
+    install_home_assistant_lovelace_card,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -667,14 +670,34 @@ def run_home_assistant_app(
     options_path: str | Path = HOME_ASSISTANT_APP_OPTIONS_PATH,
     paths: HomeAssistantAppRuntimePaths | None = None,
     environ: Mapping[str, str] | None = None,
+    lovelace_card_installer: Callable[[], Path] = (
+        install_home_assistant_lovelace_card
+    ),
 ) -> int:
     """Prepare and run the complete Home Assistant App process pair."""
+
+    if not callable(lovelace_card_installer):
+        raise TypeError(
+            "Home Assistant Lovelace card installer must be callable."
+        )
 
     plan = prepare_home_assistant_app_launch_plan(
         options_path=options_path,
         paths=paths,
         environ=environ,
     )
+
+    if paths is None:
+        try:
+            lovelace_card_installer()
+        except (SDS200Error, OSError) as error:
+            logger.warning(
+                "Home Assistant Lovelace card installation failed "
+                "error=%s: %s",
+                error.__class__.__name__,
+                error,
+            )
+
     return HomeAssistantAppSupervisor(plan).run()
 
 

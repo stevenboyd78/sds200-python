@@ -8,6 +8,11 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Added
 
+- First-party read-only SDS200 Lovelace card packaging and Home Assistant
+  `/local/sds200/sds200-card.js` delivery without HACS or Home Assistant Core
+  API access; the card uses Home Assistant's supported state context and built-in
+  graphical form editor to select the Discovery entities, and exposes no scanner
+  controls.
 - Home Assistant App configuration translations provide user-facing names and
   descriptions for scanner host, MQTT topic prefix, and recording directory;
   the recording directory description explicitly identifies Home Assistant

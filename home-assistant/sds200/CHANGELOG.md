@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The App now installs a bundled read-only SDS200 Lovelace card under Home
+  Assistant `www`, available as `/local/sds200/sds200-card.js`; users register
+  the module once through the normal Home Assistant dashboard Resources page,
+  then configure the card through Home Assistant's built-in graphical entity
+  selectors.
 - Configuration fields now have user-facing names and descriptions, including
   explicit guidance that `recording_directory` is relative to Home Assistant
   `/media` and that the default resolves to `/media/sdsctl/recordings`.

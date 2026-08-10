@@ -121,6 +121,71 @@ Unix-domain sockets inside the App container.
 The current MQTT adapter does not configure TLS. Keep Home Assistant, the MQTT
 broker, and the scanner on trusted networks.
 
+## Bundled Lovelace card
+
+The Home Assistant App installs its first-party read-only SDS200 card at:
+
+```text
+/homeassistant/www/sds200/sds200-card.js
+```
+
+Home Assistant serves that file to the frontend as:
+
+```text
+/local/sds200/sds200-card.js
+```
+
+Register that URL once in **Settings > Dashboards > Resources** as a
+**JavaScript Module**. HACS is not required.
+
+If the App creates Home Assistant's `www` directory for the first time, restart
+Home Assistant Core once before registering the resource so `/local` becomes
+available.
+
+The automatic `/local` delivery requires the App to map Home Assistant's
+configuration directory read/write. That filesystem permission is broader than
+the single card file: the container can technically write elsewhere in the Home
+Assistant configuration tree while it is running. The SDS200 installer
+deliberately limits its own behavior to creating `www/sds200` when necessary and
+creating or replacing only `www/sds200/sds200-card.js`. It does not edit Home
+Assistant YAML, `.storage`, dashboards, or resource registration.
+
+Failure to install or update the optional card is isolated from the scanner
+runtime. The App logs a warning and continues starting the daemon and web
+dashboard.
+
+The card intentionally does not call the App, daemon, scanner, MQTT broker, or
+Home Assistant APIs. It subscribes only to Home Assistant's supported `states`
+data context through the frontend `context-request` mechanism.
+
+After registering the resource, add **SDS200 Scanner** from the Home Assistant
+card picker. The card uses Home Assistant's built-in graphical form editor.
+Expand **SDS200 entities** and select the entities created by the SDS200 MQTT
+Discovery device. Entity selectors are constrained to the expected `sensor` or
+`binary_sensor` domain.
+
+YAML configuration remains available as a fallback:
+
+```yaml
+type: custom:sds200-card
+title: SDS200 Scanner
+entities:
+  scanner_connected: binary_sensor.REPLACE_ME
+  system: sensor.REPLACE_ME
+  department: sensor.REPLACE_ME
+  channel: sensor.REPLACE_ME
+  signal: sensor.REPLACE_ME
+  rssi: sensor.REPLACE_ME
+  audio_running: binary_sensor.REPLACE_ME
+  recording_active: binary_sensor.REPLACE_ME
+  recording_status: sensor.REPLACE_ME
+  daemon_state: sensor.REPLACE_ME
+```
+
+Use the actual entity IDs created by the SDS200 MQTT Discovery device. The first
+card slice is deliberately read-only. Scanner controls remain a separate Home
+Assistant control-adapter milestone.
+
 ## Troubleshooting
 
 ### Repository does not appear in the App store
