@@ -108,10 +108,18 @@ def test_home_assistant_app_manifest_uses_ingress_and_required_mqtt_service() ->
         in manifest
     )
     assert "host_network: true\n" not in manifest
-    assert 'options:\n  mqtt_topic_prefix: "sdsctl"\n' in manifest
+    assert "map:\n  - type: media\n    read_only: false\n" in manifest
+    assert 'panel_icon: "mdi:radio-tower"\n' in manifest
+    assert (
+        'options:\n'
+        '  mqtt_topic_prefix: "sdsctl"\n'
+        '  recording_directory: "sdsctl/recordings"\n'
+        in manifest
+    )
     assert 'scanner_host: ""' not in manifest
     assert 'scanner_host: "str(1,)"\n' in manifest
     assert 'mqtt_topic_prefix: "str(1,)"\n' in manifest
+    assert 'recording_directory: "str(1,)"\n' in manifest
 
 
 def test_home_assistant_app_outer_timeout_covers_ordered_child_shutdown() -> None:

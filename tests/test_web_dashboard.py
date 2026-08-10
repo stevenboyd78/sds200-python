@@ -5,6 +5,7 @@ import json
 import threading
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Self
 
 import pytest
@@ -1629,3 +1630,42 @@ def test_web_dashboard_serves_local_interactive_docs_without_daemon() -> None:
         "/api/v1/recordings/file/{identifier}"
         in openapi_response.json()["paths"]
     )
+
+def test_dashboard_layout_uses_dedicated_recording_library_panel() -> None:
+    repository_root = Path(__file__).resolve().parents[1]
+    dashboard = (
+        repository_root
+        / "src"
+        / "sds200"
+        / "web_assets"
+        / "dashboard.html"
+    ).read_text(encoding="utf-8")
+
+    assert dashboard.count('id="scanner-reconnect"') == 1
+
+    scanner_start = dashboard.index(
+        '<section class="panel scanner-panel"'
+    )
+    activity_start = dashboard.index(
+        '<section class="panel panel-emphasis"',
+        scanner_start,
+    )
+    scanner_panel = dashboard[scanner_start:activity_start]
+
+    assert 'id="scanner-reconnect"' in scanner_panel
+    assert 'id="runtime-title"' in scanner_panel
+    assert 'id="daemon-state"' in scanner_panel
+
+    controls_start = dashboard.index(
+        '<section class="panel scanner-controls-panel"'
+    )
+    browser_audio_start = dashboard.index(
+        '<section class="panel browser-audio-panel"',
+        controls_start,
+    )
+    controls_panel = dashboard[controls_start:browser_audio_start]
+    assert 'id="scanner-reconnect"' not in controls_panel
+
+    assert 'class="panel recording-capture-panel"' in dashboard
+    assert 'class="panel recording-library-panel"' in dashboard
+    assert 'id="recordings-title"' in dashboard

@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import filecmp
 import logging
 import os
+import shutil
 import signal
 import subprocess
 import sys
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import suppress
 from dataclasses import dataclass, field
 from math import isfinite
 from pathlib import Path
@@ -29,6 +32,7 @@ from .home_assistant_app import (
     write_home_assistant_daemon_mqtt_configuration,
 )
 from .home_assistant_app_runtime import (
+    HOME_ASSISTANT_APP_LEGACY_RECORDING_DIRECTORY,
     HomeAssistantAppRuntimePaths,
     build_home_assistant_daemon_command,
     build_home_assistant_web_command,
@@ -45,7 +49,7 @@ HOME_ASSISTANT_APP_DAEMON_STOP_TIMEOUT = 30.0
 HOME_ASSISTANT_APP_FORCE_STOP_TIMEOUT = 5.0
 HOME_ASSISTANT_APP_SUPERVISOR_POLL_INTERVAL = 0.1
 HOME_ASSISTANT_APP_RUNTIME_DIRECTORY_MODE = 0o700
-HOME_ASSISTANT_APP_RECORDING_DIRECTORY_MODE = 0o700
+HOME_ASSISTANT_APP_RECORDING_DIRECTORY_MODE = 0o755
 
 
 class HomeAssistantAppChildProcess(Protocol):
@@ -252,14 +256,127 @@ def _prepare_runtime_directories(paths: HomeAssistantAppRuntimePaths) -> None:
     paths.runtime_directory.chmod(
         HOME_ASSISTANT_APP_RUNTIME_DIRECTORY_MODE
     )
+    recording_directory_existed = paths.recording_directory.exists()
     paths.recording_directory.mkdir(
         parents=True,
         exist_ok=True,
         mode=HOME_ASSISTANT_APP_RECORDING_DIRECTORY_MODE,
     )
-    paths.recording_directory.chmod(
-        HOME_ASSISTANT_APP_RECORDING_DIRECTORY_MODE
+    if not recording_directory_existed:
+        paths.recording_directory.chmod(
+            HOME_ASSISTANT_APP_RECORDING_DIRECTORY_MODE
+        )
+
+
+def migrate_home_assistant_app_recordings(
+    destination: str | Path,
+    *,
+    legacy_directory: str | Path = HOME_ASSISTANT_APP_LEGACY_RECORDING_DIRECTORY,
+) -> int:
+    """Safely migrate persistent v0.20.0 recordings into mapped media storage."""
+
+    source = Path(legacy_directory)
+    target = Path(destination)
+
+    if not source.is_absolute() or not target.is_absolute():
+        raise ValueError(
+            "Home Assistant recording migration paths must be absolute."
+        )
+    if source == target or not source.exists():
+        return 0
+    if not source.is_dir():
+        raise SDS200Error(
+            f"Legacy Home Assistant recording path is not a directory: {source}"
+        )
+
+    target.mkdir(
+        parents=True,
+        exist_ok=True,
+        mode=HOME_ASSISTANT_APP_RECORDING_DIRECTORY_MODE,
     )
+
+    source_files = sorted(
+        path
+        for path in source.rglob("*")
+        if not path.is_dir()
+    )
+
+    # Preflight the complete migration before moving anything. Existing
+    # identical destination files are safe leftovers from an interrupted
+    # migration; differing collisions abort without overwriting either copy.
+    for source_file in source_files:
+        if source_file.is_symlink():
+            raise SDS200Error(
+                "Legacy Home Assistant recording migration refuses symlinks: "
+                f"{source_file}"
+            )
+
+        relative = source_file.relative_to(source)
+        destination_file = target / relative
+        if not destination_file.exists():
+            continue
+        if (
+            not destination_file.is_file()
+            or not filecmp.cmp(
+                source_file,
+                destination_file,
+                shallow=False,
+            )
+        ):
+            raise SDS200Error(
+                "Legacy Home Assistant recording migration found a "
+                f"conflicting destination file: {destination_file}"
+            )
+
+    migrated = 0
+    for source_file in source_files:
+        relative = source_file.relative_to(source)
+        destination_file = target / relative
+        destination_file.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+            mode=HOME_ASSISTANT_APP_RECORDING_DIRECTORY_MODE,
+        )
+
+        if destination_file.exists():
+            source_file.unlink()
+            continue
+
+        shutil.copy2(source_file, destination_file)
+        if not filecmp.cmp(
+            source_file,
+            destination_file,
+            shallow=False,
+        ):
+            destination_file.unlink(missing_ok=True)
+            raise SDS200Error(
+                "Legacy Home Assistant recording migration verification "
+                f"failed for: {source_file}"
+            )
+
+        source_file.unlink()
+        migrated += 1
+
+    directories = sorted(
+        (path for path in source.rglob("*") if path.is_dir()),
+        key=lambda path: len(path.parts),
+        reverse=True,
+    )
+    for directory in directories:
+        with suppress(OSError):
+            directory.rmdir()
+
+    with suppress(OSError):
+        source.rmdir()
+
+    if migrated:
+        logger.info(
+            "Migrated %d Home Assistant recording file(s) from %s to %s",
+            migrated,
+            source,
+            target,
+        )
+    return migrated
 
 
 def _child_environments(
@@ -291,9 +408,11 @@ def prepare_home_assistant_app_launch_plan(
         if environ is None
         else dict(environ)
     )
+    options = load_home_assistant_app_options(options_path)
+    using_default_paths = paths is None
     selected_paths = (
-        default_home_assistant_app_runtime_paths()
-        if paths is None
+        default_home_assistant_app_runtime_paths(options)
+        if using_default_paths
         else paths
     )
     if not isinstance(selected_paths, HomeAssistantAppRuntimePaths):
@@ -301,11 +420,14 @@ def prepare_home_assistant_app_launch_plan(
             "Home Assistant App launch plan requires App runtime paths."
         )
 
-    options = load_home_assistant_app_options(options_path)
     service = fetch_home_assistant_mqtt_service(
         environ=source_environment,
     )
     _prepare_runtime_directories(selected_paths)
+    if using_default_paths:
+        migrate_home_assistant_app_recordings(
+            selected_paths.recording_directory
+        )
     write_home_assistant_daemon_mqtt_configuration(
         selected_paths.mqtt_configuration,
         options,

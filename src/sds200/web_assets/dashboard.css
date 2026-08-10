@@ -312,6 +312,7 @@ select:focus-visible,
 
 .audio-controls,
 .scanner-controls,
+.scanner-connection-actions,
 .recording-controls {
   display: flex;
   flex-wrap: wrap;
@@ -329,6 +330,7 @@ select:focus-visible,
 
 .audio-controls button,
 .scanner-controls button,
+.scanner-connection-actions button,
 .recording-controls button,
 .recording-library button,
 .recording-action {
@@ -345,6 +347,7 @@ select:focus-visible,
 
 .audio-controls button:hover:not(:disabled),
 .scanner-controls button:hover:not(:disabled),
+.scanner-connection-actions button:hover:not(:disabled),
 .recording-controls button:hover:not(:disabled),
 .recording-library button:hover:not(:disabled),
 .recording-action:hover {
@@ -354,6 +357,7 @@ select:focus-visible,
 
 .audio-controls button:disabled,
 .scanner-controls button:disabled,
+.scanner-connection-actions button:disabled,
 .recording-controls button:disabled,
 .recording-library button:disabled {
   cursor: not-allowed;
@@ -4943,5 +4947,91 @@ select:focus-visible,
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* Stable semantic placement for the six primary dashboard work areas. */
+.dashboard-grid {
+  grid-template-areas:
+    "scanner activity controls"
+    "audio capture library";
+}
+
+.scanner-panel {
+  grid-area: scanner;
+}
+
+.panel-emphasis {
+  grid-area: activity;
+}
+
+.scanner-controls-panel {
+  grid-area: controls;
+}
+
+.browser-audio-panel {
+  grid-area: audio;
+}
+
+.recording-capture-panel {
+  grid-area: capture;
+}
+
+.recording-library-panel {
+  grid-area: library;
+}
+
+.scanner-connection-actions {
+  margin-top: var(--space-4);
+}
+
+.panel-subsection {
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border);
+}
+
+.panel-subsection-header {
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-subsection-header h2,
+.recording-library-header h2 {
+  margin: 0;
+  font-size: 1.35rem;
+  line-height: 1.15;
+}
+
+.recording-library-panel .recording-library {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+@media (max-width: 64rem) {
+  .dashboard-grid {
+    grid-template-areas:
+      "activity activity"
+      "scanner controls"
+      "audio capture"
+      "library library";
+  }
+
+  .panel-emphasis {
+    grid-column: auto;
+    grid-row: auto;
+  }
+}
+
+@media (max-width: 42rem) {
+  .dashboard-grid {
+    grid-template-areas:
+      "scanner"
+      "activity"
+      "controls"
+      "audio"
+      "capture"
+      "library";
   }
 }

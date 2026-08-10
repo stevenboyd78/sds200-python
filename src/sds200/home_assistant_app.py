@@ -5,7 +5,7 @@ import os
 from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from tempfile import NamedTemporaryFile
 from typing import TypeAlias
 from urllib.error import HTTPError, URLError
@@ -24,6 +24,7 @@ HOME_ASSISTANT_SUPERVISOR_URL = "http://supervisor"
 HOME_ASSISTANT_SUPERVISOR_TOKEN_VARIABLE = "SUPERVISOR_TOKEN"
 HOME_ASSISTANT_APP_MQTT_PASSWORD_VARIABLE = "SDSCTL_HOME_ASSISTANT_MQTT_PASSWORD"
 HOME_ASSISTANT_APP_DEFAULT_MQTT_TOPIC_PREFIX = "sdsctl"
+HOME_ASSISTANT_APP_DEFAULT_RECORDING_DIRECTORY = "sdsctl/recordings"
 HOME_ASSISTANT_APP_SUPERVISOR_TIMEOUT = 5.0
 
 SupervisorJsonRequester: TypeAlias = Callable[[str, str, float], object]
@@ -56,12 +57,39 @@ def _require_topic_prefix(value: object) -> str:
     return topic
 
 
+def _require_recording_directory(value: object) -> str:
+    directory = _require_text(
+        value,
+        label="Home Assistant App recording directory",
+    )
+    if "\\" in directory:
+        raise ValueError(
+            "Home Assistant App recording directory must use '/' separators."
+        )
+
+    path = PurePosixPath(directory)
+    if path.is_absolute():
+        raise ValueError(
+            "Home Assistant App recording directory must be relative to /media."
+        )
+
+    parts = directory.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        raise ValueError(
+            "Home Assistant App recording directory must not contain "
+            "empty, '.' or '..' path components."
+        )
+
+    return path.as_posix()
+
+
 @dataclass(frozen=True, slots=True)
 class HomeAssistantAppOptions:
     """Strict user-editable options consumed from /data/options.json."""
 
     scanner_host: str
     mqtt_topic_prefix: str = HOME_ASSISTANT_APP_DEFAULT_MQTT_TOPIC_PREFIX
+    recording_directory: str = HOME_ASSISTANT_APP_DEFAULT_RECORDING_DIRECTORY
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -76,6 +104,11 @@ class HomeAssistantAppOptions:
             self,
             "mqtt_topic_prefix",
             _require_topic_prefix(self.mqtt_topic_prefix),
+        )
+        object.__setattr__(
+            self,
+            "recording_directory",
+            _require_recording_directory(self.recording_directory),
         )
 
 
@@ -146,7 +179,11 @@ def load_home_assistant_app_options(
             f"Home Assistant App options {options_path} must contain one JSON object."
         )
 
-    allowed = {"scanner_host", "mqtt_topic_prefix"}
+    allowed = {
+        "scanner_host",
+        "mqtt_topic_prefix",
+        "recording_directory",
+    }
     unexpected = sorted(str(key) for key in payload if key not in allowed)
     if unexpected:
         fields = ", ".join(repr(field) for field in unexpected)
@@ -165,6 +202,10 @@ def load_home_assistant_app_options(
             mqtt_topic_prefix=payload.get(
                 "mqtt_topic_prefix",
                 HOME_ASSISTANT_APP_DEFAULT_MQTT_TOPIC_PREFIX,
+            ),
+            recording_directory=payload.get(
+                "recording_directory",
+                HOME_ASSISTANT_APP_DEFAULT_RECORDING_DIRECTORY,
             ),
         )
     except (TypeError, ValueError) as error:
@@ -444,6 +485,7 @@ def home_assistant_mqtt_password_environment(
 
 __all__ = [
     "HOME_ASSISTANT_APP_DEFAULT_MQTT_TOPIC_PREFIX",
+    "HOME_ASSISTANT_APP_DEFAULT_RECORDING_DIRECTORY",
     "HOME_ASSISTANT_APP_MQTT_PASSWORD_VARIABLE",
     "HOME_ASSISTANT_APP_OPTIONS_PATH",
     "HOME_ASSISTANT_APP_SUPERVISOR_TIMEOUT",

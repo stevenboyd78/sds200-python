@@ -9,6 +9,7 @@ from sds200.daemon_mqtt import load_daemon_mqtt_configuration
 from sds200.exceptions import ConfigurationError, SDS200Error
 from sds200.home_assistant_app import (
     HOME_ASSISTANT_APP_DEFAULT_MQTT_TOPIC_PREFIX,
+    HOME_ASSISTANT_APP_DEFAULT_RECORDING_DIRECTORY,
     HOME_ASSISTANT_APP_MQTT_PASSWORD_VARIABLE,
     HOME_ASSISTANT_SUPERVISOR_TOKEN_VARIABLE,
     HomeAssistantAppOptions,
@@ -56,6 +57,7 @@ def test_load_home_assistant_app_options_uses_strict_defaults(
     assert options == HomeAssistantAppOptions(
         scanner_host="192.0.2.25",
         mqtt_topic_prefix=HOME_ASSISTANT_APP_DEFAULT_MQTT_TOPIC_PREFIX,
+        recording_directory=HOME_ASSISTANT_APP_DEFAULT_RECORDING_DIRECTORY,
     )
 
 
@@ -68,6 +70,7 @@ def test_load_home_assistant_app_options_accepts_topic_prefix(
             {
                 "scanner_host": "scanner.local",
                 "mqtt_topic_prefix": "scanner/main",
+                "recording_directory": "radio/sds200",
             }
         ),
         encoding="utf-8",
@@ -76,6 +79,7 @@ def test_load_home_assistant_app_options_accepts_topic_prefix(
     assert load_home_assistant_app_options(path) == HomeAssistantAppOptions(
         scanner_host="scanner.local",
         mqtt_topic_prefix="scanner/main",
+        recording_directory="radio/sds200",
     )
 
 
@@ -97,6 +101,27 @@ def test_load_home_assistant_app_options_accepts_topic_prefix(
                 "mqtt_topic_prefix": "scanner/+/state",
             },
             "subscription wildcards",
+        ),
+        (
+            {
+                "scanner_host": "192.0.2.25",
+                "recording_directory": "/media/sdsctl/recordings",
+            },
+            "must be relative to /media",
+        ),
+        (
+            {
+                "scanner_host": "192.0.2.25",
+                "recording_directory": "../recordings",
+            },
+            "path components",
+        ),
+        (
+            {
+                "scanner_host": "192.0.2.25",
+                "recording_directory": "sdsctl//recordings",
+            },
+            "path components",
         ),
     ],
 )

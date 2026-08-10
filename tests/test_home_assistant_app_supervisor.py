@@ -9,6 +9,7 @@ from typing import Self
 
 import pytest
 
+from sds200.exceptions import SDS200Error
 from sds200.home_assistant_app import (
     HOME_ASSISTANT_APP_MQTT_PASSWORD_VARIABLE,
     HOME_ASSISTANT_SUPERVISOR_TOKEN_VARIABLE,
@@ -19,6 +20,7 @@ from sds200.home_assistant_app_runtime import HomeAssistantAppRuntimePaths
 from sds200.home_assistant_app_supervisor import (
     HomeAssistantAppLaunchPlan,
     HomeAssistantAppSupervisor,
+    migrate_home_assistant_app_recordings,
     prepare_home_assistant_app_launch_plan,
 )
 
@@ -151,6 +153,76 @@ def test_launch_plan_repr_does_not_expose_child_environments(
     assert "web_environment" not in rendered
 
 
+def test_migrate_home_assistant_app_recordings_preserves_library(
+    tmp_path: Path,
+) -> None:
+    legacy = tmp_path / "data" / "recordings"
+    destination = tmp_path / "media" / "sdsctl" / "recordings"
+    nested = legacy / "system" / "department"
+    nested.mkdir(parents=True)
+
+    recording = nested / "test.wav"
+    metadata = nested / "test.wav.json"
+    recording.write_bytes(b"RIFF-test-recording")
+    metadata.write_text(
+        '{"recording": "test.wav"}\n',
+        encoding="utf-8",
+    )
+
+    migrated = migrate_home_assistant_app_recordings(
+        destination,
+        legacy_directory=legacy,
+    )
+
+    assert migrated == 2
+    assert (
+        destination / "system" / "department" / "test.wav"
+    ).read_bytes() == b"RIFF-test-recording"
+    assert (
+        destination / "system" / "department" / "test.wav.json"
+    ).read_text(encoding="utf-8") == '{"recording": "test.wav"}\n'
+    assert not legacy.exists()
+
+    assert (
+        migrate_home_assistant_app_recordings(
+            destination,
+            legacy_directory=legacy,
+        )
+        == 0
+    )
+
+
+def test_migrate_home_assistant_app_recordings_rejects_conflicts_without_changes(
+    tmp_path: Path,
+) -> None:
+    legacy = tmp_path / "data" / "recordings"
+    destination = tmp_path / "media" / "sdsctl" / "recordings"
+    legacy.mkdir(parents=True)
+    destination.mkdir(parents=True)
+
+    migratable = legacy / "a.wav"
+    conflicting_source = legacy / "b.wav"
+    conflicting_destination = destination / "b.wav"
+
+    migratable.write_bytes(b"migratable")
+    conflicting_source.write_bytes(b"legacy")
+    conflicting_destination.write_bytes(b"existing")
+
+    with pytest.raises(
+        SDS200Error,
+        match="conflicting destination file",
+    ):
+        migrate_home_assistant_app_recordings(
+            destination,
+            legacy_directory=legacy,
+        )
+
+    assert migratable.read_bytes() == b"migratable"
+    assert conflicting_source.read_bytes() == b"legacy"
+    assert conflicting_destination.read_bytes() == b"existing"
+    assert not (destination / "a.wav").exists()
+
+
 @pytest.mark.parametrize(
     "argument",
     [
@@ -191,6 +263,9 @@ def test_prepare_launch_plan_generates_config_and_separates_child_secrets(
         encoding="utf-8",
     )
     paths = runtime_paths(tmp_path)
+    paths.recording_directory.mkdir(parents=True)
+    paths.recording_directory.chmod(0o711)
+
     service = HomeAssistantMqttService(
         host="mqtt",
         port=1883,
@@ -234,6 +309,7 @@ def test_prepare_launch_plan_generates_config_and_separates_child_secrets(
     ]
     assert paths.runtime_directory.is_dir()
     assert paths.recording_directory.is_dir()
+    assert paths.recording_directory.stat().st_mode & 0o777 == 0o711
     assert paths.mqtt_configuration.is_file()
     rendered = paths.mqtt_configuration.read_text(encoding="utf-8")
     assert "secret" not in rendered
