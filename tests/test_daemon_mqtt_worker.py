@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import queue
 import threading
 import time
@@ -14,6 +15,7 @@ import pytest
 from sds200 import (
     DAEMON_API_PROTOCOL,
     DAEMON_API_VERSION,
+    DaemonApiErrorCode,
     DaemonApiResponse,
     DaemonEventKind,
     DaemonEventPublisher,
@@ -1497,5 +1499,431 @@ def test_home_assistant_birth_and_semantic_commands_share_connection() -> None:
     }
     assert control_api.calls == [json.loads(command.payload)]
     assert birth not in connection.acknowledged
+
+    worker.stop()
+
+
+def home_assistant_control_message(
+    topic: str,
+    payload: bytes,
+    *,
+    qos: int = 0,
+    retain: bool = False,
+    duplicate: bool = False,
+    message_id: int = 100,
+) -> DaemonMqttBrokerMessage:
+    return DaemonMqttBrokerMessage(
+        topic=topic,
+        payload=payload,
+        qos=qos,
+        retain=retain,
+        duplicate=duplicate,
+        message_id=message_id,
+    )
+
+
+def home_assistant_control_config() -> DaemonMqttConfiguration:
+    return DaemonMqttConfiguration(
+        host="mqtt.example.test",
+        home_assistant=DaemonMqttHomeAssistantConfiguration(
+            enabled=True,
+            controls_enabled=True,
+        ),
+    )
+
+
+def test_home_assistant_controls_require_explicit_control_api() -> None:
+    stream = FakeEventStream()
+    connection = FakeBrokerConnection()
+
+    with pytest.raises(
+        ValueError,
+        match="require a daemon control API",
+    ):
+        make_worker(
+            stream,
+            lambda config, password: connection,
+            config=home_assistant_control_config(),
+        )
+
+
+def test_home_assistant_control_adapter_dispatches_exact_semantic_requests() -> None:
+    stream = FakeEventStream()
+    connection = FakeBrokerConnection()
+    control_api = FakeControlApi()
+    worker = make_worker(
+        stream,
+        lambda config, password: connection,
+        config=home_assistant_control_config(),
+        control_api=control_api,
+    )
+
+    worker.start()
+    wait_until(
+        lambda: connection.subscriptions
+        == [
+            ("homeassistant/status", 0),
+            (
+                "sdsctl/home_assistant/control/hold/system",
+                0,
+            ),
+            (
+                "sdsctl/home_assistant/control/hold/department",
+                0,
+            ),
+            (
+                "sdsctl/home_assistant/control/hold/site",
+                0,
+            ),
+            (
+                "sdsctl/home_assistant/control/hold/channel",
+                0,
+            ),
+            (
+                "sdsctl/home_assistant/control/previous/channel",
+                0,
+            ),
+            (
+                "sdsctl/home_assistant/control/next/channel",
+                0,
+            ),
+            (
+                "sdsctl/home_assistant/control/reconnect",
+                0,
+            ),
+        ]
+    )
+
+    messages = [
+        home_assistant_control_message(
+            "sdsctl/home_assistant/control/hold/system",
+            b"ON",
+            message_id=101,
+        ),
+        home_assistant_control_message(
+            "sdsctl/home_assistant/control/hold/system",
+            b"OFF",
+            message_id=102,
+        ),
+        home_assistant_control_message(
+            "sdsctl/home_assistant/control/reconnect",
+            b"PRESS",
+            message_id=103,
+        ),
+    ]
+
+    for expected_calls, message in enumerate(messages, start=1):
+        connection.deliver(message)
+        wait_until(
+            lambda expected_calls=expected_calls: (
+                len(control_api.calls) == expected_calls
+            )
+        )
+
+    assert control_api.calls == [
+        {
+            "protocol": DAEMON_API_PROTOCOL,
+            "version": DAEMON_API_VERSION,
+            "request_id": "home-assistant-control-1",
+            "operation": "scanner.hold_state",
+            "params": {
+                "scope": "system",
+                "held": True,
+            },
+        },
+        {
+            "protocol": DAEMON_API_PROTOCOL,
+            "version": DAEMON_API_VERSION,
+            "request_id": "home-assistant-control-2",
+            "operation": "scanner.hold_state",
+            "params": {
+                "scope": "system",
+                "held": False,
+            },
+        },
+        {
+            "protocol": DAEMON_API_PROTOCOL,
+            "version": DAEMON_API_VERSION,
+            "request_id": "home-assistant-control-3",
+            "operation": "scanner.reconnect",
+            "params": {},
+        },
+    ]
+    assert connection.acknowledged == []
+    assert all(
+        publication.topic != "sdsctl/responses"
+        for publication in connection.publications
+    )
+    assert (
+        ("sdsctl/commands", 1)
+        not in connection.subscriptions
+    )
+
+    worker.stop()
+
+
+def test_home_assistant_control_adapter_rejects_unsafe_delivery_shapes() -> None:
+    stream = FakeEventStream()
+    connection = FakeBrokerConnection()
+    control_api = FakeControlApi()
+    worker = make_worker(
+        stream,
+        lambda config, password: connection,
+        config=home_assistant_control_config(),
+        control_api=control_api,
+    )
+
+    worker.start()
+    wait_until(lambda: len(connection.subscriptions) == 8)
+
+    unsafe = [
+        home_assistant_control_message(
+            "sdsctl/home_assistant/control/hold/channel",
+            b"ON",
+            retain=True,
+            message_id=110,
+        ),
+        home_assistant_control_message(
+            "sdsctl/home_assistant/control/hold/channel",
+            b"ON",
+            duplicate=True,
+            message_id=111,
+        ),
+        home_assistant_control_message(
+            "sdsctl/home_assistant/control/hold/channel",
+            b"ON",
+            qos=1,
+            message_id=112,
+        ),
+        home_assistant_control_message(
+            "sdsctl/home_assistant/control/hold/channel",
+            b"INVALID",
+            message_id=113,
+        ),
+    ]
+
+    for message in unsafe:
+        connection.deliver(message)
+
+    valid = home_assistant_control_message(
+        "sdsctl/home_assistant/control/reconnect",
+        b"PRESS",
+        message_id=114,
+    )
+    connection.deliver(valid)
+
+    wait_until(lambda: len(control_api.calls) == 1)
+
+    assert control_api.calls[0]["operation"] == "scanner.reconnect"
+    assert worker.snapshot().failures == 0
+    assert connection.acknowledged == []
+
+    worker.stop()
+
+
+def test_home_assistant_semantic_control_failure_does_not_fail_mqtt_worker(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    class RejectingControlApi(FakeControlApi):
+        def handle_control_payload(
+            self,
+            payload: object,
+        ) -> DaemonApiResponse:
+            self.calls.append(payload)
+            assert isinstance(payload, Mapping)
+            request_id = payload["request_id"]
+            assert isinstance(request_id, str)
+            return DaemonApiResponse.failure(
+                request_id,
+                DaemonApiErrorCode.CONTROL_UNAVAILABLE,
+                "Scanner control unavailable.",
+            )
+
+    stream = FakeEventStream()
+    connection = FakeBrokerConnection()
+    control_api = RejectingControlApi()
+    worker = make_worker(
+        stream,
+        lambda config, password: connection,
+        config=home_assistant_control_config(),
+        control_api=control_api,
+    )
+
+    caplog.set_level(logging.WARNING)
+    worker.start()
+    wait_until(lambda: len(connection.subscriptions) == 8)
+
+    message = home_assistant_control_message(
+        "sdsctl/home_assistant/control/hold/department",
+        b"ON",
+        message_id=120,
+    )
+    connection.deliver(message)
+
+    wait_until(lambda: len(control_api.calls) == 1)
+    wait_until(lambda: "control_unavailable" in caplog.text)
+
+    snapshot = worker.snapshot()
+    assert snapshot.connected is True
+    assert snapshot.failures == 0
+    assert "Home Assistant MQTT control rejected" in caplog.text
+    assert "control_unavailable" in caplog.text
+    assert connection.acknowledged == []
+    assert all(
+        publication.topic != "sdsctl/responses"
+        for publication in connection.publications
+    )
+
+    worker.stop()
+
+def test_home_assistant_navigation_uses_latest_ordered_radio_context(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    stream = FakeEventStream()
+    stream.snapshot_payload["radio_state"] = {
+        "system": "County",
+        "department": "Dispatch",
+        "channel": "Primary",
+        "channel_kind": "TGID",
+        "channel_index": 400,
+        "signal": 4,
+        "rssi": -83.0,
+    }
+    connection = FakeBrokerConnection()
+    control_api = FakeControlApi()
+    worker = make_worker(
+        stream,
+        lambda config, password: connection,
+        config=home_assistant_control_config(),
+        control_api=control_api,
+    )
+
+    caplog.set_level(logging.WARNING)
+    worker.start()
+    wait_until(lambda: len(connection.subscriptions) == 8)
+
+    previous = home_assistant_control_message(
+        "sdsctl/home_assistant/control/previous/channel",
+        b"PRESS",
+        message_id=130,
+    )
+    connection.deliver(previous)
+    wait_until(lambda: len(control_api.calls) == 1)
+
+    assert control_api.calls[-1] == {
+        "protocol": DAEMON_API_PROTOCOL,
+        "version": DAEMON_API_VERSION,
+        "request_id": "home-assistant-control-1",
+        "operation": "scanner.previous",
+        "params": {
+            "target": "TGID",
+            "first": 400,
+        },
+    }
+
+    stream.publish(
+        DaemonEventKind.RADIO_STATE,
+        {
+            "fields": ["channel_kind", "channel_index"],
+            "previous": {
+                "channel_kind": "TGID",
+                "channel_index": 400,
+            },
+            "current": {
+                "channel_kind": "ConvFrequency",
+                "channel_index": 500,
+            },
+        },
+    )
+    wait_until(
+        lambda: any(
+            item.topic == "sdsctl/state/radio"
+            and decode_json(item).get("channel_index") == 500
+            for item in connection.publications
+        )
+    )
+
+    next_message = home_assistant_control_message(
+        "sdsctl/home_assistant/control/next/channel",
+        b"PRESS",
+        message_id=131,
+    )
+    connection.deliver(next_message)
+    wait_until(lambda: len(control_api.calls) == 2)
+
+    assert control_api.calls[-1] == {
+        "protocol": DAEMON_API_PROTOCOL,
+        "version": DAEMON_API_VERSION,
+        "request_id": "home-assistant-control-2",
+        "operation": "scanner.next",
+        "params": {
+            "target": "CFREQ",
+            "first": 500,
+        },
+    }
+
+    stream.publish(
+        DaemonEventKind.SCANNER_CONNECTION,
+        {
+            "endpoint": "192.0.2.25:50536",
+            "connected": False,
+        },
+    )
+    wait_until(
+        lambda: any(
+            item.topic == "sdsctl/state/scanner/connection"
+            and decode_json(item).get("scanner_connected") is False
+            for item in connection.publications
+        )
+    )
+
+    caplog.clear()
+    unavailable = home_assistant_control_message(
+        "sdsctl/home_assistant/control/next/channel",
+        b"PRESS",
+        message_id=132,
+    )
+    connection.deliver(unavailable)
+    wait_until(lambda: "unavailable state" in caplog.text)
+
+    assert len(control_api.calls) == 2
+    assert worker.snapshot().failures == 0
+    assert connection.acknowledged == []
+
+    worker.stop()
+
+
+def test_home_assistant_navigation_rejects_non_navigable_snapshot_context(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    stream = FakeEventStream()
+    stream.snapshot_payload["radio_state"] = {
+        "channel_kind": "SrchFrequency",
+        "channel_index": 600,
+    }
+    connection = FakeBrokerConnection()
+    control_api = FakeControlApi()
+    worker = make_worker(
+        stream,
+        lambda config, password: connection,
+        config=home_assistant_control_config(),
+        control_api=control_api,
+    )
+
+    caplog.set_level(logging.WARNING)
+    worker.start()
+    wait_until(lambda: len(connection.subscriptions) == 8)
+
+    message = home_assistant_control_message(
+        "sdsctl/home_assistant/control/previous/channel",
+        b"PRESS",
+        message_id=140,
+    )
+    connection.deliver(message)
+    wait_until(lambda: "unavailable state" in caplog.text)
+
+    assert control_api.calls == []
+    assert worker.snapshot().failures == 0
+    assert connection.acknowledged == []
 
     worker.stop()

@@ -378,7 +378,10 @@ def build_home_assistant_daemon_mqtt_configuration(
         qos=1,
         retain=True,
         commands_enabled=False,
-        home_assistant=DaemonMqttHomeAssistantConfiguration(enabled=True),
+        home_assistant=DaemonMqttHomeAssistantConfiguration(
+            enabled=True,
+            controls_enabled=True,
+        ),
     )
 
 
@@ -412,6 +415,7 @@ def render_home_assistant_daemon_mqtt_configuration(
         "\n"
         "[home_assistant]\n"
         "enabled = true\n"
+        "controls_enabled = true\n"
     )
 
 

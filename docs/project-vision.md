@@ -234,18 +234,21 @@ media-relative path contract. Automated validation is complete; repository-manag
 physical rendering is deferred until the next versioned App publication because
 20.12.1 retained App version 0.20.1 and App image publication is tag-gated.
 
-Milestone 20.12.2 is the active Home Assistant slice. It will bundle a first-party
-SDS200 Lovelace card without requiring HACS, reuse the existing Home Assistant
-entity and authoritative daemon-state contracts, and remain read-only with respect
-to scanner control. Milestone 20.12.3 remains the separate deliberate Home
-Assistant control-adapter boundary.
+Milestone 20.12.2 completed the first-party SDS200 Lovelace card without requiring
+HACS. The App safely installs the resource under Home Assistant `www`, the card
+uses Home Assistant's supported state context and graphical form schema, and the
+card remains read-only with respect to scanner control. Physical HAOS rendering
+is deferred until the next versioned App publication.
+
+Milestone 20.12.3 is the active Home Assistant slice. It adds a deliberate control
+adapter over the existing semantic daemon-control boundary rather than binding
+static Discovery payloads directly to request-ID-deduplicated generic commands.
+The daemon remains the sole scanner owner.
 
 Remaining Home Assistant work includes:
 
-- complete the bundled SDS200 Lovelace card and its supported resource delivery
-  and registration path;
-- add a deliberate Home Assistant control adapter rather than binding static
-  Discovery button payloads directly to request-ID-deduplicated generic commands;
+- complete the deliberate Home Assistant control adapter and its bounded command,
+  state-feedback, availability, and failure contracts;
 - treat authenticated/TLS LAN gateways, remote daemon-backed CLI/TUI/GUI
   transports, or an optional host-network deployment variant as a later explicit
   security boundary.

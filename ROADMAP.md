@@ -11,23 +11,24 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 20.12.2 — Bundled Lovelace SDS200 card
+### Milestone 20.12.3 — Home Assistant control adapter
 
-- Define a supported first-party delivery and registration path for an SDS200
-  Lovelace card through the Home Assistant App distribution path without making
-  HACS a dependency.
-- Reuse the existing Home Assistant MQTT Discovery entities and authoritative
-  daemon-owned state rather than opening scanner, PSI, RTSP/RTP, audio, or
-  recording sessions from the card.
-- Keep this slice read-only from the Home Assistant control perspective; the
-  deliberate Home Assistant control adapter remains Milestone 20.12.3.
-- Use Home Assistant's supported `states` data context and built-in graphical
-  form schema rather than depending on unstable private frontend internals.
-- Add deterministic packaging and frontend tests before physical HAOS
-  validation.
-- During the next versioned App publication, validate both the bundled card and
-  the deferred Milestone 20.12.1 Configuration-page translations on physical
-  HAOS.
+- Add a deliberate Home Assistant control translation layer over the existing
+  typed daemon-control boundary rather than exposing raw scanner commands or
+  binding Home Assistant directly to the generic daemon request envelope.
+- Preserve the foreground daemon as the sole scanner/control owner and keep the
+  Home Assistant App as an adapter/orchestrator.
+- Define the first supported Home Assistant control entities, command topics,
+  state feedback, availability behavior, failure semantics, and bounded
+  request-generation rules before implementation.
+- Reuse `scanner.hold_state`, indexed navigation, reconnect, and other existing
+  semantic daemon operations where their Home Assistant entity semantics are
+  unambiguous.
+- Keep scanner controls capability-checked and non-retained, and ensure repeated
+  Home Assistant actions cannot be confused with daemon request-ID replay.
+- Keep the bundled Lovelace card transport-free; standard Home Assistant
+  entities remain the control surface unless a later card-control presentation
+  layer can consume those entities without bypassing Home Assistant.
 
 ## Deferred hardware validation
 
@@ -117,12 +118,13 @@ begins.
   those translations is deferred until the next versioned App publication
   because the slice retained App version 0.20.1 and image publication is
   tag-gated.
-- Milestone 20.12.2 is active to bundle a first-party Lovelace SDS200 card with
-  the Home Assistant App distribution path without requiring HACS. The card
-  remains read-only with respect to scanner control and reuses the existing Home
-  Assistant entity/state contract.
-- Milestone 20.12.3 will add a deliberate Home Assistant control adapter over
-  the existing semantic daemon-control boundary rather than binding static
+- Milestone 20.12.2 completed the first-party Lovelace SDS200 card, including
+  safe `/local` delivery, Home Assistant's graphical card form, supported state
+  subscription, deterministic package validation, and explicit isolation of
+  optional card-installation failures. Physical HAOS rendering remains deferred
+  until the next versioned App publication.
+- Milestone 20.12.3 is active for a deliberate Home Assistant control adapter
+  over the existing semantic daemon-control boundary rather than binding static
   Discovery payloads directly to generic request-ID commands.
 - Keep authenticated/TLS LAN access, a network transport for remote daemon-backed
   CLI/TUI/GUI clients, and any optional host-network App variant as a separate

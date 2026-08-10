@@ -27,7 +27,9 @@ from .daemon_events import (
 from .daemon_mqtt import DaemonMqttConfiguration
 from .daemon_mqtt_home_assistant import (
     DaemonMqttHomeAssistantDiscovery,
+    build_home_assistant_control_request,
     build_home_assistant_device_discovery,
+    home_assistant_control_topics,
 )
 
 logger = logging.getLogger(__name__)
@@ -307,9 +309,13 @@ class DaemonMqttWorker:
             "Daemon MQTT command cache capacity",
             command_cache_capacity,
         )
-        if config.commands_enabled and control_api is None:
+        if (
+            config.commands_enabled
+            or config.home_assistant.controls_enabled
+        ) and control_api is None:
             raise ValueError(
-                "Daemon MQTT commands require a daemon control API."
+                "Daemon MQTT commands and Home Assistant controls "
+                "require a daemon control API."
             )
 
         initial_at = _require_aware_datetime(now())
@@ -353,6 +359,9 @@ class DaemonMqttWorker:
             str,
             _CachedCommandResponse,
         ] = OrderedDict()
+        self._home_assistant_control_sequence = 0
+        self._home_assistant_scanner_connected = False
+        self._home_assistant_radio_state: dict[str, object] | None = None
 
     @property
     def running(self) -> bool:
@@ -549,6 +558,8 @@ class DaemonMqttWorker:
         self,
         connection: DaemonMqttBrokerConnection,
     ) -> None:
+        self._home_assistant_scanner_connected = False
+        self._home_assistant_radio_state = None
         subscription = self.event_stream.subscribe()
         with self._condition:
             if self._stopping:
@@ -589,6 +600,7 @@ class DaemonMqttWorker:
 
             if event.kind == DaemonEventKind.SNAPSHOT:
                 expected_sequence = event.sequence + 1
+                self._update_home_assistant_control_context(event)
                 self._publish_event(connection, event)
                 discovery = build_home_assistant_device_discovery(
                     self.config,
@@ -600,6 +612,10 @@ class DaemonMqttWorker:
                             self.config.home_assistant.birth_topic,
                             qos=0,
                         )
+                        for topic in home_assistant_control_topics(
+                            self.config
+                        ):
+                            connection.subscribe(topic, qos=0)
                         home_assistant_subscribed = True
                     self._publish_home_assistant_discovery(
                         connection,
@@ -618,6 +634,8 @@ class DaemonMqttWorker:
                 expected_sequence is not None
                 and event.sequence != expected_sequence
             ):
+                self._home_assistant_scanner_connected = False
+                self._home_assistant_radio_state = None
                 subscription.close()
                 with self._condition:
                     self._resynchronizations += 1
@@ -633,6 +651,7 @@ class DaemonMqttWorker:
                 continue
 
             expected_sequence = event.sequence + 1
+            self._update_home_assistant_control_context(event)
             self._publish_event(connection, event)
 
     def _handle_inbound_message(
@@ -661,6 +680,13 @@ class DaemonMqttWorker:
                 )
             return
 
+        if (
+            home_assistant.controls_enabled
+            and message.topic in home_assistant_control_topics(self.config)
+        ):
+            self._handle_home_assistant_control(message)
+            return
+
         if self.config.commands_enabled and message.topic == self._command_topic:
             self._handle_command(connection, message)
             return
@@ -686,6 +712,100 @@ class DaemonMqttWorker:
             if discovery.retain:
                 self._retained_publications += 1
             self._last_published_at = observed_at
+
+    def _update_home_assistant_control_context(
+        self,
+        event: DaemonEvent,
+    ) -> None:
+        if event.kind == DaemonEventKind.SNAPSHOT:
+            self._home_assistant_scanner_connected = (
+                event.payload.get("scanner_connected") is True
+            )
+            radio_state = event.payload.get("radio_state")
+            if (
+                self._home_assistant_scanner_connected
+                and isinstance(radio_state, Mapping)
+            ):
+                self._home_assistant_radio_state = dict(radio_state)
+            else:
+                self._home_assistant_radio_state = None
+            return
+
+        if event.kind == DaemonEventKind.SCANNER_CONNECTION:
+            self._home_assistant_scanner_connected = (
+                event.payload.get("connected") is True
+            )
+            if not self._home_assistant_scanner_connected:
+                self._home_assistant_radio_state = None
+            return
+
+        if event.kind == DaemonEventKind.RADIO_STATE:
+            current = event.payload.get("current")
+            if (
+                self._home_assistant_scanner_connected
+                and isinstance(current, Mapping)
+            ):
+                self._home_assistant_radio_state = dict(current)
+            else:
+                self._home_assistant_radio_state = None
+
+    def _next_home_assistant_control_request_id(self) -> str:
+        self._home_assistant_control_sequence += 1
+        return (
+            "home-assistant-control-"
+            f"{self._home_assistant_control_sequence}"
+        )
+
+    def _handle_home_assistant_control(
+        self,
+        message: DaemonMqttBrokerMessage,
+    ) -> None:
+        if message.qos != 0 or message.retain or message.duplicate:
+            logger.warning(
+                "Home Assistant MQTT control ignored topic=%s "
+                "qos=%d retained=%s duplicate=%s",
+                message.topic,
+                message.qos,
+                message.retain,
+                message.duplicate,
+            )
+            return
+
+        request = build_home_assistant_control_request(
+            self.config,
+            message.topic,
+            message.payload,
+            request_id=self._next_home_assistant_control_request_id(),
+            radio_state=self._home_assistant_radio_state,
+        )
+        if request is None:
+            logger.warning(
+                "Home Assistant MQTT control ignored invalid payload "
+                "or unavailable state topic=%s",
+                message.topic,
+            )
+            return
+
+        control_api = self.control_api
+        if control_api is None:
+            raise AssertionError(
+                "Home Assistant MQTT controls require a control API."
+            )
+
+        response = control_api.handle_control_payload(request)
+        if response.error is not None:
+            logger.warning(
+                "Home Assistant MQTT control rejected topic=%s code=%s",
+                message.topic,
+                response.error.code.value,
+            )
+            return
+
+        logger.info(
+            "Home Assistant MQTT control completed topic=%s operation=%s",
+            message.topic,
+            request["operation"],
+        )
 
     @property
     def _command_topic(self) -> str:

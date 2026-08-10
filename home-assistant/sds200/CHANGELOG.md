@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Home Assistant MQTT Discovery now includes seven bounded scanner-control
+  entities alongside the existing ten state/diagnostic entities: System,
+  Department, Site, and Channel Hold switches plus Previous Channel, Next
+  Channel, and Reconnect Scanner buttons. The App keeps generic daemon MQTT
+  commands disabled; dedicated QoS 0 non-retained control topics translate into
+  fresh internal typed daemon requests and preserve the daemon as sole scanner
+  owner.
 - The App now installs a bundled read-only SDS200 Lovelace card under Home
   Assistant `www`, available as `/local/sds200/sds200-card.js`; users register
   the module once through the normal Home Assistant dashboard Resources page,

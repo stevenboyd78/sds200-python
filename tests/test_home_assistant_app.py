@@ -274,6 +274,7 @@ def test_build_home_assistant_daemon_mqtt_configuration_enables_discovery() -> N
     assert config.retain is True
     assert config.commands_enabled is False
     assert config.home_assistant.enabled is True
+    assert config.home_assistant.controls_enabled is True
 
 
 def test_home_assistant_daemon_mqtt_configuration_rejects_tls_service() -> None:
@@ -310,6 +311,7 @@ def test_rendered_home_assistant_mqtt_manifest_never_contains_password() -> None
     ) in rendered
     assert "commands_enabled = false" in rendered
     assert "[home_assistant]\nenabled = true" in rendered
+    assert "controls_enabled = true" in rendered
 
 
 def test_write_home_assistant_mqtt_manifest_is_loadable_and_password_free(
@@ -338,6 +340,7 @@ def test_write_home_assistant_mqtt_manifest_is_loadable_and_password_free(
     assert config.topic_prefix == "scanner/main"
     assert config.commands_enabled is False
     assert config.home_assistant.enabled is True
+    assert config.home_assistant.controls_enabled is True
     assert "super-secret" not in path.read_text(encoding="utf-8")
     assert list(path.parent.glob("*.tmp")) == []
 
