@@ -161,6 +161,42 @@ before changing network or MQTT settings.
 The Local App workflow under `/addons` remains available for development but is
 not required for normal release installation.
 
+## Upgrade to v0.20.2
+
+v0.20.2 publishes the three Home Assistant slices completed after v0.20.1 while
+preserving the existing single-owner daemon architecture.
+
+The Home Assistant Configuration page now has user-facing names and descriptions
+for `scanner_host`, `mqtt_topic_prefix`, and `recording_directory`. The recording
+directory remains media-relative and the default still resolves to:
+
+```text
+/media/sdsctl/recordings
+```
+
+The App installs the bundled read-only SDS200 Lovelace card at
+`/local/sds200/sds200-card.js`. Register that path once under
+**Settings > Dashboards > Resources** as a JavaScript Module. If the App had to
+create Home Assistant's `www` directory for the first time, restart Home
+Assistant Core once before registering the `/local` resource. Then add
+**SDS200 Scanner** from the card picker and use its graphical editor to choose
+the SDS200 Discovery state entities.
+
+The MQTT-discovered SDS200 device now contains seventeen components: the existing
+ten state/diagnostic components plus System, Department, Site, and Channel Hold
+switches and Previous Channel, Next Channel, and Reconnect Scanner buttons. The
+seven controls use a dedicated bounded Home Assistant adapter; the App still
+does not enable the generic daemon MQTT request-envelope command topic.
+
+Existing v0.20.1 recordings and configuration remain in the same Home Assistant
+media/configuration locations. Back up important configuration and recordings
+before any upgrade.
+
+See the canonical
+[Home Assistant App guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/home-assistant-app.md)
+for the Lovelace registration, entity, storage, networking, control, and security
+contracts.
+
 ## Upgrade to v0.20.1
 
 v0.20.1 is a corrective Home Assistant App release. It keeps the distribution

@@ -46,11 +46,18 @@ scanner hardware, skips packet-rate PSI events, and isolates broker retry/backof
 from scanner, PSI, audio, recording, and local-service ownership. Milestone 20.9
 adds explicitly opt-in MQTT scanner controls through the same semantic daemon API
 dispatcher used by local clients, without adding another scanner owner. Milestone
-20.10 adds optional read-only Home Assistant MQTT device discovery over those
+20.10 adds optional Home Assistant MQTT device discovery over those
 existing semantic topics, including birth-triggered republication, without adding
-another scanner owner or control path. Decoded-PCM CLI subscriptions and automatic
-daemon discovery and selection remain follow-on work. The process does not fork
-or create a pidfile.
+another scanner owner. Milestone 20.12.3 adds seven dedicated Home Assistant
+control topics that translate four desired-state Hold switches plus Previous
+Channel, Next Channel, and Reconnect Scanner into fresh typed daemon-control
+requests. The worker derives navigation only from ordered daemon-owned radio
+state and clears that context after scanner disconnect or event-sequence
+resynchronization. The Home Assistant App keeps the independent generic MQTT
+request-envelope command input disabled. No Home Assistant path opens scanner
+hardware directly. Decoded-PCM CLI subscriptions and automatic daemon discovery
+and selection remain follow-on work. The process does not fork or create a
+pidfile.
 
 ## Foreground process contract
 

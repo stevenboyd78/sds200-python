@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.20.2
+
 - Home Assistant MQTT Discovery now includes seven bounded scanner-control
   entities alongside the existing ten state/diagnostic entities: System,
   Department, Site, and Channel Hold switches plus Previous Channel, Next

@@ -1,5 +1,5 @@
 name: "sds200"
-version: "0.20.1"
+version: "0.20.2"
 slug: "sds200"
 description: "Uniden SDS200 scanner daemon and web dashboard for Home Assistant"
 arch:

@@ -270,11 +270,34 @@ When upgrading from v0.20.0, the App migrates the legacy recording tree during
 startup. A differing destination file stops migration rather than being
 overwritten; inspect the App log and resolve the conflict deliberately.
 
-### MQTT Discovery entities are missing
+### MQTT Discovery entities or scanner controls are missing
 
 Confirm Home Assistant's MQTT integration is active and inspect the App log for
-MQTT service or broker connection errors. The App publishes ten read-only
-Discovery entities and does not enable semantic MQTT command subscriptions.
+MQTT service or broker connection errors. The current SDS200 device contains
+seventeen Discovery components: ten state/diagnostic components plus four Hold
+switches and Previous Channel, Next Channel, and Reconnect Scanner buttons.
+
+The seven controls use dedicated QoS 0 non-retained Home Assistant topics. The
+App intentionally keeps the independent generic daemon MQTT
+`<mqtt_topic_prefix>/commands` request-envelope input disabled.
+
+If a Hold switch is unavailable, confirm the scanner is connected and that the
+corresponding authoritative hold field is meaningful for the current scanner
+state. Previous/Next are available only for a current documented TGID or
+conventional-frequency channel with a valid scanner index. Reconnect remains
+subject to the daemon's transport capability check.
+
+### SDS200 Lovelace card is missing
+
+Confirm the App log did not report a card-installation warning and verify
+`/local/sds200/sds200-card.js` is registered under
+**Settings > Dashboards > Resources** as a JavaScript Module. If the App created
+Home Assistant's `www` directory for the first time, restart Home Assistant Core
+once before registering the resource.
+
+After registration, **SDS200 Scanner** should appear in the card picker. The card
+is intentionally read-only; scanner controls are separate standard Home
+Assistant switch and button entities.
 
 ## Capture detailed diagnostics
 

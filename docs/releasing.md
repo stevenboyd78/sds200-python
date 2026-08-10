@@ -220,15 +220,28 @@ distribution path on Home Assistant OS.
    three-dot menu, choose **Repositories**, and add
    `https://github.com/stevenboyd78/sds200-python`.
 4. Confirm the **sds200** App appears as repository-managed rather than Local and
-   shows the release version and documentation.
-5. Install the repository App, set `scanner_host`, and start it.
-6. Validate Ingress loading, live scanner state, at least one semantic scanner
-   control, browser audio, recording, saved playback, App restart, and all ten
-   MQTT Discovery entities.
-7. Confirm recordings expected to persist across the repository App restart are
-   still available.
-8. Record the Home Assistant OS/Supervisor version and SDS200 firmware used for
-   the smoke test in the release evidence.
+   shows the release version and matching documentation.
+5. Install or upgrade the repository App, set `scanner_host`, and start it.
+6. Confirm the Configuration page renders the translated scanner host, MQTT topic
+   prefix, and recording-directory names/descriptions; verify the default
+   recording directory resolves below `/media`.
+7. Confirm `/local/sds200/sds200-card.js` is available, register it as a
+   JavaScript Module when needed, and verify **SDS200 Scanner** appears in the
+   card picker with a working graphical editor and read-only state rendering.
+8. Confirm the discovered SDS200 device exposes seventeen components: ten
+   state/diagnostic components plus four Hold switches and Previous Channel,
+   Next Channel, and Reconnect Scanner buttons.
+9. Exercise all four Hold scopes when meaningful, Previous and Next with a valid
+   current channel selection, and Reconnect Scanner. Confirm Home Assistant state
+   remains authoritative after each action and the App does not enable the
+   generic `<prefix>/commands` request-envelope input.
+10. Validate Ingress loading, live scanner state, browser audio, recording, saved
+    playback, App restart, and continued single-owner scanner/PSI/RTSP-RTP/control
+    behavior.
+11. Confirm recordings expected to persist across repository App restart or
+    upgrade are still available.
+12. Record the Home Assistant OS/Supervisor version and SDS200 firmware used for
+    the smoke test in the release evidence.
 
 Do not assume data from a previously staged Local App belongs to the
 repository-managed App. Preserve any recordings or configuration needed from
