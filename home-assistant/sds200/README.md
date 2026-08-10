@@ -16,7 +16,9 @@ It provides:
 - daemon-owned recordings stored in Home Assistant media, defaulting to
   `/media/sdsctl/recordings`;
 - automatic use of the Supervisor-provided MQTT service; and
-- ten read-only Home Assistant MQTT Discovery entities.
+- Home Assistant MQTT Discovery with ten state/diagnostic entities plus seven
+  bounded scanner-control entities: four Hold switches and Previous Channel,
+  Next Channel, and Reconnect Scanner buttons.
 
 The App requires a LAN-connected SDS200 and publishes UDP port `50000` for the
 scanner's inbound RTP audio. It does not enable host networking or expose the

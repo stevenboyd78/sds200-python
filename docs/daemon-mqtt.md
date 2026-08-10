@@ -11,8 +11,10 @@ and therefore preserve the single-owner scanner boundary. Milestone 20.10 adds
 optional Home Assistant MQTT device discovery over the same generic state and
 availability topics. Milestone 20.11 consumes that contract from a Home Assistant
 App that hosts the existing daemon and web dashboard with Supervisor MQTT service
-adaptation and Ingress. The bundled Lovelace card and richer Home
-Assistant-specific controls remain later work.
+adaptation and Ingress. Milestone 20.12.2 adds the bundled read-only Lovelace
+card. Milestone 20.12.3 adds a separate Home Assistant-specific control
+translation layer over the same typed daemon-control dispatcher without enabling
+the generic MQTT request-envelope command input.
 
 ## Installation
 
@@ -65,6 +67,7 @@ enabled = false
 discovery_prefix = "homeassistant"
 birth_topic = "homeassistant/status"
 birth_payload = "online"
+controls_enabled = false
 ```
 
 Supported broker fields are:
@@ -94,9 +97,12 @@ The optional `[home_assistant]` table supports:
 | `discovery_prefix` | `homeassistant` | Home Assistant MQTT discovery prefix |
 | `birth_topic` | `homeassistant/status` | Exact Home Assistant birth/status topic to subscribe to at QoS 0 |
 | `birth_payload` | `online` | Exact UTF-8 payload that triggers discovery republication |
+| `controls_enabled` | `false` | Enable the dedicated Home Assistant control adapter; requires `enabled = true` |
 
 The Home Assistant birth topic must not equal `<topic_prefix>/commands` when both
-Discovery and semantic commands are enabled.
+Discovery and generic semantic commands are enabled. When Home Assistant controls
+are enabled, the birth topic also must not equal any dedicated Home Assistant
+control topic.
 
 The daemon loads and validates this document before scanner construction. If the
 file is absent, MQTT is disabled. If the file is present but invalid, or Paho is
@@ -125,6 +131,10 @@ Every topic is rooted at `topic_prefix`.
 | `<prefix>/events` | never | original non-snapshot semantic daemon event JSON envelope |
 | `<prefix>/commands` | rejected if retained | inbound version 1 daemon API scanner-control request |
 | `<prefix>/responses` | never | correlated version 1 daemon API response |
+| `<prefix>/home_assistant/control/hold/<scope>` | never | dedicated Home Assistant `ON` or `OFF` desired-state hold command |
+| `<prefix>/home_assistant/control/previous/channel` | never | dedicated Home Assistant `PRESS` command for the current navigable channel |
+| `<prefix>/home_assistant/control/next/channel` | never | dedicated Home Assistant `PRESS` command for the current navigable channel |
+| `<prefix>/home_assistant/control/reconnect` | never | dedicated Home Assistant `PRESS` reconnect command |
 
 Destination IDs are percent-encoded into one safe MQTT topic segment.
 
@@ -156,9 +166,11 @@ After a broker connection succeeds the worker:
 4. expands the snapshot into canonical state topics;
 5. when Home Assistant Discovery is enabled, subscribes to the configured birth
    topic at QoS 0 and publishes the device-discovery document;
-6. when semantic commands are enabled, subscribes to `<prefix>/commands` at the
-   configured QoS; and
-7. only then resets its reconnect attempt counter and treats the session as
+6. when Home Assistant controls are enabled, subscribes at QoS 0 to the seven
+   exact dedicated Home Assistant control topics;
+7. when generic semantic commands are enabled, subscribes to
+   `<prefix>/commands` at the configured QoS; and
+8. only then resets its reconnect attempt counter and treats the session as
    healthy.
 
 Later daemon transitions refresh the canonical runtime-derived topics from the
@@ -226,16 +238,16 @@ when enabled.
 
 ## Home Assistant MQTT Discovery
 
-Discovery is disabled by default and is an adapter over the generic daemon MQTT
-contract, not a second state or control system. Enable it with:
+Discovery is disabled by default and remains an adapter over the generic daemon
+MQTT state contract rather than a second state system. Enable it with:
 
 ```toml
 [home_assistant]
 enabled = true
 ```
 
-The worker publishes one Home Assistant **device discovery** document containing
-ten read-only components backed by existing semantic MQTT topics:
+Without Home Assistant controls, the device document contains the original ten
+state/diagnostic components:
 
 | Component | Platform | Source |
 | --- | --- | --- |
@@ -251,32 +263,82 @@ ten read-only components backed by existing semantic MQTT topics:
 | Recording status | sensor | `<prefix>/state/recording` |
 
 The shared device metadata uses Uniden as manufacturer, scanner model and
-firmware when they are available in the authoritative snapshot, the existing
-`<prefix>/availability` topic, and the configured MQTT QoS. Discovery contains no
-`command_topic` and does not expose raw scanner keys.
+firmware when available in the authoritative snapshot, and daemon availability.
+The discovery document remains non-retained and is republished after an
+authoritative snapshot, broker reconnect, event-stream resynchronization, or an
+exact configured Home Assistant birth message.
 
-The discovery document is deliberately non-retained. It is published from every
-authoritative MQTT snapshot, including broker reconnect and event-sequence
-resynchronization. The worker also subscribes to the configured Home Assistant
-birth topic at QoS 0. An inbound message republishes Discovery only when both the
-topic and UTF-8 payload exactly match the configured `birth_topic` and
-`birth_payload`; other payloads on that topic are ignored.
+### Home Assistant control adapter
 
-Home Assistant birth traffic and semantic commands can coexist on the same Paho
-connection. Birth messages use QoS 0 and are not application-acknowledged.
-Command manual acknowledgement, request-ID deduplication, and worker-thread
-dispatch remain unchanged. The configuration rejects a birth topic that is the
-same as `<prefix>/commands` when both features are enabled.
+Set:
 
-Milestone 20.10 Discovery is read-only. Repeated Home Assistant button presses
-cannot safely reuse a static daemon command request identifier, so controls are
-not wired directly to the generic Milestone 20.9 command topic. A deliberate
-Home Assistant control adapter remains follow-on work.
+```toml
+[home_assistant]
+enabled = true
+controls_enabled = true
+```
+
+to add seven standard Home Assistant control components to the same discovered
+device:
+
+| Component | Platform | Semantic daemon operation |
+| --- | --- | --- |
+| System Hold | switch | `scanner.hold_state(scope=system)` |
+| Department Hold | switch | `scanner.hold_state(scope=department)` |
+| Site Hold | switch | `scanner.hold_state(scope=site)` |
+| Channel Hold | switch | `scanner.hold_state(scope=channel)` |
+| Previous Channel | button | `scanner.previous` |
+| Next Channel | button | `scanner.next` |
+| Reconnect Scanner | button | `scanner.reconnect` |
+
+These controls do **not** publish client-shaped requests to
+`<prefix>/commands`. Each Home Assistant action arrives on one exact dedicated
+QoS 0, non-retained topic under `<prefix>/home_assistant/control/`. The worker
+rejects retained, duplicate, non-QoS-0, unknown-topic, and invalid-payload
+deliveries without dispatching scanner control. For every accepted action, the
+adapter generates a fresh internal daemon request identifier and invokes the
+existing typed control dispatcher directly. It publishes no Home
+Assistant-specific response topic.
+
+The four Hold switches are non-optimistic. Their displayed state comes from the
+authoritative retained radio state, and each switch is available only while the
+daemon is online, the scanner is connected, and that scope's hold field is a
+known `On` or `Off` value. The daemon still performs the authoritative `GSI`
+read, desired-state comparison, bounded control operation, and convergence
+verification.
+
+Previous Channel and Next Channel are available only while the current ordered
+radio state represents a documented navigable channel: `TGID` or
+`ConvFrequency` with a valid SDS200 channel index below the unsigned-32
+no-current-selection sentinel. Translation reuses the same current-channel
+resolver as the TUI and web dashboard, producing `TGID` or `CFREQ` indexed
+`scanner.previous`/`scanner.next` requests. The MQTT worker caches only the
+latest ordered daemon radio state. Scanner disconnect, broker-session restart,
+or an event-sequence gap clears that navigation context until a fresh
+authoritative snapshot or ordered state restores it.
+
+Reconnect Scanner is a stateless button and inherits daemon availability. The
+daemon API remains authoritative about whether reconnect is supported by the
+owned scanner transport.
+
+A semantic control rejection is logged using the daemon's stable error code and
+does not fail the MQTT worker. A failed Hold command does not optimistically
+change Home Assistant state; later authoritative state remains the source of
+truth.
+
+The generic Milestone 20.9 command transport remains independent. It may still
+be enabled explicitly with `commands_enabled = true` for daemon-API-shaped MQTT
+clients, but the Home Assistant App deliberately keeps that setting false while
+enabling the dedicated Home Assistant adapter.
+
+The bundled Lovelace card remains transport-free and read-only. The standard
+Home Assistant switch and button entities are the control surface; the card does
+not bypass Home Assistant to call MQTT, the daemon, or scanner directly.
 
 With the default `retain = true`, Home Assistant can consume retained canonical
 state immediately after Discovery. If `retain = false`, Discovery still works,
-but an entity may remain unknown until its corresponding semantic state is
-published again.
+but a state-backed entity may remain unknown until its corresponding semantic
+state is published again.
 
 ## Broker lifecycle and failure isolation
 
@@ -329,13 +391,18 @@ treat broker authentication alone as transport security, and do not expose this
 foundation over an untrusted network.
 
 MQTT command subscriptions materially increase the broker trust boundary. Leave
-`commands_enabled = false` unless broker publishers are authorized to operate the
-scanner. When enabled, controls are still limited to the daemon's existing
-semantic operations and never expose unrestricted raw scanner-key passthrough.
-Home Assistant Discovery itself is read-only, but its birth-topic subscription
-still accepts broker-delivered input into the MQTT worker; keep the broker within
-the same trusted boundary. Because the current adapter does not configure TLS, do
-not enable commands across an untrusted network.
+`commands_enabled = false` unless broker publishers are authorized to operate
+the scanner. The Home Assistant control adapter is a separate control input:
+leave `controls_enabled = false` unless publishers authorized by the broker for
+the dedicated Home Assistant control topics are also authorized to operate the
+scanner. Both paths remain limited to existing semantic daemon operations and
+never expose unrestricted raw scanner-key passthrough.
+
+Home Assistant Discovery also subscribes to its configured birth topic. Keep the
+broker within the same trusted boundary. Because the current adapter does not
+configure TLS, scanner state, credentials, and Home Assistant control traffic
+must not be treated as encrypted in transit and neither control path should be
+enabled across an untrusted network.
 
 See [Daemon ownership runtime](daemon-runtime.md),
 [Daemon deployment and upgrade guide](daemon-deployment.md), and

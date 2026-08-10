@@ -8,6 +8,14 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Added
 
+- Home Assistant-specific MQTT scanner controls add authoritative System,
+  Department, Site, and Channel Hold switches plus Previous Channel, Next
+  Channel, and Reconnect Scanner buttons. Dedicated QoS 0 non-retained command
+  topics translate into fresh internal typed daemon requests without enabling
+  the generic request-envelope MQTT command topic, adding raw scanner commands,
+  or creating another scanner owner. Previous/Next reuse the existing bounded
+  TGID/CFREQ current-channel resolver and invalidate cached navigation context
+  after scanner disconnect or daemon-event resynchronization.
 - First-party read-only SDS200 Lovelace card packaging and Home Assistant
   `/local/sds200/sds200-card.js` delivery without HACS or Home Assistant Core
   API access; the card uses Home Assistant's supported state context and built-in

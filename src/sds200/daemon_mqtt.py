@@ -124,11 +124,20 @@ class DaemonMqttHomeAssistantConfiguration:
     discovery_prefix: str = "homeassistant"
     birth_topic: str = "homeassistant/status"
     birth_payload: str = "online"
+    controls_enabled: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.enabled, bool):
             raise TypeError(
                 "Home Assistant discovery enabled setting must be a boolean."
+            )
+        if not isinstance(self.controls_enabled, bool):
+            raise TypeError(
+                "Home Assistant controls enabled setting must be a boolean."
+            )
+        if self.controls_enabled and not self.enabled:
+            raise ValueError(
+                "Home Assistant controls require Home Assistant discovery."
             )
         object.__setattr__(
             self,
@@ -161,6 +170,7 @@ class DaemonMqttHomeAssistantConfiguration:
             "discovery_prefix": self.discovery_prefix,
             "birth_topic": self.birth_topic,
             "birth_payload": self.birth_payload,
+            "controls_enabled": self.controls_enabled,
         }
 
 
@@ -255,6 +265,24 @@ class DaemonMqttConfiguration:
                 "Home Assistant birth topic must not equal "
                 "the MQTT command topic."
             )
+        if self.home_assistant.controls_enabled:
+            control_prefix = (
+                f"{self.topic_prefix}/home_assistant/control"
+            )
+            control_topics = {
+                f"{control_prefix}/hold/system",
+                f"{control_prefix}/hold/department",
+                f"{control_prefix}/hold/site",
+                f"{control_prefix}/hold/channel",
+                f"{control_prefix}/previous/channel",
+                f"{control_prefix}/next/channel",
+                f"{control_prefix}/reconnect",
+            }
+            if self.home_assistant.birth_topic in control_topics:
+                raise ValueError(
+                    "Home Assistant birth topic must not equal "
+                    "a Home Assistant control topic."
+                )
         object.__setattr__(
             self,
             "keepalive_seconds",
@@ -395,6 +423,7 @@ def load_daemon_mqtt_configuration(
         "discovery_prefix",
         "birth_topic",
         "birth_payload",
+        "controls_enabled",
     }
     unexpected_home_assistant_fields = sorted(
         str(field)
@@ -464,6 +493,11 @@ def load_daemon_mqtt_configuration(
                 raw_home_assistant,
                 "birth_payload",
                 default="online",
+            ),
+            controls_enabled=_boolean_field(
+                raw_home_assistant,
+                "controls_enabled",
+                default=False,
             ),
         )
         reconnect_policy = ReconnectPolicy(

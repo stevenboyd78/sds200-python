@@ -173,8 +173,9 @@ be played or downloaded through Ingress.
 
 ## Home Assistant MQTT Discovery
 
-The App enables the existing Milestone 20.10 read-only device Discovery adapter.
-One SDS200 device contains ten components:
+The App enables the daemon's Home Assistant MQTT Discovery adapter plus the
+dedicated Milestone 20.12.3 Home Assistant control adapter. One SDS200 device
+contains seventeen components:
 
 | Component | Home Assistant platform |
 | --- | --- |
@@ -188,12 +189,52 @@ One SDS200 device contains ten components:
 | Audio | binary sensor |
 | Recording | binary sensor |
 | Recording Status | sensor |
+| System Hold | switch |
+| Department Hold | switch |
+| Site Hold | switch |
+| Channel Hold | switch |
+| Previous Channel | button |
+| Next Channel | button |
+| Reconnect Scanner | button |
 
 Device metadata includes Uniden as manufacturer plus scanner model and firmware
 when the daemon's authoritative snapshot contains them.
 
-Discovery adds no Home Assistant command topic and no second scanner-control
-path.
+The App keeps the generic daemon MQTT request-envelope command transport
+disabled. Home Assistant controls instead use seven exact dedicated QoS 0,
+non-retained topics below:
+
+```text
+<mqtt_topic_prefix>/home_assistant/control/
+```
+
+The four Hold switches publish `ON` or `OFF` and are non-optimistic. Their state
+comes from the authoritative daemon radio-state topic, so a rejected command
+does not falsely change the switch. A Hold switch is available only when the
+daemon is online, the scanner is connected, and the corresponding hold state is
+currently meaningful.
+
+Previous Channel and Next Channel publish `PRESS`. They are available only for a
+current trunked `TGID` or conventional `ConvFrequency` channel with a valid SDS200
+channel index. The adapter reuses the existing bounded current-channel semantic
+resolver and translates the action to `scanner.previous` or `scanner.next`. Its
+navigation context comes only from the latest ordered daemon radio state and is
+cleared on scanner disconnect or event-stream resynchronization until a fresh
+authoritative state arrives.
+
+Reconnect Scanner publishes `PRESS` to the dedicated reconnect topic. The daemon
+retains the existing capability check, so unsupported transports still reject
+the semantic `scanner.reconnect` operation.
+
+Home Assistant never supplies a daemon request ID. The adapter creates a fresh
+internal request ID for every accepted action and dispatches through the existing
+typed daemon-control boundary. It does not expose raw scanner keys, publish to
+the generic `<mqtt_topic_prefix>/commands` topic, create a response topic, or
+open another scanner/control session.
+
+The bundled Lovelace card remains read-only and transport-free. Scanner controls
+are standard Home Assistant switch and button entities rather than direct card,
+App HTTP, scanner, or MQTT calls.
 
 ## Installation from the Home Assistant App repository
 
@@ -329,9 +370,10 @@ entities:
   daemon_state: sensor.REPLACE_ME
 ```
 
-Use the actual entity IDs created by the SDS200 MQTT Discovery device. The first
-card slice is deliberately read-only. Scanner controls remain a separate Home
-Assistant control-adapter milestone.
+Use the actual entity IDs created by the SDS200 MQTT Discovery device. The card
+remains deliberately read-only. Milestone 20.12.3 scanner controls are separate
+standard Home Assistant switch and button entities, so the card does not acquire
+a scanner, daemon, MQTT, or Home Assistant service-call transport.
 
 ## Security boundary
 
@@ -348,8 +390,11 @@ authentication/access policy, and any optional host-network App variant belong
 to a separate future security boundary.
 
 The SDS200's own LAN protocols and the current non-TLS MQTT adapter are not
-encrypted. Keep the scanner, broker, Home Assistant host, and App on trusted
-networks.
+encrypted. The App keeps generic daemon MQTT commands disabled, but its seven
+dedicated Home Assistant control topics still make authorized broker publishers
+scanner-control principals through the bounded semantic adapter. Keep the
+scanner, broker, Home Assistant host, and App on trusted networks and restrict
+publish authority for the dedicated control namespace accordingly.
 
 ## Troubleshooting
 

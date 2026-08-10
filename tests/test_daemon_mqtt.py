@@ -76,6 +76,7 @@ def test_mqtt_configuration_loads_minimal_document_with_defaults(
         "discovery_prefix": "homeassistant",
         "birth_topic": "homeassistant/status",
         "birth_payload": "online",
+        "controls_enabled": False,
     }
     json.dumps(serialized)
 
@@ -137,6 +138,94 @@ def test_mqtt_configuration_loads_complete_document(
             max_attempts=7,
         ),
     )
+
+
+def test_mqtt_home_assistant_control_configuration_is_explicit(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / DAEMON_MQTT_CONFIG_FILENAME
+    path.write_text(
+        'version = 1\n'
+        '\n'
+        '[broker]\n'
+        'host = "mqtt.example.test"\n'
+        '\n'
+        '[home_assistant]\n'
+        'enabled = true\n'
+        'controls_enabled = true\n',
+        encoding="utf-8",
+    )
+
+    configuration = load_daemon_mqtt_configuration(path)
+
+    assert configuration is not None
+    assert configuration.commands_enabled is False
+    assert configuration.home_assistant.enabled is True
+    assert configuration.home_assistant.controls_enabled is True
+
+
+def test_mqtt_home_assistant_controls_require_discovery() -> None:
+    with pytest.raises(
+        TypeError,
+        match="controls enabled setting must be a boolean",
+    ):
+        DaemonMqttHomeAssistantConfiguration(
+            enabled=True,
+            controls_enabled=1,  # type: ignore[arg-type]
+        )
+
+    with pytest.raises(
+        ValueError,
+        match="controls require Home Assistant discovery",
+    ):
+        DaemonMqttHomeAssistantConfiguration(
+            controls_enabled=True,
+        )
+
+
+def test_mqtt_home_assistant_birth_topic_cannot_be_control_topic() -> None:
+    with pytest.raises(
+        ValueError,
+        match="birth topic must not equal a Home Assistant control topic",
+    ):
+        DaemonMqttConfiguration(
+            host="mqtt.example.test",
+            topic_prefix="radio/sds200",
+            home_assistant=DaemonMqttHomeAssistantConfiguration(
+                enabled=True,
+                controls_enabled=True,
+                birth_topic=(
+                    "radio/sds200/home_assistant/control/reconnect"
+                ),
+            ),
+        )
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        "previous/channel",
+        "next/channel",
+    ],
+)
+def test_mqtt_home_assistant_birth_topic_cannot_be_navigation_topic(
+    suffix: str,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="birth topic must not equal a Home Assistant control topic",
+    ):
+        DaemonMqttConfiguration(
+            host="mqtt.example.test",
+            topic_prefix="radio/sds200",
+            home_assistant=DaemonMqttHomeAssistantConfiguration(
+                enabled=True,
+                controls_enabled=True,
+                birth_topic=(
+                    f"radio/sds200/home_assistant/control/{suffix}"
+                ),
+            ),
+        )
 
 
 def test_mqtt_configuration_is_immutable() -> None:

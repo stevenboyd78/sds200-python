@@ -35,8 +35,8 @@ default `sdsctl/recordings` resolves to `/media/sdsctl/recordings`. Absolute
 paths and traversal components are rejected.
 
 The App automatically obtains the selected MQTT service from Supervisor and
-enables the existing read-only Home Assistant MQTT Discovery adapter. Semantic
-MQTT scanner commands remain disabled.
+enables Home Assistant MQTT Discovery plus the dedicated Home Assistant control
+adapter. The generic daemon MQTT request-envelope command topic remains disabled.
 
 ## Network audio
 
@@ -93,7 +93,9 @@ inventory.
 
 ## MQTT entities
 
-The discovered SDS200 device contains ten read-only entities:
+The discovered SDS200 device contains seventeen components.
+
+State and diagnostic entities:
 
 - Daemon State
 - Scanner Connection
@@ -105,6 +107,30 @@ The discovered SDS200 device contains ten read-only entities:
 - Audio
 - Recording
 - Recording Status
+
+Scanner controls:
+
+- System Hold
+- Department Hold
+- Site Hold
+- Channel Hold
+- Previous Channel
+- Next Channel
+- Reconnect Scanner
+
+The four Hold switches are non-optimistic and follow authoritative scanner state.
+They are unavailable when the scanner is disconnected or the selected scope does
+not currently expose a usable hold state.
+
+Previous Channel and Next Channel are available only for current documented
+trunked or conventional channel contexts with a valid SDS200 channel index.
+Scanner disconnect and daemon-event resynchronization invalidate the adapter's
+cached navigation context until authoritative state is restored.
+
+All seven controls use dedicated QoS 0 non-retained MQTT command topics. The App
+does not enable the generic daemon MQTT request-envelope command topic. Every
+accepted Home Assistant action receives a fresh internal request ID and is
+translated into the existing typed daemon control operation.
 
 Scanner model and firmware are included in device metadata when available.
 
@@ -119,7 +145,10 @@ The daemon API, event, PCMU, and recording-file services remain private
 Unix-domain sockets inside the App container.
 
 The current MQTT adapter does not configure TLS. Keep Home Assistant, the MQTT
-broker, and the scanner on trusted networks.
+broker, and the scanner on trusted networks. The seven Home Assistant control
+topics are scanner-control inputs even though the generic daemon MQTT command
+topic remains disabled, so broker publish permissions for the dedicated control
+namespace should be limited to trusted Home Assistant publishers.
 
 ## Bundled Lovelace card
 
@@ -182,9 +211,9 @@ entities:
   daemon_state: sensor.REPLACE_ME
 ```
 
-Use the actual entity IDs created by the SDS200 MQTT Discovery device. The first
-card slice is deliberately read-only. Scanner controls remain a separate Home
-Assistant control-adapter milestone.
+Use the actual entity IDs created by the SDS200 MQTT Discovery device. The card
+remains deliberately read-only. Scanner controls are separate standard Home
+Assistant switch and button entities and do not add a transport to the card.
 
 ## Troubleshooting
 

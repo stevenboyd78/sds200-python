@@ -428,12 +428,17 @@ semantic state derived from the existing authoritative event stream. Packet-rate
 accepts only the daemon API's semantic scanner-control operations, and publishes
 non-retained correlated responses to `<prefix>/responses`. Retained commands are
 rejected, and recent request IDs are deduplicated within the daemon process.
-When `[home_assistant].enabled = true`, the worker publishes read-only Home
-Assistant MQTT device Discovery from authoritative snapshots and republishes it
-for an exact configured Home Assistant birth message. Discovery reuses the
-existing availability and semantic state topics and adds no Home Assistant
-command topic. Broker failures remain isolated in the MQTT worker and use
-configured reconnect backoff rather than interrupting scanner ownership. See the
+When `[home_assistant].enabled = true`, the worker publishes Home Assistant MQTT
+device Discovery from authoritative snapshots and republishes it for an exact
+configured Home Assistant birth message. The ten existing state/diagnostic
+components continue to reuse canonical daemon MQTT state. When
+`[home_assistant].controls_enabled = true`, seven standard Home Assistant control
+entities use dedicated QoS 0 non-retained topics: four desired-state Hold
+switches plus Previous Channel, Next Channel, and Reconnect Scanner buttons. The
+adapter generates fresh internal daemon request IDs and never binds Home
+Assistant directly to the generic `<prefix>/commands` request envelope. Broker
+failures remain isolated in the MQTT worker and use configured reconnect backoff
+rather than interrupting scanner ownership. See the
 [daemon MQTT guide](docs/daemon-mqtt.md) for the version 1 manifest, exact topic,
 Discovery, entity, identity, command, retention, secrets, and security contracts.
 
@@ -543,8 +548,12 @@ private Unix-domain sockets inside the App.
 The App configuration accepts the required `scanner_host`, optional
 `mqtt_topic_prefix` defaulting to `sdsctl`, and optional media-relative
 `recording_directory` defaulting to `sdsctl/recordings`. Home Assistant MQTT
-Discovery is enabled by the App adapter and publishes the same ten read-only
-entities defined by the generic daemon MQTT contract.
+Discovery is enabled by the App adapter and publishes seventeen components:
+the existing ten state/diagnostic entities plus System, Department, Site, and
+Channel Hold switches and Previous Channel, Next Channel, and Reconnect Scanner
+buttons. The App keeps the generic MQTT request-envelope command input disabled;
+the seven Home Assistant controls use their own bounded translation layer over
+the existing typed daemon-control boundary.
 
 Browser audio continues to prefer AudioWorklet. When Home Assistant is opened
 from a browser context where AudioWorklet is unavailable, the dashboard falls
