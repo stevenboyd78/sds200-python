@@ -6,6 +6,8 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+## [0.20.1] - 2026-08-09
+
 ### Added
 
 - Home Assistant App `recording_directory` option for a media-relative recording
@@ -911,7 +913,8 @@ First planned GitHub prerelease.
 - Added serial discovery, transport, packet framing, core responses, CLI tools,
   examples, tests, and CI.
 
-[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.20.1...HEAD
+[0.20.1]: https://github.com/stevenboyd78/sds200-python/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.17.0...v0.18.0

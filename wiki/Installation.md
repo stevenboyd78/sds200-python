@@ -149,7 +149,9 @@ App into `/addons`.
 4. Open the repository's **sds200** App.
 5. Install it.
 6. Set `scanner_host` to the SDS200 LAN hostname or IP address.
-7. Start the App and open **Web UI**.
+7. Leave `recording_directory` at `sdsctl/recordings` unless another Home
+   Assistant media subdirectory is preferred.
+8. Start the App and open **Web UI**.
 
 The App requires the Home Assistant MQTT service and uses UDP `50000` for
 scanner RTP audio. See the canonical
@@ -159,27 +161,39 @@ before changing network or MQTT settings.
 The Local App workflow under `/addons` remains available for development but is
 not required for normal release installation.
 
-## Upgrade to v0.20.0
+## Upgrade to v0.20.1
 
-The v0.20.0 release keeps the distribution and Python import package named
-`sds200` and keeps the executable named `sdsctl`. Application and service paths
-use the `sdsctl` namespace, while existing scanner and remote-audio profiles
-remain under the legacy `sds200` configuration root.
+v0.20.1 is a corrective Home Assistant App release. It keeps the distribution
+and Python import package named `sds200`, the executable named `sdsctl`, and the
+existing single-owner daemon architecture.
 
-v0.20.0 adds the Home Assistant App distribution path, Ingress dashboard,
-Supervisor MQTT adaptation, persistent App recordings, and release-built amd64
-and aarch64 images. Existing standalone, daemon, TUI, and web workflows remain
-available.
+Home Assistant recordings now use writable media storage instead of the
+App-private legacy recording directory. The default `recording_directory` value
+`sdsctl/recordings` resolves to:
 
-No file is moved or rewritten automatically. Before upgrading, back up system
-and user configuration, legacy profile files, destination manifests, recordings,
-and metadata. Upgrade the package, verify `sdsctl --version` and
-`sds200.__version__`, then exercise both standalone and daemon-backed workflows.
+```text
+/media/sdsctl/recordings
+```
+
+When upgrading a v0.20.0 Home Assistant App installation, startup migrates files
+from `/data/recordings` into the configured media library before starting the
+daemon. Nested paths and metadata sidecars are preserved. Migration preflights
+destination conflicts, never overwrites a differing file, verifies copied file
+contents before removing the legacy source, and can resume when an identical
+destination already exists.
+
+The dashboard also separates active Capture from Recent recordings, moves
+Reconnect scanner into Scanner connection, groups daemon runtime with scanner
+connection, and gives the finalized recording library its own responsive panel.
+
+Existing standalone scanner profiles, remote-audio profiles, daemon
+configuration, and other non-App data are not moved by this Home Assistant
+recording migration. Back up important configuration and recordings before any
+upgrade.
 
 See the canonical
-[daemon deployment and upgrade guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/daemon-deployment.md)
-for a complete systemd unit, destination manifest, reload, client, upgrade, and
-rollback procedure.
+[Home Assistant App guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/home-assistant-app.md)
+for exact storage, migration, networking, and security behavior.
 
 ## Run the SDS200 daemon
 

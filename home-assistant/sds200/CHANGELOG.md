@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.20.1
+
 - Recordings now use writable Home Assistant media storage, defaulting to
   `/media/sdsctl/recordings`, with a configurable media-relative
   `recording_directory`.
