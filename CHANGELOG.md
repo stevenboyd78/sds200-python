@@ -6,6 +6,31 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+## [0.20.1] - 2026-08-09
+
+### Added
+
+- Home Assistant App `recording_directory` option for a media-relative recording
+  library under `/media`, defaulting to `sdsctl/recordings`, with a writable
+  Supervisor media mapping.
+
+### Changed
+
+- Home Assistant App dashboard layout now groups daemon runtime with scanner
+  connection, keeps scanner reconnect with connection state, separates active
+  capture from finalized recordings, and gives the recording library a dedicated
+  responsive grid area.
+- Home Assistant App sidebar presentation now requests the `mdi:radio-tower`
+  icon.
+
+### Fixed
+
+- Home Assistant App startup safely migrates legacy v0.20.0 recordings and
+  metadata sidecars from `/data/recordings` into the configured media library.
+  Migration preflights destination conflicts, never overwrites differing files,
+  byte-verifies copied files before removing their sources, and can resume after
+  an interrupted partial migration.
+
 ## [0.20.0] - 2026-08-09
 
 ### Added
@@ -888,7 +913,8 @@ First planned GitHub prerelease.
 - Added serial discovery, transport, packet framing, core responses, CLI tools,
   examples, tests, and CI.
 
-[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.20.1...HEAD
+[0.20.1]: https://github.com/stevenboyd78/sds200-python/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.17.0...v0.18.0

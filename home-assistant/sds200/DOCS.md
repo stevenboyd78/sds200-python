@@ -26,8 +26,13 @@ only for development builds.
 | --- | --- | --- |
 | `scanner_host` | yes | none |
 | `mqtt_topic_prefix` | no | `sdsctl` |
+| `recording_directory` | no | `sdsctl/recordings` |
 
 Set `scanner_host` to the SDS200 LAN hostname or IP address.
+
+Set `recording_directory` to a relative path below Home Assistant `/media`. The
+default `sdsctl/recordings` resolves to `/media/sdsctl/recordings`. Absolute
+paths and traversal components are rejected.
 
 The App automatically obtains the selected MQTT service from Supervisor and
 enables the existing read-only Home Assistant MQTT Discovery adapter. Semantic
@@ -57,16 +62,31 @@ The dashboard runs through authenticated Home Assistant Ingress and supports:
 
 - live scanner state;
 - System, Department, Site, and Channel Hold/release;
-- previous/next channel and reconnect controls;
+- reconnect from Scanner connection plus previous/next channel controls;
 - browser audio;
 - daemon-owned recording;
 - finalized recording inventory and playback; and
 - the existing dashboard themes and API documentation.
 
+On desktop, Scanner connection also contains daemon runtime, while Browser audio,
+Capture, and Recent recordings each have their own lower dashboard panel.
+Responsive layouts preserve those functional groups on narrower screens.
+
 ## Recordings
 
-Recordings are stored under `/data/recordings` and persist across App stop/start
-and container replacement.
+Recordings are stored under `/media/<recording_directory>` and persist across App
+stop/start and container replacement. With the default option, the library is
+`/media/sdsctl/recordings`.
+
+The App maps Home Assistant media storage read/write so finalized WAV files and
+their metadata sidecars can be managed through the Home Assistant media tree,
+including Samba or SSH access when those services expose `/media`.
+
+When upgrading from v0.20.0, startup migrates legacy files from
+`/data/recordings` into the configured media library before launching the daemon.
+The migration is recursive and refuses to overwrite a differing destination
+file. Copied files are verified before their legacy sources are removed, so an
+interrupted migration can be resumed safely.
 
 Stopping a recording finalizes the WAV before it is added to the recent-recording
 inventory.
@@ -118,6 +138,17 @@ the updated `config.yaml`.
 
 Start a recording and inspect its packet counter. If recording also stays at
 zero, verify UDP `50000` before troubleshooting Ingress.
+
+If recording packets advance but live audio is silent, first verify saved
+recording playback plus browser, tab, and system audio output. Live Browser Audio
+uses Web Audio, while finalized recordings use the browser's native media
+playback path, so a browser audio-service problem can affect only the live path.
+
+### Recordings are not visible through Samba or SSH
+
+The default recording library is `/media/sdsctl/recordings`, not
+`/data/recordings`. A custom `recording_directory` is also relative to `/media`.
+Confirm the Samba or SSH service being used exposes Home Assistant media storage.
 
 ### MQTT Discovery is missing
 

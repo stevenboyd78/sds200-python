@@ -113,8 +113,10 @@ On Home Assistant OS, add
 **Settings > Apps > App store > Repositories**, then install **sds200**.
 
 The published App uses Home Assistant Ingress for its dashboard, obtains the
-configured MQTT service from Supervisor, persists recordings under `/data`, and
-publishes UDP `50000` for SDS200 RTP audio.
+configured MQTT service from Supervisor, stores recordings in writable Home
+Assistant media storage, and publishes UDP `50000` for SDS200 RTP audio. The
+default recording library is `/media/sdsctl/recordings`; the media-relative
+`recording_directory` option can select another location below `/media`.
 
 See the canonical
 [Home Assistant App guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/home-assistant-app.md)

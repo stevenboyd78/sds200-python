@@ -51,16 +51,22 @@ or misconfiguring transport security.
 
 ## Configuration
 
-The App exposes two options:
+The App exposes three options:
 
 | Option | Required | Default | Meaning |
 | --- | --- | --- | --- |
 | `scanner_host` | yes | none | SDS200 LAN hostname or IPv4 address |
 | `mqtt_topic_prefix` | no | `sdsctl` | Generic daemon MQTT topic root |
+| `recording_directory` | no | `sdsctl/recordings` | Path below `/media` |
 
 Home Assistant writes these values to `/data/options.json`. The App reads that
 file at startup and converts the Supervisor MQTT service response into the
 existing strict daemon MQTT configuration.
+
+`recording_directory` is always interpreted relative to Home Assistant `/media`.
+The default resolves to `/media/sdsctl/recordings`. Absolute paths, empty path
+components, `.` and `..` traversal components, backslashes, and malformed values
+are rejected before the daemon is started.
 
 The MQTT password is never written into the generated TOML file. It is supplied
 to the daemon through a dedicated environment variable. The Supervisor token is
@@ -133,14 +139,33 @@ The browser still consumes the same daemon-owned PCMU stream in both cases.
 
 ## Persistent recordings
 
-Daemon-owned recordings are stored under:
+The App maps Home Assistant media storage read/write. Daemon-owned recordings are
+stored under:
 
 ```text
-/data/recordings
+/media/<recording_directory>
 ```
 
-Home Assistant persists `/data` across App stop/start and container replacement.
-Finalized WAV files and metadata therefore remain available after App restart.
+The default option therefore produces:
+
+```text
+/media/sdsctl/recordings
+```
+
+Finalized WAV files and adjacent metadata sidecars remain available after App
+restart and can be managed through Home Assistant media storage. Samba or SSH
+tools can also manage the files when those services expose `/media`.
+
+On upgrade from v0.20.0, the App migrates the legacy `/data/recordings` tree into
+the configured media library before starting the daemon. Migration preserves
+nested relative paths and sidecars, preflights all destination collisions, and
+never overwrites a differing file. Missing destinations are copied with metadata
+and byte-verified before the source is removed. An identical destination is
+treated as an already completed copy, allowing an interrupted migration to
+resume safely.
+
+Changing `recording_directory` later selects a different media library; it does
+not implicitly move files between two already existing `/media` libraries.
 
 The web dashboard lists finalized recordings through the existing private
 recording-file service rather than opening arbitrary paths. Saved recordings can
@@ -180,7 +205,8 @@ For a normal published installation:
 4. add `https://github.com/stevenboyd78/sds200-python`;
 5. open the new repository and select **sds200**;
 6. install the App;
-7. configure `scanner_host` and, if needed, `mqtt_topic_prefix`;
+7. configure `scanner_host` and, if needed, `mqtt_topic_prefix` or
+   `recording_directory`;
 8. start the App and open **Web UI**.
 
 Published releases use the image configured in
@@ -232,10 +258,12 @@ After installation:
 
 1. set `scanner_host`;
 2. leave `mqtt_topic_prefix` at `sdsctl` unless a different namespace is needed;
-3. start the App;
-4. open **Web UI**;
-5. confirm live scanner state;
-6. exercise browser audio or recording as needed.
+3. leave `recording_directory` at `sdsctl/recordings` unless another Home
+   Assistant media subdirectory is preferred;
+4. start the App;
+5. open **Web UI**;
+6. confirm live scanner state;
+7. exercise browser audio or recording as needed.
 
 Normal routine startup is intentionally quiet. App stdout/stderr is available
 from the Home Assistant App Logs tab when a failure occurs.
@@ -279,9 +307,20 @@ when no RTP datagrams are reaching the container.
 ### Browser audio remains on Buffering
 
 First check whether a daemon-owned recording receives packets. If recording also
-stays at zero packets, troubleshoot UDP `50000` before investigating Ingress. If
-recording receives packets but browser audio does not, investigate the
+stays at zero packets, troubleshoot UDP `50000` before investigating Ingress.
+
+If recording receives packets but live Browser Audio remains silent, verify
+saved-recording playback and browser, tab, and system audio output before
+changing the App. Live Browser Audio uses Web Audio while finalized recordings
+use the browser's native media playback path. If browser audio output is healthy
+but live packets still do not reach the renderer, investigate the
 daemon-PCMU/web/Ingress stream path.
+
+### Recordings are not visible through Samba or SSH
+
+The default recording library is `/media/sdsctl/recordings`, not the legacy
+`/data/recordings` path. A custom `recording_directory` is relative to `/media`.
+Confirm the Samba or SSH service being used exposes Home Assistant media storage.
 
 ### MQTT service startup fails
 

@@ -76,7 +76,7 @@
     </noscript>
 
     <div class="dashboard-grid">
-      <section class="panel" aria-labelledby="scanner-title">
+      <section class="panel scanner-panel" aria-labelledby="scanner-title">
         <header class="panel-header">
           <p class="panel-kicker">Connection</p>
           <h2 id="scanner-title">Scanner</h2>
@@ -102,6 +102,45 @@
             </dd>
           </div>
         </dl>
+
+        <div class="scanner-connection-actions">
+          <button id="scanner-reconnect" type="button" disabled>
+            Reconnect scanner
+          </button>
+        </div>
+
+        <div
+          class="panel-subsection daemon-runtime-section"
+          aria-labelledby="runtime-title"
+        >
+          <header class="panel-subsection-header">
+            <p class="panel-kicker">Services</p>
+            <h2 id="runtime-title">Daemon runtime</h2>
+          </header>
+
+          <dl class="status-list">
+            <div>
+              <dt>State</dt>
+              <dd id="daemon-state">Checking</dd>
+            </div>
+            <div>
+              <dt>PSI updates</dt>
+              <dd id="psi-state">Checking</dd>
+            </div>
+            <div>
+              <dt>Audio</dt>
+              <dd id="audio-state">Checking</dd>
+            </div>
+            <div>
+              <dt>Destinations</dt>
+              <dd id="router-state">Checking</dd>
+            </div>
+            <div>
+              <dt>Transition</dt>
+              <dd id="transition-sequence">Unavailable</dd>
+            </div>
+          </dl>
+        </div>
       </section>
 
       <section class="panel panel-emphasis" aria-labelledby="activity-title">
@@ -238,47 +277,9 @@
           </div>
         </div>
 
-        <div class="scanner-control-group">
-          <h3>Connection</h3>
-          <div class="scanner-controls">
-            <button id="scanner-reconnect" type="button" disabled>
-              Reconnect scanner
-            </button>
-          </div>
-        </div>
       </section>
 
-      <section class="panel" aria-labelledby="runtime-title">
-        <header class="panel-header">
-          <p class="panel-kicker">Services</p>
-          <h2 id="runtime-title">Daemon runtime</h2>
-        </header>
-
-        <dl class="status-list">
-          <div>
-            <dt>State</dt>
-            <dd id="daemon-state">Checking</dd>
-          </div>
-          <div>
-            <dt>PSI updates</dt>
-            <dd id="psi-state">Checking</dd>
-          </div>
-          <div>
-            <dt>Audio</dt>
-            <dd id="audio-state">Checking</dd>
-          </div>
-          <div>
-            <dt>Destinations</dt>
-            <dd id="router-state">Checking</dd>
-          </div>
-          <div>
-            <dt>Transition</dt>
-            <dd id="transition-sequence">Unavailable</dd>
-          </div>
-        </dl>
-      </section>
-
-      <section class="panel" aria-labelledby="browser-audio-title">
+      <section class="panel browser-audio-panel" aria-labelledby="browser-audio-title">
         <header class="panel-header">
           <p class="panel-kicker">Listen</p>
           <h2 id="browser-audio-title">Browser audio</h2>
@@ -318,7 +319,7 @@
         </dl>
       </section>
 
-      <section class="panel recording-panel" aria-labelledby="recording-title">
+      <section class="panel recording-capture-panel" aria-labelledby="recording-title">
         <header class="panel-header">
           <p class="panel-kicker">Capture</p>
           <h2 id="recording-title">Recordings</h2>
@@ -377,14 +378,21 @@
           </div>
         </dl>
 
-        <div class="recording-library">
-          <div class="recording-library-header">
-            <div>
-              <p class="panel-kicker">Finalized</p>
-              <h3>Recent recordings</h3>
-            </div>
-            <button id="recordings-refresh" type="button">Refresh</button>
+      </section>
+
+      <section
+        class="panel recording-library-panel"
+        aria-labelledby="recordings-title"
+      >
+        <header class="panel-header recording-library-header">
+          <div>
+            <p class="panel-kicker">Finalized</p>
+            <h2 id="recordings-title">Recent recordings</h2>
           </div>
+          <button id="recordings-refresh" type="button">Refresh</button>
+        </header>
+
+        <div class="recording-library">
 
           <p id="recordings-message" class="recordings-message" role="status">
             Loading recent recordings.

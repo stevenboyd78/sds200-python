@@ -10,11 +10,19 @@ from .daemon_ipc import (
     DAEMON_RECORDING_FILE_SOCKET_FILENAME,
     DAEMON_SOCKET_FILENAME,
 )
-from .home_assistant_app import HomeAssistantAppOptions
+from .home_assistant_app import (
+    HOME_ASSISTANT_APP_DEFAULT_RECORDING_DIRECTORY,
+    HomeAssistantAppOptions,
+)
 
 HOME_ASSISTANT_APP_RUNTIME_DIRECTORY = Path("/run/sdsctl")
 HOME_ASSISTANT_APP_MQTT_CONFIG_FILENAME = "daemon-mqtt.toml"
-HOME_ASSISTANT_APP_RECORDING_DIRECTORY = Path("/data/recordings")
+HOME_ASSISTANT_APP_MEDIA_DIRECTORY = Path("/media")
+HOME_ASSISTANT_APP_LEGACY_RECORDING_DIRECTORY = Path("/data/recordings")
+HOME_ASSISTANT_APP_RECORDING_DIRECTORY = (
+    HOME_ASSISTANT_APP_MEDIA_DIRECTORY
+    / HOME_ASSISTANT_APP_DEFAULT_RECORDING_DIRECTORY
+)
 HOME_ASSISTANT_APP_INGRESS_PORT = 8099
 HOME_ASSISTANT_APP_RTP_PORT = 50000
 HOME_ASSISTANT_APP_EXECUTABLE = "sdsctl"
@@ -93,10 +101,17 @@ class HomeAssistantAppRuntimePaths:
         )
 
 
-def default_home_assistant_app_runtime_paths() -> HomeAssistantAppRuntimePaths:
-    """Return the fixed private paths used inside the Home Assistant App."""
+def default_home_assistant_app_runtime_paths(
+    options: HomeAssistantAppOptions | None = None,
+) -> HomeAssistantAppRuntimePaths:
+    """Return private runtime paths plus the configured mapped-media library."""
 
     runtime = HOME_ASSISTANT_APP_RUNTIME_DIRECTORY
+    recording_relative = (
+        HOME_ASSISTANT_APP_DEFAULT_RECORDING_DIRECTORY
+        if options is None
+        else options.recording_directory
+    )
     return HomeAssistantAppRuntimePaths(
         runtime_directory=runtime,
         mqtt_configuration=runtime / HOME_ASSISTANT_APP_MQTT_CONFIG_FILENAME,
@@ -106,7 +121,9 @@ def default_home_assistant_app_runtime_paths() -> HomeAssistantAppRuntimePaths:
         recording_file_socket=(
             runtime / DAEMON_RECORDING_FILE_SOCKET_FILENAME
         ),
-        recording_directory=HOME_ASSISTANT_APP_RECORDING_DIRECTORY,
+        recording_directory=(
+            HOME_ASSISTANT_APP_MEDIA_DIRECTORY / recording_relative
+        ),
     )
 
 
@@ -193,6 +210,8 @@ __all__ = [
     "HOME_ASSISTANT_APP_EXECUTABLE",
     "HOME_ASSISTANT_APP_INGRESS_PORT",
     "HOME_ASSISTANT_APP_MQTT_CONFIG_FILENAME",
+    "HOME_ASSISTANT_APP_MEDIA_DIRECTORY",
+    "HOME_ASSISTANT_APP_LEGACY_RECORDING_DIRECTORY",
     "HOME_ASSISTANT_APP_RECORDING_DIRECTORY",
     "HOME_ASSISTANT_APP_RTP_PORT",
     "HOME_ASSISTANT_APP_RUNTIME_DIRECTORY",

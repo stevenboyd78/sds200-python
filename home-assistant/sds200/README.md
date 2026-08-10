@@ -13,7 +13,8 @@ It provides:
 - the full scanner dashboard through authenticated Home Assistant Ingress;
 - live scanner status and semantic scanner controls;
 - browser audio from the daemon-owned SDS200 RTP stream;
-- daemon-owned recordings persisted under `/data/recordings`;
+- daemon-owned recordings stored in Home Assistant media, defaulting to
+  `/media/sdsctl/recordings`;
 - automatic use of the Supervisor-provided MQTT service; and
 - ten read-only Home Assistant MQTT Discovery entities.
 

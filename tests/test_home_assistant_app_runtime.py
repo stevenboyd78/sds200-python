@@ -27,6 +27,7 @@ def test_default_home_assistant_app_runtime_paths_are_private_and_absolute() -> 
     assert paths.pcmu_socket == Path("/run/sdsctl/pcmu.sock")
     assert paths.recording_file_socket == Path("/run/sdsctl/recordings.sock")
     assert paths.recording_directory == HOME_ASSISTANT_APP_RECORDING_DIRECTORY
+    assert paths.recording_directory == Path("/media/sdsctl/recordings")
 
 
 @pytest.mark.parametrize(
@@ -52,7 +53,7 @@ def test_home_assistant_app_runtime_paths_require_absolute_paths(
         "event_socket": Path("/run/sdsctl/events.sock"),
         "pcmu_socket": Path("/run/sdsctl/pcmu.sock"),
         "recording_file_socket": Path("/run/sdsctl/recordings.sock"),
-        "recording_directory": Path("/data/recordings"),
+        "recording_directory": Path("/media/sdsctl/recordings"),
     }
     values[field_name] = value
 
@@ -69,7 +70,7 @@ def test_home_assistant_app_runtime_files_stay_inside_runtime_directory() -> Non
             event_socket=Path("/run/sdsctl/events.sock"),
             pcmu_socket=Path("/run/sdsctl/pcmu.sock"),
             recording_file_socket=Path("/run/sdsctl/recordings.sock"),
-            recording_directory=Path("/data/recordings"),
+            recording_directory=Path("/media/sdsctl/recordings"),
         )
 
 
@@ -93,7 +94,7 @@ def test_home_assistant_daemon_command_uses_explicit_private_paths() -> None:
         "--mqtt-config",
         "/run/sdsctl/daemon-mqtt.toml",
         "--recording-directory",
-        "/data/recordings",
+        "/media/sdsctl/recordings",
         "--socket-path",
         "/run/sdsctl/daemon.sock",
         "--event-socket-path",
@@ -112,6 +113,17 @@ def test_home_assistant_daemon_command_never_contains_mqtt_password() -> None:
     )
 
     assert all("password" not in argument.casefold() for argument in command)
+
+
+def test_home_assistant_runtime_uses_configured_media_subdirectory() -> None:
+    options = HomeAssistantAppOptions(
+        scanner_host="scanner.local",
+        recording_directory="radio/sds200",
+    )
+
+    paths = default_home_assistant_app_runtime_paths(options)
+
+    assert paths.recording_directory == Path("/media/radio/sds200")
 
 
 def test_home_assistant_web_command_enables_ingress_and_private_clients() -> None:

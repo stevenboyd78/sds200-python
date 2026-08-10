@@ -1,5 +1,5 @@
 name: "sds200"
-version: "0.20.0"
+version: "0.20.1"
 slug: "sds200"
 description: "Uniden SDS200 scanner daemon and web dashboard for Home Assistant"
 arch:
@@ -13,6 +13,9 @@ stage: experimental
 init: false
 services:
   - "mqtt:need"
+map:
+  - type: media
+    read_only: false
 ingress: true
 ingress_port: 8099
 ingress_stream: true
@@ -21,9 +24,12 @@ ports:
 ports_description:
   50000/udp: "SDS200 RTP audio"
 panel_title: "sds200"
+panel_icon: "mdi:radio-tower"
 timeout: 60
 options:
   mqtt_topic_prefix: "sdsctl"
+  recording_directory: "sdsctl/recordings"
 schema:
   scanner_host: "str(1,)"
   mqtt_topic_prefix: "str(1,)"
+  recording_directory: "str(1,)"

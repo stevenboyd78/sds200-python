@@ -238,6 +238,7 @@ repository still does not appear, inspect the Supervisor log under
 Confirm:
 
 - `scanner_host` contains the reachable SDS200 LAN hostname or address;
+- any custom `recording_directory` is a relative path below `/media`;
 - the Home Assistant MQTT service is available;
 - the App log does not report an unsupported TLS-enabled MQTT service; and
 - host UDP `50000` is available.
@@ -252,13 +253,27 @@ counters. If both remain at zero, verify the App Network configuration maps
 `50000/udp` to host UDP `50000` and confirm the scanner can route RTP to the Home
 Assistant host.
 
-If recording packets advance but browser audio still buffers, collect the App
-log and browser context details before changing the RTP mapping.
+If recording packets advance but live Browser Audio is silent, verify saved
+recording playback plus browser, tab, and system audio output before changing the
+RTP mapping. Live Browser Audio uses Web Audio, while finalized recordings use
+the browser's native media playback path, so a browser audio-service problem can
+affect only the live path.
+
+### Recordings are not visible through Samba or SSH
+
+The default recording library is `/media/sdsctl/recordings`, not the legacy
+`/data/recordings` path. A custom `recording_directory` is also relative to
+`/media`. Confirm the Samba or SSH service being used exposes Home Assistant
+media storage.
+
+When upgrading from v0.20.0, the App migrates the legacy recording tree during
+startup. A differing destination file stops migration rather than being
+overwritten; inspect the App log and resolve the conflict deliberately.
 
 ### MQTT Discovery entities are missing
 
 Confirm Home Assistant's MQTT integration is active and inspect the App log for
-MQTT service or broker connection errors. The v0.20.0 App publishes ten read-only
+MQTT service or broker connection errors. The App publishes ten read-only
 Discovery entities and does not enable semantic MQTT command subscriptions.
 
 ## Capture detailed diagnostics
