@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import struct
 from pathlib import Path
 
 from sds200 import __version__
@@ -19,7 +20,18 @@ _REPOSITORY_MANIFEST = _REPOSITORY_ROOT / "repository.yaml"
 _APP_DIRECTORY = _REPOSITORY_ROOT / "home-assistant" / "sds200"
 _APP_MANIFEST = _APP_DIRECTORY / "config.yaml"
 _APP_DOCKERFILE = _APP_DIRECTORY / "Dockerfile"
+_APP_ICON = _APP_DIRECTORY / "icon.png"
+_APP_LOGO = _APP_DIRECTORY / "logo.png"
 _DOCKERIGNORE = _REPOSITORY_ROOT / ".dockerignore"
+
+
+def _png_size(path: Path) -> tuple[int, int]:
+    data = path.read_bytes()
+
+    assert data[:8] == b"\x89PNG\r\n\x1a\n"
+    assert data[12:16] == b"IHDR"
+
+    return struct.unpack(">II", data[16:24])
 
 
 def _quoted_scalar(text: str, key: str) -> str:
@@ -51,6 +63,14 @@ def test_home_assistant_repository_manifest_is_present() -> None:
         == "https://github.com/stevenboyd78/sds200-python"
     )
     assert "maintainer:" in manifest
+
+
+def test_home_assistant_app_has_project_branding_assets() -> None:
+    assert _png_size(_APP_ICON) == (128, 128)
+
+    logo_width, logo_height = _png_size(_APP_LOGO)
+    assert 1 <= logo_width <= 250
+    assert 1 <= logo_height <= 100
 
 
 def test_home_assistant_app_manifest_tracks_package_release_version() -> None:
