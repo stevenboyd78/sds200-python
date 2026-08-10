@@ -19,6 +19,7 @@ _REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 _REPOSITORY_MANIFEST = _REPOSITORY_ROOT / "repository.yaml"
 _APP_DIRECTORY = _REPOSITORY_ROOT / "home-assistant" / "sds200"
 _APP_MANIFEST = _APP_DIRECTORY / "config.yaml"
+_APP_TRANSLATIONS = _APP_DIRECTORY / "translations" / "en.yaml"
 _APP_DOCKERFILE = _APP_DIRECTORY / "Dockerfile"
 _APP_ICON = _APP_DIRECTORY / "icon.png"
 _APP_LOGO = _APP_DIRECTORY / "logo.png"
@@ -120,6 +121,48 @@ def test_home_assistant_app_manifest_uses_ingress_and_required_mqtt_service() ->
     assert 'scanner_host: "str(1,)"\n' in manifest
     assert 'mqtt_topic_prefix: "str(1,)"\n' in manifest
     assert 'recording_directory: "str(1,)"\n' in manifest
+
+
+def test_home_assistant_app_configuration_translations_cover_schema() -> None:
+    translations = _APP_TRANSLATIONS.read_text(encoding="utf-8")
+
+    assert translations.startswith("configuration:\n")
+
+    translation_keys = set(
+        re.findall(
+            r"^  ([a-z][a-z0-9_]*):$",
+            translations,
+            flags=re.MULTILINE,
+        )
+    )
+    manifest = _APP_MANIFEST.read_text(encoding="utf-8")
+    schema_marker = "schema:\n"
+    assert manifest.count(schema_marker) == 1
+
+    schema_text = manifest.partition(schema_marker)[2]
+    schema_keys = set(
+        re.findall(
+            r"^  ([a-z][a-z0-9_]*):",
+            schema_text,
+            flags=re.MULTILINE,
+        )
+    )
+
+    assert translation_keys == schema_keys
+
+    assert "name: Scanner host\n" in translations
+    assert "LAN hostname or IP address of the Uniden SDS200 scanner." in translations
+
+    assert "name: MQTT topic prefix\n" in translations
+    assert (
+        "MQTT topic root used by the sds200 daemon and Home Assistant Discovery."
+        in translations
+    )
+
+    assert "name: Recording directory\n" in translations
+    assert "Home Assistant /media root" in translations
+    assert "sdsctl/recordings" in translations
+    assert "/media/sdsctl/recordings" in translations
 
 
 def test_home_assistant_app_outer_timeout_covers_ordered_child_shutdown() -> None:

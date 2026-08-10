@@ -222,8 +222,15 @@ The implemented sequence is:
   republication; and
 - package one Home Assistant App around the existing daemon and web dashboard,
   implemented in Milestone 20.11 with Supervisor MQTT service adaptation,
-  Ingress, persistent `/data` recordings, and fixed UDP RTP publication without
-  enabling host networking.
+  Ingress, writable Home Assistant `/media` recording storage, safe migration
+  from legacy `/data/recordings`, and fixed UDP RTP publication without enabling
+  host networking.
+
+Milestone 20.12.1 adds Home Assistant configuration translations so the App
+Configuration page gives the scanner host, MQTT topic prefix, and recording
+directory user-facing names and descriptions. The recording directory description
+explicitly identifies `/media` as its root without changing the existing strict
+media-relative path contract.
 
 Remaining Home Assistant work includes:
 

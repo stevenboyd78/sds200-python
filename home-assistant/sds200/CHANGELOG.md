@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Configuration fields now have user-facing names and descriptions, including
+  explicit guidance that `recording_directory` is relative to Home Assistant
+  `/media` and that the default resolves to `/media/sdsctl/recordings`.
+
 ## 0.20.1
 
 - Recordings now use writable Home Assistant media storage, defaulting to
