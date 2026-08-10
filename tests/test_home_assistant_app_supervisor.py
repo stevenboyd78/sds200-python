@@ -223,6 +223,77 @@ def test_migrate_home_assistant_app_recordings_rejects_conflicts_without_changes
     assert not (destination / "a.wav").exists()
 
 
+
+@pytest.mark.parametrize(
+    "target_is_directory",
+    [False, True],
+    ids=["file-symlink", "directory-symlink"],
+)
+def test_migrate_home_assistant_app_recordings_rejects_symlink_entries(
+    tmp_path: Path,
+    target_is_directory: bool,
+) -> None:
+    legacy = tmp_path / "data" / "recordings"
+    destination = tmp_path / "media" / "sdsctl" / "recordings"
+    legacy.mkdir(parents=True)
+    destination.mkdir(parents=True)
+
+    outside = tmp_path / "outside"
+    if target_is_directory:
+        outside.mkdir()
+    else:
+        outside.write_bytes(b"outside")
+
+    unsafe = legacy / "unsafe"
+    unsafe.symlink_to(
+        outside,
+        target_is_directory=target_is_directory,
+    )
+
+    with pytest.raises(
+        SDS200Error,
+        match="refuses symlinks",
+    ):
+        migrate_home_assistant_app_recordings(
+            destination,
+            legacy_directory=legacy,
+        )
+
+    assert unsafe.is_symlink()
+    assert list(destination.iterdir()) == []
+
+
+def test_migrate_home_assistant_app_recordings_rejects_symlink_source(
+    tmp_path: Path,
+) -> None:
+    actual_legacy = tmp_path / "actual-legacy"
+    actual_legacy.mkdir()
+    (actual_legacy / "test.wav").write_bytes(b"recording")
+
+    legacy_parent = tmp_path / "data"
+    legacy_parent.mkdir()
+    legacy = legacy_parent / "recordings"
+    legacy.symlink_to(
+        actual_legacy,
+        target_is_directory=True,
+    )
+
+    destination = tmp_path / "media" / "sdsctl" / "recordings"
+
+    with pytest.raises(
+        SDS200Error,
+        match="refuses symlinks",
+    ):
+        migrate_home_assistant_app_recordings(
+            destination,
+            legacy_directory=legacy,
+        )
+
+    assert legacy.is_symlink()
+    assert (actual_legacy / "test.wav").read_bytes() == b"recording"
+    assert not destination.exists()
+
+
 @pytest.mark.parametrize(
     "argument",
     [

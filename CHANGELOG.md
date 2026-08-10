@@ -6,7 +6,7 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
-## [0.20.1] - 2026-08-09
+## [0.20.1] - 2026-08-10
 
 ### Added
 
