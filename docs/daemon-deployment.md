@@ -218,20 +218,29 @@ trusted to operate the scanner. Commands reuse the same daemon control API as
 local clients, reject retained requests, publish non-retained correlated
 responses, and never expose raw scanner keys.
 
-Milestone 20.10 can publish read-only Home Assistant MQTT device discovery when
-`[home_assistant].enabled = true`. The worker publishes Discovery after an
-authoritative snapshot, republishes it after broker reconnect or event-stream
-resynchronization, and subscribes to the configured Home Assistant birth topic at
-QoS 0 so an exact configured birth payload republishes Discovery. The discovered
-entities reuse the daemon's existing retained availability and semantic state
-topics; no Home Assistant-specific scanner owner, PSI stream, or command path is
-created. Milestone 20.11 packages that same daemon and the existing web dashboard
-as a Home Assistant App with Supervisor MQTT service adaptation and Ingress while
-preserving the single-owner boundary. The bundled Lovelace card and richer
-Home Assistant-specific controls remain follow-on work. See
-[Daemon MQTT publication](daemon-mqtt.md) for the exact topics, entity set,
-identity semantics, deduplication behavior, retention rules, and security
+Milestone 20.10 established Home Assistant MQTT device Discovery when
+`[home_assistant].enabled = true`. Discovery still reuses the daemon's existing
+retained availability and semantic state topics and republishes after authoritative
+snapshot, broker reconnect, event-stream resynchronization, or an exact configured
+Home Assistant birth payload.
+
+Milestone 20.12.2 adds the bundled read-only Lovelace card, and Milestone 20.12.3
+adds the dedicated Home Assistant control adapter. With
+`[home_assistant].controls_enabled = true`, the discovered device gains four
+desired-state Hold switches plus Previous Channel, Next Channel, and Reconnect
+Scanner buttons. Their seven command topics are QoS 0 and non-retained; accepted
+actions receive fresh internal daemon request IDs and dispatch through the same
+typed control API used by local clients. Previous/Next use ordered daemon-owned
+radio context and the shared bounded TGID/CFREQ resolver.
+
+This does not create another scanner owner, PSI stream, RTSP/RTP session, or raw
+scanner-key path. The generic `<prefix>/commands` transport remains independent
+and explicitly opt-in; the Home Assistant App keeps it disabled while enabling
+the dedicated adapter. See
+[Daemon MQTT publication](daemon-mqtt.md) for the exact topics, seventeen-component
+Discovery set, identity semantics, retention rules, failure behavior, and security
 boundary, and [Home Assistant App](home-assistant-app.md) for the App runtime.
+
 
 ## systemd service
 

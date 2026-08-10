@@ -461,3 +461,37 @@ The validation covered:
 - clean App restart with scanner and audio recovery; and
 - all ten Home Assistant MQTT Discovery entities with correct SDS200 model and
   firmware metadata.
+
+That evidence is the historical Milestone 20.11 baseline. The three post-v0.20.1
+Home Assistant slices require one tagged repository-managed acceptance run before
+v0.20.2 release completion.
+
+### v0.20.2 release acceptance
+
+After the v0.20.2 tag publishes the amd64, aarch64, and generic
+multi-architecture App images, validate the repository-managed App rather than a
+previous Local App installation:
+
+- confirm the App reports v0.20.2 and loads the matching documentation;
+- confirm the 20.12.1 Configuration-page names and descriptions render for
+  `scanner_host`, `mqtt_topic_prefix`, and `recording_directory`;
+- confirm the recording-directory description identifies `/media` as its root
+  and the default resolves to `/media/sdsctl/recordings`;
+- confirm `/local/sds200/sds200-card.js` is installed and can be registered as a
+  JavaScript Module;
+- confirm **SDS200 Scanner** appears in the card picker, its graphical editor
+  works, and the read-only card renders the selected Discovery state entities;
+- confirm the SDS200 MQTT device exposes seventeen total components;
+- exercise System, Department, Site, and Channel Hold in both meaningful
+  desired-state directions and confirm authoritative Home Assistant state;
+- exercise Previous Channel and Next Channel while a valid current TGID or
+  conventional-frequency selection is available;
+- exercise Reconnect Scanner and confirm bounded scanner recovery;
+- confirm the App still does not subscribe to the generic
+  `<mqtt_topic_prefix>/commands` request-envelope input;
+- confirm Ingress scanner state, live browser audio, recording, finalized WAV
+  playback, and App restart remain healthy;
+- confirm repository-managed recordings persist across App restart or upgrade;
+- confirm no second scanner, PSI, RTSP/RTP, or control owner appears; and
+- record the Home Assistant OS/Supervisor version and SDS200 firmware used for
+  the acceptance evidence.

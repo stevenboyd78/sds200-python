@@ -11,24 +11,26 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 20.12.3 — Home Assistant control adapter
+### Milestone 20 release closure — v0.20.2
 
-- Add a deliberate Home Assistant control translation layer over the existing
-  typed daemon-control boundary rather than exposing raw scanner commands or
-  binding Home Assistant directly to the generic daemon request envelope.
-- Preserve the foreground daemon as the sole scanner/control owner and keep the
-  Home Assistant App as an adapter/orchestrator.
-- Define the first supported Home Assistant control entities, command topics,
-  state feedback, availability behavior, failure semantics, and bounded
-  request-generation rules before implementation.
-- Reuse `scanner.hold_state`, indexed navigation, reconnect, and other existing
-  semantic daemon operations where their Home Assistant entity semantics are
-  unambiguous.
-- Keep scanner controls capability-checked and non-retained, and ensure repeated
-  Home Assistant actions cannot be confused with daemon request-ID replay.
-- Keep the bundled Lovelace card transport-free; standard Home Assistant
-  entities remain the control surface unless a later card-control presentation
-  layer can consume those entities without bypassing Home Assistant.
+- Publish the completed Milestone 20.12.1 configuration UX, Milestone 20.12.2
+  bundled Lovelace card, and Milestone 20.12.3 Home Assistant control adapter as
+  one versioned Home Assistant App and Python package release.
+- Keep the release slice feature-frozen: no new scanner, MQTT, Lovelace, audio,
+  recording, transport, or Home Assistant authority belongs in v0.20.2 release
+  preparation.
+- Synchronize package, import, and Home Assistant App versions; freeze changelog
+  entries; reconcile current documentation and reviewed wiki source; and run the
+  complete release-quality gate.
+- Publish reviewed wiki source before tagging.
+- After the v0.20.2 tag publishes amd64, aarch64, and multi-architecture App
+  images, physically validate the repository-managed App on HAOS, including the
+  deferred 20.12.1 translations, 20.12.2 Lovelace card, and 20.12.3 scanner
+  controls.
+- Keep generic daemon MQTT commands disabled for the Home Assistant App and
+  preserve the daemon as the sole scanner/control/PSI/RTSP-RTP owner.
+- Begin Milestone 21 only after the v0.20.2 release and deferred Home Assistant
+  acceptance evidence are complete.
 
 ## Deferred hardware validation
 
@@ -115,17 +117,21 @@ begins.
 - Milestone 20.12.1 completed Home Assistant configuration translations and
   post-v0.20.1 roadmap synchronization without changing runtime semantics.
   Automated validation is complete; repository-managed physical rendering of
-  those translations is deferred until the next versioned App publication
-  because the slice retained App version 0.20.1 and image publication is
-  tag-gated.
+  those translations is assigned to the v0.20.2 tagged App acceptance run.
 - Milestone 20.12.2 completed the first-party Lovelace SDS200 card, including
   safe `/local` delivery, Home Assistant's graphical card form, supported state
   subscription, deterministic package validation, and explicit isolation of
-  optional card-installation failures. Physical HAOS rendering remains deferred
-  until the next versioned App publication.
-- Milestone 20.12.3 is active for a deliberate Home Assistant control adapter
-  over the existing semantic daemon-control boundary rather than binding static
-  Discovery payloads directly to generic request-ID commands.
+  optional card-installation failures. Physical HAOS rendering is assigned to
+  the v0.20.2 tagged App acceptance run.
+- Milestone 20.12.3 completed the deliberate Home Assistant control adapter:
+  four authoritative non-optimistic Hold switches plus Previous Channel, Next
+  Channel, and Reconnect Scanner buttons over seven dedicated QoS 0 non-retained
+  topics. The adapter generates fresh internal daemon request IDs, reuses the
+  existing typed semantic controls and bounded current-channel resolver, clears
+  navigation context on disconnect/resynchronization, keeps generic daemon MQTT
+  commands disabled for the App, and preserves the daemon as sole scanner owner.
+  Physical Home Assistant entity/control validation is assigned to the v0.20.2
+  tagged App acceptance run.
 - Keep authenticated/TLS LAN access, a network transport for remote daemon-backed
   CLI/TUI/GUI clients, and any optional host-network App variant as a separate
   later security boundary. The current daemon client interfaces remain private

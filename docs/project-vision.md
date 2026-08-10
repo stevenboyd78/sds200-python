@@ -231,35 +231,35 @@ Configuration page can give the scanner host, MQTT topic prefix, and recording
 directory user-facing names and descriptions. The recording directory description
 explicitly identifies `/media` as its root without changing the existing strict
 media-relative path contract. Automated validation is complete; repository-managed
-physical rendering is deferred until the next versioned App publication because
-20.12.1 retained App version 0.20.1 and App image publication is tag-gated.
+physical rendering is assigned to the v0.20.2 tagged App acceptance run.
 
 Milestone 20.12.2 completed the first-party SDS200 Lovelace card without requiring
 HACS. The App safely installs the resource under Home Assistant `www`, the card
 uses Home Assistant's supported state context and graphical form schema, and the
 card remains read-only with respect to scanner control. Physical HAOS rendering
-is deferred until the next versioned App publication.
+is assigned to the v0.20.2 tagged App acceptance run.
 
-Milestone 20.12.3 is the active Home Assistant slice. It adds a deliberate control
-adapter over the existing semantic daemon-control boundary rather than binding
-static Discovery payloads directly to request-ID-deduplicated generic commands.
-The daemon remains the sole scanner owner.
+Milestone 20.12.3 completed the deliberate Home Assistant control adapter over the
+existing semantic daemon-control boundary. Discovery now adds four authoritative
+Hold switches and Previous Channel, Next Channel, and Reconnect Scanner buttons
+using seven dedicated QoS 0 non-retained topics. The adapter creates fresh
+internal daemon request IDs, reuses existing typed control operations, derives
+navigation only from ordered daemon-owned radio state, and clears navigation
+context on scanner disconnect or event-stream resynchronization. The Home
+Assistant App continues to disable the generic daemon MQTT request-envelope
+command topic, and the daemon remains the sole scanner owner.
 
-Remaining Home Assistant work includes:
+Milestone 20 release closure is now limited to v0.20.2 packaging, documentation,
+reviewed wiki publication, tagged image publication, and repository-managed HAOS
+acceptance. No additional Home Assistant runtime capability is required before
+that release.
 
-- complete the deliberate Home Assistant control adapter and its bounded command,
-  state-feedback, availability, and failure contracts;
-- treat authenticated/TLS LAN gateways, remote daemon-backed CLI/TUI/GUI
-  transports, or an optional host-network deployment variant as a later explicit
-  security boundary.
-
-Milestone 20.10 currently discovers daemon state, scanner connectivity, current
-system/department/channel, signal, RSSI, audio-running state, and recording
-active/status. Milestone 20.11 physically validated those ten entities from the
-App along with scanner controls, Ingress audio, persistent recordings, and App
-restart. Site, scanner mode and hold state, destination health, safe
-Home Assistant controls, and richer scanner events remain candidates for later
-Home Assistant slices.
+Current Home Assistant Discovery contains seventeen components: the original ten
+daemon/scanner/radio/audio/recording state and diagnostic components plus the
+seven bounded scanner controls. Site identity as an additional read-only state
+entity, scanner mode, destination health, richer scanner events, authenticated or
+TLS LAN gateways, remote daemon-backed CLI/TUI/GUI transports, and an optional
+host-network deployment variant remain separate future considerations.
 
 HACS may still be evaluated later as an optional distribution channel, but it is
 not a dependency of the primary Home Assistant App repository distribution path.

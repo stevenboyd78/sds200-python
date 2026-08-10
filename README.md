@@ -78,8 +78,9 @@ information in this image represents a real system.*
   sequence-gap resynchronization
 - Optional daemon-owned MQTT publication with retained availability, canonical
   semantic state topics, non-retained ordered semantic events, bounded reconnect
-  backoff, packet-rate PSI suppression, and read-only Home Assistant MQTT device
-  Discovery without opening another scanner session
+  backoff, packet-rate PSI suppression, Home Assistant MQTT device Discovery,
+  and a bounded dedicated Home Assistant control adapter without opening another
+  scanner session
 - Explicit `sdsctl daemon-client` workflows for negotiated status and snapshot
   reads, safe typed scanner controls, validated gap-detecting event watches, and
   daemon-owned PCMU playback or WAV recording
@@ -146,11 +147,14 @@ Install optional daemon MQTT support:
 python -m pip install "sds200[mqtt]"
 ```
 
-The MQTT extra installs Paho MQTT 2.x. Semantic scanner controls remain
-explicitly opt-in and reuse the daemon's existing control API rather than raw
-scanner keys. Milestone 20.10 can also publish read-only Home Assistant MQTT
-device Discovery and republish it on the configured Home Assistant birth signal;
-Discovery is disabled by default.
+The MQTT extra installs Paho MQTT 2.x. Generic daemon MQTT scanner commands
+remain explicitly opt-in and reuse the daemon's existing control API rather than
+raw scanner keys. Home Assistant MQTT Discovery is also disabled by default. When
+Discovery is enabled, `controls_enabled` separately opts into seven dedicated
+QoS 0 non-retained Home Assistant control topics for four desired-state Hold
+switches plus Previous Channel, Next Channel, and Reconnect Scanner. Those Home
+Assistant actions still dispatch through the existing typed daemon-control
+boundary and do not require the generic MQTT request-envelope command topic.
 
 Install optional local audio playback support:
 

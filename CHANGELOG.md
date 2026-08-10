@@ -6,6 +6,8 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+## [0.20.2] - 2026-08-10
+
 ### Added
 
 - Home Assistant-specific MQTT scanner controls add authoritative System,
@@ -933,7 +935,8 @@ First planned GitHub prerelease.
 - Added serial discovery, transport, packet framing, core responses, CLI tools,
   examples, tests, and CI.
 
-[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.20.1...HEAD
+[Unreleased]: https://github.com/stevenboyd78/sds200-python/compare/v0.20.2...HEAD
+[0.20.2]: https://github.com/stevenboyd78/sds200-python/compare/v0.20.1...v0.20.2
 [0.20.1]: https://github.com/stevenboyd78/sds200-python/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/stevenboyd78/sds200-python/compare/v0.18.0...v0.19.0
