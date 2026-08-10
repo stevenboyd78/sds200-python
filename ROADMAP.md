@@ -11,24 +11,20 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 20.8 — Native daemon MQTT foundation
+### Milestone 20.12.1 — Home Assistant configuration UX and roadmap synchronization
 
-- Add a strict optional version 1 `daemon-mqtt.toml` integration manifest and
-  explicit `--mqtt-config` override without expanding flat application
-  configuration.
-- Keep MQTT optional through a dedicated `sds200[mqtt]` extra and preflight the
-  broker dependency before scanner construction only when MQTT is configured.
-- Run one failure-isolated daemon-owned broker worker that consumes the existing
-  authoritative daemon event stream rather than opening scanner hardware or
-  creating parallel state subscriptions.
-- Publish retained availability, canonical semantic state, and non-retained
-  semantic events while suppressing packet-rate PSI traffic.
-- Use worker-owned reconnect/backoff, authoritative resynchronization after event
-  sequence gaps, environment-referenced password secrets, redacted diagnostics,
-  and deterministic shutdown before the scanner ownership runtime stops.
-- Keep this slice publication-only. Inbound MQTT controls, Home Assistant MQTT
-  Discovery, Home Assistant App packaging/Ingress, and the bundled Lovelace card
-  remain later Milestone 20 work.
+- Add Home Assistant App configuration translations for `scanner_host`,
+  `mqtt_topic_prefix`, and `recording_directory`.
+- Make the Home Assistant Configuration page explicitly state that
+  `recording_directory` is relative to the Home Assistant `/media` root and show
+  the default resolved path `/media/sdsctl/recordings`.
+- Keep the runtime option schema, validation rules, storage ownership, and
+  single-owner daemon architecture unchanged.
+- Synchronize roadmap and project-vision state after the completed v0.20.1
+  Home Assistant corrective release.
+- Keep the bundled Lovelace card and deliberate Home Assistant control adapter
+  as separate follow-on slices so configuration UX does not expand the scanner
+  control or security boundary.
 
 ## Deferred hardware validation
 
@@ -108,8 +104,17 @@ begins.
   publication without host networking, multi-architecture image automation, and
   physical HAOS validation of scanner control, live audio, recording persistence,
   App restart, and all ten MQTT Discovery entities.
-- Bundle a Lovelace SDS200 card with the Home Assistant App rather than requiring
-  HACS for the primary integration path.
+- The v0.20.1 corrective release hardened Milestone 20.11 by moving recordings
+  into writable Home Assistant `/media`, safely migrating legacy
+  `/data/recordings`, improving the dashboard layout, and validating
+  repository-managed upgrade and reinstall behavior on physical HAOS.
+- Milestone 20.12.1 is active for Home Assistant configuration translations and
+  post-v0.20.1 roadmap synchronization without changing runtime semantics.
+- Milestone 20.12.2 will bundle a Lovelace SDS200 card with the Home Assistant
+  App rather than requiring HACS for the primary integration path.
+- Milestone 20.12.3 will add a deliberate Home Assistant control adapter over
+  the existing semantic daemon-control boundary rather than binding static
+  Discovery payloads directly to generic request-ID commands.
 - Keep authenticated/TLS LAN access, a network transport for remote daemon-backed
   CLI/TUI/GUI clients, and any optional host-network App variant as a separate
   later security boundary. The current daemon client interfaces remain private

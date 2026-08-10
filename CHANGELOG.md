@@ -6,6 +6,13 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+### Added
+
+- Home Assistant App configuration translations provide user-facing names and
+  descriptions for scanner host, MQTT topic prefix, and recording directory;
+  the recording directory description explicitly identifies Home Assistant
+  `/media` as the path root and shows the default resolved location.
+
 ## [0.20.1] - 2026-08-10
 
 ### Added

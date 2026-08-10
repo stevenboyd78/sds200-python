@@ -1,0 +1,15 @@
+configuration:
+  scanner_host:
+    name: Scanner host
+    description: >-
+      LAN hostname or IP address of the Uniden SDS200 scanner.
+  mqtt_topic_prefix:
+    name: MQTT topic prefix
+    description: >-
+      MQTT topic root used by the sds200 daemon and Home Assistant Discovery.
+  recording_directory:
+    name: Recording directory
+    description: >-
+      Path relative to the Home Assistant /media root where recordings are
+      stored. For example, sdsctl/recordings stores recordings in
+      /media/sdsctl/recordings.
