@@ -336,6 +336,13 @@ from .favorites_hierarchy import (
     FavoritesTrunkSystem,
     project_favorites_hierarchy,
 )
+from .favorites_navigation import (
+    FavoritesNavigation,
+    FavoritesNavigationKind,
+    FavoritesNavigationNode,
+    FavoritesNavigationPath,
+    project_favorites_navigation,
+)
 from .favorites_storage import (
     FavoritesStorageDocument,
     FavoritesStorageFilenameError,
@@ -803,6 +810,10 @@ __all__ = [
     "FavoritesHierarchy",
     "FavoritesHierarchyDocument",
     "FavoritesHierarchyError",
+    "FavoritesNavigation",
+    "FavoritesNavigationKind",
+    "FavoritesNavigationNode",
+    "FavoritesNavigationPath",
     "FavoritesRecordReference",
     "FavoritesSourceFile",
     "FavoritesSourceRecord",
@@ -1027,6 +1038,7 @@ __all__ = [
     "profile_from_discovery",
     "project_favorites_catalog",
     "project_favorites_hierarchy",
+    "project_favorites_navigation",
     "project_favorites_storage_snapshot",
     "recording_metadata_path",
     "recording_retention_confirmation_token",
