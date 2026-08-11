@@ -19,6 +19,10 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 - Lossless `f_list.cfg` catalog projection exposes ordered Favorites List display
   names and `.hpd` filenames while retaining complete positional `F-List`
   records, metadata, duplicate mappings, and unclassified source records.
+- Pure in-memory Favorites workspace binding combines catalog entries with
+  explicitly named `.hpd` hierarchy documents using exact filename equality and
+  reports missing targets, ambiguous duplicate documents, duplicate catalog
+  mappings, and orphan supplied documents without filesystem semantics.
 
 ## [0.20.2] - 2026-08-10
 

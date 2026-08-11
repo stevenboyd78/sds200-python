@@ -336,6 +336,12 @@ from .favorites_hierarchy import (
     FavoritesTrunkSystem,
     project_favorites_hierarchy,
 )
+from .favorites_workspace import (
+    FavoritesHierarchyDocument,
+    FavoritesWorkspace,
+    FavoritesWorkspaceBinding,
+    bind_favorites_workspace,
+)
 from .local_playback import (
     AlsaPlaybackAdapter,
     CommandPlaybackAdapter,
@@ -782,6 +788,7 @@ __all__ = [
     "FavoritesConventionalSystem",
     "FavoritesFileParseError",
     "FavoritesHierarchy",
+    "FavoritesHierarchyDocument",
     "FavoritesHierarchyError",
     "FavoritesRecordReference",
     "FavoritesSourceFile",
@@ -790,6 +797,8 @@ __all__ = [
     "FavoritesTrunkDepartment",
     "FavoritesTrunkSite",
     "FavoritesTrunkSystem",
+    "FavoritesWorkspace",
+    "FavoritesWorkspaceBinding",
     "FileConfigurationSource",
     "FirmwareResponse",
     "GetChargeStatus",
@@ -968,6 +977,7 @@ __all__ = [
     "create_broadcastify_metadata_publisher",
     "create_broadcastify_sink",
     "default_daemon_destination_config_path",
+    "bind_favorites_workspace",
     "build_home_assistant_device_discovery",
     "default_daemon_mqtt_config_path",
     "default_remote_audio_profile_path",
