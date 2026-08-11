@@ -343,6 +343,10 @@ from .favorites_navigation import (
     FavoritesNavigationPath,
     project_favorites_navigation,
 )
+from .favorites_query import (
+    FavoritesNavigationQuery,
+    query_favorites_navigation,
+)
 from .favorites_storage import (
     FavoritesStorageDocument,
     FavoritesStorageFilenameError,
@@ -814,6 +818,7 @@ __all__ = [
     "FavoritesNavigationKind",
     "FavoritesNavigationNode",
     "FavoritesNavigationPath",
+    "FavoritesNavigationQuery",
     "FavoritesRecordReference",
     "FavoritesSourceFile",
     "FavoritesSourceRecord",
@@ -1040,6 +1045,7 @@ __all__ = [
     "project_favorites_hierarchy",
     "project_favorites_navigation",
     "project_favorites_storage_snapshot",
+    "query_favorites_navigation",
     "recording_metadata_path",
     "recording_retention_confirmation_token",
     "remote_stream_metadata_from_state",
