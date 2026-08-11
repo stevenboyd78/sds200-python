@@ -11,26 +11,24 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 20 release closure — v0.20.2
+### Milestone 21.1 — lossless Favorites format foundation
 
-- Publish the completed Milestone 20.12.1 configuration UX, Milestone 20.12.2
-  bundled Lovelace card, and Milestone 20.12.3 Home Assistant control adapter as
-  one versioned Home Assistant App and Python package release.
-- Keep the release slice feature-frozen: no new scanner, MQTT, Lovelace, audio,
-  recording, transport, or Home Assistant authority belongs in v0.20.2 release
-  preparation.
-- Synchronize package, import, and Home Assistant App versions; freeze changelog
-  entries; reconcile current documentation and reviewed wiki source; and run the
-  complete release-quality gate.
-- Publish reviewed wiki source before tagging.
-- After the v0.20.2 tag publishes amd64, aarch64, and multi-architecture App
-  images, physically validate the repository-managed App on HAOS, including the
-  deferred 20.12.1 translations, 20.12.2 Lovelace card, and 20.12.3 scanner
-  controls.
-- Keep generic daemon MQTT commands disabled for the Home Assistant App and
-  preserve the daemon as the sole scanner/control/PSI/RTSP-RTP owner.
-- Begin Milestone 21 only after the v0.20.2 release and deferred Home Assistant
-  acceptance evidence are complete.
+- Begin from the completed and physically validated v0.20.2 release boundary.
+- Base the initial Favorites implementation on the SDS100/200 File Specification
+  v1.08 plus observed read-only files copied from an SDS200 running firmware
+  1.26.01.
+- Parse `favorites_lists/f_list.cfg` and Favorites `.hpd` content into immutable,
+  lossless positional records before projecting a typed hierarchy.
+- Preserve source record order, blank fields, duplicate values, trailing empty
+  fields, undocumented extra positional fields, and unknown commands without
+  normalization or silent data loss.
+- Model conventional and trunked programming separately where their record
+  structures differ while exposing renderer-neutral Favorites List, system,
+  department, site, and channel hierarchy.
+- Use sanitized synthetic fixtures derived from observed structures; do not
+  check private scanner programming data into the repository.
+- Keep Milestone 21.1 independent of live scanner storage, FTP, USB mass storage,
+  scanner control, renderers, and every write operation.
 
 ## Deferred hardware validation
 
@@ -116,13 +114,14 @@ begins.
   repository-managed upgrade and reinstall behavior on physical HAOS.
 - Milestone 20.12.1 completed Home Assistant configuration translations and
   post-v0.20.1 roadmap synchronization without changing runtime semantics.
-  Automated validation is complete; repository-managed physical rendering of
-  those translations is assigned to the v0.20.2 tagged App acceptance run.
+  Repository-managed rendering was physically validated on HAOS in the v0.20.2
+  acceptance run.
 - Milestone 20.12.2 completed the first-party Lovelace SDS200 card, including
   safe `/local` delivery, Home Assistant's graphical card form, supported state
   subscription, deterministic package validation, and explicit isolation of
-  optional card-installation failures. Physical HAOS rendering is assigned to
-  the v0.20.2 tagged App acceptance run.
+  optional card-installation failures. Resource delivery, manual registration,
+  picker/editor behavior, and live read-only rendering were physically validated
+  on HAOS in the v0.20.2 acceptance run.
 - Milestone 20.12.3 completed the deliberate Home Assistant control adapter:
   four authoritative non-optimistic Hold switches plus Previous Channel, Next
   Channel, and Reconnect Scanner buttons over seven dedicated QoS 0 non-retained
@@ -130,8 +129,11 @@ begins.
   existing typed semantic controls and bounded current-channel resolver, clears
   navigation context on disconnect/resynchronization, keeps generic daemon MQTT
   commands disabled for the App, and preserves the daemon as sole scanner owner.
-  Physical Home Assistant entity/control validation is assigned to the v0.20.2
-  tagged App acceptance run.
+  All seven controls, generic-command isolation, and the single-owner boundary
+  were physically validated on HAOS in the v0.20.2 acceptance run.
+- v0.20.2 completed Milestone 20 release closure with reviewed wiki publication,
+  PyPI publication, amd64/aarch64 Home Assistant image publication,
+  repository-managed HAOS acceptance, and a normal GitHub Release.
 - Keep authenticated/TLS LAN access, a network transport for remote daemon-backed
   CLI/TUI/GUI clients, and any optional host-network App variant as a separate
   later security boundary. The current daemon client interfaces remain private
