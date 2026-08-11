@@ -11,41 +11,43 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 21.5 — renderer-neutral Favorites schema diagnostics
+### Milestone 21.6 — renderer-neutral Favorites comparison and preview
 
-- Begin from the fully merged and post-merge validated Milestone 21.4 foundation
-  at `23bc851591d471068180316313f7a91ab44c0b97`.
-- Add one public immutable validation projection over `FavoritesWorkspace`;
-  retained catalog and HPD source records remain authoritative and validation
-  performs no storage access, reparsing, mutation, normalization, or repair.
-- Keep catalog-versus-HPD source validation private while exposing stable
-  diagnostic rule identifiers, error/warning/info severities, and exact source
-  provenance including source kind, workspace document index and HPD filename
-  when applicable, source index, original source record, command, and optional
-  field index.
-- Define validation success as the absence of error diagnostics. Warning and
-  informational diagnostics preserve usable source data without declaring it
-  invalid.
-- Initially validate required `TargetModel` and `FormatVersion` metadata,
-  supported target-model value, format-version syntax and validated-version
-  envelope, evidence-backed record field shapes, and the printable-ASCII
-  64-character rule for supported name fields.
-- Keep SDS100/200 File Specification revision 1.08 explicitly distinct from the
-  observed on-disk `FormatVersion` 1.00.
-- Accept the scanner-observed `T-Freq` 9-field, `BandPlan_P25` 50-field, `TGID`
-  18-field, and bare `UnitID` shapes without false-positive field-count
-  diagnostics.
-- Treat additional unvalidated fields on otherwise known commands as warnings,
-  not errors, and preserve unsupported commands with informational diagnostics
-  rather than rejecting or rewriting them.
-- Do not introduce a duplicate-metadata judgment or exhaustive record-specific
-  enum/range semantics without additional evidence, and do not duplicate parser,
-  hierarchy, storage, or workspace-binding failures under schema terminology.
-- Preserve deterministic diagnostic ordering: catalog first, then workspace
-  document order, then source-record order within each source.
-- Keep comparison/diff/preview, import/export, FTP, USB discovery, live scanner
-  storage, CLI/TUI/web/HA renderers, scanner control, and every write operation
-  outside Milestone 21.5.
+- Begin from the fully merged and post-merge validated Milestone 21.5 foundation
+  at `3cc04c0372d9d5a957b8c9639af1adff00eb026c`.
+- Add one public immutable comparison projection over a baseline
+  `FavoritesWorkspace` and a candidate `FavoritesWorkspace`; both workspaces and
+  their retained catalog and HPD source records remain authoritative.
+- Keep comparison pure and renderer-neutral: perform no storage access, reparsing,
+  mutation, normalization, repair, schema reclassification, or write operation.
+- Compare the catalog as one preserved ordered source and compare HPD documents by
+  exact filename only when that filename is unambiguous in both workspaces.
+- Never guess pairings for duplicate HPD filenames. Represent comparison ambiguity
+  explicitly while preserving the original workspace document coordinates and
+  source objects needed to explain it.
+- Expose stable comparison/change kinds and exact provenance for baseline and
+  candidate material, retaining original filenames, document indexes, source
+  indexes, source records, and exact raw positional content rather than
+  synthesized replacement records.
+- For matched sources, derive deterministic exact-record additions, removals, and
+  replacements without trimming, case-folding, field normalization, or
+  record-specific semantic rewriting. Unknown commands and scanner-observed extra
+  fields participate as ordinary preserved source data.
+- Define workspace equality from the preserved comparison substrate rather than
+  from display-name, navigation, or schema equivalence. A schema warning,
+  informational diagnostic, or unsupported command is not itself a comparison
+  change when the preserved source material is identical.
+- Preserve deterministic comparison ordering: catalog first, then matched and
+  removed HPD material in baseline document order, followed by candidate-only HPD
+  material in candidate document order; record changes retain deterministic
+  source-relative ordering.
+- Build fixture-backed coverage for identical workspaces, catalog changes,
+  document additions/removals/modifications, exact record changes, unknown
+  commands and extra fields, duplicate filenames, mixed line endings, and source
+  identity preservation.
+- Keep import/export, editing, FTP, USB discovery, live scanner storage,
+  CLI/TUI/web/HA renderers, scanner control, backup/staging behavior, and every
+  write operation outside Milestone 21.6.
 
 ## Deferred hardware validation
 
@@ -178,6 +180,12 @@ begins.
   inclusive subtree selection over `FavoritesNavigation`, with query-local
   case-folding, deterministic navigation preorder, original-node identity,
   explicit stale-path failure, and no raw-field search semantics.
+- Milestone 21.5 completed renderer-neutral Favorites schema diagnostics:
+  immutable workspace validation with stable error/warning/info rules, exact
+  catalog/HPD and record/field provenance, required metadata and evidence-backed
+  shape checks, supported name-tag validation, scanner-observed extension
+  acceptance, and compatibility-preserving treatment of unvalidated fields and
+  unsupported commands.
 - Add a renderer-neutral Favorites data model.
 - Add read-only hierarchy browsing for Favorites Lists, systems, departments,
   sites, and channels.

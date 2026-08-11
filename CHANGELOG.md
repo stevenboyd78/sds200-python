@@ -45,6 +45,11 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   scanner extensions over preserved workspaces while retaining exact
   document/record/field provenance and warning or informational compatibility for
   unvalidated extensions and unsupported commands.
+- Immutable renderer-neutral Favorites comparison and preview aligns exact
+  preserved catalog and unambiguous HPD source records by raw bytes, reports
+  deterministic add/remove/replace record changes with exact baseline/candidate
+  provenance, and surfaces duplicate HPD filenames as explicit ambiguities
+  without storage access, normalization, repair, or writes.
 
 ## [0.20.2] - 2026-08-10
 
