@@ -32,6 +32,11 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   lowercase-`.hpd` regular files, rejects managed symbolic links, preserves exact
   bytes and filenames, and performs no format interpretation or writes.
 
+- Renderer-neutral Favorites navigation projects resolved workspace bindings into
+  immutable source-index-addressed trees for Favorites Lists, Conventional and
+  Trunk systems, departments, trunk sites, and channels while preserving exact
+  names, source provenance, and mixed trunk child ordering.
+
 ## [0.20.2] - 2026-08-10
 
 ### Added
