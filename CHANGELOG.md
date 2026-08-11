@@ -8,6 +8,16 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Added
 
+- Add pure renderer-neutral Favorites record editing over exact storage
+  snapshots with immutable source-provenance targets, stale and ambiguous target
+  rejection, evidence-backed Name Tag replacement, conservative HPD leaf
+  deletion, and template-backed leaf creation with deterministic hierarchy-safe
+  insertion. Untouched source bytes, positional extensions, physical line
+  endings, document order, and unknown material remain preserved exactly while
+  intended snapshots continue through the existing write-planning and schema
+  safety boundary without filesystem, device, backup, staging, or write
+  execution.
+
 - Add renderer-neutral immutable Favorites write planning over exact baseline and
   intended storage snapshots, retaining existing comparison and schema evidence,
   deterministic safety blockers, and exact stale-target preconditions without
