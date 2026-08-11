@@ -11,52 +11,54 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 22.1 — renderer-neutral Favorites write planning and conflict preconditions
+### Milestone 22.2 — renderer-neutral Favorites record editing and intended-snapshot construction
 
-- Begin from the fully merged and post-merge validated Milestone 21.7 foundation
-  at `d1a0fc1422a4cb9495768ef32a5e0859da992aa8`.
-- Treat Milestone 21 as complete: lossless source records, copied read-only
-  storage, hierarchy navigation, search/filtering, schema diagnostics, exact
-  comparison/preview, and native snapshot import/export now provide the complete
-  renderer-neutral read-only foundation.
-- Add one immutable renderer-neutral Favorites write-plan model over an exact
-  baseline `FavoritesStorageSnapshot` and an exact intended
-  `FavoritesStorageSnapshot`. Both snapshots remain authoritative source data;
-  planning must not reconstruct or normalize either side.
-- Reuse the existing storage projection, schema validation, and exact workspace
-  comparison layers to expose the intended changes and safety evidence needed
-  before any future write can be attempted.
-- Retain the exact baseline snapshot as the authoritative stale-target
-  precondition. A future executor must freshly read the target and require exact
-  snapshot equality before mutation rather than relying on filenames, timestamps,
-  display names, or last-writer-wins behavior.
-- Represent write-plan blockers explicitly and deterministically. At minimum,
-  ambiguous source mappings, duplicate HPD filenames, schema errors, or other
-  conditions that prevent a safe unambiguous intended storage result must remain
-  visible rather than being repaired or silently accepted.
-- Keep schema warnings and informational diagnostics available to callers for
-  preview without silently promoting them to source rewrites. The planning layer
-  must distinguish reviewable diagnostics from conditions that make execution
-  unsafe.
-- Preserve the exact comparison substrate from Milestone 21.6 so additions,
-  removals, replacements, unknown commands, positional extensions, line endings,
-  blank fields, document ordering, and orphan material remain previewable without
-  semantic rewriting.
-- Keep planning pure and side-effect free: perform no filesystem access, storage
-  discovery, locking, credential lookup, backup creation, staging, replacement,
-  rollback, device access, or write operation.
-- Do not add confirmation-token or executor semantics in this slice. The eventual
-  execution boundary must be separately designed so mandatory backup creation,
-  staging/readback verification, conflict revalidation, replacement, rollback
-  reporting, and explicit operator intent cannot be bypassed.
-- Build focused coverage for immutable plan construction, exact baseline and
-  intended snapshot retention, deterministic comparison reuse, schema evidence,
-  blocker classification, no-op plans, duplicate/ambiguous inputs, unknown source
-  material, and exact stale-target precondition semantics.
-- Keep create/edit/delete record construction, writable copied-tree storage, USB
-  mass-storage discovery, FTP, writable credentials, backup persistence, staging,
-  rollback manifests, CLI/TUI/web/HA integration, and every actual mutation
-  outside Milestone 22.1.
+- Begin from the fully merged Milestone 22.1 foundation at
+  `ed9828e280f3efa8360338c00874443e077f82b7`.
+- Treat Milestone 22.1 as complete: exact baseline/intended storage snapshots,
+  immutable comparison and schema evidence, deterministic write blockers,
+  exact no-op/change state, and stale-target snapshot matching now provide the
+  renderer-neutral write-planning boundary.
+- Add pure renderer-neutral create, edit, and delete operations that construct
+  an exact intended `FavoritesStorageSnapshot` without accessing or mutating
+  filesystem, USB, FTP, daemon, or scanner storage.
+- Address edits and deletions by exact source provenance and source position,
+  not display names or inferred hierarchy identity. Stale, missing, duplicate,
+  or otherwise ambiguous mutation targets must fail explicitly.
+- Preserve every untouched source byte exactly. Editing one supported record
+  must not normalize unrelated records, unknown commands, positional
+  extensions, blank fields, physical line endings, document ordering, orphan
+  documents, or catalog material.
+- Limit field-level edits to explicitly supported typed fields. Preserve
+  unmodified fields exactly, and refuse mutation requests whose source shape
+  cannot be represented safely rather than silently discarding or repairing
+  unknown material.
+- Define deterministic construction for newly created supported records,
+  including required fields, hierarchy placement, source ordering, and physical
+  line representation. New material must be schema-valid and must not rely on
+  incidental parser normalization of existing source bytes.
+- Keep hierarchy-changing operations explicit. Creating or deleting parent
+  records must not implicitly create, move, or delete descendant records unless
+  the requested operation models that consequence directly and exposes it in
+  the resulting exact snapshot.
+- Produce the intended storage snapshot first, then reuse
+  `plan_favorites_write` for exact comparison, schema evidence, blocker
+  classification, and eventual stale-target preconditions. Do not create a
+  second parallel preview or conflict model.
+- Keep the editing layer immutable and side-effect free. It may construct new
+  source records and snapshots in memory, but it must perform no backup,
+  staging, readback verification, replacement, rollback, locking, credential
+  lookup, device discovery, or write execution.
+- Build focused coverage for create/edit/delete operations, exact provenance
+  addressing, deterministic insertion/removal ordering, supported field
+  replacement, preservation of untouched bytes and unknown material,
+  ambiguous/stale target rejection, hierarchy constraints, schema-valid new
+  records, exact intended snapshots, and integration with Milestone 22.1 write
+  planning.
+- Keep writable copied-tree storage, USB mass-storage discovery, FTP, writable
+  credentials, mandatory backup, staging/readback verification, active-data
+  replacement, rollback manifests, confirmation/executor semantics, and
+  CLI/TUI/web/HA mutation interfaces outside Milestone 22.2.
 
 ## Deferred hardware validation
 
@@ -216,6 +218,12 @@ begins.
 
 ### Milestone 22 — Verified Favorites writes and storage backends
 
+- Milestone 22.1 completed renderer-neutral immutable Favorites write planning:
+  exact baseline and intended storage snapshots remain authoritative; existing
+  comparison and schema evidence is retained; unsafe or ambiguous intended
+  states produce deterministic blockers; exact snapshot inequality determines
+  change state; and exact baseline equality provides the stale-target
+  precondition for a future executor without performing any storage mutation.
 - Add create, edit, and delete workflows with explicit previews.
 - Support USB mass-storage discovery and safe device handling.
 - Support FTP only on trusted local networks or VPNs.
