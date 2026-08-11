@@ -8,6 +8,8 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Added
 
+- Add renderer-neutral Favorites import/export round trips over the existing exact storage snapshot, preserving catalog and HPD bytes, document order, duplicate filenames, unknown records, positional extensions, and physical line endings without introducing storage writes or a new archive format.
+
 - Lossless read-only parsing for SDS100/200 Favorites source files preserves
   physical record order, ASCII positional fields, blank and trailing fields,
   per-record line endings, unknown commands, and undocumented extra positions

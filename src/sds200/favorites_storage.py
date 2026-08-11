@@ -1,4 +1,4 @@
-"""Immutable read-only Favorites storage snapshots and pure projection."""
+"""Immutable Favorites storage snapshots and pure import/export projection."""
 
 from __future__ import annotations
 
@@ -175,10 +175,33 @@ def project_favorites_storage_snapshot(
     )
 
 
+def export_favorites_workspace_snapshot(
+    workspace: FavoritesWorkspace,
+) -> FavoritesStorageSnapshot:
+    """Export one workspace to its exact preserved storage snapshot."""
+
+    if not isinstance(workspace, FavoritesWorkspace):
+        raise TypeError(
+            "Favorites workspace export requires FavoritesWorkspace."
+        )
+
+    return FavoritesStorageSnapshot(
+        catalog_bytes=workspace.catalog.source.to_bytes(),
+        documents=tuple(
+            FavoritesStorageDocument(
+                filename=document.filename,
+                content=document.hierarchy.source.to_bytes(),
+            )
+            for document in workspace.documents
+        ),
+    )
+
+
 __all__ = [
     "FavoritesStorageDocument",
     "FavoritesStorageFilenameError",
     "FavoritesStorageSnapshot",
     "FavoritesStorageSource",
+    "export_favorites_workspace_snapshot",
     "project_favorites_storage_snapshot",
 ]
