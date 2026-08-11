@@ -11,43 +11,47 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 21.6 — renderer-neutral Favorites comparison and preview
+### Milestone 21.7 — renderer-neutral Favorites import and export
 
-- Begin from the fully merged and post-merge validated Milestone 21.5 foundation
-  at `3cc04c0372d9d5a957b8c9639af1adff00eb026c`.
-- Add one public immutable comparison projection over a baseline
-  `FavoritesWorkspace` and a candidate `FavoritesWorkspace`; both workspaces and
-  their retained catalog and HPD source records remain authoritative.
-- Keep comparison pure and renderer-neutral: perform no storage access, reparsing,
-  mutation, normalization, repair, schema reclassification, or write operation.
-- Compare the catalog as one preserved ordered source and compare HPD documents by
-  exact filename only when that filename is unambiguous in both workspaces.
-- Never guess pairings for duplicate HPD filenames. Represent comparison ambiguity
-  explicitly while preserving the original workspace document coordinates and
-  source objects needed to explain it.
-- Expose stable comparison/change kinds and exact provenance for baseline and
-  candidate material, retaining original filenames, document indexes, source
-  indexes, source records, and exact raw positional content rather than
-  synthesized replacement records.
-- For matched sources, derive deterministic exact-record additions, removals, and
-  replacements without trimming, case-folding, field normalization, or
-  record-specific semantic rewriting. Unknown commands and scanner-observed extra
-  fields participate as ordinary preserved source data.
-- Define workspace equality from the preserved comparison substrate rather than
-  from display-name, navigation, or schema equivalence. A schema warning,
-  informational diagnostic, or unsupported command is not itself a comparison
-  change when the preserved source material is identical.
-- Preserve deterministic comparison ordering: catalog first, then matched and
-  removed HPD material in baseline document order, followed by candidate-only HPD
-  material in candidate document order; record changes retain deterministic
-  source-relative ordering.
-- Build fixture-backed coverage for identical workspaces, catalog changes,
-  document additions/removals/modifications, exact record changes, unknown
-  commands and extra fields, duplicate filenames, mixed line endings, and source
-  identity preservation.
-- Keep import/export, editing, FTP, USB discovery, live scanner storage,
-  CLI/TUI/web/HA renderers, scanner control, backup/staging behavior, and every
-  write operation outside Milestone 21.6.
+- Begin from the fully merged and post-merge validated Milestone 21.6 foundation
+  at `431ab711c2425e7f685b20d7f87be9690850cce5`.
+- Treat the existing immutable `FavoritesStorageSnapshot` as the authoritative
+  native Favorites import/export payload: exact `f_list.cfg` bytes plus an
+  ordered tuple of exact filename/content HPD documents. Do not introduce a
+  second transfer substrate merely for export.
+- Keep the existing `project_favorites_storage_snapshot()` projection as the
+  import direction and add one public pure reverse projection from an immutable
+  `FavoritesWorkspace` back to `FavoritesStorageSnapshot`.
+- Export the catalog only from `workspace.catalog.source.to_bytes()` and each HPD
+  only from its original `document.hierarchy.source.to_bytes()`. Preserve exact
+  filenames and `workspace.documents` order rather than reconstructing material
+  from navigation nodes, schema diagnostics, bindings, or typed hierarchy fields.
+- Preserve duplicate document filenames as duplicate ordered snapshot entries.
+  Missing catalog targets, ambiguous bindings, duplicate catalog filenames, and
+  orphan documents remain workspace diagnostics and must not cause source
+  material to be dropped, reordered, repaired, or synthesized during export.
+- Preserve unknown commands, scanner-observed positional extensions, blank
+  identifiers, empty positional fields, exact record ordering, mixed CR/LF/CRLF
+  line endings, empty source files, and a missing final line ending byte-for-byte.
+- Require exact accepted-snapshot round trips:
+  `FavoritesStorageSnapshot -> FavoritesWorkspace -> FavoritesStorageSnapshot`
+  must reproduce the original snapshot exactly, including document ordering and
+  duplicates.
+- Keep the transfer boundary renderer-neutral and side-effect free. Export must
+  perform no filesystem access, storage discovery, mutation, normalization,
+  semantic rewriting, schema reclassification, repair, or write operation.
+- Do not invent a ZIP, tar, JSON, base64, manifest, or other archive/container
+  format in this slice. The repository evidence supports the scanner-native
+  catalog-plus-HPD snapshot as the lossless format; a separate portable container
+  requires an independently justified contract.
+- Build fixture-backed coverage for exact synthetic round trips, unknown catalog
+  and HPD records, extra positional fields, blank fields, mixed line endings,
+  missing final newlines, empty files, document ordering, duplicate filenames,
+  missing entries, ambiguous bindings, and orphan documents.
+- Keep editing, record construction, filesystem export, FTP, USB discovery, live
+  scanner storage, CLI/TUI/web/HA renderers, credentials, backup/staging,
+  conflict handling, target verification, and every write operation outside
+  Milestone 21.7.
 
 ## Deferred hardware validation
 
@@ -186,6 +190,11 @@ begins.
   shape checks, supported name-tag validation, scanner-observed extension
   acceptance, and compatibility-preserving treatment of unvalidated fields and
   unsupported commands.
+- Milestone 21.6 completed renderer-neutral Favorites comparison and preview:
+  immutable exact baseline/candidate workspace comparison, deterministic
+  add/remove/replace record changes, exact source provenance, filename-based HPD
+  pairing, explicit duplicate-filename ambiguity, byte-aware line-ending
+  comparison, and compatibility-preserving treatment of unknown source material.
 - Add a renderer-neutral Favorites data model.
 - Add read-only hierarchy browsing for Favorites Lists, systems, departments,
   sites, and channels.
