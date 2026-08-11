@@ -385,6 +385,11 @@ from .favorites_workspace import (
     FavoritesWorkspaceBinding,
     bind_favorites_workspace,
 )
+from .favorites_write_plan import (
+    FavoritesWriteBlocker,
+    FavoritesWritePlan,
+    plan_favorites_write,
+)
 from .local_playback import (
     AlsaPlaybackAdapter,
     CommandPlaybackAdapter,
@@ -867,6 +872,8 @@ __all__ = [
     "FavoritesWorkspace",
     "FavoritesWorkspaceBinding",
     "FavoritesWorkspaceComparison",
+    "FavoritesWriteBlocker",
+    "FavoritesWritePlan",
     "FileConfigurationSource",
     "FirmwareResponse",
     "GetChargeStatus",
@@ -1071,6 +1078,7 @@ __all__ = [
     "parse_favorites_file",
     "parse_rtp_transport",
     "parse_sdp_audio",
+    "plan_favorites_write",
     "plan_recording_retention",
     "present_radio_state",
     "present_scanner_info",

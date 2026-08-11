@@ -8,6 +8,11 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Added
 
+- Add renderer-neutral immutable Favorites write planning over exact baseline and
+  intended storage snapshots, retaining existing comparison and schema evidence,
+  deterministic safety blockers, and exact stale-target preconditions without
+  adding filesystem access, backup/staging, execution, or storage mutation.
+
 - Add renderer-neutral Favorites import/export round trips over the existing exact storage snapshot, preserving catalog and HPD bytes, document order, duplicate filenames, unknown records, positional extensions, and physical line endings without introducing storage writes or a new archive format.
 
 - Lossless read-only parsing for SDS100/200 Favorites source files preserves
