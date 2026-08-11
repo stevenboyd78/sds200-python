@@ -11,47 +11,52 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 21.7 — renderer-neutral Favorites import and export
+### Milestone 22.1 — renderer-neutral Favorites write planning and conflict preconditions
 
-- Begin from the fully merged and post-merge validated Milestone 21.6 foundation
-  at `431ab711c2425e7f685b20d7f87be9690850cce5`.
-- Treat the existing immutable `FavoritesStorageSnapshot` as the authoritative
-  native Favorites import/export payload: exact `f_list.cfg` bytes plus an
-  ordered tuple of exact filename/content HPD documents. Do not introduce a
-  second transfer substrate merely for export.
-- Keep the existing `project_favorites_storage_snapshot()` projection as the
-  import direction and add one public pure reverse projection from an immutable
-  `FavoritesWorkspace` back to `FavoritesStorageSnapshot`.
-- Export the catalog only from `workspace.catalog.source.to_bytes()` and each HPD
-  only from its original `document.hierarchy.source.to_bytes()`. Preserve exact
-  filenames and `workspace.documents` order rather than reconstructing material
-  from navigation nodes, schema diagnostics, bindings, or typed hierarchy fields.
-- Preserve duplicate document filenames as duplicate ordered snapshot entries.
-  Missing catalog targets, ambiguous bindings, duplicate catalog filenames, and
-  orphan documents remain workspace diagnostics and must not cause source
-  material to be dropped, reordered, repaired, or synthesized during export.
-- Preserve unknown commands, scanner-observed positional extensions, blank
-  identifiers, empty positional fields, exact record ordering, mixed CR/LF/CRLF
-  line endings, empty source files, and a missing final line ending byte-for-byte.
-- Require exact accepted-snapshot round trips:
-  `FavoritesStorageSnapshot -> FavoritesWorkspace -> FavoritesStorageSnapshot`
-  must reproduce the original snapshot exactly, including document ordering and
-  duplicates.
-- Keep the transfer boundary renderer-neutral and side-effect free. Export must
-  perform no filesystem access, storage discovery, mutation, normalization,
-  semantic rewriting, schema reclassification, repair, or write operation.
-- Do not invent a ZIP, tar, JSON, base64, manifest, or other archive/container
-  format in this slice. The repository evidence supports the scanner-native
-  catalog-plus-HPD snapshot as the lossless format; a separate portable container
-  requires an independently justified contract.
-- Build fixture-backed coverage for exact synthetic round trips, unknown catalog
-  and HPD records, extra positional fields, blank fields, mixed line endings,
-  missing final newlines, empty files, document ordering, duplicate filenames,
-  missing entries, ambiguous bindings, and orphan documents.
-- Keep editing, record construction, filesystem export, FTP, USB discovery, live
-  scanner storage, CLI/TUI/web/HA renderers, credentials, backup/staging,
-  conflict handling, target verification, and every write operation outside
-  Milestone 21.7.
+- Begin from the fully merged and post-merge validated Milestone 21.7 foundation
+  at `d1a0fc1422a4cb9495768ef32a5e0859da992aa8`.
+- Treat Milestone 21 as complete: lossless source records, copied read-only
+  storage, hierarchy navigation, search/filtering, schema diagnostics, exact
+  comparison/preview, and native snapshot import/export now provide the complete
+  renderer-neutral read-only foundation.
+- Add one immutable renderer-neutral Favorites write-plan model over an exact
+  baseline `FavoritesStorageSnapshot` and an exact intended
+  `FavoritesStorageSnapshot`. Both snapshots remain authoritative source data;
+  planning must not reconstruct or normalize either side.
+- Reuse the existing storage projection, schema validation, and exact workspace
+  comparison layers to expose the intended changes and safety evidence needed
+  before any future write can be attempted.
+- Retain the exact baseline snapshot as the authoritative stale-target
+  precondition. A future executor must freshly read the target and require exact
+  snapshot equality before mutation rather than relying on filenames, timestamps,
+  display names, or last-writer-wins behavior.
+- Represent write-plan blockers explicitly and deterministically. At minimum,
+  ambiguous source mappings, duplicate HPD filenames, schema errors, or other
+  conditions that prevent a safe unambiguous intended storage result must remain
+  visible rather than being repaired or silently accepted.
+- Keep schema warnings and informational diagnostics available to callers for
+  preview without silently promoting them to source rewrites. The planning layer
+  must distinguish reviewable diagnostics from conditions that make execution
+  unsafe.
+- Preserve the exact comparison substrate from Milestone 21.6 so additions,
+  removals, replacements, unknown commands, positional extensions, line endings,
+  blank fields, document ordering, and orphan material remain previewable without
+  semantic rewriting.
+- Keep planning pure and side-effect free: perform no filesystem access, storage
+  discovery, locking, credential lookup, backup creation, staging, replacement,
+  rollback, device access, or write operation.
+- Do not add confirmation-token or executor semantics in this slice. The eventual
+  execution boundary must be separately designed so mandatory backup creation,
+  staging/readback verification, conflict revalidation, replacement, rollback
+  reporting, and explicit operator intent cannot be bypassed.
+- Build focused coverage for immutable plan construction, exact baseline and
+  intended snapshot retention, deterministic comparison reuse, schema evidence,
+  blocker classification, no-op plans, duplicate/ambiguous inputs, unknown source
+  material, and exact stale-target precondition semantics.
+- Keep create/edit/delete record construction, writable copied-tree storage, USB
+  mass-storage discovery, FTP, writable credentials, backup persistence, staging,
+  rollback manifests, CLI/TUI/web/HA integration, and every actual mutation
+  outside Milestone 22.1.
 
 ## Deferred hardware validation
 
@@ -195,13 +200,19 @@ begins.
   add/remove/replace record changes, exact source provenance, filename-based HPD
   pairing, explicit duplicate-filename ambiguity, byte-aware line-ending
   comparison, and compatibility-preserving treatment of unknown source material.
-- Add a renderer-neutral Favorites data model.
-- Add read-only hierarchy browsing for Favorites Lists, systems, departments,
-  sites, and channels.
-- Add search, filtering, validation, and comparison views.
-- Add import and export formats that preserve unknown scanner fields.
-- Keep the first implementation read-only against scanner storage.
-- Use fixtures and copied storage images for normal automated tests.
+- Milestone 21.7 completed renderer-neutral Favorites import and export:
+  exact `FavoritesStorageSnapshot -> FavoritesWorkspace ->
+  FavoritesStorageSnapshot` round trips, public pure reverse projection,
+  preserved catalog and HPD source bytes, exact document ordering and duplicate
+  filenames, and compatibility-preserving export of unknown commands, positional
+  extensions, blank fields, physical line endings, empty files, and unresolved
+  workspace diagnostics.
+- The renderer-neutral Favorites Workspace foundation is complete through
+  Milestone 21.7: lossless data modeling, read-only copied storage, hierarchy
+  browsing, search/filtering, schema diagnostics, comparison/preview, and exact
+  native snapshot import/export all preserve unknown scanner material.
+- Keep fixtures and copied storage images as the normal automated-test substrate;
+  physical scanner storage is not required for renderer-neutral planning work.
 
 ### Milestone 22 — Verified Favorites writes and storage backends
 
