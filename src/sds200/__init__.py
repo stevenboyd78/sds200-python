@@ -347,6 +347,14 @@ from .favorites_query import (
     FavoritesNavigationQuery,
     query_favorites_navigation,
 )
+from .favorites_schema import (
+    FavoritesSchemaDiagnostic,
+    FavoritesSchemaRule,
+    FavoritesSchemaSeverity,
+    FavoritesSchemaSourceKind,
+    FavoritesSchemaValidation,
+    validate_favorites_workspace,
+)
 from .favorites_storage import (
     FavoritesStorageDocument,
     FavoritesStorageFilenameError,
@@ -820,6 +828,11 @@ __all__ = [
     "FavoritesNavigationPath",
     "FavoritesNavigationQuery",
     "FavoritesRecordReference",
+    "FavoritesSchemaDiagnostic",
+    "FavoritesSchemaRule",
+    "FavoritesSchemaSeverity",
+    "FavoritesSchemaSourceKind",
+    "FavoritesSchemaValidation",
     "FavoritesSourceFile",
     "FavoritesSourceRecord",
     "FavoritesStorageDocument",
@@ -1046,6 +1059,7 @@ __all__ = [
     "project_favorites_navigation",
     "project_favorites_storage_snapshot",
     "query_favorites_navigation",
+    "validate_favorites_workspace",
     "recording_metadata_path",
     "recording_retention_confirmation_token",
     "remote_stream_metadata_from_state",

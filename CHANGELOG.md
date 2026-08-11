@@ -40,6 +40,11 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   search, navigation-kind filtering, and inclusive subtree filtering while
   retaining deterministic navigation preorder, exact source names, original node
   identity, duplicate names, and explicit stale-subtree failure.
+- Immutable renderer-neutral Favorites schema diagnostics validate required
+  metadata, evidence-backed record shapes, supported name tags, and observed
+  scanner extensions over preserved workspaces while retaining exact
+  document/record/field provenance and warning or informational compatibility for
+  unvalidated extensions and unsupported commands.
 
 ## [0.20.2] - 2026-08-10
 
