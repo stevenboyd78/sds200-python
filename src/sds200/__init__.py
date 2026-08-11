@@ -343,6 +343,10 @@ from .favorites_storage import (
     FavoritesStorageSource,
     project_favorites_storage_snapshot,
 )
+from .favorites_storage_local import (
+    FavoritesCopiedTreeStorageError,
+    FavoritesCopiedTreeStorageSource,
+)
 from .favorites_workspace import (
     FavoritesHierarchyDocument,
     FavoritesWorkspace,
@@ -791,6 +795,8 @@ __all__ = [
     "FavoritesCatalogEntry",
     "FavoritesCatalogError",
     "FavoritesConventionalChannel",
+    "FavoritesCopiedTreeStorageError",
+    "FavoritesCopiedTreeStorageSource",
     "FavoritesConventionalDepartment",
     "FavoritesConventionalSystem",
     "FavoritesFileParseError",

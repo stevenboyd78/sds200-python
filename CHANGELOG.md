@@ -27,6 +27,10 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   ordered named document bytes through the existing parser, hierarchy, catalog,
   and workspace projections while rejecting absolute and traversing storage
   filenames without case folding, trimming, repair, or filesystem access.
+- Read-only copied-tree Favorites storage loads an offline `favorites_lists`
+  directory using an exact regular `f_list.cfg` plus deterministic immediate
+  lowercase-`.hpd` regular files, rejects managed symbolic links, preserves exact
+  bytes and filenames, and performs no format interpretation or writes.
 
 ## [0.20.2] - 2026-08-10
 
