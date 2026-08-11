@@ -11,53 +11,48 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 22.3 — verified copied-tree Favorites write execution
+### Milestone 22.4 — USB mass-storage discovery and target qualification
 
-- Begin from the fully merged Milestone 22.2 foundation at
-  `a13646e8c436b6c73b2580a4a20fc9794a56555f`.
-- Treat Milestones 22.1 and 22.2 as complete: exact immutable write plans,
-  blocker classification, stale-baseline matching, provenance-addressed
-  create/edit/delete operations, and exact intended storage snapshots now define
-  the renderer-neutral mutation input.
-- Add the first storage-mutating Favorites workflow only for an offline local
-  copied `favorites_lists` directory. Reuse the existing copied-tree source for
-  authoritative reads and keep USB mass storage, FTP, daemon/scanner storage,
-  and renderer-specific mutation outside this milestone.
-- Execute only an existing `FavoritesWritePlan`. Refuse blocked plans and reject
-  any target whose freshly read snapshot no longer exactly matches the plan
-  baseline. A no-op plan must remain side-effect free.
-- Establish a target-scoped exclusive operation boundary where it can be
-  obtained safely. Never use silent last-writer-wins behavior, and fail closed
-  when the operation boundary or target identity cannot be established.
-- Before any active-data mutation, create a complete backup of the copied
-  Favorites tree and verify that backup against the source tree. Preserve the
-  verified backup after success or failure until a separate cleanup policy
-  explicitly removes it.
-- Build a complete staging tree away from the active directory. Preserve
-  unmanaged material exactly, reconcile managed `f_list.cfg` and immediate
-  lowercase-`.hpd` files to the intended snapshot, and reject unsupported
-  filesystem objects rather than partially copying or normalizing them.
-- Parse and read back the staged tree through the existing Favorites storage,
-  projection, and schema layers. Require the staged managed snapshot to equal
-  the exact intended snapshot before active replacement.
-- Re-read the active target immediately before replacement and require another
-  exact baseline match so changes made while backup or staging was in progress
-  abort without overwriting newer data.
-- Replace active data only after backup and staged verification succeed. Keep
-  replacement deterministic and recoverable; if a failure occurs after active
-  mutation begins, restore the pre-operation tree or verified backup when
-  possible and surface any incomplete recovery explicitly.
-- Record a durable rollback manifest and operation report containing target,
-  backup/staging locations, baseline and intended identity, verification state,
-  replacement outcome, and recovery outcome without embedding credentials or
-  private scanner programming contents.
-- Add deterministic failure-injection tests around target validation, backup,
-  backup verification, staging, staged readback, concurrent-change detection,
-  replacement, rollback, and report generation using temporary copied trees.
-  Automated tests must not require live scanner hardware.
-- Keep USB discovery and mass-storage handling, FTP transport and writable
-  credentials, backup-retention cleanup policy, CLI/TUI/web/HA confirmation
-  flows, and physical scanner-write validation outside Milestone 22.3.
+- Begin from the fully merged Milestone 22.3 foundation at
+  `ff2384902ceffc8ea7b405b4fd25b40c5cddf99f`.
+- Treat Milestones 22.1 through 22.3 as complete: immutable write planning,
+  provenance-addressed record editing, and verified copied-tree execution now
+  define the renderer-neutral mutation and storage-safety contracts.
+- Add the first USB mass-storage layer as read-only discovery and target
+  qualification for already-mounted scanner storage on Linux. Keep this distinct
+  from the existing USB serial-control discovery in `device.py`.
+- Discovery must not mount, unmount, eject, remount, modify mount options, request
+  elevated privileges, or mutate Favorites data. An explicit path may be
+  qualified through the same evidence model without granting it write authority.
+- Represent discovered storage with immutable, deterministic evidence sufficient
+  to identify the mount and candidate Favorites target, including canonical
+  paths and stable mount/device identity where the operating system exposes it.
+  Do not identify a writable scanner target from a volume label or basename
+  alone.
+- Validate that a candidate is an unambiguous mounted filesystem target, that its
+  canonical Favorites path remains contained by that mount, and that the
+  expected Favorites storage structure can be read safely through the existing
+  copied-tree storage layer. Reject symlinked, disappeared, remounted, malformed,
+  or otherwise ambiguous candidates rather than guessing.
+- Preserve read-only versus writable mount state explicitly. Discovery may report
+  a read-only scanner volume, but write-target qualification must fail closed
+  when the current mount evidence does not permit a future write workflow.
+- Keep platform inspection fixture-friendly and deterministic so mount/device
+  evidence, stale/remount behavior, ambiguity, malformed metadata, and target
+  containment can be tested without live scanner hardware or privileged system
+  operations.
+- Do not pass a USB volume directly to the Milestone 22.3 copied-tree executor.
+  Its sibling backup/staging/report paths and filesystem-operation assumptions
+  are intentionally copied-tree-specific. USB mutation requires a later
+  USB-specific execution slice that preserves the same backup-before-write,
+  staging, verification, concurrency, rollback, and audit guarantees while
+  respecting removable-media filesystem semantics.
+- Add deterministic unit tests using temporary Favorites trees and synthetic
+  Linux mount/device evidence. Automated tests must not require a mounted scanner
+  or physical SDS-series hardware.
+- Keep USB mutation, mount/eject orchestration, backup-retention cleanup policy,
+  FTP transport and writable credentials, CLI/TUI/web/HA confirmation flows, and
+  physical scanner-write validation outside Milestone 22.4.
 
 ## Deferred hardware validation
 
@@ -229,14 +224,19 @@ begins.
   deletion, template-backed leaf creation, deterministic hierarchy-safe
   insertion, exact untouched-byte preservation, and intended-snapshot
   construction integrated with the existing write planner.
-- Milestone 22.3 adds the first verified storage-mutating workflow against an
-  offline copied Favorites tree: exact plan-bound target validation, an
+- Milestone 22.3 completed the first verified storage-mutating workflow against
+  an offline copied Favorites tree: exact plan-bound target validation, an
   exclusive operation boundary, mandatory verified complete backup, full-tree
   staging, staged readback and exact intended comparison, a second
   concurrency/stale-baseline check before replacement, deterministic active-tree
   replacement, rollback recovery, and durable operation reporting.
-- Support USB mass-storage discovery and safe device handling only after the
-  copied-tree executor establishes and tests the complete write-safety contract.
+- Milestone 22.4 adds read-only Linux USB mass-storage discovery and target
+  qualification for already-mounted scanner storage, with deterministic
+  mount/device identity, target containment, ambiguity rejection, mount-state
+  evidence, and copied-tree read validation without mounting or mutating media.
+- Add USB write execution only after removable-media backup, staging, reporting,
+  replacement, rollback, and filesystem semantics can preserve the complete
+  Milestone 22.3 safety contract without assuming copied-tree sibling workspaces.
 - Support FTP only on trusted local networks or VPNs and preserve separate
   read-only and explicitly resolved writable credential roles.
 - Keep every write operation deterministic, recoverable, auditable, and free of
