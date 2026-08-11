@@ -11,31 +11,41 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 21.4 — renderer-neutral Favorites search and filtering
+### Milestone 21.5 — renderer-neutral Favorites schema diagnostics
 
-- Begin from the fully merged and post-merge validated Milestone 21.3 foundation
-  at `d499f33ee63e148017bd7eb938ab9b8267f4c4dc`.
-- Add a pure immutable query layer over `FavoritesNavigation`; navigation remains
-  authoritative for hierarchy, ordering, paths, exact names, and source
-  provenance.
-- Support optional display-name text search, navigation-kind filtering, and
-  inclusive subtree filtering by `FavoritesNavigationPath`.
-- Define text search as case-insensitive substring matching over temporary
-  `casefold()` comparison values only. Never mutate, normalize, trim, case-fold,
-  or replace the exact name stored on a navigation node or its source record.
-- Search only navigation display names in Milestone 21.4. Do not interpret or
-  search arbitrary raw positional record fields, frequencies, IDs, quick keys, or
-  other record-specific fields as generic text.
-- Preserve deterministic navigation preorder in query results and return the
-  original navigation nodes rather than copied, repaired, or synthesized records.
-- Treat omitted text as no text predicate; reject an explicitly empty text query
-  instead of making an accidental match-all search.
-- Build deterministic coverage for mixed Conventional/Trunk hierarchy, kind
-  filtering, subtree boundaries, exact-name preservation, duplicate display names,
-  empty/absent names, and query case-folding without source mutation.
-- Keep schema validation, comparison/preview, import/export, FTP, USB discovery,
-  live scanner storage, CLI/TUI/web/HA renderers, scanner control, and every write
-  operation outside Milestone 21.4.
+- Begin from the fully merged and post-merge validated Milestone 21.4 foundation
+  at `23bc851591d471068180316313f7a91ab44c0b97`.
+- Add one public immutable validation projection over `FavoritesWorkspace`;
+  retained catalog and HPD source records remain authoritative and validation
+  performs no storage access, reparsing, mutation, normalization, or repair.
+- Keep catalog-versus-HPD source validation private while exposing stable
+  diagnostic rule identifiers, error/warning/info severities, and exact source
+  provenance including source kind, workspace document index and HPD filename
+  when applicable, source index, original source record, command, and optional
+  field index.
+- Define validation success as the absence of error diagnostics. Warning and
+  informational diagnostics preserve usable source data without declaring it
+  invalid.
+- Initially validate required `TargetModel` and `FormatVersion` metadata,
+  supported target-model value, format-version syntax and validated-version
+  envelope, evidence-backed record field shapes, and the printable-ASCII
+  64-character rule for supported name fields.
+- Keep SDS100/200 File Specification revision 1.08 explicitly distinct from the
+  observed on-disk `FormatVersion` 1.00.
+- Accept the scanner-observed `T-Freq` 9-field, `BandPlan_P25` 50-field, `TGID`
+  18-field, and bare `UnitID` shapes without false-positive field-count
+  diagnostics.
+- Treat additional unvalidated fields on otherwise known commands as warnings,
+  not errors, and preserve unsupported commands with informational diagnostics
+  rather than rejecting or rewriting them.
+- Do not introduce a duplicate-metadata judgment or exhaustive record-specific
+  enum/range semantics without additional evidence, and do not duplicate parser,
+  hierarchy, storage, or workspace-binding failures under schema terminology.
+- Preserve deterministic diagnostic ordering: catalog first, then workspace
+  document order, then source-record order within each source.
+- Keep comparison/diff/preview, import/export, FTP, USB discovery, live scanner
+  storage, CLI/TUI/web/HA renderers, scanner control, and every write operation
+  outside Milestone 21.5.
 
 ## Deferred hardware validation
 
@@ -163,6 +173,11 @@ begins.
   department, trunk-site, and channel nodes with explicit parent/child structure,
   exact source names and typed provenance, deterministic catalog ordering, and
   reconstruction of mixed trunk children in raw HPD source order.
+- Milestone 21.4 completed renderer-neutral Favorites search and filtering:
+  immutable display-name substring queries, navigation-kind filtering, and
+  inclusive subtree selection over `FavoritesNavigation`, with query-local
+  case-folding, deterministic navigation preorder, original-node identity,
+  explicit stale-path failure, and no raw-field search semantics.
 - Add a renderer-neutral Favorites data model.
 - Add read-only hierarchy browsing for Favorites Lists, systems, departments,
   sites, and channels.
