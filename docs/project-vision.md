@@ -230,14 +230,15 @@ Milestone 20.12.1 completed Home Assistant configuration translations so the App
 Configuration page can give the scanner host, MQTT topic prefix, and recording
 directory user-facing names and descriptions. The recording directory description
 explicitly identifies `/media` as its root without changing the existing strict
-media-relative path contract. Automated validation is complete; repository-managed
-physical rendering is assigned to the v0.20.2 tagged App acceptance run.
+media-relative path contract. Repository-managed rendering was physically
+validated on HAOS in the v0.20.2 acceptance run.
 
 Milestone 20.12.2 completed the first-party SDS200 Lovelace card without requiring
 HACS. The App safely installs the resource under Home Assistant `www`, the card
 uses Home Assistant's supported state context and graphical form schema, and the
-card remains read-only with respect to scanner control. Physical HAOS rendering
-is assigned to the v0.20.2 tagged App acceptance run.
+card remains read-only with respect to scanner control. Resource delivery,
+manual JavaScript Module registration, picker/editor behavior, and live read-only
+rendering were physically validated on HAOS in the v0.20.2 acceptance run.
 
 Milestone 20.12.3 completed the deliberate Home Assistant control adapter over the
 existing semantic daemon-control boundary. Discovery now adds four authoritative
@@ -249,10 +250,11 @@ context on scanner disconnect or event-stream resynchronization. The Home
 Assistant App continues to disable the generic daemon MQTT request-envelope
 command topic, and the daemon remains the sole scanner owner.
 
-Milestone 20 release closure is now limited to v0.20.2 packaging, documentation,
-reviewed wiki publication, tagged image publication, and repository-managed HAOS
-acceptance. No additional Home Assistant runtime capability is required before
-that release.
+Milestone 20 release closure completed in v0.20.2 with Python-package and Home
+Assistant App publication, reviewed wiki synchronization, all seventeen Discovery
+components, all seven bounded scanner controls, Lovelace/configuration acceptance,
+recording and audio regression validation, and single-owner behavior physically
+validated through the repository-managed HAOS App.
 
 Current Home Assistant Discovery contains seventeen components: the original ten
 daemon/scanner/radio/audio/recording state and diagnostic components plus the
@@ -263,6 +265,53 @@ host-network deployment variant remain separate future considerations.
 
 HACS may still be evaluated later as an optional distribution channel, but it is
 not a dependency of the primary Home Assistant App repository distribution path.
+
+### Future weather-alert and audio integration
+
+Weather Alert Priority and live Weather Alert state should be investigated as a
+future daemon/Home Assistant event source without changing scanner ownership.
+
+Potential capabilities include:
+
+- authoritative Weather Alert Priority enabled/disabled state when observable;
+- a current Weather Alert active state suitable for Home Assistant automation;
+- transition events carrying available SAME selection, weather channel,
+  frequency, and scanner-reported weather mode;
+- optional daemon-owned recording triggered by alert start and finalized after
+  alert end, with explicit policy for an already-active recording; and
+- Home Assistant automation examples built on state/events rather than a second
+  scanner connection.
+
+Live scanner audio should also be investigated as a media-compatible stream
+derived from the existing daemon-owned decoded-PCM/PCMU fanout. A future Home
+Assistant media source could allow registered `media_player` devices to play the
+scanner without creating another SDS200 RTSP/RTP client.
+
+Local speakers directly attached to a Home Assistant OS host are a separate
+device-permission and audio-backend problem and should not be conflated with
+network Home Assistant `media_player` support.
+
+### Future authenticated LAN dashboard access
+
+The Home Assistant App should retain authenticated Ingress as the default
+dashboard path.
+
+A future optional LAN-facing dashboard may publish a separate TCP listener while
+remaining only another client of the existing daemon. It must not weaken the
+Ingress peer guard or create another scanner control, PSI, or RTSP/RTP owner.
+
+Before supported LAN exposure, define:
+
+- explicit enable/disable configuration;
+- authentication and access policy;
+- transport-security or trusted reverse-proxy policy;
+- separate published TCP port configuration;
+- safe browser audio/SSE behavior for multiple LAN clients; and
+- regression proof that all browser clients consume daemon fanout rather than
+  opening additional scanner audio sessions.
+
+Simply publishing the existing Ingress port is insufficient because the current
+Ingress listener deliberately trusts only the Supervisor proxy peer.
 
 ### Future GUI and themes
 
@@ -285,8 +334,19 @@ presentation surfaces without requiring separate semantic interfaces.
 
 ## Favorites Workspace
 
-The Favorites Workspace is a future product area for browsing, validating,
-editing, importing, exporting, and synchronizing scanner programming data.
+The Favorites Workspace is the Milestone 21 product area for browsing,
+validating, editing, importing, exporting, and synchronizing scanner programming
+data.
+
+The initial design is grounded in the SDS100/200 File Specification v1.08 and
+read-only SDS200 storage captured from firmware 1.26.01. Real scanner files
+demonstrate that Favorites data must first be represented as lossless positional
+records: record ordering carries hierarchy, identifier fields can be blank, and
+observed records contain positional extensions not described by the specification.
+The typed renderer-neutral hierarchy must therefore be a projection over
+preserved source records rather than the only representation of the data.
+
+See [Favorites format research](favorites-format-research.md).
 
 ### Read-only foundation
 
@@ -336,8 +396,22 @@ Potential backends include:
 - FTP on trusted local networks or VPNs;
 - local copied images for testing and offline work.
 
-FTP credentials must be stored through secret references and must never be
-embedded in exported Favorites files.
+The SDS200 can be configured with separate FTP accounts for read-only and
+writable access. Future configuration should preserve those roles explicitly:
+
+- the read-only Favorites backend uses only the read credential;
+- a configured writable credential must never be used as an automatic fallback
+  for a failed read-only login;
+- the writable credential is resolved only inside an explicit write workflow
+  after backup, staging, validation, and operator-intent checks;
+- usernames may be stored in ordinary configuration, but passwords should be
+  stored through secret references rather than plaintext profile values; and
+- neither credential may appear in exported Favorites data, logs, diagnostics,
+  comparison reports, backup manifests, or API responses.
+
+The read-only and writable account blocks should be independently optional.
+Supporting a writable account does not itself grant an ordinary read path or UI
+write authority.
 
 ### Synchronization and conflicts
 
