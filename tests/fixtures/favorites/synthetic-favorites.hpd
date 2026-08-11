@@ -1,0 +1,19 @@
+TargetModel	BCDx36HP
+FormatVersion	1.00
+Conventional			Synthetic Conventional	Off		Conventional	Off	Off	0	Off	Off	400	Auto	8
+DQKs_Status		On	On	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off
+C-Group			Synthetic Department	Off	0.000000	0.000000	0.0	Circle	Off	Global
+C-Freq			Synthetic Channel	Off	155000000	NFM		2	Off	2	0	Off	Auto	Off	On	Off	Off
+Trunk			Synthetic P25	Off		P25Standard	Off	Off	Auto	Ignore	Srch	Off	Off	0	Off	Off	Ignore	Off	Off	On	NEXEDGE
+DQKs_Status		On	On	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off	Off
+Site			Synthetic Site	Off	0.000000	0.000000	0.0	AUTO	Standard	Wide	Circle	Off	400	Auto	8	Off	Srch	Global
+T-Freq				Off	851012500	0	Srch
+T-Freq				Off	851025000	0	Srch	Any
+BandPlan_P25		851000000	12500	851100000	12500	851200000	12500	851300000	12500	851400000	12500	851500000	12500	851600000	12500	851700000	12500	851800000	12500	851900000	12500	852000000	12500	852100000	12500	852200000	12500	852300000	12500	852400000	12500	852500000	12500
+BandPlan_P25		851000000	12500	851100000	12500	851200000	12500	851300000	12500	851400000	12500	851500000	12500	851600000	12500	851700000	12500	851800000	12500	851900000	12500	852000000	12500	852100000	12500	852200000	12500	852300000	12500	852400000	12500	852500000	12500	852600000	12500	852700000	12500	852800000	12500	852900000	12500	853000000	12500	853100000	12500	853200000	12500	853300000	12500
+T-Group			Synthetic Talkgroups	Off	0.000000	0.000000	0.0	Circle	Off
+TGID			Synthetic Dispatch	Off	1000	DIGITAL	2	2	0	Off	Auto	Off	On	Off	Off	Any
+TGID			Synthetic Talkgroup	Extension	Off	1001	DIGITAL	2	2	0	Off	Auto	Off	On	Off	Off	Any
+UnitID
+UnitIds			Synthetic Unit	12345	Off	Auto	Off	On
+FutureCommand	alpha		omega

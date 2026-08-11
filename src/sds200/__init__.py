@@ -311,6 +311,12 @@ from .fallback import (
     PreferredRecoveryPolicy,
     TransportCandidate,
 )
+from .favorites_file import (
+    FavoritesFileParseError,
+    FavoritesSourceFile,
+    FavoritesSourceRecord,
+    parse_favorites_file,
+)
 from .local_playback import (
     AlsaPlaybackAdapter,
     CommandPlaybackAdapter,
@@ -749,6 +755,9 @@ __all__ = [
     "DEFAULT_SYSTEM_CONFIG_DIR",
     "DEFAULT_UDP_PORT",
     "FallbackTransport",
+    "FavoritesFileParseError",
+    "FavoritesSourceFile",
+    "FavoritesSourceRecord",
     "FileConfigurationSource",
     "FirmwareResponse",
     "GetChargeStatus",
@@ -948,6 +957,7 @@ __all__ = [
     "load_environment_configuration",
     "local_ipv4_networks",
     "normalize_model_name",
+    "parse_favorites_file",
     "parse_rtp_transport",
     "parse_sdp_audio",
     "plan_recording_retention",

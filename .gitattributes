@@ -1,0 +1,2 @@
+tests/fixtures/favorites/*.cfg -text whitespace=cr-at-eol
+tests/fixtures/favorites/*.hpd -text whitespace=cr-at-eol

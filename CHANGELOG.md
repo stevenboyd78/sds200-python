@@ -6,6 +6,13 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+### Added
+
+- Lossless read-only parsing for SDS100/200 Favorites source files preserves
+  physical record order, ASCII positional fields, blank and trailing fields,
+  per-record line endings, unknown commands, and undocumented extra positions
+  without applying hierarchy or scanner-storage semantics.
+
 ## [0.20.2] - 2026-08-10
 
 ### Added
