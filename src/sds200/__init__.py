@@ -311,6 +311,12 @@ from .fallback import (
     PreferredRecoveryPolicy,
     TransportCandidate,
 )
+from .favorites_catalog import (
+    FavoritesCatalog,
+    FavoritesCatalogEntry,
+    FavoritesCatalogError,
+    project_favorites_catalog,
+)
 from .favorites_file import (
     FavoritesFileParseError,
     FavoritesSourceFile,
@@ -768,6 +774,9 @@ __all__ = [
     "DEFAULT_SYSTEM_CONFIG_DIR",
     "DEFAULT_UDP_PORT",
     "FallbackTransport",
+    "FavoritesCatalog",
+    "FavoritesCatalogEntry",
+    "FavoritesCatalogError",
     "FavoritesConventionalChannel",
     "FavoritesConventionalDepartment",
     "FavoritesConventionalSystem",
@@ -989,6 +998,7 @@ __all__ = [
     "preview_daemon_destination_replacement",
     "start_audio_encoder_process",
     "profile_from_discovery",
+    "project_favorites_catalog",
     "project_favorites_hierarchy",
     "recording_metadata_path",
     "recording_retention_confirmation_token",

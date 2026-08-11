@@ -16,6 +16,9 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   conventional and trunked systems, departments, channels, trunk sites, site
   frequencies, and band-plan records while retaining originating raw records,
   observed supplemental records, and explicitly unclassified source records.
+- Lossless `f_list.cfg` catalog projection exposes ordered Favorites List display
+  names and `.hpd` filenames while retaining complete positional `F-List`
+  records, metadata, duplicate mappings, and unclassified source records.
 
 ## [0.20.2] - 2026-08-10
 
