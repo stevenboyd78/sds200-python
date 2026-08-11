@@ -11,27 +11,31 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 21.3 — renderer-neutral Favorites navigation
+### Milestone 21.4 — renderer-neutral Favorites search and filtering
 
-- Begin from the fully merged and post-merge validated Milestone 21.2 foundation
-  at `c6f347990cbb1cfee0c54be2d5fa8d2dcba4e1ae`.
-- Add an immutable renderer-neutral navigation projection over
-  `FavoritesWorkspace` without duplicating storage, parsing, catalog, or hierarchy
-  semantics.
-- Expose ordered Favorites List, system, department, site, and channel navigation
-  entries with explicit parent/child structure suitable for later CLI, TUI, web,
-  and desktop renderers.
-- Preserve Conventional and Trunk distinctions, source ordering, exact display
-  names, and immutable source-record provenance throughout navigation.
-- Keep unresolved workspace diagnostics explicit rather than presenting missing or
-  ambiguous Favorites Lists as valid navigable hierarchy.
-- Do not mutate, trim, case-fold, repair, or otherwise normalize scanner source
-  names or records as part of navigation.
-- Build deterministic tests from the existing sanitized Favorites fixtures and
-  in-memory/copied-tree workspace snapshots.
-- Keep search and filtering, schema validation, comparison/preview, import/export,
-  FTP, USB discovery, live scanner storage, CLI/TUI/web/HA renderers, scanner
-  control, and every write operation outside Milestone 21.3.
+- Begin from the fully merged and post-merge validated Milestone 21.3 foundation
+  at `d499f33ee63e148017bd7eb938ab9b8267f4c4dc`.
+- Add a pure immutable query layer over `FavoritesNavigation`; navigation remains
+  authoritative for hierarchy, ordering, paths, exact names, and source
+  provenance.
+- Support optional display-name text search, navigation-kind filtering, and
+  inclusive subtree filtering by `FavoritesNavigationPath`.
+- Define text search as case-insensitive substring matching over temporary
+  `casefold()` comparison values only. Never mutate, normalize, trim, case-fold,
+  or replace the exact name stored on a navigation node or its source record.
+- Search only navigation display names in Milestone 21.4. Do not interpret or
+  search arbitrary raw positional record fields, frequencies, IDs, quick keys, or
+  other record-specific fields as generic text.
+- Preserve deterministic navigation preorder in query results and return the
+  original navigation nodes rather than copied, repaired, or synthesized records.
+- Treat omitted text as no text predicate; reject an explicitly empty text query
+  instead of making an accidental match-all search.
+- Build deterministic coverage for mixed Conventional/Trunk hierarchy, kind
+  filtering, subtree boundaries, exact-name preservation, duplicate display names,
+  empty/absent names, and query case-folding without source mutation.
+- Keep schema validation, comparison/preview, import/export, FTP, USB discovery,
+  live scanner storage, CLI/TUI/web/HA renderers, scanner control, and every write
+  operation outside Milestone 21.4.
 
 ## Deferred hardware validation
 
@@ -154,6 +158,11 @@ begins.
   offline copied `favorites_lists` backend with deterministic immediate HPD
   discovery, stable regular-file reads, managed-symlink rejection, and no write,
   live-scanner, credential, FTP, USB, or renderer behavior.
+- Milestone 21.3 completed renderer-neutral read-only hierarchy navigation:
+  immutable source-index-addressed Favorites List, Conventional/Trunk system,
+  department, trunk-site, and channel nodes with explicit parent/child structure,
+  exact source names and typed provenance, deterministic catalog ordering, and
+  reconstruction of mixed trunk children in raw HPD source order.
 - Add a renderer-neutral Favorites data model.
 - Add read-only hierarchy browsing for Favorites Lists, systems, departments,
   sites, and channels.
