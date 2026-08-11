@@ -11,54 +11,53 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 22.2 — renderer-neutral Favorites record editing and intended-snapshot construction
+### Milestone 22.3 — verified copied-tree Favorites write execution
 
-- Begin from the fully merged Milestone 22.1 foundation at
-  `ed9828e280f3efa8360338c00874443e077f82b7`.
-- Treat Milestone 22.1 as complete: exact baseline/intended storage snapshots,
-  immutable comparison and schema evidence, deterministic write blockers,
-  exact no-op/change state, and stale-target snapshot matching now provide the
-  renderer-neutral write-planning boundary.
-- Add pure renderer-neutral create, edit, and delete operations that construct
-  an exact intended `FavoritesStorageSnapshot` without accessing or mutating
-  filesystem, USB, FTP, daemon, or scanner storage.
-- Address edits and deletions by exact source provenance and source position,
-  not display names or inferred hierarchy identity. Stale, missing, duplicate,
-  or otherwise ambiguous mutation targets must fail explicitly.
-- Preserve every untouched source byte exactly. Editing one supported record
-  must not normalize unrelated records, unknown commands, positional
-  extensions, blank fields, physical line endings, document ordering, orphan
-  documents, or catalog material.
-- Limit field-level edits to explicitly supported typed fields. Preserve
-  unmodified fields exactly, and refuse mutation requests whose source shape
-  cannot be represented safely rather than silently discarding or repairing
-  unknown material.
-- Define deterministic construction for newly created supported records,
-  including required fields, hierarchy placement, source ordering, and physical
-  line representation. New material must be schema-valid and must not rely on
-  incidental parser normalization of existing source bytes.
-- Keep hierarchy-changing operations explicit. Creating or deleting parent
-  records must not implicitly create, move, or delete descendant records unless
-  the requested operation models that consequence directly and exposes it in
-  the resulting exact snapshot.
-- Produce the intended storage snapshot first, then reuse
-  `plan_favorites_write` for exact comparison, schema evidence, blocker
-  classification, and eventual stale-target preconditions. Do not create a
-  second parallel preview or conflict model.
-- Keep the editing layer immutable and side-effect free. It may construct new
-  source records and snapshots in memory, but it must perform no backup,
-  staging, readback verification, replacement, rollback, locking, credential
-  lookup, device discovery, or write execution.
-- Build focused coverage for create/edit/delete operations, exact provenance
-  addressing, deterministic insertion/removal ordering, supported field
-  replacement, preservation of untouched bytes and unknown material,
-  ambiguous/stale target rejection, hierarchy constraints, schema-valid new
-  records, exact intended snapshots, and integration with Milestone 22.1 write
-  planning.
-- Keep writable copied-tree storage, USB mass-storage discovery, FTP, writable
-  credentials, mandatory backup, staging/readback verification, active-data
-  replacement, rollback manifests, confirmation/executor semantics, and
-  CLI/TUI/web/HA mutation interfaces outside Milestone 22.2.
+- Begin from the fully merged Milestone 22.2 foundation at
+  `a13646e8c436b6c73b2580a4a20fc9794a56555f`.
+- Treat Milestones 22.1 and 22.2 as complete: exact immutable write plans,
+  blocker classification, stale-baseline matching, provenance-addressed
+  create/edit/delete operations, and exact intended storage snapshots now define
+  the renderer-neutral mutation input.
+- Add the first storage-mutating Favorites workflow only for an offline local
+  copied `favorites_lists` directory. Reuse the existing copied-tree source for
+  authoritative reads and keep USB mass storage, FTP, daemon/scanner storage,
+  and renderer-specific mutation outside this milestone.
+- Execute only an existing `FavoritesWritePlan`. Refuse blocked plans and reject
+  any target whose freshly read snapshot no longer exactly matches the plan
+  baseline. A no-op plan must remain side-effect free.
+- Establish a target-scoped exclusive operation boundary where it can be
+  obtained safely. Never use silent last-writer-wins behavior, and fail closed
+  when the operation boundary or target identity cannot be established.
+- Before any active-data mutation, create a complete backup of the copied
+  Favorites tree and verify that backup against the source tree. Preserve the
+  verified backup after success or failure until a separate cleanup policy
+  explicitly removes it.
+- Build a complete staging tree away from the active directory. Preserve
+  unmanaged material exactly, reconcile managed `f_list.cfg` and immediate
+  lowercase-`.hpd` files to the intended snapshot, and reject unsupported
+  filesystem objects rather than partially copying or normalizing them.
+- Parse and read back the staged tree through the existing Favorites storage,
+  projection, and schema layers. Require the staged managed snapshot to equal
+  the exact intended snapshot before active replacement.
+- Re-read the active target immediately before replacement and require another
+  exact baseline match so changes made while backup or staging was in progress
+  abort without overwriting newer data.
+- Replace active data only after backup and staged verification succeed. Keep
+  replacement deterministic and recoverable; if a failure occurs after active
+  mutation begins, restore the pre-operation tree or verified backup when
+  possible and surface any incomplete recovery explicitly.
+- Record a durable rollback manifest and operation report containing target,
+  backup/staging locations, baseline and intended identity, verification state,
+  replacement outcome, and recovery outcome without embedding credentials or
+  private scanner programming contents.
+- Add deterministic failure-injection tests around target validation, backup,
+  backup verification, staging, staged readback, concurrent-change detection,
+  replacement, rollback, and report generation using temporary copied trees.
+  Automated tests must not require live scanner hardware.
+- Keep USB discovery and mass-storage handling, FTP transport and writable
+  credentials, backup-retention cleanup policy, CLI/TUI/web/HA confirmation
+  flows, and physical scanner-write validation outside Milestone 22.3.
 
 ## Deferred hardware validation
 
@@ -224,15 +223,24 @@ begins.
   states produce deterministic blockers; exact snapshot inequality determines
   change state; and exact baseline equality provides the stale-target
   precondition for a future executor without performing any storage mutation.
-- Add create, edit, and delete workflows with explicit previews.
-- Support USB mass-storage discovery and safe device handling.
-- Support FTP only on trusted local networks or VPNs.
-- Require a complete backup before every write operation.
-- Stage writes away from the active data set.
-- Read back and verify staged content before replacement.
-- Record rollback manifests and restore instructions.
-- Detect concurrent changes and refuse ambiguous overwrites.
-- Keep write operations deterministic, recoverable, and auditable.
+- Milestone 22.2 completed pure renderer-neutral Favorites record editing:
+  immutable exact source-provenance targets, stale and ambiguous target
+  rejection, evidence-backed Name Tag replacement, conservative HPD leaf
+  deletion, template-backed leaf creation, deterministic hierarchy-safe
+  insertion, exact untouched-byte preservation, and intended-snapshot
+  construction integrated with the existing write planner.
+- Milestone 22.3 adds the first verified storage-mutating workflow against an
+  offline copied Favorites tree: exact plan-bound target validation, an
+  exclusive operation boundary, mandatory verified complete backup, full-tree
+  staging, staged readback and exact intended comparison, a second
+  concurrency/stale-baseline check before replacement, deterministic active-tree
+  replacement, rollback recovery, and durable operation reporting.
+- Support USB mass-storage discovery and safe device handling only after the
+  copied-tree executor establishes and tests the complete write-safety contract.
+- Support FTP only on trusted local networks or VPNs and preserve separate
+  read-only and explicitly resolved writable credential roles.
+- Keep every write operation deterministic, recoverable, auditable, and free of
+  silent last-writer-wins behavior.
 
 ### Milestone 23 — External Favorites data and synchronization
 

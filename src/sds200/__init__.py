@@ -394,6 +394,16 @@ from .favorites_workspace import (
     FavoritesWorkspaceBinding,
     bind_favorites_workspace,
 )
+from .favorites_write_execution import (
+    FavoritesCopiedTreeWriteExecutionError,
+    FavoritesCopiedTreeWriteExecutionResult,
+    FavoritesCopiedTreeWriteExecutionStatus,
+    FavoritesCopiedTreeWritePreflight,
+    FavoritesCopiedTreeWritePreflightError,
+    FavoritesCopiedTreeWritePreflightReason,
+    execute_favorites_copied_tree_write,
+    preflight_favorites_copied_tree_write,
+)
 from .favorites_write_plan import (
     FavoritesWriteBlocker,
     FavoritesWritePlan,
@@ -851,6 +861,12 @@ __all__ = [
     "FavoritesConventionalChannel",
     "FavoritesCopiedTreeStorageError",
     "FavoritesCopiedTreeStorageSource",
+    "FavoritesCopiedTreeWriteExecutionError",
+    "FavoritesCopiedTreeWriteExecutionResult",
+    "FavoritesCopiedTreeWriteExecutionStatus",
+    "FavoritesCopiedTreeWritePreflight",
+    "FavoritesCopiedTreeWritePreflightError",
+    "FavoritesCopiedTreeWritePreflightReason",
     "FavoritesConventionalDepartment",
     "FavoritesConventionalSystem",
     "FavoritesFileParseError",
@@ -1093,6 +1109,8 @@ __all__ = [
     "parse_rtp_transport",
     "parse_sdp_audio",
     "plan_favorites_write",
+    "execute_favorites_copied_tree_write",
+    "preflight_favorites_copied_tree_write",
     "plan_recording_retention",
     "rename_favorites_record",
     "present_radio_state",
