@@ -36,6 +36,10 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   immutable source-index-addressed trees for Favorites Lists, Conventional and
   Trunk systems, departments, trunk sites, and channels while preserving exact
   names, source provenance, and mixed trunk child ordering.
+- Immutable renderer-neutral Favorites queries provide display-name substring
+  search, navigation-kind filtering, and inclusive subtree filtering while
+  retaining deterministic navigation preorder, exact source names, original node
+  identity, duplicate names, and explicit stale-subtree failure.
 
 ## [0.20.2] - 2026-08-10
 
