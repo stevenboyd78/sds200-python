@@ -11,24 +11,27 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 21.1 — lossless Favorites format foundation
+### Milestone 21.2 — read-only Favorites storage snapshots
 
-- Begin from the completed and physically validated v0.20.2 release boundary.
-- Base the initial Favorites implementation on the SDS100/200 File Specification
-  v1.08 plus observed read-only files copied from an SDS200 running firmware
-  1.26.01.
-- Parse `favorites_lists/f_list.cfg` and Favorites `.hpd` content into immutable,
-  lossless positional records before projecting a typed hierarchy.
-- Preserve source record order, blank fields, duplicate values, trailing empty
-  fields, undocumented extra positional fields, and unknown commands without
-  normalization or silent data loss.
-- Model conventional and trunked programming separately where their record
-  structures differ while exposing renderer-neutral Favorites List, system,
-  department, site, and channel hierarchy.
-- Use sanitized synthetic fixtures derived from observed structures; do not
-  check private scanner programming data into the repository.
-- Keep Milestone 21.1 independent of live scanner storage, FTP, USB mass storage,
-  scanner control, renderers, and every write operation.
+- Begin from the fully merged and post-merge validated Milestone 21.1 foundation
+  at `17c6c7c77425f1ca8d9b609e892b6f05a3c1cd7a`.
+- Add a renderer-neutral read-only Favorites storage/source contract that supplies
+  `f_list.cfg` and named `.hpd` bytes to the existing lossless parser, catalog,
+  hierarchy, and workspace layers without duplicating format semantics.
+- Add the first backend for an offline copied `BCDx36HP/favorites_lists` tree so
+  normal automated tests and offline inspection do not require a live scanner.
+- Preserve exact source bytes and filenames; storage loading must not rewrite,
+  normalize, repair, case-fold, trim, or otherwise mutate scanner data.
+- Constrain local reads to the selected Favorites directory, reject absolute or
+  traversing catalog filenames, and avoid following file references outside that
+  storage boundary.
+- Represent missing mapped files and orphan `.hpd` files through the existing
+  workspace diagnostic model rather than silently dropping or repairing them.
+- Build deterministic tests from sanitized copied-tree fixtures or temporary
+  directory layouts; do not commit private scanner programming data.
+- Keep FTP, USB mass-storage discovery, credentials, live scanner access,
+  search/filter UI, renderer work, scanner control, and every write operation
+  outside Milestone 21.2.
 
 ## Deferred hardware validation
 
@@ -141,6 +144,11 @@ begins.
 
 ### Milestone 21 — Favorites Workspace foundation
 
+- Milestone 21.1 completed the SDS100/200 format foundation: immutable lossless
+  positional source records, tolerant preservation of observed extensions and
+  unknown commands, separate Conventional and Trunk hierarchy projections,
+  `f_list.cfg` catalog projection, a pure exact-filename workspace binder,
+  sanitized synthetic fixtures, and explicit isolation from storage and writes.
 - Add a renderer-neutral Favorites data model.
 - Add read-only hierarchy browsing for Favorites Lists, systems, departments,
   sites, and channels.
