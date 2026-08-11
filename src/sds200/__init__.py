@@ -372,6 +372,7 @@ from .favorites_storage import (
     FavoritesStorageFilenameError,
     FavoritesStorageSnapshot,
     FavoritesStorageSource,
+    export_favorites_workspace_snapshot,
     project_favorites_storage_snapshot,
 )
 from .favorites_storage_local import (
@@ -1079,6 +1080,7 @@ __all__ = [
     "project_favorites_catalog",
     "project_favorites_hierarchy",
     "project_favorites_navigation",
+    "export_favorites_workspace_snapshot",
     "project_favorites_storage_snapshot",
     "query_favorites_navigation",
     "validate_favorites_workspace",
