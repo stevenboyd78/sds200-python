@@ -12,6 +12,10 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
   physical record order, ASCII positional fields, blank and trailing fields,
   per-record line endings, unknown commands, and undocumented extra positions
   without applying hierarchy or scanner-storage semantics.
+- Renderer-neutral read-only `.hpd` hierarchy projection distinguishes
+  conventional and trunked systems, departments, channels, trunk sites, site
+  frequencies, and band-plan records while retaining originating raw records,
+  observed supplemental records, and explicitly unclassified source records.
 
 ## [0.20.2] - 2026-08-10
 
