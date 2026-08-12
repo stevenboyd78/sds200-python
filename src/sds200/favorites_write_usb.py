@@ -1773,6 +1773,147 @@ def _require_usb_preactivation_ready(
         staging_tree_evidence=staging_evidence,
     )
 
+
+@dataclass(frozen=True, slots=True)
+class _FavoritesUsbManagedActivationPlan:
+    document_writes: tuple[str, ...]
+    write_catalog: bool
+    document_deletions: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        for label, names in (
+            ("document writes", self.document_writes),
+            ("document deletions", self.document_deletions),
+        ):
+            if type(names) is not tuple:
+                raise TypeError(
+                    f"Favorites USB managed activation {label} must be a tuple."
+                )
+            if any(
+                not isinstance(name, str)
+                or not name.endswith(".hpd")
+                or "/" in name
+                or "\\" in name
+                or "\x00" in name
+                for name in names
+            ):
+                raise ValueError(
+                    f"Favorites USB managed activation {label} must contain "
+                    "safe immediate lowercase-.hpd filenames."
+                )
+            if len(set(names)) != len(names):
+                raise ValueError(
+                    f"Favorites USB managed activation {label} must be unique."
+                )
+
+        if type(self.write_catalog) is not bool:
+            raise TypeError(
+                "Favorites USB managed activation catalog flag must be bool."
+            )
+
+        overlap = (
+            set(self.document_writes)
+            & set(self.document_deletions)
+        )
+        if overlap:
+            raise ValueError(
+                "Favorites USB managed activation must not write and delete "
+                "the same HPD filename."
+            )
+
+    @property
+    def is_noop(self) -> bool:
+        return (
+            not self.document_writes
+            and not self.write_catalog
+            and not self.document_deletions
+        )
+
+
+def _usb_managed_activation_plan(
+    preflight: FavoritesUsbWritePreflight,
+) -> _FavoritesUsbManagedActivationPlan:
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB managed activation planning requires "
+            "FavoritesUsbWritePreflight."
+        )
+
+    baseline = preflight.plan.baseline_snapshot
+    intended = preflight.plan.intended_snapshot
+
+    baseline_documents = {
+        document.filename: document.content
+        for document in baseline.documents
+    }
+    intended_documents = {
+        document.filename: document.content
+        for document in intended.documents
+    }
+
+    if len(baseline_documents) != len(
+        baseline.documents
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            preflight.qualification.favorites_directory,
+            "USB managed activation baseline HPD filenames are not unique.",
+        )
+    if len(intended_documents) != len(
+        intended.documents
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            preflight.qualification.favorites_directory,
+            "USB managed activation intended HPD filenames are not unique.",
+        )
+
+    unsupported = tuple(
+        document.filename
+        for document in intended.documents
+        if not document.filename.endswith(".hpd")
+    )
+    if unsupported:
+        raise _FavoritesUsbWritePreparationError(
+            preflight.qualification.favorites_directory,
+            (
+                "USB managed activation supports only immediate lowercase-.hpd "
+                f"documents; unsupported intended filename: {unsupported[0]!r}."
+            ),
+        )
+
+    # Activation order is intentionally represented as three disjoint phases:
+    # 1. create/update intended HPDs while the baseline catalog is still active;
+    # 2. replace f_list.cfg only after every intended HPD is present;
+    # 3. remove obsolete baseline HPDs only after the intended catalog is active.
+    #
+    # This avoids a transient catalog reference to a not-yet-created HPD and
+    # avoids deleting a baseline HPD while the baseline catalog can still refer
+    # to it.
+    document_writes = tuple(
+        document.filename
+        for document in intended.documents
+        if baseline_documents.get(
+            document.filename
+        ) != document.content
+    )
+    document_deletions = tuple(
+        document.filename
+        for document in baseline.documents
+        if document.filename
+        not in intended_documents
+    )
+
+    return _FavoritesUsbManagedActivationPlan(
+        document_writes=document_writes,
+        write_catalog=(
+            baseline.catalog_bytes
+            != intended.catalog_bytes
+        ),
+        document_deletions=document_deletions,
+    )
+
 __all__ = [
     "FavoritesUsbWritePreflight",
     "FavoritesUsbWritePreflightError",

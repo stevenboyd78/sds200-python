@@ -7,7 +7,10 @@ from pathlib import Path
 import pytest
 
 from sds200 import favorites_write_usb as write_usb
-from sds200.favorites_storage import FavoritesStorageSnapshot
+from sds200.favorites_storage import (
+    FavoritesStorageDocument,
+    FavoritesStorageSnapshot,
+)
 from sds200.favorites_storage_evidence import favorites_tree_evidence
 from sds200.favorites_storage_local import FavoritesCopiedTreeStorageSource
 from sds200.favorites_storage_usb import (
@@ -2212,3 +2215,235 @@ def test_usb_preactivation_active_target_check_is_final(
         "staging",
         "active",
     ]
+
+
+def test_usb_managed_activation_plan_catalog_only_change(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    before = favorites_tree_evidence(
+        favorites_directory
+    )
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(_CHANGED_CATALOG),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+
+    activation = (
+        write_usb._usb_managed_activation_plan(
+            preflight
+        )
+    )
+
+    assert activation.document_writes == ()
+    assert activation.write_catalog is True
+    assert activation.document_deletions == ()
+    assert not activation.is_noop
+    assert (
+        favorites_tree_evidence(
+            favorites_directory
+        )
+        == before
+    )
+
+
+def test_usb_managed_activation_plan_orders_hpd_writes_before_catalog_and_deletes(
+    tmp_path: Path,
+) -> None:
+    hpd_old = (
+        b"TargetModel\tBCDx36HP\r\n"
+        b"FormatVersion\t1.00\r\n"
+        b"Department\tOld\r\n"
+    )
+    hpd_updated = (
+        b"TargetModel\tBCDx36HP\r\n"
+        b"FormatVersion\t1.00\r\n"
+        b"Department\tUpdated\r\n"
+    )
+    hpd_added = (
+        b"TargetModel\tBCDx36HP\r\n"
+        b"FormatVersion\t1.00\r\n"
+        b"Department\tAdded\r\n"
+    )
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    (
+        favorites_directory
+        / "keep.hpd"
+    ).write_bytes(
+        hpd_old
+    )
+    (
+        favorites_directory
+        / "remove.hpd"
+    ).write_bytes(
+        hpd_old
+    )
+
+    baseline = FavoritesStorageSnapshot(
+        catalog_bytes=_BASELINE_CATALOG,
+        documents=(
+            FavoritesStorageDocument(
+                filename="keep.hpd",
+                content=hpd_old,
+            ),
+            FavoritesStorageDocument(
+                filename="remove.hpd",
+                content=hpd_old,
+            ),
+        ),
+    )
+    intended = FavoritesStorageSnapshot(
+        catalog_bytes=_CHANGED_CATALOG,
+        documents=(
+            FavoritesStorageDocument(
+                filename="keep.hpd",
+                content=hpd_updated,
+            ),
+            FavoritesStorageDocument(
+                filename="added.hpd",
+                content=hpd_added,
+            ),
+        ),
+    )
+    plan = plan_favorites_write(
+        baseline,
+        intended,
+    )
+    assert not plan.is_blocked
+    preflight = preflight_favorites_usb_write(
+        plan,
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+
+    activation = (
+        write_usb._usb_managed_activation_plan(
+            preflight
+        )
+    )
+
+    assert activation.document_writes == (
+        "keep.hpd",
+        "added.hpd",
+    )
+    assert activation.write_catalog is True
+    assert activation.document_deletions == (
+        "remove.hpd",
+    )
+
+
+def test_usb_managed_activation_plan_does_not_rewrite_unchanged_hpd(
+    tmp_path: Path,
+) -> None:
+    hpd = (
+        b"TargetModel\tBCDx36HP\r\n"
+        b"FormatVersion\t1.00\r\n"
+        b"Department\tStable\r\n"
+    )
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    (
+        favorites_directory
+        / "stable.hpd"
+    ).write_bytes(
+        hpd
+    )
+
+    baseline = FavoritesStorageSnapshot(
+        catalog_bytes=_BASELINE_CATALOG,
+        documents=(
+            FavoritesStorageDocument(
+                filename="stable.hpd",
+                content=hpd,
+            ),
+        ),
+    )
+    intended = FavoritesStorageSnapshot(
+        catalog_bytes=_CHANGED_CATALOG,
+        documents=(
+            FavoritesStorageDocument(
+                filename="stable.hpd",
+                content=hpd,
+            ),
+        ),
+    )
+    plan = plan_favorites_write(
+        baseline,
+        intended,
+    )
+    assert not plan.is_blocked
+    preflight = preflight_favorites_usb_write(
+        plan,
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+
+    activation = (
+        write_usb._usb_managed_activation_plan(
+            preflight
+        )
+    )
+
+    assert activation.document_writes == ()
+    assert activation.write_catalog is True
+    assert activation.document_deletions == ()
+
+
+def test_usb_managed_activation_plan_noop_has_no_steps(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+
+    activation = (
+        write_usb._usb_managed_activation_plan(
+            preflight
+        )
+    )
+
+    assert activation.document_writes == ()
+    assert activation.write_catalog is False
+    assert activation.document_deletions == ()
+    assert activation.is_noop
