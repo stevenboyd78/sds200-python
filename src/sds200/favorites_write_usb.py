@@ -7059,6 +7059,726 @@ def _cleanup_verified_usb_recovery_artifact(
         )
 
 
+@dataclass(frozen=True, slots=True)
+class _FavoritesUsbVerifiedRecoveryRemovalArtifact:
+    artifact: _FavoritesUsbMediaRecoveryArtifact
+    target_evidence: _FavoritesUsbRecoveryTargetEvidence
+    intended_document: FavoritesStorageDocument
+    device: int
+    inode: int
+    size: int
+    modified_ns: int
+    mode: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(
+            self.artifact,
+            _FavoritesUsbMediaRecoveryArtifact,
+        ):
+            raise TypeError(
+                "Verified Favorites USB recovery-removal artifact requires "
+                "_FavoritesUsbMediaRecoveryArtifact."
+            )
+        if not isinstance(
+            self.target_evidence,
+            _FavoritesUsbRecoveryTargetEvidence,
+        ):
+            raise TypeError(
+                "Verified Favorites USB recovery-removal artifact target "
+                "evidence must be _FavoritesUsbRecoveryTargetEvidence."
+            )
+        if not isinstance(
+            self.intended_document,
+            FavoritesStorageDocument,
+        ):
+            raise TypeError(
+                "Verified Favorites USB recovery-removal artifact intended "
+                "document must be FavoritesStorageDocument."
+            )
+
+        if (
+            self.artifact.path
+            != self.target_evidence.temporary_path
+        ):
+            raise ValueError(
+                "Verified Favorites USB recovery-removal artifact path must "
+                "match the exact operation temporary path."
+            )
+        if (
+            self.artifact.managed_filename
+            != self.intended_document.filename
+        ):
+            raise ValueError(
+                "Verified Favorites USB recovery-removal artifact filename "
+                "must match the exact intended-only document."
+            )
+        if (
+            self.artifact.content_sha256
+            != _usb_media_content_sha256(
+                self.intended_document.content
+            )
+        ):
+            raise ValueError(
+                "Verified Favorites USB recovery-removal artifact SHA-256 "
+                "must match the exact intended-only document."
+            )
+
+        for label, value in (
+            ("device", self.device),
+            ("inode", self.inode),
+            ("size", self.size),
+            ("modified nanoseconds", self.modified_ns),
+            ("mode", self.mode),
+        ):
+            if not isinstance(
+                value,
+                int,
+            ):
+                raise TypeError(
+                    "Verified Favorites USB recovery-removal artifact "
+                    f"{label} must be int."
+                )
+            if value < 0:
+                raise ValueError(
+                    "Verified Favorites USB recovery-removal artifact "
+                    f"{label} must be non-negative."
+                )
+
+
+def _require_current_usb_recovery_removal_artifact(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    backup: _FavoritesUsbVerifiedBackup,
+    artifact: _FavoritesUsbMediaRecoveryArtifact,
+) -> _FavoritesUsbVerifiedRecoveryRemovalArtifact:
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB recovery-removal artifact verification requires "
+            "FavoritesUsbWritePreflight."
+        )
+    if not isinstance(
+        backup,
+        _FavoritesUsbVerifiedBackup,
+    ):
+        raise TypeError(
+            "Favorites USB recovery-removal artifact verification requires "
+            "_FavoritesUsbVerifiedBackup."
+        )
+    if not isinstance(
+        artifact,
+        _FavoritesUsbMediaRecoveryArtifact,
+    ):
+        raise TypeError(
+            "Favorites USB recovery-removal artifact verification requires "
+            "_FavoritesUsbMediaRecoveryArtifact."
+        )
+
+    _require_host_operation_paths_match_preflight(
+        preflight,
+        paths,
+    )
+    _require_active_usb_host_lock(
+        paths
+    )
+    _require_verified_usb_host_backup_current(
+        preflight,
+        paths,
+        backup,
+    )
+
+    recovery_plan = _usb_recovery_plan(
+        preflight,
+        backup,
+    )
+    target_evidence = (
+        _require_usb_recovery_target_ready(
+            preflight,
+            paths,
+            backup,
+        )
+    )
+
+    if artifact.path != target_evidence.temporary_path:
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "USB recovery-removal artifact path does not match the exact "
+            "operation-owned temporary path.",
+        )
+
+    removal_documents = {
+        document.filename: document
+        for document in recovery_plan.remove_documents
+    }
+    intended_document = removal_documents.get(
+        artifact.managed_filename
+    )
+    if intended_document is None:
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "USB recovery-removal artifact does not identify an exact "
+            "intended-only HPD from the bound recovery plan.",
+        )
+
+    intended_sha256 = (
+        _usb_media_content_sha256(
+            intended_document.content
+        )
+    )
+    if artifact.content_sha256 != intended_sha256:
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "USB recovery-removal artifact provenance SHA-256 does not match "
+            "the exact intended-only HPD.",
+        )
+
+    target = (
+        target_evidence.favorites_directory
+        / intended_document.filename
+    )
+    if os.path.lexists(
+        target
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            target,
+            "USB recovery-removal artifact cannot be bound while its "
+            "intended-only managed target exists.",
+        )
+
+    try:
+        initial = artifact.path.lstat()
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "Could not inspect the current USB recovery-removal artifact: "
+            f"{error}",
+        ) from error
+
+    try:
+        current_content = (
+            _read_usb_activation_regular_file(
+                artifact.path
+            )
+        )
+    except _FavoritesUsbWritePreparationError as error:
+        raise _FavoritesUsbWritePreparationError(
+            error.path,
+            "Could not safely read the current USB recovery-removal artifact: "
+            f"{error.message}",
+        ) from error
+
+    try:
+        observed = artifact.path.lstat()
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "Could not re-inspect the current USB recovery-removal artifact: "
+            f"{error}",
+        ) from error
+
+    initial_fingerprint = (
+        _usb_recovery_artifact_fingerprint(
+            initial
+        )
+    )
+    observed_fingerprint = (
+        _usb_recovery_artifact_fingerprint(
+            observed
+        )
+    )
+    if observed_fingerprint != initial_fingerprint:
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "USB recovery-removal artifact changed during exact-content "
+            "verification.",
+        )
+
+    if current_content != intended_document.content:
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "Current USB recovery-removal artifact bytes do not match the "
+            "exact intended-only HPD.",
+        )
+    if (
+        _usb_media_content_sha256(
+            current_content
+        )
+        != artifact.content_sha256
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "Current USB recovery-removal artifact SHA-256 does not match "
+            "its verified provenance.",
+        )
+
+    if os.path.lexists(
+        target
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            target,
+            "Intended-only managed target appeared while binding the "
+            "recovery-removal artifact.",
+        )
+
+    _require_verified_usb_host_backup_current(
+        preflight,
+        paths,
+        backup,
+    )
+    final_target_evidence = (
+        _require_usb_recovery_target_ready(
+            preflight,
+            paths,
+            backup,
+        )
+    )
+    if final_target_evidence != target_evidence:
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "USB recovery target evidence changed while binding the "
+            "recovery-removal artifact.",
+        )
+
+    if os.path.lexists(
+        target
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            target,
+            "Intended-only managed target appeared during recovery-removal "
+            "artifact target revalidation.",
+        )
+
+    try:
+        final_before = artifact.path.lstat()
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "Could not re-inspect the USB recovery-removal artifact after "
+            f"target revalidation: {error}",
+        ) from error
+
+    if (
+        _usb_recovery_artifact_fingerprint(
+            final_before
+        )
+        != observed_fingerprint
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "USB recovery-removal artifact identity changed during target "
+            "revalidation.",
+        )
+
+    try:
+        final_content = (
+            _read_usb_activation_regular_file(
+                artifact.path
+            )
+        )
+    except _FavoritesUsbWritePreparationError as error:
+        raise _FavoritesUsbWritePreparationError(
+            error.path,
+            "Could not safely re-read the USB recovery-removal artifact "
+            f"after target revalidation: {error.message}",
+        ) from error
+
+    try:
+        final_after = artifact.path.lstat()
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "Could not complete USB recovery-removal artifact stability "
+            f"verification: {error}",
+        ) from error
+
+    final_fingerprint = (
+        _usb_recovery_artifact_fingerprint(
+            final_after
+        )
+    )
+    if (
+        final_fingerprint
+        != observed_fingerprint
+        or _usb_recovery_artifact_fingerprint(
+            final_before
+        )
+        != final_fingerprint
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "USB recovery-removal artifact changed during final exact-content "
+            "verification.",
+        )
+
+    if (
+        final_content != intended_document.content
+        or _usb_media_content_sha256(
+            final_content
+        )
+        != artifact.content_sha256
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "USB recovery-removal artifact no longer matches the exact "
+            "verified intended-only HPD.",
+        )
+
+    if os.path.lexists(
+        target
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            target,
+            "Intended-only managed target appeared during final "
+            "recovery-removal artifact verification.",
+        )
+
+    return _FavoritesUsbVerifiedRecoveryRemovalArtifact(
+        artifact=artifact,
+        target_evidence=final_target_evidence,
+        intended_document=intended_document,
+        device=final_after.st_dev,
+        inode=final_after.st_ino,
+        size=final_after.st_size,
+        modified_ns=final_after.st_mtime_ns,
+        mode=final_after.st_mode,
+    )
+
+
+def _cleanup_verified_usb_recovery_removal_artifact(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    backup: _FavoritesUsbVerifiedBackup,
+    verified_artifact: _FavoritesUsbVerifiedRecoveryRemovalArtifact,
+) -> None:
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB recovery-removal artifact cleanup requires "
+            "FavoritesUsbWritePreflight."
+        )
+    if not isinstance(
+        backup,
+        _FavoritesUsbVerifiedBackup,
+    ):
+        raise TypeError(
+            "Favorites USB recovery-removal artifact cleanup requires "
+            "_FavoritesUsbVerifiedBackup."
+        )
+    if not isinstance(
+        verified_artifact,
+        _FavoritesUsbVerifiedRecoveryRemovalArtifact,
+    ):
+        raise TypeError(
+            "Favorites USB recovery-removal artifact cleanup requires "
+            "_FavoritesUsbVerifiedRecoveryRemovalArtifact."
+        )
+
+    _require_host_operation_paths_match_preflight(
+        preflight,
+        paths,
+    )
+    _require_active_usb_host_lock(
+        paths
+    )
+    _require_verified_usb_host_backup_current(
+        preflight,
+        paths,
+        backup,
+    )
+
+    try:
+        current_artifact = (
+            _require_current_usb_recovery_removal_artifact(
+                preflight,
+                paths,
+                backup,
+                verified_artifact.artifact,
+            )
+        )
+    except _FavoritesUsbWritePreparationError as error:
+        raise _FavoritesUsbMediaMutationError(
+            error.path,
+            "Could not revalidate verified USB recovery-removal artifact "
+            f"before cleanup: {error.message}",
+            mutation_started=False,
+        ) from error
+
+    if current_artifact != verified_artifact:
+        raise _FavoritesUsbMediaMutationError(
+            verified_artifact.artifact.path,
+            "Current USB recovery-removal artifact no longer matches the "
+            "exact previously verified artifact identity.",
+            mutation_started=False,
+        )
+
+    target = (
+        verified_artifact.target_evidence.favorites_directory
+        / verified_artifact.intended_document.filename
+    )
+    if os.path.lexists(
+        target
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Verified USB recovery-removal artifact cannot be cleaned while "
+            "its intended-only managed target exists.",
+            mutation_started=False,
+        )
+
+    current_target = (
+        _require_usb_recovery_target_ready(
+            preflight,
+            paths,
+            backup,
+        )
+    )
+    if (
+        current_target
+        != verified_artifact.target_evidence
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            verified_artifact.artifact.path,
+            "USB recovery target evidence changed before recovery-removal "
+            "artifact cleanup.",
+            mutation_started=False,
+        )
+
+    if os.path.lexists(
+        target
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Intended-only managed target appeared during recovery-removal "
+            "artifact cleanup verification.",
+            mutation_started=False,
+        )
+
+    try:
+        rebound_artifact = (
+            _require_current_usb_recovery_removal_artifact(
+                preflight,
+                paths,
+                backup,
+                verified_artifact.artifact,
+            )
+        )
+    except _FavoritesUsbWritePreparationError as error:
+        raise _FavoritesUsbMediaMutationError(
+            error.path,
+            "Could not complete verified USB recovery-removal artifact "
+            f"revalidation before cleanup: {error.message}",
+            mutation_started=False,
+        ) from error
+
+    if rebound_artifact != verified_artifact:
+        raise _FavoritesUsbMediaMutationError(
+            verified_artifact.artifact.path,
+            "USB recovery-removal artifact identity changed during cleanup "
+            "precondition verification.",
+            mutation_started=False,
+        )
+
+    if os.path.lexists(
+        target
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Intended-only managed target appeared immediately before "
+            "recovery-removal artifact cleanup.",
+            mutation_started=False,
+        )
+
+    artifact_path = (
+        verified_artifact.artifact.path
+    )
+    expected_fingerprint = (
+        verified_artifact.device,
+        verified_artifact.inode,
+        verified_artifact.size,
+        verified_artifact.modified_ns,
+        verified_artifact.mode,
+    )
+
+    try:
+        artifact_before = artifact_path.lstat()
+    except OSError as error:
+        raise _FavoritesUsbMediaMutationError(
+            artifact_path,
+            "Could not inspect verified USB recovery-removal artifact "
+            f"immediately before cleanup: {error}",
+            mutation_started=False,
+        ) from error
+
+    if (
+        _usb_recovery_artifact_fingerprint(
+            artifact_before
+        )
+        != expected_fingerprint
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            artifact_path,
+            "USB recovery-removal artifact no longer has the exact verified "
+            "fingerprint immediately before cleanup.",
+            mutation_started=False,
+        )
+
+    try:
+        artifact_content = (
+            _read_usb_activation_regular_file(
+                artifact_path
+            )
+        )
+    except _FavoritesUsbWritePreparationError as error:
+        raise _FavoritesUsbMediaMutationError(
+            error.path,
+            "Could not safely re-read verified USB recovery-removal artifact "
+            f"immediately before cleanup: {error.message}",
+            mutation_started=False,
+        ) from error
+
+    try:
+        artifact_after = artifact_path.lstat()
+    except OSError as error:
+        raise _FavoritesUsbMediaMutationError(
+            artifact_path,
+            "Could not complete verified USB recovery-removal artifact "
+            f"stability check before cleanup: {error}",
+            mutation_started=False,
+        ) from error
+
+    if (
+        _usb_recovery_artifact_fingerprint(
+            artifact_after
+        )
+        != expected_fingerprint
+        or _usb_recovery_artifact_fingerprint(
+            artifact_before
+        )
+        != expected_fingerprint
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            artifact_path,
+            "USB recovery-removal artifact identity changed during the "
+            "immediate pre-cleanup readback.",
+            mutation_started=False,
+        )
+
+    if (
+        artifact_content
+        != verified_artifact.intended_document.content
+        or _usb_media_content_sha256(
+            artifact_content
+        )
+        != verified_artifact.artifact.content_sha256
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            artifact_path,
+            "USB recovery-removal artifact no longer contains the exact "
+            "verified intended-only HPD bytes immediately before cleanup.",
+            mutation_started=False,
+        )
+
+    if os.path.lexists(
+        target
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Intended-only managed target appeared at the immediate "
+            "recovery-removal artifact cleanup boundary.",
+            mutation_started=False,
+        )
+
+    # POSIX pathname unlink has no atomic "unlink only if this inode still
+    # occupies this name" operation. The host lock excludes cooperating
+    # sds200 writers, and the exact path/fingerprint/content are revalidated
+    # immediately above, but arbitrary external media mutation can still race
+    # this syscall. Treat the unlink attempt itself as recovery mutation and
+    # never issue a second delete if the path is recreated afterward.
+    try:
+        os.unlink(
+            artifact_path
+        )
+    except OSError as error:
+        raise _FavoritesUsbMediaMutationError(
+            artifact_path,
+            "Could not clean verified USB recovery-removal artifact: "
+            f"{error}",
+            mutation_started=True,
+        ) from error
+
+    if os.path.lexists(
+        artifact_path
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            artifact_path,
+            "Verified USB recovery-removal artifact cleanup did not leave "
+            "the exact temporary path absent; a replacement may have "
+            "appeared.",
+            mutation_started=True,
+        )
+
+    if os.path.lexists(
+        target
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Intended-only managed target appeared after recovery-removal "
+            "artifact cleanup; it was preserved.",
+            mutation_started=True,
+        )
+
+    try:
+        final_target = (
+            _require_usb_recovery_target_ready(
+                preflight,
+                paths,
+                backup,
+            )
+        )
+    except _FavoritesUsbWritePreparationError as error:
+        raise _FavoritesUsbMediaMutationError(
+            error.path,
+            "Could not revalidate USB recovery target after recovery-removal "
+            f"artifact cleanup: {error.message}",
+            mutation_started=True,
+        ) from error
+
+    if (
+        final_target
+        != verified_artifact.target_evidence
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "USB recovery target evidence changed after recovery-removal "
+            "artifact cleanup.",
+            mutation_started=True,
+        )
+
+    if os.path.lexists(
+        target
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Intended-only managed target appeared during final "
+            "recovery-removal artifact verification; it was preserved.",
+            mutation_started=True,
+        )
+
+    if os.path.lexists(
+        artifact_path
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            artifact_path,
+            "Recovery-removal artifact path reappeared during final target "
+            "verification; it was not deleted a second time.",
+            mutation_started=True,
+        )
+
+
 def _require_usb_managed_activation_filename(
     filename: str,
 ) -> str:
