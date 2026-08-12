@@ -8107,3 +8107,819 @@ def test_usb_operation_report_parser_refuses_duplicate_or_noncanonical_json(
             None,
             None,
         )
+
+
+_RECOVERY_REMOVE_INTENDED_HPD = (
+    b"TargetModel\tBCDx36HP\r\n"
+    b"FormatVersion\t1.00\r\n"
+    b"Department\tRecovery introduced\r\n"
+)
+
+
+def _usb_recovery_removal_fixture(
+    tmp_path: Path,
+) -> tuple[
+    write_usb.FavoritesUsbWritePreflight,
+    Path,
+    Path,
+    FavoritesStorageDocument,
+]:
+    baseline = FavoritesStorageSnapshot(
+        catalog_bytes=_BASELINE_CATALOG,
+        documents=(),
+    )
+    intended_document = (
+        FavoritesStorageDocument(
+            filename="added.hpd",
+            content=_RECOVERY_REMOVE_INTENDED_HPD,
+        )
+    )
+    intended = FavoritesStorageSnapshot(
+        catalog_bytes=_CHANGED_CATALOG,
+        documents=(
+            intended_document,
+        ),
+    )
+
+    (
+        preflight,
+        _prepared,
+        favorites_directory,
+    ) = _prepared_usb_activation_fixture(
+        tmp_path,
+        baseline=baseline,
+        intended=intended,
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+
+    return (
+        preflight,
+        favorites_directory,
+        host_root,
+        intended_document,
+    )
+
+
+def test_usb_recovery_removal_removes_exact_intended_only_hpd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        document,
+    ) = _usb_recovery_removal_fixture(
+        tmp_path
+    )
+    target = (
+        favorites_directory
+        / document.filename
+    )
+
+    forbidden_binder_called = False
+
+    def forbidden_baseline_binder(
+        *_args: object,
+        **_kwargs: object,
+    ) -> object:
+        nonlocal forbidden_binder_called
+        forbidden_binder_called = True
+        raise AssertionError(
+            "intended-only removal must not use the baseline artifact binder"
+        )
+
+    monkeypatch.setattr(
+        write_usb,
+        "_require_current_usb_recovery_artifact",
+        forbidden_baseline_binder,
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        target.write_bytes(
+            document.content
+        )
+        temporary = (
+            write_usb._usb_media_temporary_path(
+                preflight,
+                paths,
+            )
+        )
+
+        write_usb._remove_usb_recovery_intended_only_hpd(
+            preflight,
+            paths,
+            backup,
+            document,
+        )
+
+        assert not write_usb.os.path.lexists(
+            target
+        )
+        assert not write_usb.os.path.lexists(
+            temporary
+        )
+
+    assert forbidden_binder_called is False
+
+
+def test_usb_recovery_removal_absent_target_is_noop(
+    tmp_path: Path,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        document,
+    ) = _usb_recovery_removal_fixture(
+        tmp_path
+    )
+    target = (
+        favorites_directory
+        / document.filename
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        temporary = (
+            write_usb._usb_media_temporary_path(
+                preflight,
+                paths,
+            )
+        )
+
+        assert not write_usb.os.path.lexists(
+            target
+        )
+        write_usb._remove_usb_recovery_intended_only_hpd(
+            preflight,
+            paths,
+            backup,
+            document,
+        )
+        assert not write_usb.os.path.lexists(
+            target
+        )
+        assert not write_usb.os.path.lexists(
+            temporary
+        )
+
+
+def test_usb_recovery_removal_refuses_document_not_exactly_in_bound_plan(
+    tmp_path: Path,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        document,
+    ) = _usb_recovery_removal_fixture(
+        tmp_path
+    )
+    target = (
+        favorites_directory
+        / document.filename
+    )
+    wrong = FavoritesStorageDocument(
+        filename=document.filename,
+        content=b"wrong intended content",
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        target.write_bytes(
+            document.content
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="exact intended-only HPD",
+        ):
+            write_usb._remove_usb_recovery_intended_only_hpd(
+                preflight,
+                paths,
+                backup,
+                wrong,
+            )
+
+        assert (
+            target.read_bytes()
+            == document.content
+        )
+
+
+def test_usb_recovery_removal_refuses_unknown_existing_content(
+    tmp_path: Path,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        document,
+    ) = _usb_recovery_removal_fixture(
+        tmp_path
+    )
+    target = (
+        favorites_directory
+        / document.filename
+    )
+    unknown = b"external concurrent content"
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        target.write_bytes(
+            unknown
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="exact intended-only HPD content",
+        ) as raised:
+            write_usb._remove_usb_recovery_intended_only_hpd(
+                preflight,
+                paths,
+                backup,
+                document,
+            )
+
+        assert raised.value.mutation_started is False
+        assert target.read_bytes() == unknown
+
+
+def test_usb_recovery_removal_refuses_symlink_without_mutation(
+    tmp_path: Path,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        document,
+    ) = _usb_recovery_removal_fixture(
+        tmp_path
+    )
+    target = (
+        favorites_directory
+        / document.filename
+    )
+    outside = (
+        tmp_path
+        / "outside-recovery-removal.hpd"
+    )
+    outside.write_bytes(
+        document.content
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        _symlink_or_skip(
+            target,
+            outside,
+        )
+
+        temporary = (
+            write_usb._usb_media_temporary_path(
+                preflight,
+                paths,
+            )
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="symbolic links",
+        ):
+            write_usb._remove_usb_recovery_intended_only_hpd(
+                preflight,
+                paths,
+                backup,
+                document,
+            )
+
+        assert target.is_symlink()
+        assert outside.read_bytes() == document.content
+        assert not write_usb.os.path.lexists(
+            temporary
+        )
+
+
+def test_usb_recovery_removal_refuses_existing_media_temp(
+    tmp_path: Path,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        document,
+    ) = _usb_recovery_removal_fixture(
+        tmp_path
+    )
+    target = (
+        favorites_directory
+        / document.filename
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        target.write_bytes(
+            document.content
+        )
+        temporary = (
+            write_usb._usb_media_temporary_path(
+                preflight,
+                paths,
+            )
+        )
+        temporary.write_bytes(
+            b"surviving baseline recovery artifact"
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="temporary path to be absent",
+        ) as raised:
+            write_usb._remove_usb_recovery_intended_only_hpd(
+                preflight,
+                paths,
+                backup,
+                document,
+            )
+
+        assert raised.value.mutation_started is False
+        assert target.read_bytes() == document.content
+        assert temporary.read_bytes() == (
+            b"surviving baseline recovery artifact"
+        )
+
+
+def test_usb_recovery_removal_refuses_target_change_during_final_verification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        document,
+    ) = _usb_recovery_removal_fixture(
+        tmp_path
+    )
+    target = (
+        favorites_directory
+        / document.filename
+    )
+    concurrent = b"same-name concurrent replacement"
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        target.write_bytes(
+            document.content
+        )
+
+        real_ready = (
+            write_usb._require_usb_recovery_target_ready
+        )
+        calls = 0
+
+        def changing_ready(
+            current_preflight: write_usb.FavoritesUsbWritePreflight,
+            current_paths: write_usb._FavoritesUsbHostOperationPaths,
+            current_backup: write_usb._FavoritesUsbVerifiedBackup,
+        ) -> write_usb._FavoritesUsbRecoveryTargetEvidence:
+            nonlocal calls
+            result = real_ready(
+                current_preflight,
+                current_paths,
+                current_backup,
+            )
+            calls += 1
+            if calls == 2:
+                target.write_bytes(
+                    concurrent
+                )
+            return result
+
+        monkeypatch.setattr(
+            write_usb,
+            "_require_usb_recovery_target_ready",
+            changing_ready,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="changed immediately before mutation|changed during final",
+        ) as raised:
+            write_usb._remove_usb_recovery_intended_only_hpd(
+                preflight,
+                paths,
+                backup,
+                document,
+            )
+
+        assert raised.value.mutation_started is False
+        assert target.read_bytes() == concurrent
+
+
+def test_usb_recovery_removal_raced_displacement_never_overwrites_concurrent_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        document,
+    ) = _usb_recovery_removal_fixture(
+        tmp_path
+    )
+    target = (
+        favorites_directory
+        / document.filename
+    )
+    concurrent = b"raced target content"
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        target.write_bytes(
+            document.content
+        )
+        temporary = (
+            write_usb._usb_media_temporary_path(
+                preflight,
+                paths,
+            )
+        )
+        real_replace = write_usb.os.replace
+        injected = False
+
+        def replacing_replace(
+            source: str | bytes | Path,
+            destination: str | bytes | Path,
+        ) -> None:
+            nonlocal injected
+            if (
+                Path(source) == target
+                and Path(destination) == temporary
+                and not injected
+            ):
+                injected = True
+                target.write_bytes(
+                    concurrent
+                )
+            real_replace(
+                source,
+                destination,
+            )
+
+        monkeypatch.setattr(
+            write_usb.os,
+            "replace",
+            replacing_replace,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="failed exact intended-content verification",
+        ) as raised:
+            write_usb._remove_usb_recovery_intended_only_hpd(
+                preflight,
+                paths,
+                backup,
+                document,
+            )
+
+        assert injected
+        assert raised.value.mutation_started is True
+        assert raised.value.recovery_artifact is None
+        assert target.read_bytes() == concurrent
+        assert temporary.read_bytes() == concurrent
+
+
+def test_usb_recovery_removal_preserves_exact_artifact_if_concurrent_target_appears(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        document,
+    ) = _usb_recovery_removal_fixture(
+        tmp_path
+    )
+    target = (
+        favorites_directory
+        / document.filename
+    )
+    concurrent = b"post-displacement concurrent target"
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        target.write_bytes(
+            document.content
+        )
+        temporary = (
+            write_usb._usb_media_temporary_path(
+                preflight,
+                paths,
+            )
+        )
+        real_read = (
+            write_usb._read_usb_activation_regular_file
+        )
+        injected = False
+
+        def creating_read(
+            path: Path,
+        ) -> bytes:
+            nonlocal injected
+            content = real_read(
+                path
+            )
+            if (
+                path == temporary
+                and not injected
+            ):
+                injected = True
+                target.write_bytes(
+                    concurrent
+                )
+            return content
+
+        monkeypatch.setattr(
+            write_usb,
+            "_read_usb_activation_regular_file",
+            creating_read,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="concurrent target appeared",
+        ) as raised:
+            write_usb._remove_usb_recovery_intended_only_hpd(
+                preflight,
+                paths,
+                backup,
+                document,
+            )
+
+        artifact = raised.value.recovery_artifact
+        assert injected
+        assert raised.value.mutation_started is True
+        assert artifact is not None
+        assert artifact.path == temporary
+        assert artifact.managed_filename == document.filename
+        assert artifact.content_sha256 == (
+            write_usb._usb_media_content_sha256(
+                document.content
+            )
+        )
+        assert target.read_bytes() == concurrent
+        assert temporary.read_bytes() == document.content
+
+
+def test_usb_recovery_removal_unlink_failure_surfaces_exact_intended_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        document,
+    ) = _usb_recovery_removal_fixture(
+        tmp_path
+    )
+    target = (
+        favorites_directory
+        / document.filename
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        target.write_bytes(
+            document.content
+        )
+        temporary = (
+            write_usb._usb_media_temporary_path(
+                preflight,
+                paths,
+            )
+        )
+        real_unlink = Path.unlink
+
+        def failing_unlink(
+            path: Path,
+            *args: object,
+            **kwargs: object,
+        ) -> None:
+            if path == temporary:
+                raise OSError(
+                    "injected recovery-removal unlink failure"
+                )
+            real_unlink(
+                path,
+                *args,
+                **kwargs,
+            )
+
+        monkeypatch.setattr(
+            Path,
+            "unlink",
+            failing_unlink,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="finalize intended-only USB recovery removal",
+        ) as raised:
+            write_usb._remove_usb_recovery_intended_only_hpd(
+                preflight,
+                paths,
+                backup,
+                document,
+            )
+
+        artifact = raised.value.recovery_artifact
+        assert raised.value.mutation_started is True
+        assert artifact is not None
+        assert artifact.path == temporary
+        assert artifact.managed_filename == document.filename
+        assert artifact.content_sha256 == (
+            write_usb._usb_media_content_sha256(
+                document.content
+            )
+        )
+        assert not write_usb.os.path.lexists(
+            target
+        )
+        assert temporary.read_bytes() == document.content
+
+
+def test_usb_recovery_removal_does_not_delete_postunlink_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        document,
+    ) = _usb_recovery_removal_fixture(
+        tmp_path
+    )
+    target = (
+        favorites_directory
+        / document.filename
+    )
+    postunlink = b"post-unlink replacement"
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        target.write_bytes(
+            document.content
+        )
+        temporary = (
+            write_usb._usb_media_temporary_path(
+                preflight,
+                paths,
+            )
+        )
+        real_unlink = Path.unlink
+        injected = False
+
+        def replacing_unlink(
+            path: Path,
+            *args: object,
+            **kwargs: object,
+        ) -> None:
+            nonlocal injected
+            real_unlink(
+                path,
+                *args,
+                **kwargs,
+            )
+            if (
+                path == temporary
+                and not injected
+            ):
+                injected = True
+                target.write_bytes(
+                    postunlink
+                )
+
+        monkeypatch.setattr(
+            Path,
+            "unlink",
+            replacing_unlink,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="target appeared after intended-only recovery removal",
+        ) as raised:
+            write_usb._remove_usb_recovery_intended_only_hpd(
+                preflight,
+                paths,
+                backup,
+                document,
+            )
+
+        assert injected
+        assert raised.value.mutation_started is True
+        assert raised.value.recovery_artifact is None
+        assert target.read_bytes() == postunlink
+        assert not write_usb.os.path.lexists(
+            temporary
+        )

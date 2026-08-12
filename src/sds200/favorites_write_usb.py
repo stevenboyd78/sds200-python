@@ -7829,6 +7829,763 @@ def _restore_usb_active_managed_file(
         )
 
 
+def _restore_displaced_usb_recovery_removal_content(
+    target: Path,
+    content: bytes,
+) -> bool:
+    # Best-effort exclusive restoration after a raced recovery displacement.
+    #
+    # The caller already mutated media by moving an unexpected file to the
+    # operation-owned temporary path. This helper never overwrites a target
+    # that appeared concurrently. It returns True only when it exclusively
+    # recreated the absent target and verified the exact displaced bytes.
+    if not isinstance(
+        target,
+        Path,
+    ):
+        raise TypeError(
+            "Favorites USB recovery-removal restoration target must be "
+            "pathlib.Path."
+        )
+    if not isinstance(
+        content,
+        bytes,
+    ):
+        raise TypeError(
+            "Favorites USB recovery-removal restoration content must be bytes."
+        )
+
+    no_follow = getattr(
+        os,
+        "O_NOFOLLOW",
+        None,
+    )
+    if (
+        not isinstance(
+            no_follow,
+            int,
+        )
+        or no_follow == 0
+    ):
+        return False
+
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | no_follow
+        | getattr(
+            os,
+            "O_BINARY",
+            0,
+        )
+    )
+
+    descriptor: int | None = None
+    created_identity: tuple[int, int] | None = None
+
+    try:
+        try:
+            descriptor = os.open(
+                target,
+                flags,
+                0o600,
+            )
+        except OSError:
+            return False
+
+        opened = os.fstat(
+            descriptor
+        )
+        if not stat.S_ISREG(
+            opened.st_mode
+        ):
+            return False
+
+        created_identity = (
+            opened.st_dev,
+            opened.st_ino,
+        )
+
+        _write_usb_recovery_descriptor_content(
+            descriptor,
+            target,
+            content,
+        )
+    except _FavoritesUsbMediaMutationError:
+        return False
+    finally:
+        if descriptor is not None:
+            os.close(
+                descriptor
+            )
+
+    if created_identity is None:
+        return False
+
+    try:
+        before = target.lstat()
+    except OSError:
+        return False
+
+    if (
+        before.st_dev,
+        before.st_ino,
+    ) != created_identity:
+        return False
+
+    try:
+        restored_content = (
+            _read_usb_activation_regular_file(
+                target
+            )
+        )
+    except _FavoritesUsbWritePreparationError:
+        return False
+
+    try:
+        after = target.lstat()
+    except OSError:
+        return False
+
+    return (
+        (
+            after.st_dev,
+            after.st_ino,
+        )
+        == created_identity
+        and _usb_recovery_artifact_fingerprint(
+            after
+        )
+        == _usb_recovery_artifact_fingerprint(
+            before
+        )
+        and restored_content == content
+    )
+
+
+def _remove_usb_recovery_intended_only_hpd(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    backup: _FavoritesUsbVerifiedBackup,
+    document: FavoritesStorageDocument,
+) -> None:
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB recovery removal requires "
+            "FavoritesUsbWritePreflight."
+        )
+    if not isinstance(
+        backup,
+        _FavoritesUsbVerifiedBackup,
+    ):
+        raise TypeError(
+            "Favorites USB recovery removal requires "
+            "_FavoritesUsbVerifiedBackup."
+        )
+    if not isinstance(
+        document,
+        FavoritesStorageDocument,
+    ):
+        raise TypeError(
+            "Favorites USB recovery removal requires "
+            "FavoritesStorageDocument."
+        )
+
+    filename = (
+        _require_usb_managed_activation_filename(
+            document.filename
+        )
+    )
+    if filename == "f_list.cfg":
+        raise ValueError(
+            "Favorites USB recovery removal cannot remove f_list.cfg."
+        )
+
+    _require_host_operation_paths_match_preflight(
+        preflight,
+        paths,
+    )
+    _require_active_usb_host_lock(
+        paths
+    )
+    _require_usb_activation_filesystem(
+        preflight
+    )
+    _require_verified_usb_host_backup_current(
+        preflight,
+        paths,
+        backup,
+    )
+
+    recovery_plan = _usb_recovery_plan(
+        preflight,
+        backup,
+    )
+    removal_matches = tuple(
+        candidate
+        for candidate in recovery_plan.remove_documents
+        if candidate.filename == filename
+    )
+    if (
+        len(removal_matches) != 1
+        or removal_matches[0] != document
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            preflight.qualification.favorites_directory
+            / filename,
+            "USB recovery removal document is not the exact intended-only "
+            "HPD from the bound recovery plan.",
+        )
+
+    intended_document = removal_matches[0]
+    target_evidence = (
+        _require_usb_recovery_target_ready(
+            preflight,
+            paths,
+            backup,
+        )
+    )
+    target = (
+        target_evidence.favorites_directory
+        / filename
+    )
+    temporary = (
+        target_evidence.temporary_path
+    )
+
+    if os.path.lexists(
+        temporary
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            temporary,
+            "USB recovery removal requires the operation-owned media "
+            "temporary path to be absent.",
+            mutation_started=False,
+        )
+
+    try:
+        initial = target.lstat()
+    except FileNotFoundError:
+        try:
+            final_target_evidence = (
+                _require_usb_recovery_target_ready(
+                    preflight,
+                    paths,
+                    backup,
+                )
+            )
+        except _FavoritesUsbWritePreparationError as error:
+            raise _FavoritesUsbMediaMutationError(
+                error.path,
+                error.message,
+                mutation_started=False,
+            ) from error
+
+        if (
+            final_target_evidence
+            != target_evidence
+        ):
+            raise _FavoritesUsbMediaMutationError(
+                target,
+                "USB recovery target evidence changed while confirming an "
+                "already-absent intended-only HPD.",
+                mutation_started=False,
+            ) from None
+
+        if os.path.lexists(
+            temporary
+        ):
+            raise _FavoritesUsbMediaMutationError(
+                temporary,
+                "USB recovery media temporary artifact appeared while "
+                "confirming an already-absent intended-only HPD.",
+                mutation_started=False,
+            ) from None
+
+        try:
+            target.lstat()
+        except FileNotFoundError:
+            return
+        except OSError as error:
+            raise _FavoritesUsbMediaMutationError(
+                target,
+                "Could not re-inspect absent intended-only HPD during "
+                f"recovery removal: {error}",
+                mutation_started=False,
+            ) from error
+
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Intended-only HPD appeared while recovery removal was "
+            "confirming the baseline-absent state.",
+            mutation_started=False,
+        ) from None
+    except OSError as error:
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            f"Could not inspect intended-only HPD before recovery removal: {error}",
+            mutation_started=False,
+        ) from error
+
+    if stat.S_ISLNK(
+        initial.st_mode
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Recovery removal target must not be a symbolic link.",
+            mutation_started=False,
+        )
+    if not stat.S_ISREG(
+        initial.st_mode
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Recovery removal target must be a regular file.",
+            mutation_started=False,
+        )
+
+    try:
+        observed_content = (
+            _read_usb_activation_regular_file(
+                target
+            )
+        )
+    except _FavoritesUsbWritePreparationError as error:
+        raise _FavoritesUsbMediaMutationError(
+            error.path,
+            error.message,
+            mutation_started=False,
+        ) from error
+
+    if (
+        observed_content
+        != intended_document.content
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Recovery removal target does not contain the exact intended-only "
+            "HPD content.",
+            mutation_started=False,
+        )
+
+    try:
+        observed = target.lstat()
+    except OSError as error:
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Could not re-inspect intended-only HPD before recovery removal: "
+            f"{error}",
+            mutation_started=False,
+        ) from error
+
+    initial_fingerprint = (
+        _usb_recovery_artifact_fingerprint(
+            initial
+        )
+    )
+    if (
+        _usb_recovery_artifact_fingerprint(
+            observed
+        )
+        != initial_fingerprint
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Recovery removal target changed before final pre-mutation "
+            "verification.",
+            mutation_started=False,
+        )
+
+    try:
+        current_target_evidence = (
+            _require_usb_recovery_target_ready(
+                preflight,
+                paths,
+                backup,
+            )
+        )
+    except _FavoritesUsbWritePreparationError as error:
+        raise _FavoritesUsbMediaMutationError(
+            error.path,
+            error.message,
+            mutation_started=False,
+        ) from error
+
+    if (
+        current_target_evidence
+        != target_evidence
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "USB recovery target evidence changed before intended-only HPD "
+            "removal.",
+            mutation_started=False,
+        )
+
+    if os.path.lexists(
+        temporary
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            temporary,
+            "USB recovery media temporary artifact appeared before "
+            "intended-only HPD removal.",
+            mutation_started=False,
+        )
+
+    try:
+        final_before = target.lstat()
+    except OSError as error:
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Could not complete intended-only HPD pre-removal identity "
+            f"verification: {error}",
+            mutation_started=False,
+        ) from error
+
+    if (
+        _usb_recovery_artifact_fingerprint(
+            final_before
+        )
+        != initial_fingerprint
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Recovery removal target changed immediately before mutation.",
+            mutation_started=False,
+        )
+
+    try:
+        final_content = (
+            _read_usb_activation_regular_file(
+                target
+            )
+        )
+    except _FavoritesUsbWritePreparationError as error:
+        raise _FavoritesUsbMediaMutationError(
+            error.path,
+            error.message,
+            mutation_started=False,
+        ) from error
+
+    try:
+        final_after = target.lstat()
+    except OSError as error:
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Could not finish intended-only HPD exact pre-removal readback: "
+            f"{error}",
+            mutation_started=False,
+        ) from error
+
+    if (
+        _usb_recovery_artifact_fingerprint(
+            final_after
+        )
+        != initial_fingerprint
+        or final_content
+        != intended_document.content
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Recovery removal target changed during final exact "
+            "pre-mutation readback.",
+            mutation_started=False,
+        )
+
+    if os.path.lexists(
+        temporary
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            temporary,
+            "USB recovery media temporary artifact appeared immediately "
+            "before intended-only HPD removal.",
+            mutation_started=False,
+        )
+
+    try:
+        os.replace(
+            target,
+            temporary,
+        )
+    except OSError as error:
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Could not move intended-only HPD into the bounded recovery "
+            f"removal artifact: {error}",
+            mutation_started=False,
+        ) from error
+
+    mutation_started = True
+
+    try:
+        try:
+            displaced_before = (
+                temporary.lstat()
+            )
+        except OSError as error:
+            raise _FavoritesUsbMediaMutationError(
+                temporary,
+                "Could not inspect displaced intended-only HPD after recovery "
+                f"removal began: {error}",
+                mutation_started=True,
+            ) from error
+
+        if (
+            stat.S_ISLNK(
+                displaced_before.st_mode
+            )
+            or not stat.S_ISREG(
+                displaced_before.st_mode
+            )
+        ):
+            raise _FavoritesUsbMediaMutationError(
+                temporary,
+                "Displaced recovery-removal artifact must remain a regular "
+                "non-symlink file.",
+                mutation_started=True,
+            )
+
+        try:
+            displaced_content = (
+                _read_usb_activation_regular_file(
+                    temporary
+                )
+            )
+        except _FavoritesUsbWritePreparationError as error:
+            raise _FavoritesUsbMediaMutationError(
+                error.path,
+                error.message,
+                mutation_started=True,
+            ) from error
+
+        try:
+            displaced_after = (
+                temporary.lstat()
+            )
+        except OSError as error:
+            raise _FavoritesUsbMediaMutationError(
+                temporary,
+                "Could not complete displaced intended-only HPD verification: "
+                f"{error}",
+                mutation_started=True,
+            ) from error
+
+        displaced_fingerprint = (
+            _usb_recovery_artifact_fingerprint(
+                displaced_after
+            )
+        )
+        if (
+            displaced_fingerprint
+            != _usb_recovery_artifact_fingerprint(
+                displaced_before
+            )
+        ):
+            raise _FavoritesUsbMediaMutationError(
+                temporary,
+                "Displaced recovery-removal artifact changed during exact "
+                "verification.",
+                mutation_started=True,
+            )
+
+        if (
+            displaced_content
+            != intended_document.content
+        ):
+            # A pathname race displaced content that was not the verified
+            # intended-only HPD. Never use os.replace() to restore it because
+            # that could overwrite a target created concurrently. Instead make
+            # one best-effort O_EXCL recreation only while the target name is
+            # absent. Preserve the displaced temporary file regardless so the
+            # higher-level recovery path cannot mistake this for completion.
+            if not os.path.lexists(
+                target
+            ):
+                _restore_displaced_usb_recovery_removal_content(
+                    target,
+                    displaced_content,
+                )
+
+            raise _FavoritesUsbMediaMutationError(
+                temporary,
+                "Displaced recovery-removal HPD failed exact intended-content "
+                "verification.",
+                mutation_started=True,
+            )
+
+        recovery_artifact = (
+            _FavoritesUsbMediaRecoveryArtifact(
+                path=temporary,
+                managed_filename=filename,
+                content_sha256=(
+                    _usb_media_content_sha256(
+                        intended_document.content
+                    )
+                ),
+            )
+        )
+
+        if os.path.lexists(
+            target
+        ):
+            raise _FavoritesUsbMediaMutationError(
+                target,
+                "A concurrent target appeared after the exact intended-only "
+                "HPD was displaced; preserving the verified removal artifact.",
+                mutation_started=True,
+                recovery_artifact=recovery_artifact,
+            )
+
+        try:
+            post_displacement_evidence = (
+                _require_usb_recovery_target_ready(
+                    preflight,
+                    paths,
+                    backup,
+                )
+            )
+        except _FavoritesUsbWritePreparationError as error:
+            raise _FavoritesUsbMediaMutationError(
+                error.path,
+                error.message,
+                mutation_started=True,
+                recovery_artifact=recovery_artifact,
+            ) from error
+
+        if (
+            post_displacement_evidence
+            != target_evidence
+        ):
+            raise _FavoritesUsbMediaMutationError(
+                temporary,
+                "USB recovery target evidence changed after intended-only "
+                "HPD displacement.",
+                mutation_started=True,
+                recovery_artifact=recovery_artifact,
+            )
+
+        if os.path.lexists(
+            target
+        ):
+            raise _FavoritesUsbMediaMutationError(
+                target,
+                "A concurrent target appeared during recovery-target "
+                "revalidation; preserving the verified removal artifact.",
+                mutation_started=True,
+                recovery_artifact=recovery_artifact,
+            )
+
+        try:
+            artifact_before_unlink = (
+                temporary.lstat()
+            )
+        except OSError as error:
+            raise _FavoritesUsbMediaMutationError(
+                temporary,
+                "Could not re-inspect the verified recovery-removal artifact "
+                f"before cleanup: {error}",
+                mutation_started=True,
+                recovery_artifact=recovery_artifact,
+            ) from error
+
+        if (
+            _usb_recovery_artifact_fingerprint(
+                artifact_before_unlink
+            )
+            != displaced_fingerprint
+        ):
+            raise _FavoritesUsbMediaMutationError(
+                temporary,
+                "Verified recovery-removal artifact changed before cleanup.",
+                mutation_started=True,
+                recovery_artifact=recovery_artifact,
+            )
+
+        try:
+            temporary.unlink()
+        except OSError as error:
+            raise _FavoritesUsbMediaMutationError(
+                temporary,
+                "Could not finalize intended-only USB recovery removal: "
+                f"{error}",
+                mutation_started=True,
+                recovery_artifact=recovery_artifact,
+            ) from error
+
+        if os.path.lexists(
+            temporary
+        ):
+            raise _FavoritesUsbMediaMutationError(
+                temporary,
+                "A path appeared at the recovery-removal artifact name after "
+                "cleanup; it was not deleted a second time.",
+                mutation_started=True,
+            )
+
+        if os.path.lexists(
+            target
+        ):
+            raise _FavoritesUsbMediaMutationError(
+                target,
+                "A target appeared after intended-only recovery removal; it "
+                "was preserved.",
+                mutation_started=True,
+            )
+
+        try:
+            final_target_evidence = (
+                _require_usb_recovery_target_ready(
+                    preflight,
+                    paths,
+                    backup,
+                )
+            )
+        except _FavoritesUsbWritePreparationError as error:
+            raise _FavoritesUsbMediaMutationError(
+                error.path,
+                error.message,
+                mutation_started=True,
+            ) from error
+
+        if (
+            final_target_evidence
+            != target_evidence
+        ):
+            raise _FavoritesUsbMediaMutationError(
+                target,
+                "USB recovery target evidence changed while finalizing "
+                "intended-only HPD removal.",
+                mutation_started=True,
+            )
+
+        if (
+            os.path.lexists(
+                target
+            )
+            or os.path.lexists(
+                temporary
+            )
+        ):
+            raise _FavoritesUsbMediaMutationError(
+                target,
+                "Intended-only recovery removal did not finish with both the "
+                "target and bounded temporary path absent.",
+                mutation_started=True,
+            )
+    except BaseException:
+        # Once target -> temporary succeeds, media mutation has begun. Any
+        # exact intended artifact that survives is carried on the mutation
+        # error; unknown raced content is deliberately left untouched for a
+        # higher-level incomplete-recovery decision.
+        raise
+
+    assert mutation_started
+
+
 def _replace_usb_active_managed_file(
     preflight: FavoritesUsbWritePreflight,
     paths: _FavoritesUsbHostOperationPaths,
