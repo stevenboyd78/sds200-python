@@ -4827,3 +4827,690 @@ def test_usb_recovery_artifact_binding_revalidates_backup_and_target_after_read(
         first_read + 1:
         second_target
     ]
+
+
+_GUARDED_BASELINE_HPD = (
+    b"TargetModel\tBCDx36HP\r\n"
+    b"FormatVersion\t1.00\r\n"
+    b"Department\tGuarded baseline\r\n"
+)
+_GUARDED_INTENDED_HPD = (
+    b"TargetModel\tBCDx36HP\r\n"
+    b"FormatVersion\t1.00\r\n"
+    b"Department\tGuarded intended\r\n"
+)
+
+
+def _usb_guarded_restore_fixture(
+    tmp_path: Path,
+    *,
+    baseline_content: bytes,
+    intended_content: bytes | None,
+) -> tuple[
+    write_usb.FavoritesUsbWritePreflight,
+    Path,
+    Path,
+]:
+    baseline = FavoritesStorageSnapshot(
+        catalog_bytes=_BASELINE_CATALOG,
+        documents=(
+            FavoritesStorageDocument(
+                filename="restore.hpd",
+                content=baseline_content,
+            ),
+        ),
+    )
+    if intended_content is None:
+        intended = _snapshot(
+            _CHANGED_CATALOG
+        )
+    else:
+        intended = FavoritesStorageSnapshot(
+            catalog_bytes=_CHANGED_CATALOG,
+            documents=(
+                FavoritesStorageDocument(
+                    filename="restore.hpd",
+                    content=intended_content,
+                ),
+            ),
+        )
+
+    (
+        preflight,
+        _,
+        favorites_directory,
+    ) = _prepared_usb_activation_fixture(
+        tmp_path,
+        baseline=baseline,
+        intended=intended,
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+
+    return (
+        preflight,
+        favorites_directory,
+        host_root,
+    )
+
+
+def test_usb_guarded_recovery_restore_creates_absent_target_without_consuming_temp(
+    tmp_path: Path,
+) -> None:
+    baseline_content = _GUARDED_BASELINE_HPD
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+    ) = _usb_guarded_restore_fixture(
+        tmp_path,
+        baseline_content=baseline_content,
+        intended_content=None,
+    )
+    target = (
+        favorites_directory
+        / "restore.hpd"
+    )
+    target.unlink()
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        temporary = (
+            write_usb._usb_media_temporary_path(
+                preflight,
+                paths,
+            )
+        )
+        temporary.write_bytes(
+            b"verified surviving deletion artifact"
+        )
+
+        write_usb._restore_usb_active_managed_file(
+            preflight,
+            paths,
+            "restore.hpd",
+            baseline_content,
+            allowed_existing_content=None,
+            allow_absent=True,
+        )
+
+    assert target.read_bytes() == baseline_content
+    assert temporary.read_bytes() == (
+        b"verified surviving deletion artifact"
+    )
+
+
+def test_usb_guarded_recovery_restore_refuses_absent_target_when_disallowed(
+    tmp_path: Path,
+) -> None:
+    baseline_content = _GUARDED_BASELINE_HPD
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+    ) = _usb_guarded_restore_fixture(
+        tmp_path,
+        baseline_content=baseline_content,
+        intended_content=baseline_content,
+    )
+    target = (
+        favorites_directory
+        / "restore.hpd"
+    )
+    target.unlink()
+
+    with (
+        write_usb._usb_host_operation_lock(
+            preflight,
+            host_root,
+        ) as paths,
+        pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="absence is not allowed",
+        ) as raised,
+    ):
+        write_usb._restore_usb_active_managed_file(
+            preflight,
+            paths,
+            "restore.hpd",
+            baseline_content,
+            allowed_existing_content=baseline_content,
+            allow_absent=False,
+        )
+
+    assert raised.value.mutation_started is False
+    assert not target.exists()
+
+
+def test_usb_guarded_recovery_restore_exact_baseline_is_noop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    baseline_content = _GUARDED_BASELINE_HPD
+    intended_content = _GUARDED_INTENDED_HPD
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+    ) = _usb_guarded_restore_fixture(
+        tmp_path,
+        baseline_content=baseline_content,
+        intended_content=intended_content,
+    )
+    target = (
+        favorites_directory
+        / "restore.hpd"
+    )
+
+    def forbidden_ftruncate(
+        descriptor: int,
+        length: int,
+    ) -> None:
+        raise AssertionError(
+            "exact baseline recovery must not truncate"
+        )
+
+    monkeypatch.setattr(
+        write_usb.os,
+        "ftruncate",
+        forbidden_ftruncate,
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        write_usb._restore_usb_active_managed_file(
+            preflight,
+            paths,
+            "restore.hpd",
+            baseline_content,
+            allowed_existing_content=intended_content,
+            allow_absent=False,
+        )
+
+    assert target.read_bytes() == baseline_content
+
+
+def test_usb_guarded_recovery_restore_rewrites_exact_allowed_existing_content(
+    tmp_path: Path,
+) -> None:
+    baseline_content = _GUARDED_BASELINE_HPD
+    intended_content = _GUARDED_INTENDED_HPD
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+    ) = _usb_guarded_restore_fixture(
+        tmp_path,
+        baseline_content=baseline_content,
+        intended_content=intended_content,
+    )
+    target = (
+        favorites_directory
+        / "restore.hpd"
+    )
+    target.write_bytes(
+        intended_content
+    )
+    target.chmod(
+        0o640
+    )
+    before_inode = target.stat().st_ino
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        write_usb._restore_usb_active_managed_file(
+            preflight,
+            paths,
+            "restore.hpd",
+            baseline_content,
+            allowed_existing_content=intended_content,
+            allow_absent=False,
+        )
+
+    assert target.read_bytes() == baseline_content
+    assert target.stat().st_ino == before_inode
+    assert (
+        target.stat().st_mode
+        & 0o777
+    ) == 0o640
+
+
+def test_usb_guarded_recovery_restore_refuses_unknown_existing_content(
+    tmp_path: Path,
+) -> None:
+    baseline_content = _GUARDED_BASELINE_HPD
+    intended_content = _GUARDED_INTENDED_HPD
+    unknown = b"external concurrent content"
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+    ) = _usb_guarded_restore_fixture(
+        tmp_path,
+        baseline_content=baseline_content,
+        intended_content=intended_content,
+    )
+    target = (
+        favorites_directory
+        / "restore.hpd"
+    )
+    target.write_bytes(
+        unknown
+    )
+
+    with (
+        write_usb._usb_host_operation_lock(
+            preflight,
+            host_root,
+        ) as paths,
+        pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="explicitly allowed operation-known state",
+        ) as raised,
+    ):
+        write_usb._restore_usb_active_managed_file(
+            preflight,
+            paths,
+            "restore.hpd",
+            baseline_content,
+            allowed_existing_content=intended_content,
+            allow_absent=False,
+        )
+
+    assert raised.value.mutation_started is False
+    assert target.read_bytes() == unknown
+
+
+def test_usb_guarded_recovery_restore_refuses_symlink_without_mutation(
+    tmp_path: Path,
+) -> None:
+    baseline_content = _GUARDED_BASELINE_HPD
+    intended_content = _GUARDED_INTENDED_HPD
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+    ) = _usb_guarded_restore_fixture(
+        tmp_path,
+        baseline_content=baseline_content,
+        intended_content=intended_content,
+    )
+    target = (
+        favorites_directory
+        / "restore.hpd"
+    )
+    target.unlink()
+    outside = tmp_path / "outside-guarded-restore"
+    outside.write_bytes(
+        intended_content
+    )
+    _symlink_or_skip(
+        target,
+        outside,
+    )
+
+    with (
+        write_usb._usb_host_operation_lock(
+            preflight,
+            host_root,
+        ) as paths,
+        pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="symbolic link",
+        ) as raised,
+    ):
+        write_usb._restore_usb_active_managed_file(
+            preflight,
+            paths,
+            "restore.hpd",
+            baseline_content,
+            allowed_existing_content=intended_content,
+            allow_absent=False,
+        )
+
+    assert raised.value.mutation_started is False
+    assert target.is_symlink()
+    assert outside.read_bytes() == intended_content
+
+
+def test_usb_guarded_recovery_restore_refuses_concurrent_path_replacement_before_truncate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    baseline_content = _GUARDED_BASELINE_HPD
+    intended_content = _GUARDED_INTENDED_HPD
+    concurrent = b"concurrent replacement"
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+    ) = _usb_guarded_restore_fixture(
+        tmp_path,
+        baseline_content=baseline_content,
+        intended_content=intended_content,
+    )
+    target = (
+        favorites_directory
+        / "restore.hpd"
+    )
+    target.write_bytes(
+        intended_content
+    )
+
+    real_open = write_usb.os.open
+    replaced = False
+
+    def replacing_open(
+        path: str | bytes | Path,
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal replaced
+        if (
+            Path(path) == target
+            and flags & write_usb.os.O_RDWR
+            == write_usb.os.O_RDWR
+            and not replaced
+        ):
+            replaced = True
+            target.unlink()
+            target.write_bytes(
+                concurrent
+            )
+
+        if dir_fd is None:
+            return real_open(
+                path,
+                flags,
+                mode,
+            )
+        return real_open(
+            path,
+            flags,
+            mode,
+            dir_fd=dir_fd,
+        )
+
+    monkeypatch.setattr(
+        write_usb.os,
+        "open",
+        replacing_open,
+    )
+
+    with (
+        write_usb._usb_host_operation_lock(
+            preflight,
+            host_root,
+        ) as paths,
+        pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="changed while being opened",
+        ) as raised,
+    ):
+        write_usb._restore_usb_active_managed_file(
+            preflight,
+            paths,
+            "restore.hpd",
+            baseline_content,
+            allowed_existing_content=intended_content,
+            allow_absent=False,
+        )
+
+    assert replaced
+    assert raised.value.mutation_started is False
+    assert target.read_bytes() == concurrent
+
+
+def test_usb_guarded_recovery_restore_refuses_same_inode_content_change_before_truncate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    baseline_content = _GUARDED_BASELINE_HPD
+    intended_content = _GUARDED_INTENDED_HPD
+    concurrent = b"same inode changed content"
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+    ) = _usb_guarded_restore_fixture(
+        tmp_path,
+        baseline_content=baseline_content,
+        intended_content=intended_content,
+    )
+    target = (
+        favorites_directory
+        / "restore.hpd"
+    )
+    target.write_bytes(
+        intended_content
+    )
+    original_inode = target.stat().st_ino
+
+    real_open = write_usb.os.open
+    changed = False
+
+    def changing_open(
+        path: str | bytes | Path,
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal changed
+        if (
+            Path(path) == target
+            and flags & write_usb.os.O_RDWR
+            == write_usb.os.O_RDWR
+            and not changed
+        ):
+            changed = True
+            target.write_bytes(
+                concurrent
+            )
+            assert target.stat().st_ino == original_inode
+
+        if dir_fd is None:
+            return real_open(
+                path,
+                flags,
+                mode,
+            )
+        return real_open(
+            path,
+            flags,
+            mode,
+            dir_fd=dir_fd,
+        )
+
+    monkeypatch.setattr(
+        write_usb.os,
+        "open",
+        changing_open,
+    )
+
+    with (
+        write_usb._usb_host_operation_lock(
+            preflight,
+            host_root,
+        ) as paths,
+        pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="changed while being opened|no longer contains",
+        ) as raised,
+    ):
+        write_usb._restore_usb_active_managed_file(
+            preflight,
+            paths,
+            "restore.hpd",
+            baseline_content,
+            allowed_existing_content=intended_content,
+            allow_absent=False,
+        )
+
+    assert changed
+    assert raised.value.mutation_started is False
+    assert target.stat().st_ino == original_inode
+    assert target.read_bytes() == concurrent
+
+
+def test_usb_guarded_recovery_restore_refuses_concurrent_creator_for_absent_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    baseline_content = _GUARDED_BASELINE_HPD
+    concurrent = b"concurrent creator"
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+    ) = _usb_guarded_restore_fixture(
+        tmp_path,
+        baseline_content=baseline_content,
+        intended_content=None,
+    )
+    target = (
+        favorites_directory
+        / "restore.hpd"
+    )
+    target.unlink()
+
+    real_open = write_usb.os.open
+    created = False
+
+    def racing_open(
+        path: str | bytes | Path,
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal created
+        if (
+            Path(path) == target
+            and flags & write_usb.os.O_CREAT
+            and flags & write_usb.os.O_EXCL
+            and not created
+        ):
+            created = True
+            target.write_bytes(
+                concurrent
+            )
+
+        if dir_fd is None:
+            return real_open(
+                path,
+                flags,
+                mode,
+            )
+        return real_open(
+            path,
+            flags,
+            mode,
+            dir_fd=dir_fd,
+        )
+
+    monkeypatch.setattr(
+        write_usb.os,
+        "open",
+        racing_open,
+    )
+
+    with (
+        write_usb._usb_host_operation_lock(
+            preflight,
+            host_root,
+        ) as paths,
+        pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="exclusively create",
+        ) as raised,
+    ):
+        write_usb._restore_usb_active_managed_file(
+            preflight,
+            paths,
+            "restore.hpd",
+            baseline_content,
+            allowed_existing_content=None,
+            allow_absent=True,
+        )
+
+    assert created
+    assert raised.value.mutation_started is False
+    assert target.read_bytes() == concurrent
+
+
+def test_usb_guarded_recovery_restore_marks_truncate_failure_as_mutation_started(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    baseline_content = _GUARDED_BASELINE_HPD
+    intended_content = _GUARDED_INTENDED_HPD
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+    ) = _usb_guarded_restore_fixture(
+        tmp_path,
+        baseline_content=baseline_content,
+        intended_content=intended_content,
+    )
+    target = (
+        favorites_directory
+        / "restore.hpd"
+    )
+    target.write_bytes(
+        intended_content
+    )
+
+    real_ftruncate = write_usb.os.ftruncate
+
+    def failing_ftruncate(
+        descriptor: int,
+        length: int,
+    ) -> None:
+        real_ftruncate(
+            descriptor,
+            length,
+        )
+        raise OSError(
+            "injected post-truncate failure"
+        )
+
+    monkeypatch.setattr(
+        write_usb.os,
+        "ftruncate",
+        failing_ftruncate,
+    )
+
+    with (
+        write_usb._usb_host_operation_lock(
+            preflight,
+            host_root,
+        ) as paths,
+        pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="truncate guarded USB recovery target",
+        ) as raised,
+    ):
+        write_usb._restore_usb_active_managed_file(
+            preflight,
+            paths,
+            "restore.hpd",
+            baseline_content,
+            allowed_existing_content=intended_content,
+            allow_absent=False,
+        )
+
+    assert raised.value.mutation_started is True
+    assert target.read_bytes() == b""

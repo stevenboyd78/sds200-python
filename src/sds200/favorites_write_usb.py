@@ -3672,6 +3672,633 @@ def _read_usb_activation_regular_file(
         )
 
 
+def _read_usb_recovery_descriptor_content(
+    descriptor: int,
+    path: Path,
+) -> bytes:
+    if not isinstance(
+        descriptor,
+        int,
+    ):
+        raise TypeError(
+            "Favorites USB recovery descriptor must be int."
+        )
+    if not isinstance(
+        path,
+        Path,
+    ):
+        raise TypeError(
+            "Favorites USB recovery descriptor path must be pathlib.Path."
+        )
+
+    try:
+        os.lseek(
+            descriptor,
+            0,
+            os.SEEK_SET,
+        )
+        chunks: list[bytes] = []
+        while True:
+            chunk = os.read(
+                descriptor,
+                1024 * 1024,
+            )
+            if not chunk:
+                break
+            chunks.append(
+                chunk
+            )
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            path,
+            f"Could not read guarded USB recovery descriptor: {error}",
+        ) from error
+
+    return b"".join(
+        chunks
+    )
+
+
+def _write_usb_recovery_descriptor_content(
+    descriptor: int,
+    path: Path,
+    content: bytes,
+) -> None:
+    if not isinstance(
+        descriptor,
+        int,
+    ):
+        raise TypeError(
+            "Favorites USB recovery descriptor must be int."
+        )
+    if not isinstance(
+        path,
+        Path,
+    ):
+        raise TypeError(
+            "Favorites USB recovery descriptor path must be pathlib.Path."
+        )
+    if not isinstance(
+        content,
+        bytes,
+    ):
+        raise TypeError(
+            "Favorites USB recovery descriptor content must be bytes."
+        )
+
+    try:
+        os.lseek(
+            descriptor,
+            0,
+            os.SEEK_SET,
+        )
+        offset = 0
+        while offset < len(content):
+            written = os.write(
+                descriptor,
+                content[offset:],
+            )
+            if written <= 0:
+                raise OSError(
+                    "zero-byte guarded USB recovery write"
+                )
+            offset += written
+
+        os.fsync(
+            descriptor
+        )
+    except OSError as error:
+        raise _FavoritesUsbMediaMutationError(
+            path,
+            f"Could not write guarded USB recovery content: {error}",
+            mutation_started=True,
+        ) from error
+
+
+def _restore_usb_active_managed_file(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    filename: str,
+    baseline_content: bytes,
+    *,
+    allowed_existing_content: bytes | None,
+    allow_absent: bool,
+) -> None:
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB guarded recovery restore requires "
+            "FavoritesUsbWritePreflight."
+        )
+    if not isinstance(
+        baseline_content,
+        bytes,
+    ):
+        raise TypeError(
+            "Favorites USB guarded recovery baseline content must be bytes."
+        )
+    if (
+        allowed_existing_content is not None
+        and not isinstance(
+            allowed_existing_content,
+            bytes,
+        )
+    ):
+        raise TypeError(
+            "Favorites USB guarded recovery allowed existing content must be "
+            "bytes or None."
+        )
+    if type(allow_absent) is not bool:
+        raise TypeError(
+            "Favorites USB guarded recovery absent-target flag must be bool."
+        )
+
+    filename = (
+        _require_usb_managed_activation_filename(
+            filename
+        )
+    )
+    _require_host_operation_paths_match_preflight(
+        preflight,
+        paths,
+    )
+    _require_active_usb_host_lock(
+        paths
+    )
+    _require_usb_activation_filesystem(
+        preflight
+    )
+
+    no_follow = getattr(
+        os,
+        "O_NOFOLLOW",
+        None,
+    )
+    if (
+        not isinstance(
+            no_follow,
+            int,
+        )
+        or no_follow == 0
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            preflight.qualification.favorites_directory,
+            "Guarded USB recovery requires O_NOFOLLOW support.",
+        )
+
+    root = (
+        preflight.qualification.favorites_directory
+    )
+    target = root / filename
+    binary = getattr(
+        os,
+        "O_BINARY",
+        0,
+    )
+
+    try:
+        initial = target.lstat()
+    except FileNotFoundError:
+        if not allow_absent:
+            raise _FavoritesUsbMediaMutationError(
+                target,
+                "Guarded USB recovery target is absent but absence is not "
+                "allowed for this restore.",
+                mutation_started=False,
+            ) from None
+
+        flags = (
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | no_follow
+            | binary
+        )
+        try:
+            descriptor = os.open(
+                target,
+                flags,
+                0o600,
+            )
+        except OSError as error:
+            raise _FavoritesUsbMediaMutationError(
+                target,
+                "Could not exclusively create absent guarded USB recovery "
+                f"target: {error}",
+                mutation_started=False,
+            ) from error
+
+        mutation_started = True
+        opened: os.stat_result | None = None
+        try:
+            try:
+                opened = os.fstat(
+                    descriptor
+                )
+            except OSError as error:
+                raise _FavoritesUsbMediaMutationError(
+                    target,
+                    "Could not inspect newly created guarded USB recovery "
+                    f"target: {error}",
+                    mutation_started=True,
+                ) from error
+
+            if not stat.S_ISREG(
+                opened.st_mode
+            ):
+                raise _FavoritesUsbMediaMutationError(
+                    target,
+                    "New guarded USB recovery target is not a regular file.",
+                    mutation_started=True,
+                )
+
+            try:
+                current_path = target.lstat()
+            except OSError as error:
+                raise _FavoritesUsbMediaMutationError(
+                    target,
+                    "Could not re-inspect newly created guarded USB recovery "
+                    f"target: {error}",
+                    mutation_started=True,
+                ) from error
+
+            if (
+                current_path.st_dev,
+                current_path.st_ino,
+            ) != (
+                opened.st_dev,
+                opened.st_ino,
+            ):
+                raise _FavoritesUsbMediaMutationError(
+                    target,
+                    "New guarded USB recovery target pathname changed before "
+                    "content write.",
+                    mutation_started=True,
+                )
+
+            _write_usb_recovery_descriptor_content(
+                descriptor,
+                target,
+                baseline_content,
+            )
+
+            try:
+                written = os.fstat(
+                    descriptor
+                )
+            except OSError as error:
+                raise _FavoritesUsbMediaMutationError(
+                    target,
+                    "Could not inspect newly restored USB recovery target: "
+                    f"{error}",
+                    mutation_started=True,
+                ) from error
+
+            if (
+                not stat.S_ISREG(
+                    written.st_mode
+                )
+                or (
+                    written.st_dev,
+                    written.st_ino,
+                )
+                != (
+                    opened.st_dev,
+                    opened.st_ino,
+                )
+            ):
+                raise _FavoritesUsbMediaMutationError(
+                    target,
+                    "New guarded USB recovery target identity changed during "
+                    "content write.",
+                    mutation_started=True,
+                )
+        finally:
+            with suppress(OSError):
+                os.close(
+                    descriptor
+                )
+
+        assert mutation_started
+        assert opened is not None
+        expected_identity = (
+            opened.st_dev,
+            opened.st_ino,
+        )
+    except OSError as error:
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            f"Could not inspect guarded USB recovery target: {error}",
+            mutation_started=False,
+        ) from error
+    else:
+        if stat.S_ISLNK(
+            initial.st_mode
+        ):
+            raise _FavoritesUsbMediaMutationError(
+                target,
+                "Guarded USB recovery target must not be a symbolic link.",
+                mutation_started=False,
+            )
+        if not stat.S_ISREG(
+            initial.st_mode
+        ):
+            raise _FavoritesUsbMediaMutationError(
+                target,
+                "Guarded USB recovery target must be a regular file.",
+                mutation_started=False,
+            )
+
+        try:
+            observed_content = (
+                _read_usb_activation_regular_file(
+                    target
+                )
+            )
+        except _FavoritesUsbWritePreparationError as error:
+            raise _FavoritesUsbMediaMutationError(
+                error.path,
+                error.message,
+                mutation_started=False,
+            ) from error
+
+        try:
+            observed = target.lstat()
+        except OSError as error:
+            raise _FavoritesUsbMediaMutationError(
+                target,
+                "Could not re-inspect guarded USB recovery target before "
+                f"state classification: {error}",
+                mutation_started=False,
+            ) from error
+
+        if (
+            _usb_recovery_artifact_fingerprint(
+                observed
+            )
+            != _usb_recovery_artifact_fingerprint(
+                initial
+            )
+        ):
+            raise _FavoritesUsbMediaMutationError(
+                target,
+                "Guarded USB recovery target changed during state "
+                "classification.",
+                mutation_started=False,
+            )
+
+        if observed_content == baseline_content:
+            return
+
+        if (
+            allowed_existing_content is None
+            or observed_content
+            != allowed_existing_content
+        ):
+            raise _FavoritesUsbMediaMutationError(
+                target,
+                "Guarded USB recovery target does not contain an explicitly "
+                "allowed operation-known state.",
+                mutation_started=False,
+            )
+
+        flags = (
+            os.O_RDWR
+            | no_follow
+            | binary
+        )
+        try:
+            descriptor = os.open(
+                target,
+                flags,
+            )
+        except OSError as error:
+            raise _FavoritesUsbMediaMutationError(
+                target,
+                "Could not open guarded USB recovery target without "
+                f"truncation: {error}",
+                mutation_started=False,
+            ) from error
+
+        mutation_started = False
+        opened = None
+        try:
+            try:
+                opened = os.fstat(
+                    descriptor
+                )
+            except OSError as error:
+                raise _FavoritesUsbMediaMutationError(
+                    target,
+                    "Could not inspect opened guarded USB recovery target: "
+                    f"{error}",
+                    mutation_started=False,
+                ) from error
+
+            if not stat.S_ISREG(
+                opened.st_mode
+            ):
+                raise _FavoritesUsbMediaMutationError(
+                    target,
+                    "Opened guarded USB recovery target is not a regular file.",
+                    mutation_started=False,
+                )
+
+            if (
+                _usb_recovery_artifact_fingerprint(
+                    opened
+                )
+                != _usb_recovery_artifact_fingerprint(
+                    observed
+                )
+            ):
+                raise _FavoritesUsbMediaMutationError(
+                    target,
+                    "Guarded USB recovery target changed while being opened "
+                    "for restoration.",
+                    mutation_started=False,
+                )
+
+            try:
+                descriptor_content = (
+                    _read_usb_recovery_descriptor_content(
+                        descriptor,
+                        target,
+                    )
+                )
+            except _FavoritesUsbWritePreparationError as error:
+                raise _FavoritesUsbMediaMutationError(
+                    error.path,
+                    error.message,
+                    mutation_started=False,
+                ) from error
+
+            try:
+                verified_opened = os.fstat(
+                    descriptor
+                )
+            except OSError as error:
+                raise _FavoritesUsbMediaMutationError(
+                    target,
+                    "Could not re-inspect opened guarded USB recovery target "
+                    f"before mutation: {error}",
+                    mutation_started=False,
+                ) from error
+
+            if (
+                _usb_recovery_artifact_fingerprint(
+                    verified_opened
+                )
+                != _usb_recovery_artifact_fingerprint(
+                    opened
+                )
+                or descriptor_content
+                != allowed_existing_content
+            ):
+                raise _FavoritesUsbMediaMutationError(
+                    target,
+                    "Opened guarded USB recovery target no longer contains "
+                    "the exact allowed operation-known state.",
+                    mutation_started=False,
+                )
+
+            mutation_started = True
+            try:
+                os.ftruncate(
+                    descriptor,
+                    0,
+                )
+            except OSError as error:
+                raise _FavoritesUsbMediaMutationError(
+                    target,
+                    f"Could not truncate guarded USB recovery target: {error}",
+                    mutation_started=True,
+                ) from error
+
+            _write_usb_recovery_descriptor_content(
+                descriptor,
+                target,
+                baseline_content,
+            )
+
+            try:
+                written = os.fstat(
+                    descriptor
+                )
+            except OSError as error:
+                raise _FavoritesUsbMediaMutationError(
+                    target,
+                    "Could not inspect guarded USB recovery target after "
+                    f"rewrite: {error}",
+                    mutation_started=True,
+                ) from error
+
+            if (
+                not stat.S_ISREG(
+                    written.st_mode
+                )
+                or (
+                    written.st_dev,
+                    written.st_ino,
+                )
+                != (
+                    opened.st_dev,
+                    opened.st_ino,
+                )
+            ):
+                raise _FavoritesUsbMediaMutationError(
+                    target,
+                    "Guarded USB recovery file identity changed during "
+                    "in-place rewrite.",
+                    mutation_started=True,
+                )
+        finally:
+            with suppress(OSError):
+                os.close(
+                    descriptor
+                )
+
+        assert mutation_started
+        assert opened is not None
+        expected_identity = (
+            opened.st_dev,
+            opened.st_ino,
+        )
+
+    try:
+        final_before = target.lstat()
+    except OSError as error:
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Could not inspect guarded USB recovery target for final "
+            f"readback: {error}",
+            mutation_started=True,
+        ) from error
+
+    if (
+        final_before.st_dev,
+        final_before.st_ino,
+    ) != expected_identity:
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Guarded USB recovery target pathname no longer identifies "
+            "the restored file.",
+            mutation_started=True,
+        )
+
+    try:
+        final_content = (
+            _read_usb_activation_regular_file(
+                target
+            )
+        )
+    except _FavoritesUsbWritePreparationError as error:
+        raise _FavoritesUsbMediaMutationError(
+            error.path,
+            error.message,
+            mutation_started=True,
+        ) from error
+
+    try:
+        final_after = target.lstat()
+    except OSError as error:
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Could not complete guarded USB recovery target readback: "
+            f"{error}",
+            mutation_started=True,
+        ) from error
+
+    if (
+        _usb_recovery_artifact_fingerprint(
+            final_after
+        )
+        != _usb_recovery_artifact_fingerprint(
+            final_before
+        )
+        or (
+            final_after.st_dev,
+            final_after.st_ino,
+        )
+        != expected_identity
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Guarded USB recovery target changed during final exact "
+            "readback.",
+            mutation_started=True,
+        )
+
+    if final_content != baseline_content:
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Guarded USB recovery target failed exact baseline readback.",
+            mutation_started=True,
+        )
+
+
 def _replace_usb_active_managed_file(
     preflight: FavoritesUsbWritePreflight,
     paths: _FavoritesUsbHostOperationPaths,
