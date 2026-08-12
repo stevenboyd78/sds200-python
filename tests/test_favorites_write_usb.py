@@ -2867,6 +2867,8 @@ def test_usb_active_file_replace_surfaces_post_replace_readback_failure(
         / "f_list.cfg"
     ).read_bytes() == _CHANGED_CATALOG
 
+    assert raised.value.recovery_artifact is None
+
 
 def test_usb_active_hpd_delete_removes_exact_file_and_preserves_unmanaged(
     tmp_path: Path,
@@ -3189,6 +3191,8 @@ def test_usb_active_hpd_delete_restores_when_post_move_verification_disagrees(
     assert raised.value.mutation_started is True
     assert target.read_bytes() == hpd
 
+    assert raised.value.recovery_artifact is None
+
 
 def test_usb_active_hpd_delete_retains_bounded_artifact_when_unlink_fails(
     tmp_path: Path,
@@ -3280,6 +3284,16 @@ def test_usb_active_hpd_delete_retains_bounded_artifact_when_unlink_fails(
     assert not target.exists()
     assert bounded is not None
     assert bounded.read_bytes() == hpd
+
+    artifact = raised.value.recovery_artifact
+    assert artifact is not None
+    assert artifact.path == bounded
+    assert artifact.managed_filename == "remove.hpd"
+    assert artifact.content_sha256 == (
+        write_usb._usb_media_content_sha256(
+            hpd
+        )
+    )
 
 
 def test_usb_preflight_retains_exact_unmanaged_tree_identity(
@@ -4270,3 +4284,52 @@ def test_usb_recovery_plan_rejects_backup_snapshot_not_exact_baseline(
                 preflight,
                 mismatched,
             )
+
+
+def test_usb_media_recovery_artifact_rejects_catalog_identity(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="lowercase-.hpd",
+    ):
+        write_usb._FavoritesUsbMediaRecoveryArtifact(
+            path=(
+                tmp_path.resolve()
+                / ".sds200-usb-write-owned.tmp"
+            ),
+            managed_filename="f_list.cfg",
+            content_sha256="0" * 64,
+        )
+
+
+def test_usb_media_recovery_artifact_rejects_invalid_digest(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="SHA-256",
+    ):
+        write_usb._FavoritesUsbMediaRecoveryArtifact(
+            path=(
+                tmp_path.resolve()
+                / ".sds200-usb-write-owned.tmp"
+            ),
+            managed_filename="owned.hpd",
+            content_sha256="not-a-digest",
+        )
+
+
+def test_usb_media_mutation_error_rejects_invalid_recovery_artifact(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(
+        TypeError,
+        match="recovery artifact",
+    ):
+        write_usb._FavoritesUsbMediaMutationError(
+            tmp_path.resolve(),
+            "failure",
+            mutation_started=True,
+            recovery_artifact=object(),  # type: ignore[arg-type]
+        )

@@ -2315,6 +2315,58 @@ _USB_SUPPORTED_ACTIVATION_FILESYSTEMS = frozenset(
 _USB_MEDIA_TEMP_PREFIX = ".sds200-usb-write-"
 
 
+@dataclass(frozen=True, slots=True)
+class _FavoritesUsbMediaRecoveryArtifact:
+    path: Path
+    managed_filename: str
+    content_sha256: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(
+            self.path,
+            Path,
+        ):
+            raise TypeError(
+                "Favorites USB media recovery artifact path must be pathlib.Path."
+            )
+        if not self.path.is_absolute():
+            raise ValueError(
+                "Favorites USB media recovery artifact path must be absolute."
+            )
+
+        checked_filename = (
+            _require_usb_managed_activation_filename(
+                self.managed_filename
+            )
+        )
+        if checked_filename == "f_list.cfg":
+            raise ValueError(
+                "Favorites USB media recovery artifact may identify only "
+                "a lowercase-.hpd managed filename."
+            )
+
+        _validate_unmanaged_sha256(
+            self.content_sha256,
+            label="Favorites USB media recovery artifact content SHA-256",
+        )
+
+
+def _usb_media_content_sha256(
+    content: bytes,
+) -> str:
+    if not isinstance(
+        content,
+        bytes,
+    ):
+        raise TypeError(
+            "Favorites USB media recovery artifact content must be bytes."
+        )
+
+    return hashlib.sha256(
+        content
+    ).hexdigest()
+
+
 class _FavoritesUsbMediaMutationError(RuntimeError):
     def __init__(
         self,
@@ -2322,6 +2374,7 @@ class _FavoritesUsbMediaMutationError(RuntimeError):
         message: str,
         *,
         mutation_started: bool,
+        recovery_artifact: _FavoritesUsbMediaRecoveryArtifact | None = None,
     ) -> None:
         if not isinstance(
             path,
@@ -2342,8 +2395,21 @@ class _FavoritesUsbMediaMutationError(RuntimeError):
                 "Favorites USB media-mutation started flag must be bool."
             )
 
+        if (
+            recovery_artifact is not None
+            and not isinstance(
+                recovery_artifact,
+                _FavoritesUsbMediaRecoveryArtifact,
+            )
+        ):
+            raise TypeError(
+                "Favorites USB media-mutation recovery artifact must be "
+                "_FavoritesUsbMediaRecoveryArtifact or None."
+            )
+
         self.path = path
         self.message = message
+        self.recovery_artifact = recovery_artifact
         self.mutation_started = mutation_started
 
         super().__init__(
@@ -3639,6 +3705,18 @@ def _delete_usb_active_managed_hpd(
                 mutation_started=True,
             )
 
+        recovery_artifact = (
+            _FavoritesUsbMediaRecoveryArtifact(
+                path=temporary,
+                managed_filename=filename,
+                content_sha256=(
+                    _usb_media_content_sha256(
+                        expected_content
+                    )
+                ),
+            )
+        )
+
         try:
             temporary.unlink()
         except OSError as error:
@@ -3646,6 +3724,7 @@ def _delete_usb_active_managed_hpd(
                 temporary,
                 f"Could not finalize active HPD deletion: {error}",
                 mutation_started=True,
+                recovery_artifact=recovery_artifact,
             ) from error
     except BaseException:
         # A successful move means active media has changed even when a later
