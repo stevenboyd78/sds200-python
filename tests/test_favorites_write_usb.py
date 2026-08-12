@@ -552,3 +552,408 @@ def test_complete_tree_change_during_preflight_is_stale(
         is FavoritesUsbWritePreflightReason.TARGET_STALE
     )
     assert "complete-tree identity changed" in raised.value.message
+
+
+def test_usb_target_lock_key_binds_mount_and_device_identity(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    plan = plan_favorites_write(
+        _snapshot(),
+        _snapshot(_CHANGED_CATALOG),
+    )
+    first = preflight_favorites_usb_write(
+        plan,
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+
+    first_key = (
+        write_usb._usb_target_lock_key(
+            first
+        )
+    )
+
+    assert len(first_key) == 64
+    assert first_key == write_usb._usb_target_lock_key(
+        first
+    )
+
+    current = mountinfo.read_text(
+        encoding="utf-8"
+    )
+    mountinfo.write_text(
+        current.replace(
+            "900 1 ",
+            "901 1 ",
+        ).replace(
+            "/dev/test-900",
+            "/dev/test-901",
+        ),
+        encoding="utf-8",
+    )
+    second = preflight_favorites_usb_write(
+        plan,
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+
+    assert (
+        write_usb._usb_target_lock_key(
+            second
+        )
+        != first_key
+    )
+
+
+def test_usb_operation_id_binds_plan_and_complete_tree(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    first = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(_CHANGED_CATALOG),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    first_id = (
+        write_usb._usb_operation_id(
+            first
+        )
+    )
+
+    assert len(first_id) == 64
+    assert first_id == write_usb._usb_operation_id(
+        first
+    )
+
+    (
+        favorites_directory
+        / "unmanaged.bin"
+    ).write_bytes(
+        b"new unmanaged material"
+    )
+    second = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(_CHANGED_CATALOG),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+
+    assert (
+        write_usb._usb_operation_id(
+            second
+        )
+        != first_id
+    )
+
+
+def test_usb_host_operation_paths_are_outside_scanner_storage(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(_CHANGED_CATALOG),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+
+    paths = write_usb._usb_host_operation_paths(
+        preflight,
+        host_root,
+    )
+
+    assert paths.root_directory == host_root
+    assert paths.locks_directory == (
+        host_root / "locks"
+    )
+    assert paths.lock_directory.parent == (
+        host_root / "locks"
+    )
+    assert paths.operations_directory == (
+        host_root / "operations"
+    )
+    assert paths.operation_directory == (
+        paths.operations_directory
+        / paths.operation_id
+    )
+    assert paths.backup_directory == (
+        paths.operation_directory
+        / "backup"
+    )
+    assert paths.staging_directory == (
+        paths.operation_directory
+        / "staging"
+    )
+    assert paths.rollback_manifest_path == (
+        paths.operation_directory
+        / "rollback.json"
+    )
+    assert paths.operation_report_path == (
+        paths.operation_directory
+        / "report.json"
+    )
+    assert paths.failure_report_path == (
+        paths.operation_directory
+        / "failure.json"
+    )
+    assert not host_root.exists()
+
+
+def test_usb_host_operation_paths_reject_scanner_volume(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(_CHANGED_CATALOG),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    unsafe = (
+        mount_directory
+        / ".sdsctl-state"
+    )
+
+    with pytest.raises(
+        write_usb._FavoritesUsbWritePreparationError,
+        match="outside scanner storage",
+    ):
+        write_usb._usb_host_operation_paths(
+            preflight,
+            unsafe,
+        )
+
+    assert not unsafe.exists()
+
+
+def test_usb_host_operation_lock_is_private_and_exclusive(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(_CHANGED_CATALOG),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        assert paths.root_directory.is_dir()
+        assert paths.locks_directory.is_dir()
+        assert paths.lock_directory.is_dir()
+        assert (
+            paths.root_directory.stat().st_mode
+            & 0o777
+        ) == 0o700
+        assert (
+            paths.locks_directory.stat().st_mode
+            & 0o777
+        ) == 0o700
+        assert (
+            paths.lock_directory.stat().st_mode
+            & 0o777
+        ) == 0o700
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="already be active",
+        ), write_usb._usb_host_operation_lock(
+            preflight,
+            host_root,
+        ):
+            pytest.fail(
+                "second USB host operation lock unexpectedly succeeded"
+            )
+
+    assert not paths.lock_directory.exists()
+    assert paths.root_directory.is_dir()
+    assert paths.locks_directory.is_dir()
+    assert not paths.operations_directory.exists()
+
+
+def test_existing_usb_host_operation_lock_fails_closed(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(_CHANGED_CATALOG),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+    paths = write_usb._usb_host_operation_paths(
+        preflight,
+        host_root,
+    )
+    paths.lock_directory.mkdir(
+        parents=True
+    )
+
+    with pytest.raises(
+        write_usb._FavoritesUsbWritePreparationError,
+        match="already be active",
+    ), write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ):
+        pytest.fail(
+            "existing USB host lock unexpectedly allowed another operation"
+        )
+
+    assert paths.lock_directory.is_dir()
+
+
+def test_usb_host_operation_lock_detects_disappearance(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(_CHANGED_CATALOG),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+
+    with pytest.raises(
+        write_usb._FavoritesUsbWritePreparationError,
+        match="disappeared before release",
+    ), write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        paths.lock_directory.rmdir()
+
+
+def test_usb_host_state_root_rejects_symlink(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(_CHANGED_CATALOG),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    real_root = tmp_path / "real-host-root"
+    real_root.mkdir()
+    alias = tmp_path / "host-root-alias"
+    _symlink_or_skip(
+        alias,
+        real_root,
+    )
+
+    with pytest.raises(
+        write_usb._FavoritesUsbWritePreparationError,
+        match="canonical",
+    ):
+        write_usb._usb_host_operation_paths(
+            preflight,
+            alias,
+        )
