@@ -5514,3 +5514,491 @@ def test_usb_guarded_recovery_restore_marks_truncate_failure_as_mutation_started
 
     assert raised.value.mutation_started is True
     assert target.read_bytes() == b""
+
+
+def _usb_verified_recovery_cleanup_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[
+    write_usb.FavoritesUsbWritePreflight,
+    write_usb._FavoritesUsbHostOperationPaths,
+    write_usb._FavoritesUsbVerifiedBackup,
+    write_usb._FavoritesUsbVerifiedRecoveryArtifact,
+    Path,
+    Path,
+    bytes,
+    object,
+]:
+    (
+        preflight,
+        paths,
+        backup,
+        artifact,
+        temporary,
+        hpd,
+        lock,
+    ) = _usb_recovery_artifact_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+
+    target = (
+        preflight.qualification.favorites_directory
+        / artifact.managed_filename
+    )
+    write_usb._restore_usb_active_managed_file(
+        preflight,
+        paths,
+        artifact.managed_filename,
+        hpd,
+        allowed_existing_content=None,
+        allow_absent=True,
+    )
+    verified = (
+        write_usb._require_current_usb_recovery_artifact(
+            preflight,
+            paths,
+            backup,
+            artifact,
+        )
+    )
+
+    assert target.read_bytes() == hpd
+    assert temporary.read_bytes() == hpd
+
+    return (
+        preflight,
+        paths,
+        backup,
+        verified,
+        target,
+        temporary,
+        hpd,
+        lock,
+    )
+
+
+def test_usb_verified_recovery_artifact_cleanup_removes_exact_artifact_after_baseline_restore(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        backup,
+        verified,
+        target,
+        temporary,
+        hpd,
+        lock,
+    ) = _usb_verified_recovery_cleanup_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    target_before = target.stat()
+
+    try:
+        write_usb._cleanup_verified_usb_recovery_artifact(
+            preflight,
+            paths,
+            backup,
+            verified,
+        )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+    assert target.read_bytes() == hpd
+    assert target.stat().st_ino == target_before.st_ino
+    assert not write_usb.os.path.lexists(
+        temporary
+    )
+
+
+def test_usb_verified_recovery_artifact_cleanup_refuses_missing_baseline_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        backup,
+        verified,
+        target,
+        temporary,
+        hpd,
+        lock,
+    ) = _usb_verified_recovery_cleanup_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    write_usb.os.unlink(
+        target
+    )
+
+    try:
+        with pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="restored baseline HPD",
+        ) as raised:
+            write_usb._cleanup_verified_usb_recovery_artifact(
+                preflight,
+                paths,
+                backup,
+                verified,
+            )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+    assert raised.value.mutation_started is False
+    assert not target.exists()
+    assert temporary.read_bytes() == hpd
+
+
+def test_usb_verified_recovery_artifact_cleanup_refuses_nonbaseline_target_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        backup,
+        verified,
+        target,
+        temporary,
+        hpd,
+        lock,
+    ) = _usb_verified_recovery_cleanup_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    target.write_bytes(
+        b"external target bytes"
+    )
+
+    try:
+        with pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="baseline HPD is restored exactly",
+        ) as raised:
+            write_usb._cleanup_verified_usb_recovery_artifact(
+                preflight,
+                paths,
+                backup,
+                verified,
+            )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+    assert raised.value.mutation_started is False
+    assert target.read_bytes() == b"external target bytes"
+    assert temporary.read_bytes() == hpd
+
+
+def test_usb_verified_recovery_artifact_cleanup_refuses_replaced_artifact_inode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        backup,
+        verified,
+        target,
+        temporary,
+        hpd,
+        lock,
+    ) = _usb_verified_recovery_cleanup_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    old_inode = temporary.stat().st_ino
+    write_usb.os.unlink(
+        temporary
+    )
+    temporary.write_bytes(
+        hpd
+    )
+    new_inode = temporary.stat().st_ino
+
+    try:
+        with pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="previously verified artifact identity",
+        ) as raised:
+            write_usb._cleanup_verified_usb_recovery_artifact(
+                preflight,
+                paths,
+                backup,
+                verified,
+            )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+    assert old_inode != new_inode
+    assert raised.value.mutation_started is False
+    assert target.read_bytes() == hpd
+    assert temporary.read_bytes() == hpd
+
+
+def test_usb_verified_recovery_artifact_cleanup_refuses_artifact_content_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        backup,
+        verified,
+        target,
+        temporary,
+        hpd,
+        lock,
+    ) = _usb_verified_recovery_cleanup_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    replacement = b"changed recovery artifact"
+    temporary.write_bytes(
+        replacement
+    )
+
+    try:
+        with pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="revalidate verified USB recovery artifact",
+        ) as raised:
+            write_usb._cleanup_verified_usb_recovery_artifact(
+                preflight,
+                paths,
+                backup,
+                verified,
+            )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+    assert raised.value.mutation_started is False
+    assert target.read_bytes() == hpd
+    assert temporary.read_bytes() == replacement
+
+
+def test_usb_verified_recovery_artifact_cleanup_refuses_symlink_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        backup,
+        verified,
+        target,
+        temporary,
+        hpd,
+        lock,
+    ) = _usb_verified_recovery_cleanup_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    write_usb.os.unlink(
+        temporary
+    )
+    outside = tmp_path / "outside-cleanup-artifact"
+    outside.write_bytes(
+        hpd
+    )
+    _symlink_or_skip(
+        temporary,
+        outside,
+    )
+
+    try:
+        with pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="revalidate verified USB recovery artifact",
+        ) as raised:
+            write_usb._cleanup_verified_usb_recovery_artifact(
+                preflight,
+                paths,
+                backup,
+                verified,
+            )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+    assert raised.value.mutation_started is False
+    assert target.read_bytes() == hpd
+    assert temporary.is_symlink()
+    assert outside.read_bytes() == hpd
+
+
+def test_usb_verified_recovery_artifact_cleanup_marks_unlink_failure_as_mutation_started(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        backup,
+        verified,
+        target,
+        temporary,
+        hpd,
+        lock,
+    ) = _usb_verified_recovery_cleanup_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    real_unlink = write_usb.os.unlink
+
+    def failing_unlink(
+        path: str | bytes | Path,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        if Path(path) == temporary:
+            raise OSError(
+                "injected cleanup unlink failure"
+            )
+        if dir_fd is None:
+            real_unlink(
+                path
+            )
+        else:
+            real_unlink(
+                path,
+                dir_fd=dir_fd,
+            )
+
+    monkeypatch.setattr(
+        write_usb.os,
+        "unlink",
+        failing_unlink,
+    )
+
+    try:
+        with pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="clean verified USB recovery artifact",
+        ) as raised:
+            write_usb._cleanup_verified_usb_recovery_artifact(
+                preflight,
+                paths,
+                backup,
+                verified,
+            )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+    assert raised.value.mutation_started is True
+    assert target.read_bytes() == hpd
+    assert temporary.read_bytes() == hpd
+
+
+def test_usb_verified_recovery_artifact_cleanup_does_not_delete_postunlink_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        backup,
+        verified,
+        target,
+        temporary,
+        hpd,
+        lock,
+    ) = _usb_verified_recovery_cleanup_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    replacement = b"post-unlink replacement"
+    real_unlink = write_usb.os.unlink
+    replaced = False
+
+    def replacing_unlink(
+        path: str | bytes | Path,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        nonlocal replaced
+        if Path(path) == temporary and not replaced:
+            replaced = True
+            if dir_fd is None:
+                real_unlink(
+                    path
+                )
+            else:
+                real_unlink(
+                    path,
+                    dir_fd=dir_fd,
+                )
+            temporary.write_bytes(
+                replacement
+            )
+            return
+
+        if dir_fd is None:
+            real_unlink(
+                path
+            )
+        else:
+            real_unlink(
+                path,
+                dir_fd=dir_fd,
+            )
+
+    monkeypatch.setattr(
+        write_usb.os,
+        "unlink",
+        replacing_unlink,
+    )
+
+    try:
+        with pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="replacement may have appeared",
+        ) as raised:
+            write_usb._cleanup_verified_usb_recovery_artifact(
+                preflight,
+                paths,
+                backup,
+                verified,
+            )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+    assert replaced
+    assert raised.value.mutation_started is True
+    assert target.read_bytes() == hpd
+    assert temporary.read_bytes() == replacement

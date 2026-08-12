@@ -3529,6 +3529,396 @@ def _require_current_usb_recovery_artifact(
     )
 
 
+def _cleanup_verified_usb_recovery_artifact(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    backup: _FavoritesUsbVerifiedBackup,
+    verified_artifact: _FavoritesUsbVerifiedRecoveryArtifact,
+) -> None:
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB recovery-artifact cleanup requires "
+            "FavoritesUsbWritePreflight."
+        )
+    if not isinstance(
+        backup,
+        _FavoritesUsbVerifiedBackup,
+    ):
+        raise TypeError(
+            "Favorites USB recovery-artifact cleanup requires "
+            "_FavoritesUsbVerifiedBackup."
+        )
+    if not isinstance(
+        verified_artifact,
+        _FavoritesUsbVerifiedRecoveryArtifact,
+    ):
+        raise TypeError(
+            "Favorites USB recovery-artifact cleanup requires "
+            "_FavoritesUsbVerifiedRecoveryArtifact."
+        )
+
+    _require_host_operation_paths_match_preflight(
+        preflight,
+        paths,
+    )
+    _require_active_usb_host_lock(
+        paths
+    )
+    _require_verified_usb_host_backup_current(
+        preflight,
+        paths,
+        backup,
+    )
+
+    try:
+        current_artifact = (
+            _require_current_usb_recovery_artifact(
+                preflight,
+                paths,
+                backup,
+                verified_artifact.artifact,
+            )
+        )
+    except _FavoritesUsbWritePreparationError as error:
+        raise _FavoritesUsbMediaMutationError(
+            error.path,
+            "Could not revalidate verified USB recovery artifact before "
+            f"cleanup: {error.message}",
+            mutation_started=False,
+        ) from error
+
+    if current_artifact != verified_artifact:
+        raise _FavoritesUsbMediaMutationError(
+            verified_artifact.artifact.path,
+            "Current USB recovery artifact no longer matches the exact "
+            "previously verified artifact identity.",
+            mutation_started=False,
+        )
+
+    current_target = (
+        _require_usb_recovery_target_ready(
+            preflight,
+            paths,
+            backup,
+        )
+    )
+    if (
+        current_target
+        != verified_artifact.target_evidence
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            verified_artifact.artifact.path,
+            "USB recovery target evidence changed before artifact cleanup.",
+            mutation_started=False,
+        )
+
+    target = (
+        current_target.favorites_directory
+        / verified_artifact.baseline_document.filename
+    )
+
+    try:
+        target_before = target.lstat()
+    except OSError as error:
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Could not inspect restored baseline HPD before recovery-artifact "
+            f"cleanup: {error}",
+            mutation_started=False,
+        ) from error
+
+    if stat.S_ISLNK(
+        target_before.st_mode
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Restored baseline HPD must not be a symbolic link before "
+            "recovery-artifact cleanup.",
+            mutation_started=False,
+        )
+    if not stat.S_ISREG(
+        target_before.st_mode
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Restored baseline HPD must be a regular file before "
+            "recovery-artifact cleanup.",
+            mutation_started=False,
+        )
+
+    try:
+        target_content = (
+            _read_usb_activation_regular_file(
+                target
+            )
+        )
+    except _FavoritesUsbWritePreparationError as error:
+        raise _FavoritesUsbMediaMutationError(
+            error.path,
+            "Could not safely verify restored baseline HPD before "
+            f"recovery-artifact cleanup: {error.message}",
+            mutation_started=False,
+        ) from error
+
+    try:
+        target_after = target.lstat()
+    except OSError as error:
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Could not re-inspect restored baseline HPD before "
+            f"recovery-artifact cleanup: {error}",
+            mutation_started=False,
+        ) from error
+
+    if (
+        _usb_recovery_artifact_fingerprint(
+            target_after
+        )
+        != _usb_recovery_artifact_fingerprint(
+            target_before
+        )
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Restored baseline HPD changed during recovery-artifact cleanup "
+            "precondition verification.",
+            mutation_started=False,
+        )
+
+    if (
+        target_content
+        != verified_artifact.baseline_document.content
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Recovery artifact cannot be cleaned until its baseline HPD is "
+            "restored exactly.",
+            mutation_started=False,
+        )
+
+    _require_verified_usb_host_backup_current(
+        preflight,
+        paths,
+        backup,
+    )
+    final_target = (
+        _require_usb_recovery_target_ready(
+            preflight,
+            paths,
+            backup,
+        )
+    )
+    if (
+        final_target
+        != verified_artifact.target_evidence
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            verified_artifact.artifact.path,
+            "USB recovery target evidence changed during artifact cleanup "
+            "verification.",
+            mutation_started=False,
+        )
+
+    try:
+        rebound_artifact = (
+            _require_current_usb_recovery_artifact(
+                preflight,
+                paths,
+                backup,
+                verified_artifact.artifact,
+            )
+        )
+    except _FavoritesUsbWritePreparationError as error:
+        raise _FavoritesUsbMediaMutationError(
+            error.path,
+            "Could not complete verified USB recovery-artifact revalidation "
+            f"before cleanup: {error.message}",
+            mutation_started=False,
+        ) from error
+
+    if rebound_artifact != verified_artifact:
+        raise _FavoritesUsbMediaMutationError(
+            verified_artifact.artifact.path,
+            "USB recovery artifact identity changed during cleanup "
+            "precondition verification.",
+            mutation_started=False,
+        )
+
+    # Recheck the restored baseline HPD after all artifact/physical-target
+    # revalidation. Cleanup never removes the rollback artifact unless the
+    # managed target is still the exact baseline bytes.
+    try:
+        final_target_before = target.lstat()
+    except OSError as error:
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Could not inspect restored baseline HPD immediately before "
+            f"artifact cleanup: {error}",
+            mutation_started=False,
+        ) from error
+
+    try:
+        final_target_content = (
+            _read_usb_activation_regular_file(
+                target
+            )
+        )
+    except _FavoritesUsbWritePreparationError as error:
+        raise _FavoritesUsbMediaMutationError(
+            error.path,
+            "Could not safely re-read restored baseline HPD immediately "
+            f"before artifact cleanup: {error.message}",
+            mutation_started=False,
+        ) from error
+
+    try:
+        final_target_after = target.lstat()
+    except OSError as error:
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Could not complete restored baseline HPD revalidation before "
+            f"artifact cleanup: {error}",
+            mutation_started=False,
+        ) from error
+
+    if (
+        _usb_recovery_artifact_fingerprint(
+            final_target_after
+        )
+        != _usb_recovery_artifact_fingerprint(
+            final_target_before
+        )
+        or final_target_content
+        != verified_artifact.baseline_document.content
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Restored baseline HPD is no longer exact and stable immediately "
+            "before recovery-artifact cleanup.",
+            mutation_started=False,
+        )
+
+    artifact_path = (
+        verified_artifact.artifact.path
+    )
+    expected_fingerprint = (
+        verified_artifact.device,
+        verified_artifact.inode,
+        verified_artifact.size,
+        verified_artifact.modified_ns,
+        verified_artifact.mode,
+    )
+
+    try:
+        artifact_before = artifact_path.lstat()
+    except OSError as error:
+        raise _FavoritesUsbMediaMutationError(
+            artifact_path,
+            "Could not inspect verified USB recovery artifact immediately "
+            f"before cleanup: {error}",
+            mutation_started=False,
+        ) from error
+
+    if (
+        _usb_recovery_artifact_fingerprint(
+            artifact_before
+        )
+        != expected_fingerprint
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            artifact_path,
+            "USB recovery artifact no longer has the exact verified "
+            "fingerprint immediately before cleanup.",
+            mutation_started=False,
+        )
+
+    try:
+        artifact_content = (
+            _read_usb_activation_regular_file(
+                artifact_path
+            )
+        )
+    except _FavoritesUsbWritePreparationError as error:
+        raise _FavoritesUsbMediaMutationError(
+            error.path,
+            "Could not safely re-read verified USB recovery artifact "
+            f"immediately before cleanup: {error.message}",
+            mutation_started=False,
+        ) from error
+
+    try:
+        artifact_after = artifact_path.lstat()
+    except OSError as error:
+        raise _FavoritesUsbMediaMutationError(
+            artifact_path,
+            "Could not complete verified USB recovery-artifact stability "
+            f"check before cleanup: {error}",
+            mutation_started=False,
+        ) from error
+
+    if (
+        _usb_recovery_artifact_fingerprint(
+            artifact_after
+        )
+        != expected_fingerprint
+        or _usb_recovery_artifact_fingerprint(
+            artifact_before
+        )
+        != expected_fingerprint
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            artifact_path,
+            "USB recovery artifact identity changed during the immediate "
+            "pre-cleanup readback.",
+            mutation_started=False,
+        )
+
+    if (
+        artifact_content
+        != verified_artifact.baseline_document.content
+        or _usb_media_content_sha256(
+            artifact_content
+        )
+        != verified_artifact.artifact.content_sha256
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            artifact_path,
+            "USB recovery artifact no longer contains the exact verified "
+            "baseline HPD bytes immediately before cleanup.",
+            mutation_started=False,
+        )
+
+    # POSIX pathname unlink has no atomic "unlink only if this inode still
+    # occupies this name" operation. The host lock excludes cooperating
+    # sds200 writers, and the exact path/fingerprint/content are revalidated
+    # immediately above, but arbitrary external media mutation can still race
+    # this syscall. Treat the unlink attempt itself as recovery mutation and
+    # never issue a second delete if the path is recreated afterward.
+    try:
+        os.unlink(
+            artifact_path
+        )
+    except OSError as error:
+        raise _FavoritesUsbMediaMutationError(
+            artifact_path,
+            f"Could not clean verified USB recovery artifact: {error}",
+            mutation_started=True,
+        ) from error
+
+    if os.path.lexists(
+        artifact_path
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            artifact_path,
+            "Verified USB recovery-artifact cleanup did not leave the exact "
+            "temporary path absent; a replacement may have appeared.",
+            mutation_started=True,
+        )
+
+
 def _require_usb_managed_activation_filename(
     filename: str,
 ) -> str:
