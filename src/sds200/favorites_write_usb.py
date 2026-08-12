@@ -1601,6 +1601,178 @@ def _create_verified_usb_host_staging(
         tree_evidence=staging_evidence,
     )
 
+
+@dataclass(frozen=True, slots=True)
+class _FavoritesUsbPreactivationEvidence:
+    active_tree_evidence: FavoritesTreeEvidence
+    backup_tree_evidence: FavoritesTreeEvidence
+    staging_tree_evidence: FavoritesTreeEvidence
+
+    def __post_init__(self) -> None:
+        for label, value in (
+            ("active tree evidence", self.active_tree_evidence),
+            ("backup tree evidence", self.backup_tree_evidence),
+            ("staging tree evidence", self.staging_tree_evidence),
+        ):
+            if not isinstance(
+                value,
+                FavoritesTreeEvidence,
+            ):
+                raise TypeError(
+                    f"Favorites USB preactivation {label} must be "
+                    "FavoritesTreeEvidence."
+                )
+
+
+def _require_verified_usb_host_staging_current(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    prepared: _FavoritesUsbPreparedStage,
+) -> FavoritesTreeEvidence:
+    if not isinstance(
+        prepared,
+        _FavoritesUsbPreparedStage,
+    ):
+        raise TypeError(
+            "Favorites USB preactivation requires _FavoritesUsbPreparedStage."
+        )
+
+    _require_host_operation_paths_match_preflight(
+        preflight,
+        paths,
+    )
+
+    if prepared.directory != paths.staging_directory:
+        raise _FavoritesUsbWritePreparationError(
+            prepared.directory,
+            "Verified USB host staging path does not match the operation workspace.",
+        )
+
+    try:
+        evidence = favorites_tree_evidence(
+            prepared.directory
+        )
+    except FavoritesTreeEvidenceError as error:
+        raise _FavoritesUsbWritePreparationError(
+            error.path,
+            (
+                "Verified USB host staging is no longer safe: "
+                f"{error.message}"
+            ),
+        ) from error
+
+    if evidence != prepared.tree_evidence:
+        raise _FavoritesUsbWritePreparationError(
+            prepared.directory,
+            "Verified USB host staging content or structure changed.",
+        )
+
+    try:
+        snapshot = FavoritesCopiedTreeStorageSource(
+            prepared.directory
+        ).read_snapshot()
+    except FavoritesCopiedTreeStorageError as error:
+        raise _FavoritesUsbWritePreparationError(
+            error.path,
+            (
+                "Verified USB host staging can no longer be read: "
+                f"{error.message}"
+            ),
+        ) from error
+
+    if (
+        snapshot != prepared.snapshot
+        or snapshot != preflight.plan.intended_snapshot
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            prepared.directory,
+            "Verified USB host staging no longer matches the exact intended snapshot.",
+        )
+
+    workspace = project_favorites_storage_snapshot(
+        snapshot
+    )
+    validation = validate_favorites_workspace(
+        workspace
+    )
+
+    if (
+        workspace
+        != preflight.plan.intended_workspace
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            prepared.directory,
+            "Verified USB host staging workspace no longer matches the intended plan.",
+        )
+
+    if (
+        validation
+        != preflight.plan.intended_validation
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            prepared.directory,
+            "Verified USB host staging schema evidence no longer matches the intended plan.",
+        )
+
+    return evidence
+
+
+def _require_usb_preactivation_ready(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    backup: _FavoritesUsbVerifiedBackup,
+    prepared: _FavoritesUsbPreparedStage,
+) -> _FavoritesUsbPreactivationEvidence:
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB preactivation requires FavoritesUsbWritePreflight."
+        )
+
+    _require_host_operation_paths_match_preflight(
+        preflight,
+        paths,
+    )
+    _require_active_usb_host_lock(
+        paths
+    )
+    _require_private_host_directory(
+        paths.operation_directory,
+        create=False,
+    )
+
+    backup_evidence = (
+        _require_verified_usb_host_backup_current(
+            preflight,
+            paths,
+            backup,
+        )
+    )
+    staging_evidence = (
+        _require_verified_usb_host_staging_current(
+            preflight,
+            paths,
+            prepared,
+        )
+    )
+
+    # Keep the active USB requalification and complete-tree read as the final
+    # preactivation boundary after all host-side recovery/staging evidence has
+    # been revalidated.
+    active_evidence = (
+        _require_current_usb_preflight_target(
+            preflight
+        )
+    )
+
+    return _FavoritesUsbPreactivationEvidence(
+        active_tree_evidence=active_evidence,
+        backup_tree_evidence=backup_evidence,
+        staging_tree_evidence=staging_evidence,
+    )
+
 __all__ = [
     "FavoritesUsbWritePreflight",
     "FavoritesUsbWritePreflightError",
