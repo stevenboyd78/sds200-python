@@ -12,7 +12,11 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from .favorites_storage import FavoritesStorageSnapshot
+from .favorites_schema import validate_favorites_workspace
+from .favorites_storage import (
+    FavoritesStorageSnapshot,
+    project_favorites_storage_snapshot,
+)
 from .favorites_storage_evidence import (
     FavoritesTreeEvidence,
     FavoritesTreeEvidenceError,
@@ -1166,6 +1170,435 @@ def _create_verified_usb_host_backup(
         directory=paths.backup_directory,
         tree_evidence=backup_evidence,
         snapshot=backup_snapshot,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _FavoritesUsbPreparedStage:
+    directory: Path
+    snapshot: FavoritesStorageSnapshot
+    tree_evidence: FavoritesTreeEvidence
+
+    def __post_init__(self) -> None:
+        if not isinstance(
+            self.directory,
+            Path,
+        ):
+            raise TypeError(
+                "Favorites USB prepared staging directory must be pathlib.Path."
+            )
+        if not self.directory.is_absolute():
+            raise ValueError(
+                "Favorites USB prepared staging directory must be absolute."
+            )
+        if not isinstance(
+            self.snapshot,
+            FavoritesStorageSnapshot,
+        ):
+            raise TypeError(
+                "Favorites USB prepared staging snapshot must be "
+                "FavoritesStorageSnapshot."
+            )
+        if not isinstance(
+            self.tree_evidence,
+            FavoritesTreeEvidence,
+        ):
+            raise TypeError(
+                "Favorites USB prepared staging tree evidence must be "
+                "FavoritesTreeEvidence."
+            )
+
+
+def _require_verified_usb_host_backup_current(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    backup: _FavoritesUsbVerifiedBackup,
+) -> FavoritesTreeEvidence:
+    if not isinstance(
+        backup,
+        _FavoritesUsbVerifiedBackup,
+    ):
+        raise TypeError(
+            "Favorites USB host staging requires _FavoritesUsbVerifiedBackup."
+        )
+
+    _require_host_operation_paths_match_preflight(
+        preflight,
+        paths,
+    )
+
+    if backup.directory != paths.backup_directory:
+        raise _FavoritesUsbWritePreparationError(
+            backup.directory,
+            "Verified USB host backup path does not match the operation workspace.",
+        )
+
+    try:
+        evidence = favorites_tree_evidence(
+            backup.directory
+        )
+    except FavoritesTreeEvidenceError as error:
+        raise _FavoritesUsbWritePreparationError(
+            error.path,
+            (
+                "Verified USB host backup could not be revalidated safely: "
+                f"{error.message}"
+            ),
+        ) from error
+
+    if (
+        evidence != backup.tree_evidence
+        or evidence.sha256
+        != preflight.tree_evidence.sha256
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            backup.directory,
+            "Verified USB host backup changed after verification.",
+        )
+
+    try:
+        snapshot = FavoritesCopiedTreeStorageSource(
+            backup.directory
+        ).read_snapshot()
+    except FavoritesCopiedTreeStorageError as error:
+        raise _FavoritesUsbWritePreparationError(
+            error.path,
+            (
+                "Verified USB host backup managed snapshot could not be "
+                f"revalidated: {error.message}"
+            ),
+        ) from error
+
+    if (
+        snapshot != backup.snapshot
+        or snapshot != preflight.observed_snapshot
+        or not preflight.plan.matches_baseline_snapshot(
+            snapshot
+        )
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            backup.directory,
+            "Verified USB host backup managed snapshot changed.",
+        )
+
+    return evidence
+
+
+def _write_usb_host_staged_regular_file(
+    path: Path,
+    content: bytes,
+) -> None:
+    if not isinstance(
+        path,
+        Path,
+    ):
+        raise TypeError(
+            "Favorites USB staged write path must be pathlib.Path."
+        )
+    if not isinstance(
+        content,
+        bytes,
+    ):
+        raise TypeError(
+            "Favorites USB staged write content must be bytes."
+        )
+
+    try:
+        observed = path.lstat()
+    except FileNotFoundError:
+        flags = (
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_BINARY", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
+        mode = 0o600
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            path,
+            f"Could not inspect staged Favorites file: {error}",
+        ) from error
+    else:
+        if stat.S_ISLNK(
+            observed.st_mode
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                path,
+                "Staged Favorites file must not be a symbolic link.",
+            )
+        if not stat.S_ISREG(
+            observed.st_mode
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                path,
+                "Staged Favorites file must be a regular file.",
+            )
+        flags = (
+            os.O_WRONLY
+            | os.O_TRUNC
+            | getattr(os, "O_BINARY", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
+        mode = observed.st_mode & 0o7777
+
+    try:
+        descriptor = os.open(
+            path,
+            flags,
+            mode,
+        )
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            path,
+            f"Could not open staged Favorites file for writing: {error}",
+        ) from error
+
+    try:
+        with os.fdopen(
+            descriptor,
+            "wb",
+            closefd=False,
+        ) as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(
+                handle.fileno()
+            )
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            path,
+            f"Could not write staged Favorites file: {error}",
+        ) from error
+    finally:
+        os.close(descriptor)
+
+
+def _create_verified_usb_host_staging(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    backup: _FavoritesUsbVerifiedBackup,
+) -> _FavoritesUsbPreparedStage:
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB host staging requires FavoritesUsbWritePreflight."
+        )
+
+    _require_host_operation_paths_match_preflight(
+        preflight,
+        paths,
+    )
+    _require_active_usb_host_lock(
+        paths
+    )
+    _require_private_host_directory(
+        paths.operation_directory,
+        create=False,
+    )
+    _require_verified_usb_host_backup_current(
+        preflight,
+        paths,
+        backup,
+    )
+
+    if os.path.lexists(
+        paths.staging_directory
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            paths.staging_directory,
+            "Verified USB host staging destination already exists.",
+        )
+
+    intended = (
+        preflight.plan.intended_snapshot
+    )
+    intended_names = tuple(
+        document.filename
+        for document in intended.documents
+    )
+
+    unsupported_names = tuple(
+        filename
+        for filename in intended_names
+        if not filename.endswith(".hpd")
+    )
+    if unsupported_names:
+        raise _FavoritesUsbWritePreparationError(
+            paths.staging_directory,
+            (
+                "USB host staging can write only immediate lowercase-.hpd "
+                "Favorites documents; unsupported intended filename: "
+                f"{unsupported_names[0]!r}."
+            ),
+        )
+
+    if len(set(intended_names)) != len(
+        intended_names
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            paths.staging_directory,
+            "USB host staging requires unique intended HPD filenames.",
+        )
+
+    try:
+        shutil.copytree(
+            backup.directory,
+            paths.staging_directory,
+            copy_function=shutil.copy2,
+            symlinks=True,
+        )
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            paths.staging_directory,
+            f"Could not create the complete USB host staging tree: {error}",
+        ) from error
+
+    _require_verified_usb_host_backup_current(
+        preflight,
+        paths,
+        backup,
+    )
+
+    try:
+        with os.scandir(
+            paths.staging_directory
+        ) as handle:
+            entries = tuple(handle)
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            paths.staging_directory,
+            f"Could not scan USB host staging directory: {error}",
+        ) from error
+
+    intended_name_set = set(
+        intended_names
+    )
+
+    for entry in entries:
+        if (
+            entry.name == "f_list.cfg"
+            or not entry.name.endswith(
+                ".hpd"
+            )
+        ):
+            continue
+
+        path = Path(entry.path)
+
+        try:
+            observed = path.lstat()
+        except OSError as error:
+            raise _FavoritesUsbWritePreparationError(
+                path,
+                f"Could not inspect staged HPD path: {error}",
+            ) from error
+
+        if not stat.S_ISREG(
+            observed.st_mode
+        ):
+            if entry.name in intended_name_set:
+                raise _FavoritesUsbWritePreparationError(
+                    path,
+                    "Intended HPD filename collides with non-regular staged material.",
+                )
+            continue
+
+        if entry.name not in intended_name_set:
+            try:
+                path.unlink()
+            except OSError as error:
+                raise _FavoritesUsbWritePreparationError(
+                    path,
+                    f"Could not remove obsolete staged HPD file: {error}",
+                ) from error
+
+    _write_usb_host_staged_regular_file(
+        paths.staging_directory
+        / "f_list.cfg",
+        intended.catalog_bytes,
+    )
+
+    for document in intended.documents:
+        _write_usb_host_staged_regular_file(
+            paths.staging_directory
+            / document.filename,
+            document.content,
+        )
+
+    try:
+        staged_snapshot = FavoritesCopiedTreeStorageSource(
+            paths.staging_directory
+        ).read_snapshot()
+    except FavoritesCopiedTreeStorageError as error:
+        raise _FavoritesUsbWritePreparationError(
+            error.path,
+            (
+                "USB host staged managed snapshot could not be read back: "
+                f"{error.message}"
+            ),
+        ) from error
+
+    if staged_snapshot != intended:
+        raise _FavoritesUsbWritePreparationError(
+            paths.staging_directory,
+            "USB host staged managed snapshot differs from the exact intended snapshot.",
+        )
+
+    staged_workspace = (
+        project_favorites_storage_snapshot(
+            staged_snapshot
+        )
+    )
+    staged_validation = (
+        validate_favorites_workspace(
+            staged_workspace
+        )
+    )
+
+    if (
+        staged_workspace
+        != preflight.plan.intended_workspace
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            paths.staging_directory,
+            "USB host staged workspace differs from the write-plan intended workspace.",
+        )
+
+    if (
+        staged_validation
+        != preflight.plan.intended_validation
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            paths.staging_directory,
+            "USB host staged schema evidence differs from the write-plan intended validation.",
+        )
+
+    try:
+        staging_evidence = favorites_tree_evidence(
+            paths.staging_directory
+        )
+    except FavoritesTreeEvidenceError as error:
+        raise _FavoritesUsbWritePreparationError(
+            error.path,
+            (
+                "USB host staging could not be verified safely: "
+                f"{error.message}"
+            ),
+        ) from error
+
+    _require_verified_usb_host_backup_current(
+        preflight,
+        paths,
+        backup,
+    )
+
+    return _FavoritesUsbPreparedStage(
+        directory=paths.staging_directory,
+        snapshot=staged_snapshot,
+        tree_evidence=staging_evidence,
     )
 
 __all__ = [
