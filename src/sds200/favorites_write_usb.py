@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 import stat
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -17,6 +18,10 @@ from .favorites_storage_evidence import (
     FavoritesTreeEvidenceError,
     favorites_storage_snapshot_sha256,
     favorites_tree_evidence,
+)
+from .favorites_storage_local import (
+    FavoritesCopiedTreeStorageError,
+    FavoritesCopiedTreeStorageSource,
 )
 from .favorites_storage_usb import (
     DEFAULT_LINUX_MOUNTINFO_PATH,
@@ -881,6 +886,287 @@ def _usb_host_operation_lock(
             and body_error is None
         ):
             raise cleanup_error
+
+
+@dataclass(frozen=True, slots=True)
+class _FavoritesUsbVerifiedBackup:
+    directory: Path
+    tree_evidence: FavoritesTreeEvidence
+    snapshot: FavoritesStorageSnapshot
+
+    def __post_init__(self) -> None:
+        if not isinstance(
+            self.directory,
+            Path,
+        ):
+            raise TypeError(
+                "Favorites USB verified backup directory must be pathlib.Path."
+            )
+        if not self.directory.is_absolute():
+            raise ValueError(
+                "Favorites USB verified backup directory must be absolute."
+            )
+        if not isinstance(
+            self.tree_evidence,
+            FavoritesTreeEvidence,
+        ):
+            raise TypeError(
+                "Favorites USB verified backup tree evidence must be "
+                "FavoritesTreeEvidence."
+            )
+        if not isinstance(
+            self.snapshot,
+            FavoritesStorageSnapshot,
+        ):
+            raise TypeError(
+                "Favorites USB verified backup snapshot must be "
+                "FavoritesStorageSnapshot."
+            )
+
+
+def _require_current_usb_preflight_target(
+    preflight: FavoritesUsbWritePreflight,
+) -> FavoritesTreeEvidence:
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB target revalidation requires "
+            "FavoritesUsbWritePreflight."
+        )
+
+    try:
+        current = qualify_favorites_usb_storage_path(
+            preflight.requested_path,
+            preflight.mountinfo_path,
+            sys_dev_block_directory=preflight.sys_dev_block_directory,
+        )
+    except FavoritesUsbStorageQualificationError as error:
+        raise _FavoritesUsbWritePreparationError(
+            error.path,
+            (
+                "Could not requalify the current USB Favorites target "
+                f"({error.reason.value}): {error.message}"
+            ),
+        ) from error
+
+    if current != preflight.qualification:
+        raise _FavoritesUsbWritePreparationError(
+            preflight.qualification.favorites_directory,
+            "USB target qualification changed after preflight.",
+        )
+
+    if (
+        current.snapshot
+        != preflight.observed_snapshot
+        or not preflight.plan.matches_baseline_snapshot(
+            current.snapshot
+        )
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            current.favorites_directory,
+            "USB managed snapshot changed after preflight.",
+        )
+
+    try:
+        evidence = favorites_tree_evidence(
+            current.favorites_directory
+        )
+    except FavoritesTreeEvidenceError as error:
+        raise _FavoritesUsbWritePreparationError(
+            error.path,
+            (
+                "Could not capture current USB Favorites tree evidence: "
+                f"{error.message}"
+            ),
+        ) from error
+
+    if evidence != preflight.tree_evidence:
+        raise _FavoritesUsbWritePreparationError(
+            current.favorites_directory,
+            "USB Favorites content or structure changed after preflight.",
+        )
+
+    return evidence
+
+
+def _require_host_operation_paths_match_preflight(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+) -> None:
+    if not isinstance(
+        paths,
+        _FavoritesUsbHostOperationPaths,
+    ):
+        raise TypeError(
+            "Favorites USB host backup paths must be "
+            "_FavoritesUsbHostOperationPaths."
+        )
+
+    expected = _usb_host_operation_paths(
+        preflight,
+        paths.root_directory,
+    )
+    if paths != expected:
+        raise _FavoritesUsbWritePreparationError(
+            paths.operation_directory,
+            "Favorites USB host operation paths do not match the preflight.",
+        )
+
+
+def _require_active_usb_host_lock(
+    paths: _FavoritesUsbHostOperationPaths,
+) -> None:
+    try:
+        observed = paths.lock_directory.lstat()
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            paths.lock_directory,
+            f"Could not inspect the required USB host operation lock: {error}",
+        ) from error
+
+    if not stat.S_ISDIR(
+        observed.st_mode
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            paths.lock_directory,
+            "Required Favorites USB host operation lock is not a directory.",
+        )
+
+
+def _create_verified_usb_host_backup(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+) -> _FavoritesUsbVerifiedBackup:
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB host backup requires FavoritesUsbWritePreflight."
+        )
+
+    _require_host_operation_paths_match_preflight(
+        preflight,
+        paths,
+    )
+    _require_active_usb_host_lock(
+        paths
+    )
+    _require_current_usb_preflight_target(
+        preflight
+    )
+
+    _require_private_host_directory(
+        paths.operations_directory,
+        create=True,
+    )
+
+    if os.path.lexists(
+        paths.operation_directory
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            paths.operation_directory,
+            "Favorites USB host operation workspace already exists.",
+        )
+
+    try:
+        paths.operation_directory.mkdir(
+            mode=0o700,
+        )
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            paths.operation_directory,
+            f"Could not create the USB host operation workspace: {error}",
+        ) from error
+
+    _require_private_host_directory(
+        paths.operation_directory,
+        create=False,
+    )
+
+    if os.path.lexists(
+        paths.backup_directory
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            paths.backup_directory,
+            "Favorites USB verified host backup destination already exists.",
+        )
+
+    try:
+        shutil.copytree(
+            preflight.qualification.favorites_directory,
+            paths.backup_directory,
+            copy_function=shutil.copy2,
+            symlinks=True,
+        )
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            paths.backup_directory,
+            f"Could not create the complete USB host backup: {error}",
+        ) from error
+
+    _require_current_usb_preflight_target(
+        preflight
+    )
+
+    try:
+        backup_evidence = favorites_tree_evidence(
+            paths.backup_directory
+        )
+    except FavoritesTreeEvidenceError as error:
+        raise _FavoritesUsbWritePreparationError(
+            error.path,
+            (
+                "USB host backup could not be verified safely: "
+                f"{error.message}"
+            ),
+        ) from error
+
+    if (
+        backup_evidence.sha256
+        != preflight.tree_evidence.sha256
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            paths.backup_directory,
+            "USB host backup does not exactly match preflight tree evidence.",
+        )
+
+    try:
+        backup_snapshot = FavoritesCopiedTreeStorageSource(
+            paths.backup_directory
+        ).read_snapshot()
+    except FavoritesCopiedTreeStorageError as error:
+        raise _FavoritesUsbWritePreparationError(
+            error.path,
+            (
+                "USB host backup managed snapshot could not be verified: "
+                f"{error.message}"
+            ),
+        ) from error
+
+    if (
+        backup_snapshot
+        != preflight.observed_snapshot
+        or not preflight.plan.matches_baseline_snapshot(
+            backup_snapshot
+        )
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            paths.backup_directory,
+            "USB host backup managed snapshot differs from the preflight target.",
+        )
+
+    _require_current_usb_preflight_target(
+        preflight
+    )
+
+    return _FavoritesUsbVerifiedBackup(
+        directory=paths.backup_directory,
+        tree_evidence=backup_evidence,
+        snapshot=backup_snapshot,
+    )
 
 __all__ = [
     "FavoritesUsbWritePreflight",

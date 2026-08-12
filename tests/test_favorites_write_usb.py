@@ -957,3 +957,392 @@ def test_usb_host_state_root_rejects_symlink(
             preflight,
             alias,
         )
+
+
+def test_verified_usb_host_backup_preserves_complete_tree(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    unmanaged = (
+        favorites_directory
+        / "nested"
+        / "offline.bin"
+    )
+    unmanaged.parent.mkdir()
+    unmanaged.write_bytes(
+        b"unmanaged"
+    )
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(_CHANGED_CATALOG),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+    before = favorites_tree_evidence(
+        favorites_directory
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+
+    after = favorites_tree_evidence(
+        favorites_directory
+    )
+
+    assert before == preflight.tree_evidence
+    assert after == preflight.tree_evidence
+    assert backup.directory == paths.backup_directory
+    assert backup.directory.is_dir()
+    assert (
+        backup.tree_evidence.sha256
+        == preflight.tree_evidence.sha256
+    )
+    assert (
+        backup.snapshot
+        == preflight.observed_snapshot
+    )
+    assert (
+        backup.directory
+        / "nested"
+        / "offline.bin"
+    ).read_bytes() == b"unmanaged"
+    assert (
+        paths.operation_directory.stat().st_mode
+        & 0o777
+    ) == 0o700
+    assert backup.directory.exists()
+    assert not paths.lock_directory.exists()
+
+
+def test_usb_host_backup_requires_active_target_lock(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(_CHANGED_CATALOG),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    paths = write_usb._usb_host_operation_paths(
+        preflight,
+        (
+            tmp_path
+            / "host-state"
+            / "favorites-usb-writes"
+        ),
+    )
+
+    with pytest.raises(
+        write_usb._FavoritesUsbWritePreparationError,
+        match="required USB host operation lock",
+    ):
+        write_usb._create_verified_usb_host_backup(
+            preflight,
+            paths,
+        )
+
+    assert not paths.operation_directory.exists()
+    assert not paths.backup_directory.exists()
+
+
+def test_existing_usb_host_operation_workspace_fails_closed(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(_CHANGED_CATALOG),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        paths.operation_directory.mkdir(
+            parents=True
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="workspace already exists",
+        ):
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+
+    assert paths.operation_directory.is_dir()
+
+
+def test_usb_host_backup_detects_source_change_during_copy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    unmanaged = (
+        favorites_directory
+        / "unmanaged.bin"
+    )
+    unmanaged.write_bytes(
+        b"before"
+    )
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(_CHANGED_CATALOG),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+    real_copytree = write_usb.shutil.copytree
+
+    def changing_copytree(
+        src: Path,
+        dst: Path,
+        **kwargs: object,
+    ) -> Path:
+        result = real_copytree(
+            src,
+            dst,
+            **kwargs,
+        )
+        unmanaged.write_bytes(
+            b"after"
+        )
+        return result
+
+    monkeypatch.setattr(
+        write_usb.shutil,
+        "copytree",
+        changing_copytree,
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths, pytest.raises(
+        write_usb._FavoritesUsbWritePreparationError,
+        match="content or structure changed",
+    ):
+        write_usb._create_verified_usb_host_backup(
+            preflight,
+            paths,
+        )
+
+    assert paths.backup_directory.exists()
+    assert unmanaged.read_bytes() == b"after"
+
+
+def test_usb_host_backup_detects_read_only_transition_during_copy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(_CHANGED_CATALOG),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+    real_copytree = write_usb.shutil.copytree
+
+    def changing_mount_copytree(
+        src: Path,
+        dst: Path,
+        **kwargs: object,
+    ) -> Path:
+        result = real_copytree(
+            src,
+            dst,
+            **kwargs,
+        )
+        current = mountinfo.read_text(
+            encoding="utf-8"
+        )
+        mountinfo.write_text(
+            current.replace(
+                " rw ",
+                " ro ",
+            ).replace(
+                " rw\n",
+                " ro\n",
+            ),
+            encoding="utf-8",
+        )
+        return result
+
+    monkeypatch.setattr(
+        write_usb.shutil,
+        "copytree",
+        changing_mount_copytree,
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths, pytest.raises(
+        write_usb._FavoritesUsbWritePreparationError,
+        match="read_only_mount",
+    ):
+        write_usb._create_verified_usb_host_backup(
+            preflight,
+            paths,
+        )
+
+    assert paths.backup_directory.exists()
+
+
+def test_usb_host_backup_detects_corrupted_host_copy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    (
+        favorites_directory
+        / "unmanaged.bin"
+    ).write_bytes(
+        b"original"
+    )
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(_CHANGED_CATALOG),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+    real_copytree = write_usb.shutil.copytree
+
+    def corrupting_copytree(
+        src: Path,
+        dst: Path,
+        **kwargs: object,
+    ) -> Path:
+        result = real_copytree(
+            src,
+            dst,
+            **kwargs,
+        )
+        (
+            dst
+            / "unmanaged.bin"
+        ).write_bytes(
+            b"corrupt"
+        )
+        return result
+
+    monkeypatch.setattr(
+        write_usb.shutil,
+        "copytree",
+        corrupting_copytree,
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths, pytest.raises(
+        write_usb._FavoritesUsbWritePreparationError,
+        match="does not exactly match preflight tree evidence",
+    ):
+        write_usb._create_verified_usb_host_backup(
+            preflight,
+            paths,
+        )
+
+    assert (
+        favorites_directory
+        / "unmanaged.bin"
+    ).read_bytes() == b"original"
+    assert paths.backup_directory.exists()
