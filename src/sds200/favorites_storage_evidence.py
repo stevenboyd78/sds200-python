@@ -377,18 +377,47 @@ def favorites_tree_evidence(
 _UNMANAGED_TREE_DIGEST_VERSION = b"sds200-favorites-unmanaged-tree-v1"
 
 
-def favorites_unmanaged_tree_sha256(
-    root: Path,
-) -> str:
-    """Hash unmanaged Favorites content/shape independent of filesystem metadata."""
-
-    if not isinstance(
-        root,
-        Path,
+def _validate_excluded_unmanaged_root_regular_filename(
+    value: str | None,
+) -> None:
+    if value is None:
+        return
+    if not isinstance(value, str):
+        raise TypeError(
+            "Excluded unmanaged root regular filename must be str or None."
+        )
+    if (
+        not value
+        or value in {".", ".."}
+        or "/" in value
+        or "\\" in value
+        or "\x00" in value
     ):
+        raise ValueError(
+            "Excluded unmanaged root regular filename must be one safe "
+            "immediate filename."
+        )
+    if value == "f_list.cfg" or value.endswith(".hpd"):
+        raise ValueError(
+            "Excluded unmanaged root regular filename must not name "
+            "managed Favorites storage."
+        )
+
+
+def _favorites_unmanaged_tree_sha256(
+    root: Path,
+    *,
+    excluded_root_regular_filename: str | None,
+) -> str:
+    "Hash unmanaged identity with one optional immediate regular exclusion."
+
+    if not isinstance(root, Path):
         raise TypeError(
             "Favorites unmanaged-tree evidence root must be pathlib.Path."
         )
+    _validate_excluded_unmanaged_root_regular_filename(
+        excluded_root_regular_filename
+    )
 
     try:
         initial_root = root.lstat()
@@ -398,82 +427,48 @@ def favorites_unmanaged_tree_sha256(
             f"Could not inspect unmanaged-tree root: {error}",
         ) from error
 
-    if stat.S_ISLNK(
-        initial_root.st_mode
-    ):
+    if stat.S_ISLNK(initial_root.st_mode):
         raise FavoritesTreeEvidenceError(
             root,
             "Unmanaged-tree root must not be a symbolic link.",
         )
-
-    if not stat.S_ISDIR(
-        initial_root.st_mode
-    ):
+    if not stat.S_ISDIR(initial_root.st_mode):
         raise FavoritesTreeEvidenceError(
             root,
             "Unmanaged-tree root must be a directory.",
         )
 
     digest = hashlib.sha256()
-    _hash_field(
-        digest,
-        _UNMANAGED_TREE_DIGEST_VERSION,
-    )
+    _hash_field(digest, _UNMANAGED_TREE_DIGEST_VERSION)
 
-    def visit(
-        directory: Path,
-        relative: Path,
-    ) -> None:
+    def visit(directory: Path, relative: Path) -> None:
         try:
-            initial_directory = (
-                directory.lstat()
-            )
+            initial_directory = directory.lstat()
         except OSError as error:
             raise FavoritesTreeEvidenceError(
                 directory,
                 f"Could not inspect unmanaged-tree directory: {error}",
             ) from error
 
-        if stat.S_ISLNK(
-            initial_directory.st_mode
-        ):
+        if stat.S_ISLNK(initial_directory.st_mode):
             raise FavoritesTreeEvidenceError(
                 directory,
                 "Unmanaged-tree directories must not be symbolic links.",
             )
-
-        if not stat.S_ISDIR(
-            initial_directory.st_mode
-        ):
+        if not stat.S_ISDIR(initial_directory.st_mode):
             raise FavoritesTreeEvidenceError(
                 directory,
                 "Unmanaged-tree directory changed type during traversal.",
             )
 
-        # Deliberately hash only path and entry type here. Device, inode,
-        # permission bits, ownership, and timestamp metadata are not part of
-        # preservation identity so that an active USB tree can be compared
-        # directly with its verified host-side backup.
-        _hash_field(
-            digest,
-            b"D",
-        )
-        _hash_field(
-            digest,
-            os.fsencode(
-                relative.as_posix()
-            ),
-        )
+        _hash_field(digest, b"D")
+        _hash_field(digest, os.fsencode(relative.as_posix()))
 
         try:
-            with os.scandir(
-                directory
-            ) as handle:
+            with os.scandir(directory) as handle:
                 entries = sorted(
                     handle,
-                    key=lambda entry: os.fsencode(
-                        entry.name
-                    ),
+                    key=lambda entry: os.fsencode(entry.name),
                 )
         except OSError as error:
             raise FavoritesTreeEvidenceError(
@@ -497,26 +492,17 @@ def favorites_unmanaged_tree_sha256(
                     f"Could not inspect unmanaged-tree entry: {error}",
                 ) from error
 
-            if stat.S_ISLNK(
-                observed.st_mode
-            ):
+            if stat.S_ISLNK(observed.st_mode):
                 raise FavoritesTreeEvidenceError(
                     path,
                     "Unmanaged-tree evidence must not contain symbolic links.",
                 )
 
-            if stat.S_ISDIR(
-                observed.st_mode
-            ):
-                visit(
-                    path,
-                    child_relative,
-                )
+            if stat.S_ISDIR(observed.st_mode):
+                visit(path, child_relative)
                 continue
 
-            if not stat.S_ISREG(
-                observed.st_mode
-            ):
+            if not stat.S_ISREG(observed.st_mode):
                 raise FavoritesTreeEvidenceError(
                     path,
                     "Unmanaged-tree evidence may contain only regular files "
@@ -527,36 +513,26 @@ def favorites_unmanaged_tree_sha256(
                 relative == Path(".")
                 and (
                     entry.name == "f_list.cfg"
-                    or entry.name.endswith(
-                        ".hpd"
-                    )
+                    or entry.name.endswith(".hpd")
                 )
             )
-            if is_root_managed_file:
+            is_excluded_root_regular_file = (
+                relative == Path(".")
+                and excluded_root_regular_filename is not None
+                and entry.name == excluded_root_regular_filename
+            )
+            if is_root_managed_file or is_excluded_root_regular_file:
                 continue
 
+            _hash_field(digest, b"F")
+            _hash_field(digest, os.fsencode(child_relative.as_posix()))
             _hash_field(
                 digest,
-                b"F",
-            )
-            _hash_field(
-                digest,
-                os.fsencode(
-                    child_relative.as_posix()
-                ),
-            )
-            _hash_field(
-                digest,
-                _tree_regular_file_digest(
-                    path,
-                    observed,
-                ),
+                _tree_regular_file_digest(path, observed),
             )
 
         try:
-            final_directory = (
-                directory.lstat()
-            )
+            final_directory = directory.lstat()
         except OSError as error:
             raise FavoritesTreeEvidenceError(
                 directory,
@@ -579,10 +555,7 @@ def favorites_unmanaged_tree_sha256(
                 "Unmanaged-tree directory changed during traversal.",
             )
 
-    visit(
-        root,
-        Path("."),
-    )
+    visit(root, Path("."))
 
     try:
         final_root = root.lstat()
@@ -611,6 +584,15 @@ def favorites_unmanaged_tree_sha256(
     return digest.hexdigest()
 
 
+def favorites_unmanaged_tree_sha256(
+    root: Path,
+) -> str:
+    "Hash unmanaged Favorites content/shape independent of filesystem metadata."
+
+    return _favorites_unmanaged_tree_sha256(
+        root,
+        excluded_root_regular_filename=None,
+    )
 
 def favorites_storage_snapshot_sha256(
     snapshot: FavoritesStorageSnapshot,

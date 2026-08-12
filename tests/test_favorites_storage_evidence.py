@@ -371,3 +371,113 @@ def test_unmanaged_tree_identity_requires_pathlib_path() -> None:
         favorites_unmanaged_tree_sha256(  # type: ignore[arg-type]
             "."
         )
+
+
+@pytest.mark.parametrize(
+    "excluded",
+    (
+        "",
+        ".",
+        "..",
+        "nested/name.tmp",
+        "nested\\name.tmp",
+        "bad\x00name.tmp",
+        "f_list.cfg",
+        "managed.hpd",
+    ),
+)
+def test_private_unmanaged_tree_exclusion_rejects_unsafe_names(
+    tmp_path: Path,
+    excluded: str,
+) -> None:
+    root = tmp_path / "favorites_lists"
+    root.mkdir()
+
+    with pytest.raises(
+        ValueError,
+        match="Excluded unmanaged root regular filename",
+    ):
+        storage_evidence._favorites_unmanaged_tree_sha256(
+            root,
+            excluded_root_regular_filename=excluded,
+        )
+
+
+def test_private_unmanaged_tree_exclusion_preserves_public_zero_exclusion(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "favorites_lists"
+    _write_unmanaged_tree_fixture(root)
+
+    assert storage_evidence._favorites_unmanaged_tree_sha256(
+        root,
+        excluded_root_regular_filename=None,
+    ) == favorites_unmanaged_tree_sha256(root)
+
+
+def test_private_unmanaged_tree_exclusion_ignores_only_exact_root_regular_file(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "favorites_lists"
+    _write_unmanaged_tree_fixture(root)
+    baseline = favorites_unmanaged_tree_sha256(root)
+    name = ".sds200-usb-write-owned.tmp"
+    (root / name).write_bytes(b"owned")
+
+    assert favorites_unmanaged_tree_sha256(root) != baseline
+    assert storage_evidence._favorites_unmanaged_tree_sha256(
+        root,
+        excluded_root_regular_filename=name,
+    ) == baseline
+
+
+def test_private_unmanaged_tree_exclusion_does_not_ignore_nested_same_name(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "favorites_lists"
+    _write_unmanaged_tree_fixture(root)
+    baseline = favorites_unmanaged_tree_sha256(root)
+    name = ".sds200-usb-write-owned.tmp"
+    (root / "nested" / name).write_bytes(b"nested")
+
+    assert storage_evidence._favorites_unmanaged_tree_sha256(
+        root,
+        excluded_root_regular_filename=name,
+    ) != baseline
+
+
+def test_private_unmanaged_tree_exclusion_does_not_ignore_directory_same_name(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "favorites_lists"
+    _write_unmanaged_tree_fixture(root)
+    baseline = favorites_unmanaged_tree_sha256(root)
+    name = ".sds200-usb-write-owned.tmp"
+    directory = root / name
+    directory.mkdir()
+    (directory / "inside.bin").write_bytes(b"unmanaged")
+
+    assert storage_evidence._favorites_unmanaged_tree_sha256(
+        root,
+        excluded_root_regular_filename=name,
+    ) != baseline
+
+
+def test_private_unmanaged_tree_exclusion_rejects_symlink_same_name(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "favorites_lists"
+    root.mkdir()
+    outside = tmp_path / "outside.bin"
+    outside.write_bytes(b"outside")
+    name = ".sds200-usb-write-owned.tmp"
+    (root / name).symlink_to(outside)
+
+    with pytest.raises(
+        FavoritesTreeEvidenceError,
+        match="symbolic links",
+    ):
+        storage_evidence._favorites_unmanaged_tree_sha256(
+            root,
+            excluded_root_regular_filename=name,
+        )
