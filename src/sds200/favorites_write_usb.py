@@ -3147,6 +3147,388 @@ def _require_usb_recovery_target_ready(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class _FavoritesUsbVerifiedRecoveryArtifact:
+    artifact: _FavoritesUsbMediaRecoveryArtifact
+    target_evidence: _FavoritesUsbRecoveryTargetEvidence
+    baseline_document: FavoritesStorageDocument
+    device: int
+    inode: int
+    size: int
+    modified_ns: int
+    mode: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(
+            self.artifact,
+            _FavoritesUsbMediaRecoveryArtifact,
+        ):
+            raise TypeError(
+                "Verified Favorites USB recovery artifact requires "
+                "_FavoritesUsbMediaRecoveryArtifact."
+            )
+        if not isinstance(
+            self.target_evidence,
+            _FavoritesUsbRecoveryTargetEvidence,
+        ):
+            raise TypeError(
+                "Verified Favorites USB recovery artifact target evidence must "
+                "be _FavoritesUsbRecoveryTargetEvidence."
+            )
+        if not isinstance(
+            self.baseline_document,
+            FavoritesStorageDocument,
+        ):
+            raise TypeError(
+                "Verified Favorites USB recovery artifact baseline document "
+                "must be FavoritesStorageDocument."
+            )
+
+        if (
+            self.artifact.path
+            != self.target_evidence.temporary_path
+        ):
+            raise ValueError(
+                "Verified Favorites USB recovery artifact path must match the "
+                "exact operation temporary path."
+            )
+        if (
+            self.artifact.managed_filename
+            != self.baseline_document.filename
+        ):
+            raise ValueError(
+                "Verified Favorites USB recovery artifact filename must match "
+                "the exact baseline document."
+            )
+        if (
+            self.artifact.content_sha256
+            != _usb_media_content_sha256(
+                self.baseline_document.content
+            )
+        ):
+            raise ValueError(
+                "Verified Favorites USB recovery artifact SHA-256 must match "
+                "the exact baseline document."
+            )
+
+        for label, value in (
+            ("device", self.device),
+            ("inode", self.inode),
+            ("size", self.size),
+            ("modified nanoseconds", self.modified_ns),
+            ("mode", self.mode),
+        ):
+            if not isinstance(
+                value,
+                int,
+            ):
+                raise TypeError(
+                    f"Verified Favorites USB recovery artifact {label} "
+                    "must be int."
+                )
+            if value < 0:
+                raise ValueError(
+                    f"Verified Favorites USB recovery artifact {label} "
+                    "must be non-negative."
+                )
+
+
+def _usb_recovery_artifact_fingerprint(
+    observed: os.stat_result,
+) -> tuple[int, int, int, int, int]:
+    return (
+        observed.st_dev,
+        observed.st_ino,
+        observed.st_size,
+        observed.st_mtime_ns,
+        observed.st_mode,
+    )
+
+
+def _require_current_usb_recovery_artifact(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    backup: _FavoritesUsbVerifiedBackup,
+    artifact: _FavoritesUsbMediaRecoveryArtifact,
+) -> _FavoritesUsbVerifiedRecoveryArtifact:
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB recovery-artifact verification requires "
+            "FavoritesUsbWritePreflight."
+        )
+    if not isinstance(
+        backup,
+        _FavoritesUsbVerifiedBackup,
+    ):
+        raise TypeError(
+            "Favorites USB recovery-artifact verification requires "
+            "_FavoritesUsbVerifiedBackup."
+        )
+    if not isinstance(
+        artifact,
+        _FavoritesUsbMediaRecoveryArtifact,
+    ):
+        raise TypeError(
+            "Favorites USB recovery-artifact verification requires "
+            "_FavoritesUsbMediaRecoveryArtifact."
+        )
+
+    _require_host_operation_paths_match_preflight(
+        preflight,
+        paths,
+    )
+    _require_active_usb_host_lock(
+        paths
+    )
+    _require_verified_usb_host_backup_current(
+        preflight,
+        paths,
+        backup,
+    )
+
+    recovery_plan = _usb_recovery_plan(
+        preflight,
+        backup,
+    )
+    target_evidence = (
+        _require_usb_recovery_target_ready(
+            preflight,
+            paths,
+            backup,
+        )
+    )
+
+    if artifact.path != target_evidence.temporary_path:
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "USB recovery artifact path does not match the exact "
+            "operation-owned temporary path.",
+        )
+
+    baseline_documents = {
+        document.filename: document
+        for document in recovery_plan.restore_documents
+    }
+    baseline_document = baseline_documents.get(
+        artifact.managed_filename
+    )
+    if baseline_document is None:
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "USB recovery artifact does not identify a baseline HPD.",
+        )
+
+    intended_names = {
+        document.filename
+        for document in preflight.plan.intended_snapshot.documents
+    }
+    if artifact.managed_filename in intended_names:
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "USB recovery artifact filename is still present in the intended "
+            "snapshot and therefore is not deletion-phase ownership evidence.",
+        )
+
+    activation_plan = (
+        _usb_managed_activation_plan(
+            preflight
+        )
+    )
+    if (
+        artifact.managed_filename
+        not in activation_plan.document_deletions
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "USB recovery artifact filename is not an operation deletion "
+            "candidate.",
+        )
+
+    baseline_sha256 = (
+        _usb_media_content_sha256(
+            baseline_document.content
+        )
+    )
+    if artifact.content_sha256 != baseline_sha256:
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "USB recovery artifact provenance SHA-256 does not match the "
+            "exact baseline HPD.",
+        )
+
+    try:
+        initial = artifact.path.lstat()
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            f"Could not inspect the current USB recovery artifact: {error}",
+        ) from error
+
+    try:
+        current_content = (
+            _read_usb_activation_regular_file(
+                artifact.path
+            )
+        )
+    except _FavoritesUsbWritePreparationError as error:
+        raise _FavoritesUsbWritePreparationError(
+            error.path,
+            "Could not safely read the current USB recovery artifact: "
+            f"{error.message}",
+        ) from error
+
+    try:
+        observed = artifact.path.lstat()
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "Could not re-inspect the current USB recovery artifact: "
+            f"{error}",
+        ) from error
+
+    initial_fingerprint = (
+        _usb_recovery_artifact_fingerprint(
+            initial
+        )
+    )
+    observed_fingerprint = (
+        _usb_recovery_artifact_fingerprint(
+            observed
+        )
+    )
+    if observed_fingerprint != initial_fingerprint:
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "USB recovery artifact changed during exact-content verification.",
+        )
+
+    if current_content != baseline_document.content:
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "Current USB recovery artifact bytes do not match the exact "
+            "baseline HPD.",
+        )
+    if (
+        _usb_media_content_sha256(
+            current_content
+        )
+        != artifact.content_sha256
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "Current USB recovery artifact SHA-256 does not match its "
+            "verified provenance.",
+        )
+
+    _require_verified_usb_host_backup_current(
+        preflight,
+        paths,
+        backup,
+    )
+    final_target_evidence = (
+        _require_usb_recovery_target_ready(
+            preflight,
+            paths,
+            backup,
+        )
+    )
+    if final_target_evidence != target_evidence:
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "USB recovery target evidence changed while binding the "
+            "surviving artifact.",
+        )
+
+    try:
+        final_before = artifact.path.lstat()
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "Could not re-inspect the USB recovery artifact after target "
+            f"revalidation: {error}",
+        ) from error
+
+    if (
+        _usb_recovery_artifact_fingerprint(
+            final_before
+        )
+        != observed_fingerprint
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "USB recovery artifact identity changed during target "
+            "revalidation.",
+        )
+
+    try:
+        final_content = (
+            _read_usb_activation_regular_file(
+                artifact.path
+            )
+        )
+    except _FavoritesUsbWritePreparationError as error:
+        raise _FavoritesUsbWritePreparationError(
+            error.path,
+            "Could not safely re-read the USB recovery artifact after target "
+            f"revalidation: {error.message}",
+        ) from error
+
+    try:
+        final_after = artifact.path.lstat()
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "Could not complete USB recovery artifact stability "
+            f"verification: {error}",
+        ) from error
+
+    final_fingerprint = (
+        _usb_recovery_artifact_fingerprint(
+            final_after
+        )
+    )
+    if (
+        final_fingerprint
+        != observed_fingerprint
+        or _usb_recovery_artifact_fingerprint(
+            final_before
+        )
+        != final_fingerprint
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "USB recovery artifact changed during final exact-content "
+            "verification.",
+        )
+
+    if (
+        final_content != baseline_document.content
+        or _usb_media_content_sha256(
+            final_content
+        )
+        != artifact.content_sha256
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            artifact.path,
+            "USB recovery artifact no longer matches the exact verified "
+            "baseline HPD.",
+        )
+
+    return _FavoritesUsbVerifiedRecoveryArtifact(
+        artifact=artifact,
+        target_evidence=final_target_evidence,
+        baseline_document=baseline_document,
+        device=final_after.st_dev,
+        inode=final_after.st_ino,
+        size=final_after.st_size,
+        modified_ns=final_after.st_mtime_ns,
+        mode=final_after.st_mode,
+    )
+
+
 def _require_usb_managed_activation_filename(
     filename: str,
 ) -> str:

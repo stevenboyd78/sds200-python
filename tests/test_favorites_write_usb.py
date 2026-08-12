@@ -4333,3 +4333,497 @@ def test_usb_media_mutation_error_rejects_invalid_recovery_artifact(
             mutation_started=True,
             recovery_artifact=object(),  # type: ignore[arg-type]
         )
+
+
+def _usb_recovery_artifact_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[
+    write_usb.FavoritesUsbWritePreflight,
+    write_usb._FavoritesUsbHostOperationPaths,
+    write_usb._FavoritesUsbVerifiedBackup,
+    write_usb._FavoritesUsbMediaRecoveryArtifact,
+    Path,
+    bytes,
+    object,
+]:
+    hpd = (
+        b"TargetModel\tBCDx36HP\r\n"
+        b"FormatVersion\t1.00\r\n"
+        b"Department\tRecovery artifact\r\n"
+    )
+    baseline = FavoritesStorageSnapshot(
+        catalog_bytes=_BASELINE_CATALOG,
+        documents=(
+            FavoritesStorageDocument(
+                filename="remove.hpd",
+                content=hpd,
+            ),
+        ),
+    )
+    intended = _snapshot()
+    (
+        preflight,
+        _,
+        favorites_directory,
+    ) = _prepared_usb_activation_fixture(
+        tmp_path,
+        baseline=baseline,
+        intended=intended,
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+
+    lock = write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    )
+    paths = lock.__enter__()
+    backup = write_usb._create_verified_usb_host_backup(
+        preflight,
+        paths,
+    )
+
+    temporary = (
+        write_usb._usb_media_temporary_path(
+            preflight,
+            paths,
+        )
+    )
+    real_unlink = Path.unlink
+
+    def failing_owned_unlink(
+        path: Path,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        if path == temporary:
+            raise OSError(
+                "injected surviving recovery artifact"
+            )
+        real_unlink(
+            path,
+            *args,
+            **kwargs,
+        )
+
+    monkeypatch.setattr(
+        Path,
+        "unlink",
+        failing_owned_unlink,
+    )
+
+    with pytest.raises(
+        write_usb._FavoritesUsbMediaMutationError,
+        match="finalize active HPD deletion",
+    ) as raised:
+        write_usb._delete_usb_active_managed_hpd(
+            preflight,
+            paths,
+            "remove.hpd",
+            hpd,
+        )
+
+    artifact = raised.value.recovery_artifact
+    assert artifact is not None
+    assert not (
+        favorites_directory
+        / "remove.hpd"
+    ).exists()
+    assert temporary.read_bytes() == hpd
+
+    return (
+        preflight,
+        paths,
+        backup,
+        artifact,
+        temporary,
+        hpd,
+        lock,
+    )
+
+
+def test_usb_recovery_artifact_binding_accepts_exact_baseline_deletion_survivor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        backup,
+        artifact,
+        temporary,
+        hpd,
+        lock,
+    ) = _usb_recovery_artifact_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+
+    try:
+        verified = (
+            write_usb._require_current_usb_recovery_artifact(
+                preflight,
+                paths,
+                backup,
+                artifact,
+            )
+        )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+    assert verified.artifact == artifact
+    assert (
+        verified.target_evidence.temporary_path
+        == temporary
+    )
+    assert verified.baseline_document == (
+        FavoritesStorageDocument(
+            filename="remove.hpd",
+            content=hpd,
+        )
+    )
+    assert verified.device == temporary.stat().st_dev
+    assert verified.inode == temporary.stat().st_ino
+    assert verified.size == len(hpd)
+    assert temporary.read_bytes() == hpd
+
+
+def test_usb_recovery_artifact_binding_refuses_wrong_operation_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        backup,
+        artifact,
+        temporary,
+        _,
+        lock,
+    ) = _usb_recovery_artifact_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    wrong = write_usb._FavoritesUsbMediaRecoveryArtifact(
+        path=temporary.with_name(
+            ".sds200-usb-write-wrong.tmp"
+        ),
+        managed_filename=artifact.managed_filename,
+        content_sha256=artifact.content_sha256,
+    )
+
+    try:
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="exact operation-owned temporary path",
+        ):
+            write_usb._require_current_usb_recovery_artifact(
+                preflight,
+                paths,
+                backup,
+                wrong,
+            )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+
+def test_usb_recovery_artifact_binding_refuses_non_deletion_phase_filename(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        backup,
+        artifact,
+        temporary,
+        _,
+        lock,
+    ) = _usb_recovery_artifact_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    wrong = write_usb._FavoritesUsbMediaRecoveryArtifact(
+        path=temporary,
+        managed_filename="other.hpd",
+        content_sha256=artifact.content_sha256,
+    )
+
+    try:
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="does not identify a baseline HPD",
+        ):
+            write_usb._require_current_usb_recovery_artifact(
+                preflight,
+                paths,
+                backup,
+                wrong,
+            )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+
+def test_usb_recovery_artifact_binding_refuses_provenance_hash_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        backup,
+        artifact,
+        temporary,
+        _,
+        lock,
+    ) = _usb_recovery_artifact_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    wrong = write_usb._FavoritesUsbMediaRecoveryArtifact(
+        path=temporary,
+        managed_filename=artifact.managed_filename,
+        content_sha256="0" * 64,
+    )
+
+    try:
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="provenance SHA-256",
+        ):
+            write_usb._require_current_usb_recovery_artifact(
+                preflight,
+                paths,
+                backup,
+                wrong,
+            )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+
+def test_usb_recovery_artifact_binding_refuses_current_content_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        backup,
+        artifact,
+        temporary,
+        _,
+        lock,
+    ) = _usb_recovery_artifact_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    temporary.write_bytes(
+        b"changed after provenance"
+    )
+
+    try:
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="exact baseline HPD",
+        ):
+            write_usb._require_current_usb_recovery_artifact(
+                preflight,
+                paths,
+                backup,
+                artifact,
+            )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+
+def test_usb_recovery_artifact_binding_refuses_symlink_temp(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        backup,
+        artifact,
+        temporary,
+        hpd,
+        lock,
+    ) = _usb_recovery_artifact_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    # The fixture intentionally leaves Path.unlink monkeypatched so the
+    # verified deletion artifact survives. Bypass that injected failure only
+    # for this test setup before replacing the exact temp path with a symlink.
+    write_usb.os.unlink(
+        temporary
+    )
+    outside = tmp_path / "outside-recovery-artifact"
+    outside.write_bytes(
+        hpd
+    )
+    _symlink_or_skip(
+        temporary,
+        outside,
+    )
+
+    try:
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="symbolic link",
+        ):
+            write_usb._require_current_usb_recovery_artifact(
+                preflight,
+                paths,
+                backup,
+                artifact,
+            )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+    assert outside.read_bytes() == hpd
+
+
+def test_usb_recovery_artifact_binding_revalidates_backup_and_target_after_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        backup,
+        artifact,
+        _,
+        _,
+        lock,
+    ) = _usb_recovery_artifact_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+
+    real_backup = (
+        write_usb._require_verified_usb_host_backup_current
+    )
+    real_target = (
+        write_usb._require_usb_recovery_target_ready
+    )
+    real_read = (
+        write_usb._read_usb_activation_regular_file
+    )
+    calls: list[str] = []
+
+    def tracked_backup(
+        current_preflight: write_usb.FavoritesUsbWritePreflight,
+        current_paths: write_usb._FavoritesUsbHostOperationPaths,
+        current_backup: write_usb._FavoritesUsbVerifiedBackup,
+    ) -> object:
+        calls.append(
+            "backup"
+        )
+        return real_backup(
+            current_preflight,
+            current_paths,
+            current_backup,
+        )
+
+    def tracked_target(
+        current_preflight: write_usb.FavoritesUsbWritePreflight,
+        current_paths: write_usb._FavoritesUsbHostOperationPaths,
+        current_backup: write_usb._FavoritesUsbVerifiedBackup,
+    ) -> write_usb._FavoritesUsbRecoveryTargetEvidence:
+        calls.append(
+            "target"
+        )
+        return real_target(
+            current_preflight,
+            current_paths,
+            current_backup,
+        )
+
+    def tracked_read(
+        path: Path,
+    ) -> bytes:
+        calls.append(
+            "read"
+        )
+        return real_read(
+            path
+        )
+
+    monkeypatch.setattr(
+        write_usb,
+        "_require_verified_usb_host_backup_current",
+        tracked_backup,
+    )
+    monkeypatch.setattr(
+        write_usb,
+        "_require_usb_recovery_target_ready",
+        tracked_target,
+    )
+    monkeypatch.setattr(
+        write_usb,
+        "_read_usb_activation_regular_file",
+        tracked_read,
+    )
+
+    try:
+        write_usb._require_current_usb_recovery_artifact(
+            preflight,
+            paths,
+            backup,
+            artifact,
+        )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+    assert calls.count("target") == 2
+    assert calls.count("backup") >= 6
+    assert calls.count("read") == 2
+
+    first_read = calls.index("read")
+    second_target = calls.index(
+        "target",
+        calls.index("target") + 1,
+    )
+    second_read = calls.index(
+        "read",
+        first_read + 1,
+    )
+
+    assert first_read < second_target < second_read
+    assert "backup" in calls[
+        first_read + 1:
+        second_target
+    ]
