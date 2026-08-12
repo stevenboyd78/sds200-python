@@ -2397,6 +2397,99 @@ def _write_usb_rollback_manifest(
                         temporary.unlink()
 
 
+class _FavoritesUsbRollbackWriteFailureState(StrEnum):
+    CURRENT = "current"
+    PROPOSED = "proposed"
+
+
+def _reconcile_usb_rollback_manifest_write_failure(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    current: _FavoritesUsbRollbackManifest | None,
+    proposed: _FavoritesUsbRollbackManifest,
+) -> _FavoritesUsbRollbackWriteFailureState:
+    # Read-only reconciliation for a durable write that may have raised after
+    # os.replace() published the proposed rollback revision.
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB rollback write-failure reconciliation requires "
+            "FavoritesUsbWritePreflight."
+        )
+    if current is not None and not isinstance(
+        current,
+        _FavoritesUsbRollbackManifest,
+    ):
+        raise TypeError(
+            "Current Favorites USB rollback manifest must be "
+            "_FavoritesUsbRollbackManifest or None."
+        )
+    if not isinstance(
+        proposed,
+        _FavoritesUsbRollbackManifest,
+    ):
+        raise TypeError(
+            "Proposed Favorites USB rollback manifest must be "
+            "_FavoritesUsbRollbackManifest."
+        )
+
+    _require_host_operation_paths_match_preflight(
+        preflight,
+        paths,
+    )
+    _require_active_usb_host_lock(
+        paths
+    )
+    _require_private_host_directory(
+        paths.operation_directory,
+        create=False,
+    )
+
+    if current is not None:
+        _require_usb_rollback_manifest_matches_preflight(
+            preflight,
+            paths,
+            current,
+        )
+    _require_usb_rollback_manifest_matches_preflight(
+        preflight,
+        paths,
+        proposed,
+    )
+    _require_usb_rollback_manifest_transition(
+        current,
+        proposed,
+        path=paths.rollback_manifest_path,
+    )
+
+    try:
+        observed = _read_usb_rollback_manifest(
+            paths.rollback_manifest_path
+        )
+    except _FavoritesUsbWritePreparationError:
+        if (
+            current is None
+            and not os.path.lexists(
+                paths.rollback_manifest_path
+            )
+        ):
+            return _FavoritesUsbRollbackWriteFailureState.CURRENT
+        raise
+
+    if current is not None and observed == current:
+        return _FavoritesUsbRollbackWriteFailureState.CURRENT
+    if observed == proposed:
+        return _FavoritesUsbRollbackWriteFailureState.PROPOSED
+
+    raise _FavoritesUsbWritePreparationError(
+        paths.rollback_manifest_path,
+        "Favorites USB rollback manifest after a failed durable write "
+        "matches neither the exact prior nor proposed operation state.",
+    )
+
+
 _USB_OPERATION_REPORT_SCHEMA = "sds200.favorites-usb.operation-report"
 _USB_OPERATION_REPORT_VERSION = 1
 _USB_OPERATION_REPORT_MAX_BYTES = _USB_ROLLBACK_MANIFEST_MAX_BYTES
