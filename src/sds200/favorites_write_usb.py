@@ -9816,6 +9816,797 @@ def _recover_usb_active_managed_state(
     )
 
 
+class _FavoritesUsbActivationFailureStage(StrEnum):
+    MUTATION_EXECUTION = "mutation_execution"
+    POSTACTIVATION_VERIFICATION = "postactivation_verification"
+
+
+class _FavoritesUsbActivationExecutionError(RuntimeError):
+    def __init__(
+        self,
+        path: Path,
+        message: str,
+        *,
+        stage: _FavoritesUsbActivationFailureStage,
+        mutation_started: bool,
+        recovery_artifact: _FavoritesUsbMediaRecoveryArtifact | None = None,
+    ) -> None:
+        if not isinstance(
+            path,
+            Path,
+        ):
+            raise TypeError(
+                "Favorites USB activation execution error path must be "
+                "pathlib.Path."
+            )
+        if not isinstance(
+            message,
+            str,
+        ):
+            raise TypeError(
+                "Favorites USB activation execution error message must be str."
+            )
+        if not message:
+            raise ValueError(
+                "Favorites USB activation execution error message must not "
+                "be empty."
+            )
+        if not isinstance(
+            stage,
+            _FavoritesUsbActivationFailureStage,
+        ):
+            raise TypeError(
+                "Favorites USB activation execution error stage must be "
+                "_FavoritesUsbActivationFailureStage."
+            )
+        if type(mutation_started) is not bool:
+            raise TypeError(
+                "Favorites USB activation execution error mutation-started "
+                "flag must be bool."
+            )
+        if (
+            recovery_artifact is not None
+            and not isinstance(
+                recovery_artifact,
+                _FavoritesUsbMediaRecoveryArtifact,
+            )
+        ):
+            raise TypeError(
+                "Favorites USB activation execution recovery artifact must be "
+                "_FavoritesUsbMediaRecoveryArtifact or None."
+            )
+        if (
+            recovery_artifact is not None
+            and not mutation_started
+        ):
+            raise ValueError(
+                "Favorites USB activation execution cannot carry recovery "
+                "artifact provenance before mutation has begun."
+            )
+        if (
+            stage
+            is _FavoritesUsbActivationFailureStage.POSTACTIVATION_VERIFICATION
+            and not mutation_started
+        ):
+            raise ValueError(
+                "Favorites USB postactivation verification failure requires "
+                "activation mutation to have begun."
+            )
+
+        self.path = path
+        self.message = message
+        self.stage = stage
+        self.mutation_started = mutation_started
+        self.recovery_artifact = recovery_artifact
+
+        super().__init__(
+            "Favorites USB activation failed "
+            f"({stage.value}) at {path}: {message} "
+            f"(mutation_started={str(mutation_started).lower()})"
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _FavoritesUsbActivatedState:
+    target_evidence: _FavoritesUsbRecoveryTargetEvidence
+    snapshot: FavoritesStorageSnapshot
+    snapshot_sha256: str
+    unmanaged_sha256: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(
+            self.target_evidence,
+            _FavoritesUsbRecoveryTargetEvidence,
+        ):
+            raise TypeError(
+                "Favorites USB activated state target evidence must be "
+                "_FavoritesUsbRecoveryTargetEvidence."
+            )
+        if not isinstance(
+            self.snapshot,
+            FavoritesStorageSnapshot,
+        ):
+            raise TypeError(
+                "Favorites USB activated state snapshot must be "
+                "FavoritesStorageSnapshot."
+            )
+        _validate_unmanaged_sha256(
+            self.snapshot_sha256,
+            label="Favorites USB activated managed snapshot SHA-256",
+        )
+        _validate_unmanaged_sha256(
+            self.unmanaged_sha256,
+            label="Favorites USB activated unmanaged tree SHA-256",
+        )
+        if (
+            self.snapshot_sha256
+            != favorites_storage_snapshot_sha256(
+                self.snapshot
+            )
+        ):
+            raise ValueError(
+                "Favorites USB activated managed snapshot SHA-256 must match "
+                "the exact activated snapshot."
+            )
+        if (
+            self.unmanaged_sha256
+            != self.target_evidence.unmanaged_sha256
+        ):
+            raise ValueError(
+                "Favorites USB activated unmanaged SHA-256 must match the "
+                "fresh activation target evidence."
+            )
+
+
+def _activation_execution_error_from_preparation(
+    error: _FavoritesUsbWritePreparationError,
+    *,
+    stage: _FavoritesUsbActivationFailureStage,
+    mutation_started: bool,
+) -> _FavoritesUsbActivationExecutionError:
+    return _FavoritesUsbActivationExecutionError(
+        error.path,
+        error.message,
+        stage=stage,
+        mutation_started=mutation_started,
+    )
+
+
+def _activation_execution_error_from_media(
+    error: _FavoritesUsbMediaMutationError,
+    *,
+    prior_mutation_started: bool,
+) -> _FavoritesUsbActivationExecutionError:
+    return _FavoritesUsbActivationExecutionError(
+        error.path,
+        error.message,
+        stage=_FavoritesUsbActivationFailureStage.MUTATION_EXECUTION,
+        mutation_started=(
+            prior_mutation_started
+            or error.mutation_started
+        ),
+        recovery_artifact=error.recovery_artifact,
+    )
+
+
+def _write_usb_activation_managed_file_exact_state(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    filename: str,
+    intended_content: bytes,
+    *,
+    baseline_content: bytes | None,
+) -> None:
+    if not isinstance(
+        intended_content,
+        bytes,
+    ):
+        raise TypeError(
+            "Favorites USB exact-state activation intended content must be "
+            "bytes."
+        )
+    if (
+        baseline_content is not None
+        and not isinstance(
+            baseline_content,
+            bytes,
+        )
+    ):
+        raise TypeError(
+            "Favorites USB exact-state activation baseline content must be "
+            "bytes or None."
+        )
+
+    filename = _require_usb_managed_activation_filename(
+        filename
+    )
+    temporary = _usb_media_temporary_path(
+        preflight,
+        paths,
+    )
+    if os.path.lexists(
+        temporary
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            temporary,
+            "Exact-state USB activation requires the bounded media temporary "
+            "path to be absent.",
+            mutation_started=False,
+        )
+
+    # Reuse the guarded exact-state file mutation primitive with the desired
+    # bytes as its target state. For activation, the only accepted prior state
+    # is the exact baseline bytes, or exact absence when the intended HPD is
+    # new. This deliberately avoids the older blind pathname replacement
+    # helper, which does not authorize overwriting arbitrary existing bytes.
+    _restore_usb_active_managed_file(
+        preflight,
+        paths,
+        filename,
+        intended_content,
+        allowed_existing_content=baseline_content,
+        allow_absent=(
+            baseline_content is None
+        ),
+    )
+
+    if os.path.lexists(
+        temporary
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            temporary,
+            "Exact-state USB activation unexpectedly left a bounded media "
+            "temporary path.",
+            mutation_started=True,
+        )
+
+
+def _read_usb_activation_managed_snapshot(
+    favorites_directory: Path,
+) -> FavoritesStorageSnapshot:
+    if not isinstance(
+        favorites_directory,
+        Path,
+    ):
+        raise TypeError(
+            "Favorites USB activation managed readback path must be "
+            "pathlib.Path."
+        )
+    if not favorites_directory.is_absolute():
+        raise ValueError(
+            "Favorites USB activation managed readback path must be absolute."
+        )
+
+    try:
+        return FavoritesCopiedTreeStorageSource(
+            favorites_directory
+        ).read_snapshot()
+    except FavoritesCopiedTreeStorageError as error:
+        raise _FavoritesUsbWritePreparationError(
+            error.path,
+            "Could not read the active USB managed snapshot during "
+            f"postactivation verification: {error.message}",
+        ) from error
+
+
+def _activate_usb_managed_state(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    backup: _FavoritesUsbVerifiedBackup,
+    prepared: _FavoritesUsbPreparedStage,
+    preactivation: _FavoritesUsbPreactivationEvidence,
+) -> _FavoritesUsbActivatedState:
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB managed activation requires "
+            "FavoritesUsbWritePreflight."
+        )
+    if not isinstance(
+        backup,
+        _FavoritesUsbVerifiedBackup,
+    ):
+        raise TypeError(
+            "Favorites USB managed activation requires "
+            "_FavoritesUsbVerifiedBackup."
+        )
+    if not isinstance(
+        prepared,
+        _FavoritesUsbPreparedStage,
+    ):
+        raise TypeError(
+            "Favorites USB managed activation requires "
+            "_FavoritesUsbPreparedStage."
+        )
+    if not isinstance(
+        preactivation,
+        _FavoritesUsbPreactivationEvidence,
+    ):
+        raise TypeError(
+            "Favorites USB managed activation requires "
+            "_FavoritesUsbPreactivationEvidence."
+        )
+
+    activation_plan = _usb_managed_activation_plan(
+        preflight
+    )
+    if activation_plan.is_noop:
+        raise _FavoritesUsbActivationExecutionError(
+            preflight.qualification.favorites_directory,
+            "No-op Favorites USB write plan must not enter active-media "
+            "activation.",
+            stage=_FavoritesUsbActivationFailureStage.MUTATION_EXECUTION,
+            mutation_started=False,
+        )
+
+    mutation_started = False
+
+    try:
+        _require_host_operation_paths_match_preflight(
+            preflight,
+            paths,
+        )
+        _require_active_usb_host_lock(
+            paths
+        )
+        _require_usb_activation_filesystem(
+            preflight
+        )
+        fresh_preactivation = (
+            _require_usb_preactivation_ready(
+                preflight,
+                paths,
+                backup,
+                prepared,
+            )
+        )
+        if fresh_preactivation != preactivation:
+            raise _FavoritesUsbWritePreparationError(
+                preflight.qualification.favorites_directory,
+                "Fresh USB preactivation evidence changed before the first "
+                "active-media mutation.",
+            )
+
+        expected_target = _require_usb_recovery_target_ready(
+            preflight,
+            paths,
+            backup,
+        )
+        temporary = expected_target.temporary_path
+
+        if os.path.lexists(
+            temporary
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                temporary,
+                "USB activation cannot begin while the bounded media "
+                "temporary path exists.",
+            )
+
+        if (
+            expected_target.unmanaged_sha256
+            != preflight.unmanaged_sha256
+            or expected_target.unmanaged_sha256
+            != backup.unmanaged_sha256
+            or expected_target.unmanaged_sha256
+            != prepared.unmanaged_sha256
+            or expected_target.unmanaged_sha256
+            != preactivation.unmanaged_sha256
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                expected_target.favorites_directory,
+                "USB activation unmanaged identity does not match all "
+                "verified preactivation sources.",
+            )
+    except _FavoritesUsbWritePreparationError as error:
+        raise _activation_execution_error_from_preparation(
+            error,
+            stage=_FavoritesUsbActivationFailureStage.MUTATION_EXECUTION,
+            mutation_started=False,
+        ) from error
+
+    baseline = preflight.plan.baseline_snapshot
+    intended = preflight.plan.intended_snapshot
+    baseline_documents = {
+        document.filename: document
+        for document in baseline.documents
+    }
+    intended_documents = {
+        document.filename: document
+        for document in intended.documents
+    }
+
+    for filename in activation_plan.document_writes:
+        intended_document = intended_documents.get(
+            filename
+        )
+        if intended_document is None:
+            raise _FavoritesUsbActivationExecutionError(
+                expected_target.favorites_directory
+                / filename,
+                "Managed activation plan references an HPD absent from the "
+                "exact intended snapshot.",
+                stage=_FavoritesUsbActivationFailureStage.MUTATION_EXECUTION,
+                mutation_started=mutation_started,
+            )
+
+        baseline_document = baseline_documents.get(
+            filename
+        )
+
+        try:
+            _require_usb_recovery_target_matches(
+                preflight,
+                paths,
+                backup,
+                expected_target,
+                stage=(
+                    "activation pre-write verification for "
+                    f"{filename}"
+                ),
+            )
+            if os.path.lexists(
+                temporary
+            ):
+                raise _FavoritesUsbWritePreparationError(
+                    temporary,
+                    "Bounded USB media temporary path appeared before "
+                    f"activation write {filename!r}.",
+                )
+
+            _write_usb_activation_managed_file_exact_state(
+                preflight,
+                paths,
+                filename,
+                intended_document.content,
+                baseline_content=(
+                    None
+                    if baseline_document is None
+                    else baseline_document.content
+                ),
+            )
+        except _FavoritesUsbMediaMutationError as error:
+            raise _activation_execution_error_from_media(
+                error,
+                prior_mutation_started=mutation_started,
+            ) from error
+        except _FavoritesUsbWritePreparationError as error:
+            raise _activation_execution_error_from_preparation(
+                error,
+                stage=_FavoritesUsbActivationFailureStage.MUTATION_EXECUTION,
+                mutation_started=mutation_started,
+            ) from error
+
+        # document_writes contains only baseline->intended differences. Treat a
+        # successful exact-state call as cumulative mutation for conservative
+        # workflow classification even if an external writer raced the pathname
+        # to the exact intended bytes and the guarded primitive therefore
+        # observed an already-satisfied target.
+        mutation_started = True
+
+        try:
+            _require_usb_recovery_target_matches(
+                preflight,
+                paths,
+                backup,
+                expected_target,
+                stage=(
+                    "activation post-write verification for "
+                    f"{filename}"
+                ),
+            )
+            if os.path.lexists(
+                temporary
+            ):
+                raise _FavoritesUsbWritePreparationError(
+                    temporary,
+                    "Bounded USB media temporary path exists after "
+                    f"activation write {filename!r}.",
+                )
+        except _FavoritesUsbWritePreparationError as error:
+            raise _activation_execution_error_from_preparation(
+                error,
+                stage=_FavoritesUsbActivationFailureStage.MUTATION_EXECUTION,
+                mutation_started=True,
+            ) from error
+
+    if activation_plan.write_catalog:
+        try:
+            _require_usb_recovery_target_matches(
+                preflight,
+                paths,
+                backup,
+                expected_target,
+                stage="activation pre-catalog verification",
+            )
+            if os.path.lexists(
+                temporary
+            ):
+                raise _FavoritesUsbWritePreparationError(
+                    temporary,
+                    "Bounded USB media temporary path appeared before "
+                    "catalog activation.",
+                )
+
+            _write_usb_activation_managed_file_exact_state(
+                preflight,
+                paths,
+                "f_list.cfg",
+                intended.catalog_bytes,
+                baseline_content=baseline.catalog_bytes,
+            )
+        except _FavoritesUsbMediaMutationError as error:
+            raise _activation_execution_error_from_media(
+                error,
+                prior_mutation_started=mutation_started,
+            ) from error
+        except _FavoritesUsbWritePreparationError as error:
+            raise _activation_execution_error_from_preparation(
+                error,
+                stage=_FavoritesUsbActivationFailureStage.MUTATION_EXECUTION,
+                mutation_started=mutation_started,
+            ) from error
+
+        mutation_started = True
+
+        try:
+            _require_usb_recovery_target_matches(
+                preflight,
+                paths,
+                backup,
+                expected_target,
+                stage="activation post-catalog verification",
+            )
+            if os.path.lexists(
+                temporary
+            ):
+                raise _FavoritesUsbWritePreparationError(
+                    temporary,
+                    "Bounded USB media temporary path exists after catalog "
+                    "activation.",
+                )
+        except _FavoritesUsbWritePreparationError as error:
+            raise _activation_execution_error_from_preparation(
+                error,
+                stage=_FavoritesUsbActivationFailureStage.MUTATION_EXECUTION,
+                mutation_started=True,
+            ) from error
+
+    for filename in activation_plan.document_deletions:
+        baseline_document = baseline_documents.get(
+            filename
+        )
+        if baseline_document is None:
+            raise _FavoritesUsbActivationExecutionError(
+                expected_target.favorites_directory
+                / filename,
+                "Managed activation plan references a deletion absent from "
+                "the exact baseline snapshot.",
+                stage=_FavoritesUsbActivationFailureStage.MUTATION_EXECUTION,
+                mutation_started=mutation_started,
+            )
+
+        try:
+            _require_usb_recovery_target_matches(
+                preflight,
+                paths,
+                backup,
+                expected_target,
+                stage=(
+                    "activation pre-deletion verification for "
+                    f"{filename}"
+                ),
+            )
+            if os.path.lexists(
+                temporary
+            ):
+                raise _FavoritesUsbWritePreparationError(
+                    temporary,
+                    "Bounded USB media temporary path appeared before "
+                    f"activation deletion {filename!r}.",
+                )
+
+            _delete_usb_active_managed_hpd(
+                preflight,
+                paths,
+                filename,
+                baseline_document.content,
+            )
+        except _FavoritesUsbMediaMutationError as error:
+            raise _activation_execution_error_from_media(
+                error,
+                prior_mutation_started=mutation_started,
+            ) from error
+        except _FavoritesUsbWritePreparationError as error:
+            raise _activation_execution_error_from_preparation(
+                error,
+                stage=_FavoritesUsbActivationFailureStage.MUTATION_EXECUTION,
+                mutation_started=mutation_started,
+            ) from error
+
+        mutation_started = True
+
+        try:
+            _require_usb_recovery_target_matches(
+                preflight,
+                paths,
+                backup,
+                expected_target,
+                stage=(
+                    "activation post-deletion verification for "
+                    f"{filename}"
+                ),
+            )
+            if os.path.lexists(
+                temporary
+            ):
+                raise _FavoritesUsbWritePreparationError(
+                    temporary,
+                    "Bounded USB media temporary path exists after "
+                    f"activation deletion {filename!r}.",
+                )
+        except _FavoritesUsbWritePreparationError as error:
+            raise _activation_execution_error_from_preparation(
+                error,
+                stage=_FavoritesUsbActivationFailureStage.MUTATION_EXECUTION,
+                mutation_started=True,
+            ) from error
+
+    if not mutation_started:
+        raise AssertionError(
+            "Non-noop Favorites USB activation completed no managed mutation "
+            "steps."
+        )
+
+    try:
+        if os.path.lexists(
+            temporary
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                temporary,
+                "USB activation cannot begin final readback while a bounded "
+                "media temporary path remains.",
+            )
+
+        before_readback = _require_usb_recovery_target_matches(
+            preflight,
+            paths,
+            backup,
+            expected_target,
+            stage="initial postactivation target verification",
+        )
+
+        first_snapshot = _read_usb_activation_managed_snapshot(
+            before_readback.favorites_directory
+        )
+        if first_snapshot != intended:
+            raise _FavoritesUsbWritePreparationError(
+                before_readback.favorites_directory,
+                "Activated USB managed snapshot does not exactly match the "
+                "intended write-plan snapshot.",
+            )
+
+        middle_readback = _require_usb_recovery_target_matches(
+            preflight,
+            paths,
+            backup,
+            expected_target,
+            stage="mid-postactivation target verification",
+        )
+
+        if os.path.lexists(
+            temporary
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                temporary,
+                "Bounded USB media temporary path appeared during "
+                "postactivation managed readback.",
+            )
+
+        second_snapshot = _read_usb_activation_managed_snapshot(
+            middle_readback.favorites_directory
+        )
+        if (
+            second_snapshot != intended
+            or second_snapshot != first_snapshot
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                middle_readback.favorites_directory,
+                "Activated USB managed snapshot changed during final exact "
+                "intended-state readback.",
+            )
+
+        final_target = _require_usb_recovery_target_matches(
+            preflight,
+            paths,
+            backup,
+            expected_target,
+            stage="final postactivation target verification",
+        )
+
+        if os.path.lexists(
+            temporary
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                temporary,
+                "Bounded USB media temporary path exists after final "
+                "postactivation target verification.",
+            )
+
+        if (
+            final_target.unmanaged_sha256
+            != preflight.unmanaged_sha256
+            or final_target.unmanaged_sha256
+            != backup.unmanaged_sha256
+            or final_target.unmanaged_sha256
+            != prepared.unmanaged_sha256
+            or final_target.unmanaged_sha256
+            != preactivation.unmanaged_sha256
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                final_target.favorites_directory,
+                "Activated USB unmanaged content does not match the exact "
+                "verified preactivation identity.",
+            )
+
+        final_backup_evidence = (
+            _require_verified_usb_host_backup_current(
+                preflight,
+                paths,
+                backup,
+            )
+        )
+        if (
+            final_backup_evidence
+            != preactivation.backup_tree_evidence
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                backup.directory,
+                "Verified USB backup evidence changed during activation.",
+            )
+
+        final_staging_evidence = (
+            _require_verified_usb_host_staging_current(
+                preflight,
+                paths,
+                prepared,
+            )
+        )
+        if (
+            final_staging_evidence
+            != preactivation.staging_tree_evidence
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                prepared.directory,
+                "Verified USB staging evidence changed during activation.",
+            )
+
+    except _FavoritesUsbWritePreparationError as error:
+        raise _activation_execution_error_from_preparation(
+            error,
+            stage=(
+                _FavoritesUsbActivationFailureStage
+                .POSTACTIVATION_VERIFICATION
+            ),
+            mutation_started=True,
+        ) from error
+
+    return _FavoritesUsbActivatedState(
+        target_evidence=final_target,
+        snapshot=second_snapshot,
+        snapshot_sha256=(
+            favorites_storage_snapshot_sha256(
+                second_snapshot
+            )
+        ),
+        unmanaged_sha256=(
+            final_target.unmanaged_sha256
+        ),
+    )
+
+
 def _replace_usb_active_managed_file(
     preflight: FavoritesUsbWritePreflight,
     paths: _FavoritesUsbHostOperationPaths,

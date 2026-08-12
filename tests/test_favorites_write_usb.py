@@ -10404,3 +10404,694 @@ def test_usb_recovery_orchestrator_refuses_unowned_bounded_temp_before_mutation(
             )
             == baseline
         )
+
+
+def _usb_activation_orchestration_prepared(
+    tmp_path: Path,
+) -> tuple[
+    write_usb.FavoritesUsbWritePreflight,
+    Path,
+    Path,
+    FavoritesStorageSnapshot,
+    FavoritesStorageSnapshot,
+]:
+    return _usb_recovery_orchestration_fixture(
+        tmp_path
+    )
+
+
+def test_usb_activation_orchestrator_restores_exact_intended_state(
+    tmp_path: Path,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        _baseline,
+        intended,
+    ) = _usb_activation_orchestration_prepared(
+        tmp_path
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        prepared = (
+            write_usb._create_verified_usb_host_staging(
+                preflight,
+                paths,
+                backup,
+            )
+        )
+        preactivation = (
+            write_usb._require_usb_preactivation_ready(
+                preflight,
+                paths,
+                backup,
+                prepared,
+            )
+        )
+
+        activated = (
+            write_usb._activate_usb_managed_state(
+                preflight,
+                paths,
+                backup,
+                prepared,
+                preactivation,
+            )
+        )
+
+        assert activated.snapshot == intended
+        assert activated.snapshot_sha256 == (
+            write_usb.favorites_storage_snapshot_sha256(
+                intended
+            )
+        )
+        assert activated.unmanaged_sha256 == (
+            preflight.unmanaged_sha256
+        )
+        assert (
+            write_usb._read_usb_recovery_managed_snapshot(
+                favorites_directory
+            )
+            == intended
+        )
+        assert not write_usb.os.path.lexists(
+            write_usb._usb_media_temporary_path(
+                preflight,
+                paths,
+            )
+        )
+
+
+def test_usb_activation_orchestrator_orders_hpd_writes_catalog_then_deletions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        _favorites_directory,
+        host_root,
+        _baseline,
+        intended,
+    ) = _usb_activation_orchestration_prepared(
+        tmp_path
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        prepared = (
+            write_usb._create_verified_usb_host_staging(
+                preflight,
+                paths,
+                backup,
+            )
+        )
+        preactivation = (
+            write_usb._require_usb_preactivation_ready(
+                preflight,
+                paths,
+                backup,
+                prepared,
+            )
+        )
+
+        events: list[str] = []
+        real_write = (
+            write_usb._write_usb_activation_managed_file_exact_state
+        )
+        real_delete = (
+            write_usb._delete_usb_active_managed_hpd
+        )
+
+        def recording_write(
+            current_preflight: write_usb.FavoritesUsbWritePreflight,
+            current_paths: write_usb._FavoritesUsbHostOperationPaths,
+            filename: str,
+            intended_content: bytes,
+            *,
+            baseline_content: bytes | None,
+        ) -> None:
+            events.append(
+                f"write:{filename}"
+            )
+            real_write(
+                current_preflight,
+                current_paths,
+                filename,
+                intended_content,
+                baseline_content=baseline_content,
+            )
+
+        def recording_delete(
+            current_preflight: write_usb.FavoritesUsbWritePreflight,
+            current_paths: write_usb._FavoritesUsbHostOperationPaths,
+            filename: str,
+            expected_content: bytes,
+        ) -> None:
+            events.append(
+                f"delete:{filename}"
+            )
+            real_delete(
+                current_preflight,
+                current_paths,
+                filename,
+                expected_content,
+            )
+
+        monkeypatch.setattr(
+            write_usb,
+            "_write_usb_activation_managed_file_exact_state",
+            recording_write,
+        )
+        monkeypatch.setattr(
+            write_usb,
+            "_delete_usb_active_managed_hpd",
+            recording_delete,
+        )
+
+        activated = (
+            write_usb._activate_usb_managed_state(
+                preflight,
+                paths,
+                backup,
+                prepared,
+                preactivation,
+            )
+        )
+
+        assert activated.snapshot == intended
+        assert events == [
+            "write:added.hpd",
+            "write:keep.hpd",
+            "write:f_list.cfg",
+            "delete:removed.hpd",
+        ]
+
+
+def test_usb_activation_orchestrator_refuses_unknown_first_write_state_without_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        baseline,
+        _intended,
+    ) = _usb_activation_orchestration_prepared(
+        tmp_path
+    )
+    unknown = b"unknown concurrent activation HPD"
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        prepared = (
+            write_usb._create_verified_usb_host_staging(
+                preflight,
+                paths,
+                backup,
+            )
+        )
+        preactivation = (
+            write_usb._require_usb_preactivation_ready(
+                preflight,
+                paths,
+                backup,
+                prepared,
+            )
+        )
+
+        real_preactivation = (
+            write_usb._require_usb_preactivation_ready
+        )
+        raced = False
+
+        def racing_preactivation(
+            current_preflight: write_usb.FavoritesUsbWritePreflight,
+            current_paths: write_usb._FavoritesUsbHostOperationPaths,
+            current_backup: write_usb._FavoritesUsbVerifiedBackup,
+            current_prepared: write_usb._FavoritesUsbPreparedStage,
+        ) -> write_usb._FavoritesUsbPreactivationEvidence:
+            nonlocal raced
+            evidence = real_preactivation(
+                current_preflight,
+                current_paths,
+                current_backup,
+                current_prepared,
+            )
+            if not raced:
+                raced = True
+                (
+                    favorites_directory
+                    / "added.hpd"
+                ).write_bytes(
+                    unknown
+                )
+            return evidence
+
+        monkeypatch.setattr(
+            write_usb,
+            "_require_usb_preactivation_ready",
+            racing_preactivation,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbActivationExecutionError,
+            match="explicitly allowed operation-known state",
+        ) as raised:
+            write_usb._activate_usb_managed_state(
+                preflight,
+                paths,
+                backup,
+                prepared,
+                preactivation,
+            )
+
+        assert raised.value.stage is (
+            write_usb._FavoritesUsbActivationFailureStage
+            .MUTATION_EXECUTION
+        )
+        assert raised.value.mutation_started is False
+        assert raised.value.recovery_artifact is None
+        assert (
+            favorites_directory
+            / "added.hpd"
+        ).read_bytes() == unknown
+        assert (
+            favorites_directory
+            / "keep.hpd"
+        ).read_bytes() == next(
+            document.content
+            for document in baseline.documents
+            if document.filename == "keep.hpd"
+        )
+
+
+def test_usb_activation_orchestrator_aggregates_prior_successful_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        baseline,
+        intended,
+    ) = _usb_activation_orchestration_prepared(
+        tmp_path
+    )
+    intended_documents = {
+        document.filename: document
+        for document in intended.documents
+    }
+    baseline_documents = {
+        document.filename: document
+        for document in baseline.documents
+    }
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        prepared = (
+            write_usb._create_verified_usb_host_staging(
+                preflight,
+                paths,
+                backup,
+            )
+        )
+        preactivation = (
+            write_usb._require_usb_preactivation_ready(
+                preflight,
+                paths,
+                backup,
+                prepared,
+            )
+        )
+
+        real_write = (
+            write_usb._write_usb_activation_managed_file_exact_state
+        )
+        calls = 0
+
+        def failing_second_write(
+            current_preflight: write_usb.FavoritesUsbWritePreflight,
+            current_paths: write_usb._FavoritesUsbHostOperationPaths,
+            filename: str,
+            intended_content: bytes,
+            *,
+            baseline_content: bytes | None,
+        ) -> None:
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise write_usb._FavoritesUsbMediaMutationError(
+                    favorites_directory
+                    / filename,
+                    "injected later activation refusal before local mutation",
+                    mutation_started=False,
+                )
+            real_write(
+                current_preflight,
+                current_paths,
+                filename,
+                intended_content,
+                baseline_content=baseline_content,
+            )
+
+        monkeypatch.setattr(
+            write_usb,
+            "_write_usb_activation_managed_file_exact_state",
+            failing_second_write,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbActivationExecutionError,
+            match="injected later activation refusal",
+        ) as raised:
+            write_usb._activate_usb_managed_state(
+                preflight,
+                paths,
+                backup,
+                prepared,
+                preactivation,
+            )
+
+        assert calls == 2
+        assert raised.value.stage is (
+            write_usb._FavoritesUsbActivationFailureStage
+            .MUTATION_EXECUTION
+        )
+        assert raised.value.mutation_started is True
+        assert raised.value.recovery_artifact is None
+        assert (
+            favorites_directory
+            / "added.hpd"
+        ).read_bytes() == (
+            intended_documents[
+                "added.hpd"
+            ].content
+        )
+        assert (
+            favorites_directory
+            / "keep.hpd"
+        ).read_bytes() == (
+            baseline_documents[
+                "keep.hpd"
+            ].content
+        )
+
+
+def test_usb_activation_orchestrator_preserves_deletion_artifact_provenance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        baseline,
+        _intended,
+    ) = _usb_activation_orchestration_prepared(
+        tmp_path
+    )
+    baseline_documents = {
+        document.filename: document
+        for document in baseline.documents
+    }
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        prepared = (
+            write_usb._create_verified_usb_host_staging(
+                preflight,
+                paths,
+                backup,
+            )
+        )
+        preactivation = (
+            write_usb._require_usb_preactivation_ready(
+                preflight,
+                paths,
+                backup,
+                prepared,
+            )
+        )
+
+        temporary = (
+            write_usb._usb_media_temporary_path(
+                preflight,
+                paths,
+            )
+        )
+        real_unlink = Path.unlink
+
+        def failing_bounded_unlink(
+            path: Path,
+            *args: object,
+            **kwargs: object,
+        ) -> None:
+            if path == temporary:
+                raise OSError(
+                    "injected activation deletion artifact survivor"
+                )
+            real_unlink(
+                path,
+                *args,
+                **kwargs,
+            )
+
+        monkeypatch.setattr(
+            Path,
+            "unlink",
+            failing_bounded_unlink,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbActivationExecutionError,
+            match="finalize active HPD deletion",
+        ) as raised:
+            write_usb._activate_usb_managed_state(
+                preflight,
+                paths,
+                backup,
+                prepared,
+                preactivation,
+            )
+
+        artifact = raised.value.recovery_artifact
+        assert raised.value.stage is (
+            write_usb._FavoritesUsbActivationFailureStage
+            .MUTATION_EXECUTION
+        )
+        assert raised.value.mutation_started is True
+        assert artifact is not None
+        assert artifact.path == temporary
+        assert artifact.managed_filename == "removed.hpd"
+        assert artifact.content_sha256 == (
+            write_usb._usb_media_content_sha256(
+                baseline_documents[
+                    "removed.hpd"
+                ].content
+            )
+        )
+        assert not write_usb.os.path.lexists(
+            favorites_directory
+            / "removed.hpd"
+        )
+        assert temporary.read_bytes() == (
+            baseline_documents[
+                "removed.hpd"
+            ].content
+        )
+
+
+def test_usb_activation_orchestrator_classifies_postactivation_readback_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        _baseline,
+        intended,
+    ) = _usb_activation_orchestration_prepared(
+        tmp_path
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        prepared = (
+            write_usb._create_verified_usb_host_staging(
+                preflight,
+                paths,
+                backup,
+            )
+        )
+        preactivation = (
+            write_usb._require_usb_preactivation_ready(
+                preflight,
+                paths,
+                backup,
+                prepared,
+            )
+        )
+
+        def failing_postactivation_read(
+            path: Path,
+        ) -> FavoritesStorageSnapshot:
+            raise write_usb._FavoritesUsbWritePreparationError(
+                path,
+                "injected postactivation managed readback failure",
+            )
+
+        monkeypatch.setattr(
+            write_usb,
+            "_read_usb_activation_managed_snapshot",
+            failing_postactivation_read,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbActivationExecutionError,
+            match="postactivation_verification",
+        ) as raised:
+            write_usb._activate_usb_managed_state(
+                preflight,
+                paths,
+                backup,
+                prepared,
+                preactivation,
+            )
+
+        assert raised.value.stage is (
+            write_usb._FavoritesUsbActivationFailureStage
+            .POSTACTIVATION_VERIFICATION
+        )
+        assert raised.value.mutation_started is True
+        assert raised.value.recovery_artifact is None
+        assert (
+            write_usb._read_usb_recovery_managed_snapshot(
+                favorites_directory
+            )
+            == intended
+        )
+
+
+def test_usb_activation_orchestrator_refuses_noop_without_media_mutation(
+    tmp_path: Path,
+) -> None:
+    baseline = _snapshot()
+    (
+        preflight,
+        _mountinfo,
+        favorites_directory,
+    ) = _prepared_usb_activation_fixture(
+        tmp_path,
+        baseline=baseline,
+        intended=baseline,
+    )
+    host_root = (
+        tmp_path
+        / "host-state-noop"
+        / "favorites-usb-writes"
+    )
+    before = favorites_tree_evidence(
+        favorites_directory
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        prepared = (
+            write_usb._create_verified_usb_host_staging(
+                preflight,
+                paths,
+                backup,
+            )
+        )
+        preactivation = (
+            write_usb._require_usb_preactivation_ready(
+                preflight,
+                paths,
+                backup,
+                prepared,
+            )
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbActivationExecutionError,
+            match="No-op Favorites USB write plan",
+        ) as raised:
+            write_usb._activate_usb_managed_state(
+                preflight,
+                paths,
+                backup,
+                prepared,
+                preactivation,
+            )
+
+        assert raised.value.stage is (
+            write_usb._FavoritesUsbActivationFailureStage
+            .MUTATION_EXECUTION
+        )
+        assert raised.value.mutation_started is False
+        assert raised.value.recovery_artifact is None
+
+    assert favorites_tree_evidence(
+        favorites_directory
+    ) == before
