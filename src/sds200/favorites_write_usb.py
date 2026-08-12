@@ -3879,6 +3879,161 @@ def _write_usb_operation_report(
                         temporary.unlink()
 
 
+class _FavoritesUsbOperationReportWriteFailureState(StrEnum):
+    ABSENT = "absent"
+    PROPOSED = "proposed"
+
+
+def _reconcile_usb_operation_report_write_failure(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    rollback_manifest: _FavoritesUsbRollbackManifest,
+    proposed: _FavoritesUsbOperationReport,
+) -> _FavoritesUsbOperationReportWriteFailureState:
+    # Read-only reconciliation for a report write that may have raised after
+    # os.replace() published the exact final success/failure report.
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB operation-report write-failure reconciliation "
+            "requires FavoritesUsbWritePreflight."
+        )
+    if not isinstance(
+        rollback_manifest,
+        _FavoritesUsbRollbackManifest,
+    ):
+        raise TypeError(
+            "Favorites USB operation-report write-failure reconciliation "
+            "requires _FavoritesUsbRollbackManifest."
+        )
+    if not isinstance(
+        proposed,
+        _FavoritesUsbOperationReport,
+    ):
+        raise TypeError(
+            "Favorites USB operation-report write-failure reconciliation "
+            "requires _FavoritesUsbOperationReport."
+        )
+
+    _require_host_operation_paths_match_preflight(
+        preflight,
+        paths,
+    )
+    _require_active_usb_host_lock(
+        paths
+    )
+    _require_private_host_directory(
+        paths.operation_directory,
+        create=False,
+    )
+    _require_usb_operation_report_matches(
+        preflight,
+        paths,
+        rollback_manifest,
+        proposed,
+    )
+
+    destination = _usb_operation_report_destination(
+        paths,
+        proposed,
+    )
+    alternate = (
+        paths.failure_report_path
+        if proposed.is_success
+        else paths.operation_report_path
+    )
+    success_temp, failure_temp = (
+        _usb_operation_report_temporary_paths(
+            paths
+        )
+    )
+
+    def _require_report_side_paths_clean() -> None:
+        if os.path.lexists(
+            alternate
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                alternate,
+                "Favorites USB operation-report write-failure "
+                "reconciliation found the alternate final report path.",
+            )
+
+        for temporary in (
+            success_temp,
+            failure_temp,
+        ):
+            if os.path.lexists(
+                temporary
+            ):
+                raise _FavoritesUsbWritePreparationError(
+                    temporary,
+                    "Favorites USB operation-report write-failure "
+                    "reconciliation found a surviving temporary report path.",
+                )
+
+    def _require_final_rollback_unchanged() -> None:
+        observed_rollback = (
+            _read_usb_rollback_manifest(
+                paths.rollback_manifest_path
+            )
+        )
+        if observed_rollback != rollback_manifest:
+            raise _FavoritesUsbWritePreparationError(
+                paths.rollback_manifest_path,
+                "Favorites USB rollback manifest changed while reconciling "
+                "a failed final operation-report write.",
+            )
+
+    _require_report_side_paths_clean()
+    _require_final_rollback_unchanged()
+
+    if not os.path.lexists(
+        destination
+    ):
+        # Revalidate all correlated host state immediately before accepting
+        # ABSENT so an unexpected final report cannot race the first check.
+        _require_final_rollback_unchanged()
+        _require_report_side_paths_clean()
+
+        if os.path.lexists(
+            destination
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                destination,
+                "Favorites USB final operation report appeared while "
+                "reconciling a failed report write.",
+            )
+
+        return _FavoritesUsbOperationReportWriteFailureState.ABSENT
+
+    observed = _read_usb_operation_report(
+        destination
+    )
+    if observed != proposed:
+        raise _FavoritesUsbWritePreparationError(
+            destination,
+            "Favorites USB final operation report after a failed durable "
+            "write does not match the exact proposed report.",
+        )
+
+    _require_final_rollback_unchanged()
+    _require_report_side_paths_clean()
+
+    final_observed = _read_usb_operation_report(
+        destination
+    )
+    if final_observed != proposed:
+        raise _FavoritesUsbWritePreparationError(
+            destination,
+            "Favorites USB final operation report changed while reconciling "
+            "a failed durable write.",
+        )
+
+    return _FavoritesUsbOperationReportWriteFailureState.PROPOSED
+
+
 def _canonical_host_state_candidate(
     host_state_directory: Path,
     preflight: FavoritesUsbWritePreflight,

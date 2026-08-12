@@ -12021,3 +12021,579 @@ def test_usb_rollback_write_failure_reconciliation_handles_initial_publish_absen
         assert state is (
             write_usb._FavoritesUsbRollbackWriteFailureState.CURRENT
         )
+
+
+def _usb_completed_report_for_reconciliation(
+    preflight: write_usb.FavoritesUsbWritePreflight,
+    paths: write_usb._FavoritesUsbHostOperationPaths,
+) -> tuple[
+    write_usb._FavoritesUsbRollbackManifest,
+    write_usb._FavoritesUsbOperationReport,
+]:
+    prepared = write_usb._usb_rollback_manifest(
+        preflight,
+        paths,
+        revision=1,
+        phase=write_usb._FavoritesUsbRollbackPhase.PREPARED,
+        bounded_artifact_present=False,
+    )
+    write_usb._write_usb_rollback_manifest(
+        preflight,
+        paths,
+        prepared,
+    )
+
+    mutation_started = write_usb._usb_rollback_manifest(
+        preflight,
+        paths,
+        revision=2,
+        phase=write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED,
+        bounded_artifact_present=False,
+    )
+    write_usb._write_usb_rollback_manifest(
+        preflight,
+        paths,
+        mutation_started,
+    )
+
+    completed = write_usb._usb_rollback_manifest(
+        preflight,
+        paths,
+        revision=3,
+        phase=write_usb._FavoritesUsbRollbackPhase.COMPLETED,
+        bounded_artifact_present=False,
+    )
+    write_usb._write_usb_rollback_manifest(
+        preflight,
+        paths,
+        completed,
+    )
+
+    report = write_usb._usb_operation_report(
+        preflight,
+        paths,
+        completed,
+        backup_verification=(
+            write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+        ),
+        staging_verification=(
+            write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+        ),
+        preactivation_verification=(
+            write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+        ),
+        postactivation_verification=(
+            write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+        ),
+        unmanaged_preservation=(
+            write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+        ),
+        activation_outcome=(
+            write_usb._FavoritesUsbActivationOutcome.COMPLETED
+        ),
+        recovery_outcome=(
+            write_usb._FavoritesUsbRecoveryOutcome.NOT_REQUIRED
+        ),
+        active_snapshot_sha256=(
+            completed.intended_snapshot_sha256
+        ),
+        failure_code=None,
+    )
+
+    return completed, report
+
+
+def test_usb_operation_report_write_failure_reconciliation_detects_published_proposed_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    plan = plan_favorites_write(
+        _snapshot(),
+        _snapshot(_CHANGED_CATALOG),
+    )
+    preflight = preflight_favorites_usb_write(
+        plan,
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state-report-postpublish"
+        / "favorites-usb-writes"
+    )
+    before = favorites_tree_evidence(
+        favorites_directory
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = write_usb._create_verified_usb_host_backup(
+            preflight,
+            paths,
+        )
+        write_usb._create_verified_usb_host_staging(
+            preflight,
+            paths,
+            backup,
+        )
+        rollback, report = _usb_completed_report_for_reconciliation(
+            preflight,
+            paths,
+        )
+
+        def failing_directory_sync(path: Path) -> None:
+            raise write_usb._FavoritesUsbWritePreparationError(
+                path,
+                "injected post-publication report directory fsync failure",
+            )
+
+        monkeypatch.setattr(
+            write_usb,
+            "_fsync_usb_host_directory",
+            failing_directory_sync,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="injected post-publication report directory fsync failure",
+        ):
+            write_usb._write_usb_operation_report(
+                preflight,
+                paths,
+                rollback,
+                report,
+            )
+
+        state = (
+            write_usb._reconcile_usb_operation_report_write_failure(
+                preflight,
+                paths,
+                rollback,
+                report,
+            )
+        )
+
+        assert state is (
+            write_usb._FavoritesUsbOperationReportWriteFailureState.PROPOSED
+        )
+        assert (
+            write_usb._read_usb_operation_report(
+                paths.operation_report_path
+            )
+            == report
+        )
+        assert not paths.failure_report_path.exists()
+        assert favorites_tree_evidence(
+            favorites_directory
+        ) == before
+
+
+def test_usb_operation_report_write_failure_reconciliation_detects_absent_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    plan = plan_favorites_write(
+        _snapshot(),
+        _snapshot(_CHANGED_CATALOG),
+    )
+    preflight = preflight_favorites_usb_write(
+        plan,
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state-report-prepublish"
+        / "favorites-usb-writes"
+    )
+    before = favorites_tree_evidence(
+        favorites_directory
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = write_usb._create_verified_usb_host_backup(
+            preflight,
+            paths,
+        )
+        write_usb._create_verified_usb_host_staging(
+            preflight,
+            paths,
+            backup,
+        )
+        rollback, report = _usb_completed_report_for_reconciliation(
+            preflight,
+            paths,
+        )
+
+        real_fsync = write_usb.os.fsync
+        injected = False
+
+        def failing_first_fsync(descriptor: int) -> None:
+            nonlocal injected
+
+            if not injected:
+                injected = True
+                raise OSError(
+                    "injected prepublication report temporary-file fsync failure"
+                )
+
+            real_fsync(
+                descriptor
+            )
+
+        monkeypatch.setattr(
+            write_usb.os,
+            "fsync",
+            failing_first_fsync,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="Could not synchronize Favorites USB operation report temporary file",
+        ):
+            write_usb._write_usb_operation_report(
+                preflight,
+                paths,
+                rollback,
+                report,
+            )
+
+        state = (
+            write_usb._reconcile_usb_operation_report_write_failure(
+                preflight,
+                paths,
+                rollback,
+                report,
+            )
+        )
+
+        assert state is (
+            write_usb._FavoritesUsbOperationReportWriteFailureState.ABSENT
+        )
+        assert not paths.operation_report_path.exists()
+        assert not paths.failure_report_path.exists()
+        assert favorites_tree_evidence(
+            favorites_directory
+        ) == before
+
+
+def test_usb_operation_report_write_failure_reconciliation_refuses_alternate_report(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    plan = plan_favorites_write(
+        _snapshot(),
+        _snapshot(_CHANGED_CATALOG),
+    )
+    preflight = preflight_favorites_usb_write(
+        plan,
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state-report-alternate"
+        / "favorites-usb-writes"
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = write_usb._create_verified_usb_host_backup(
+            preflight,
+            paths,
+        )
+        write_usb._create_verified_usb_host_staging(
+            preflight,
+            paths,
+            backup,
+        )
+        rollback, report = _usb_completed_report_for_reconciliation(
+            preflight,
+            paths,
+        )
+
+        paths.failure_report_path.write_bytes(
+            b"unexpected alternate report"
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="alternate final report path",
+        ):
+            write_usb._reconcile_usb_operation_report_write_failure(
+                preflight,
+                paths,
+                rollback,
+                report,
+            )
+
+
+def test_usb_operation_report_write_failure_reconciliation_refuses_wrong_proposed_report(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    plan = plan_favorites_write(
+        _snapshot(),
+        _snapshot(_CHANGED_CATALOG),
+    )
+    preflight = preflight_favorites_usb_write(
+        plan,
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state-report-wrong"
+        / "favorites-usb-writes"
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = write_usb._create_verified_usb_host_backup(
+            preflight,
+            paths,
+        )
+        write_usb._create_verified_usb_host_staging(
+            preflight,
+            paths,
+            backup,
+        )
+        rollback, report = _usb_completed_report_for_reconciliation(
+            preflight,
+            paths,
+        )
+
+        wrong_rollback = write_usb._usb_rollback_manifest(
+            preflight,
+            paths,
+            revision=1,
+            phase=write_usb._FavoritesUsbRollbackPhase.PREPARED,
+            bounded_artifact_present=False,
+        )
+        wrong_report = write_usb._usb_operation_report(
+            preflight,
+            paths,
+            wrong_rollback,
+            backup_verification=(
+                write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+            ),
+            staging_verification=(
+                write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+            ),
+            preactivation_verification=(
+                write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+            ),
+            postactivation_verification=(
+                write_usb._FavoritesUsbVerificationOutcome.NOT_ATTEMPTED
+            ),
+            unmanaged_preservation=(
+                write_usb._FavoritesUsbVerificationOutcome.NOT_ATTEMPTED
+            ),
+            activation_outcome=(
+                write_usb._FavoritesUsbActivationOutcome.FAILED_BEFORE_MUTATION
+            ),
+            recovery_outcome=(
+                write_usb._FavoritesUsbRecoveryOutcome.NOT_REQUIRED
+            ),
+            active_snapshot_sha256=None,
+            failure_code=(
+                write_usb._FavoritesUsbFailureCode.ACTIVATION_FAILED_BEFORE_MUTATION
+            ),
+        )
+
+        paths.operation_report_path.write_bytes(
+            write_usb._usb_operation_report_bytes(
+                wrong_report
+            )
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="does not match the exact proposed report",
+        ):
+            write_usb._reconcile_usb_operation_report_write_failure(
+                preflight,
+                paths,
+                rollback,
+                report,
+            )
+
+def test_usb_operation_report_write_failure_reconciliation_refuses_rollback_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    plan = plan_favorites_write(
+        _snapshot(),
+        _snapshot(_CHANGED_CATALOG),
+    )
+    preflight = preflight_favorites_usb_write(
+        plan,
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state-report-rollback-change"
+        / "favorites-usb-writes"
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = write_usb._create_verified_usb_host_backup(
+            preflight,
+            paths,
+        )
+        write_usb._create_verified_usb_host_staging(
+            preflight,
+            paths,
+            backup,
+        )
+        rollback, report = _usb_completed_report_for_reconciliation(
+            preflight,
+            paths,
+        )
+
+        unrelated = write_usb._usb_rollback_manifest(
+            preflight,
+            paths,
+            revision=99,
+            phase=write_usb._FavoritesUsbRollbackPhase.RECOVERY_INCOMPLETE,
+            bounded_artifact_present=True,
+        )
+
+        monkeypatch.setattr(
+            write_usb,
+            "_read_usb_rollback_manifest",
+            lambda _path: unrelated,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="rollback manifest changed",
+        ):
+            write_usb._reconcile_usb_operation_report_write_failure(
+                preflight,
+                paths,
+                rollback,
+                report,
+            )
+
+
+def test_usb_operation_report_write_failure_reconciliation_refuses_surviving_temp(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    plan = plan_favorites_write(
+        _snapshot(),
+        _snapshot(_CHANGED_CATALOG),
+    )
+    preflight = preflight_favorites_usb_write(
+        plan,
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state-report-temp"
+        / "favorites-usb-writes"
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = write_usb._create_verified_usb_host_backup(
+            preflight,
+            paths,
+        )
+        write_usb._create_verified_usb_host_staging(
+            preflight,
+            paths,
+            backup,
+        )
+        rollback, report = _usb_completed_report_for_reconciliation(
+            preflight,
+            paths,
+        )
+
+        success_temp, _failure_temp = (
+            write_usb._usb_operation_report_temporary_paths(
+                paths
+            )
+        )
+        success_temp.write_bytes(
+            b"surviving report temporary"
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="surviving temporary report path",
+        ):
+            write_usb._reconcile_usb_operation_report_write_failure(
+                preflight,
+                paths,
+                rollback,
+                report,
+            )
