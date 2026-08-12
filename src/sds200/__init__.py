@@ -388,6 +388,23 @@ from .favorites_storage_local import (
     FavoritesCopiedTreeStorageError,
     FavoritesCopiedTreeStorageSource,
 )
+from .favorites_storage_usb import (
+    DEFAULT_LINUX_MOUNTINFO_PATH,
+    DEFAULT_LINUX_SYS_DEV_BLOCK_DIRECTORY,
+    FAVORITES_USB_STORAGE_RELATIVE_DIRECTORY,
+    FavoritesUsbStorageCandidate,
+    FavoritesUsbStorageQualification,
+    FavoritesUsbStorageQualificationError,
+    FavoritesUsbStorageQualificationReason,
+    LinuxBlockDeviceError,
+    LinuxBlockDeviceEvidence,
+    LinuxMountInfoEntry,
+    LinuxMountInfoError,
+    discover_favorites_usb_storage_candidates,
+    qualify_favorites_usb_storage_path,
+    read_linux_block_device_evidence,
+    read_linux_mountinfo,
+)
 from .favorites_workspace import (
     FavoritesHierarchyDocument,
     FavoritesWorkspace,
@@ -1141,6 +1158,21 @@ __all__ = [
     "theme_roles_for",
     "write_capture",
     "write_recording_metadata",
+    "DEFAULT_LINUX_MOUNTINFO_PATH",
+    "DEFAULT_LINUX_SYS_DEV_BLOCK_DIRECTORY",
+    "FAVORITES_USB_STORAGE_RELATIVE_DIRECTORY",
+    "FavoritesUsbStorageCandidate",
+    "FavoritesUsbStorageQualification",
+    "FavoritesUsbStorageQualificationError",
+    "FavoritesUsbStorageQualificationReason",
+    "LinuxBlockDeviceError",
+    "LinuxBlockDeviceEvidence",
+    "LinuxMountInfoEntry",
+    "LinuxMountInfoError",
+    "discover_favorites_usb_storage_candidates",
+    "qualify_favorites_usb_storage_path",
+    "read_linux_block_device_evidence",
+    "read_linux_mountinfo",
 ]
 
 __version__ = "0.20.2"
