@@ -22,6 +22,7 @@ from .favorites_storage_evidence import (
     FavoritesTreeEvidenceError,
     favorites_storage_snapshot_sha256,
     favorites_tree_evidence,
+    favorites_unmanaged_tree_sha256,
 )
 from .favorites_storage_local import (
     FavoritesCopiedTreeStorageError,
@@ -118,6 +119,33 @@ class FavoritesUsbWritePreflightError(RuntimeError):
         )
 
 
+def _validate_unmanaged_sha256(
+    value: str,
+    *,
+    label: str,
+) -> None:
+    if not isinstance(
+        value,
+        str,
+    ):
+        raise TypeError(
+            f"{label} must be str."
+        )
+
+    if (
+        len(value) != 64
+        or value != value.lower()
+        or any(
+            character
+            not in "0123456789abcdef"
+            for character in value
+        )
+    ):
+        raise ValueError(
+            f"{label} must be one canonical lowercase SHA-256 hex digest."
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class FavoritesUsbWritePreflight:
     """Immutable exact USB target evidence retained before write-side effects."""
@@ -128,6 +156,7 @@ class FavoritesUsbWritePreflight:
     mountinfo_path: Path
     sys_dev_block_directory: Path
     tree_evidence: FavoritesTreeEvidence
+    unmanaged_sha256: str
 
     def __post_init__(self) -> None:
         if not isinstance(self.plan, FavoritesWritePlan):
@@ -169,6 +198,10 @@ class FavoritesUsbWritePreflight:
             raise TypeError(
                 "Favorites USB write tree evidence must be FavoritesTreeEvidence."
             )
+        _validate_unmanaged_sha256(
+            self.unmanaged_sha256,
+            label="Favorites USB write unmanaged tree SHA-256",
+        )
         if not self.plan.matches_baseline_snapshot(
             self.qualification.snapshot
         ):
@@ -322,6 +355,9 @@ def preflight_favorites_usb_write(
         )
 
     try:
+        initial_unmanaged_sha256 = favorites_unmanaged_tree_sha256(
+            initial.favorites_directory
+        )
         initial_tree = favorites_tree_evidence(
             initial.favorites_directory
         )
@@ -362,6 +398,9 @@ def preflight_favorites_usb_write(
         )
 
     try:
+        final_unmanaged_sha256 = favorites_unmanaged_tree_sha256(
+            current.favorites_directory
+        )
         final_tree = favorites_tree_evidence(
             current.favorites_directory
         )
@@ -372,12 +411,24 @@ def preflight_favorites_usb_write(
             error.message,
         ) from error
 
+    # Preserve the established complete-tree stale failure when both evidence
+    # forms change during preflight.
     if final_tree != initial_tree:
         raise FavoritesUsbWritePreflightError(
             FavoritesUsbWritePreflightReason.TARGET_STALE,
             current.favorites_directory,
             (
                 "USB Favorites complete-tree identity changed while "
+                "preflight evidence was captured."
+            ),
+        )
+
+    if final_unmanaged_sha256 != initial_unmanaged_sha256:
+        raise FavoritesUsbWritePreflightError(
+            FavoritesUsbWritePreflightReason.TARGET_STALE,
+            current.favorites_directory,
+            (
+                "USB Favorites unmanaged content or structure changed while "
                 "preflight evidence was captured."
             ),
         )
@@ -389,6 +440,7 @@ def preflight_favorites_usb_write(
         mountinfo_path=mountinfo_path,
         sys_dev_block_directory=sys_dev_block_directory,
         tree_evidence=final_tree,
+        unmanaged_sha256=final_unmanaged_sha256,
     )
 
 
@@ -896,6 +948,7 @@ def _usb_host_operation_lock(
 class _FavoritesUsbVerifiedBackup:
     directory: Path
     tree_evidence: FavoritesTreeEvidence
+    unmanaged_sha256: str
     snapshot: FavoritesStorageSnapshot
 
     def __post_init__(self) -> None:
@@ -918,6 +971,10 @@ class _FavoritesUsbVerifiedBackup:
                 "Favorites USB verified backup tree evidence must be "
                 "FavoritesTreeEvidence."
             )
+        _validate_unmanaged_sha256(
+            self.unmanaged_sha256,
+            label="Favorites USB verified backup unmanaged tree SHA-256",
+        )
         if not isinstance(
             self.snapshot,
             FavoritesStorageSnapshot,
@@ -974,6 +1031,9 @@ def _require_current_usb_preflight_target(
         )
 
     try:
+        unmanaged_sha256 = favorites_unmanaged_tree_sha256(
+            current.favorites_directory
+        )
         evidence = favorites_tree_evidence(
             current.favorites_directory
         )
@@ -990,6 +1050,12 @@ def _require_current_usb_preflight_target(
         raise _FavoritesUsbWritePreparationError(
             current.favorites_directory,
             "USB Favorites content or structure changed after preflight.",
+        )
+
+    if unmanaged_sha256 != preflight.unmanaged_sha256:
+        raise _FavoritesUsbWritePreparationError(
+            current.favorites_directory,
+            "USB Favorites unmanaged content or structure changed after preflight.",
         )
 
     return evidence
@@ -1116,6 +1182,9 @@ def _create_verified_usb_host_backup(
     )
 
     try:
+        backup_unmanaged_sha256 = favorites_unmanaged_tree_sha256(
+            paths.backup_directory
+        )
         backup_evidence = favorites_tree_evidence(
             paths.backup_directory
         )
@@ -1135,6 +1204,12 @@ def _create_verified_usb_host_backup(
         raise _FavoritesUsbWritePreparationError(
             paths.backup_directory,
             "USB host backup does not exactly match preflight tree evidence.",
+        )
+
+    if backup_unmanaged_sha256 != preflight.unmanaged_sha256:
+        raise _FavoritesUsbWritePreparationError(
+            paths.backup_directory,
+            "USB host backup does not preserve the exact unmanaged tree identity.",
         )
 
     try:
@@ -1169,6 +1244,7 @@ def _create_verified_usb_host_backup(
     return _FavoritesUsbVerifiedBackup(
         directory=paths.backup_directory,
         tree_evidence=backup_evidence,
+        unmanaged_sha256=backup_unmanaged_sha256,
         snapshot=backup_snapshot,
     )
 
@@ -1178,6 +1254,7 @@ class _FavoritesUsbPreparedStage:
     directory: Path
     snapshot: FavoritesStorageSnapshot
     tree_evidence: FavoritesTreeEvidence
+    unmanaged_sha256: str
 
     def __post_init__(self) -> None:
         if not isinstance(
@@ -1207,6 +1284,10 @@ class _FavoritesUsbPreparedStage:
                 "Favorites USB prepared staging tree evidence must be "
                 "FavoritesTreeEvidence."
             )
+        _validate_unmanaged_sha256(
+            self.unmanaged_sha256,
+            label="Favorites USB prepared staging unmanaged tree SHA-256",
+        )
 
 
 def _require_verified_usb_host_backup_current(
@@ -1234,6 +1315,9 @@ def _require_verified_usb_host_backup_current(
         )
 
     try:
+        unmanaged_sha256 = favorites_unmanaged_tree_sha256(
+            backup.directory
+        )
         evidence = favorites_tree_evidence(
             backup.directory
         )
@@ -1254,6 +1338,15 @@ def _require_verified_usb_host_backup_current(
         raise _FavoritesUsbWritePreparationError(
             backup.directory,
             "Verified USB host backup changed after verification.",
+        )
+
+    if (
+        unmanaged_sha256 != backup.unmanaged_sha256
+        or unmanaged_sha256 != preflight.unmanaged_sha256
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            backup.directory,
+            "Verified USB host backup unmanaged tree identity changed.",
         )
 
     try:
@@ -1577,6 +1670,9 @@ def _create_verified_usb_host_staging(
         )
 
     try:
+        staging_unmanaged_sha256 = favorites_unmanaged_tree_sha256(
+            paths.staging_directory
+        )
         staging_evidence = favorites_tree_evidence(
             paths.staging_directory
         )
@@ -1589,6 +1685,15 @@ def _create_verified_usb_host_staging(
             ),
         ) from error
 
+    if (
+        staging_unmanaged_sha256 != preflight.unmanaged_sha256
+        or staging_unmanaged_sha256 != backup.unmanaged_sha256
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            paths.staging_directory,
+            "USB host staging does not preserve the exact unmanaged tree identity.",
+        )
+
     _require_verified_usb_host_backup_current(
         preflight,
         paths,
@@ -1599,6 +1704,7 @@ def _create_verified_usb_host_staging(
         directory=paths.staging_directory,
         snapshot=staged_snapshot,
         tree_evidence=staging_evidence,
+        unmanaged_sha256=staging_unmanaged_sha256,
     )
 
 
@@ -1607,6 +1713,7 @@ class _FavoritesUsbPreactivationEvidence:
     active_tree_evidence: FavoritesTreeEvidence
     backup_tree_evidence: FavoritesTreeEvidence
     staging_tree_evidence: FavoritesTreeEvidence
+    unmanaged_sha256: str
 
     def __post_init__(self) -> None:
         for label, value in (
@@ -1622,6 +1729,10 @@ class _FavoritesUsbPreactivationEvidence:
                     f"Favorites USB preactivation {label} must be "
                     "FavoritesTreeEvidence."
                 )
+        _validate_unmanaged_sha256(
+            self.unmanaged_sha256,
+            label="Favorites USB preactivation unmanaged tree SHA-256",
+        )
 
 
 def _require_verified_usb_host_staging_current(
@@ -1649,6 +1760,9 @@ def _require_verified_usb_host_staging_current(
         )
 
     try:
+        unmanaged_sha256 = favorites_unmanaged_tree_sha256(
+            prepared.directory
+        )
         evidence = favorites_tree_evidence(
             prepared.directory
         )
@@ -1665,6 +1779,15 @@ def _require_verified_usb_host_staging_current(
         raise _FavoritesUsbWritePreparationError(
             prepared.directory,
             "Verified USB host staging content or structure changed.",
+        )
+
+    if (
+        unmanaged_sha256 != prepared.unmanaged_sha256
+        or unmanaged_sha256 != preflight.unmanaged_sha256
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            prepared.directory,
+            "Verified USB host staging unmanaged tree identity changed.",
         )
 
     try:
@@ -1771,6 +1894,7 @@ def _require_usb_preactivation_ready(
         active_tree_evidence=active_evidence,
         backup_tree_evidence=backup_evidence,
         staging_tree_evidence=staging_evidence,
+        unmanaged_sha256=preflight.unmanaged_sha256,
     )
 
 

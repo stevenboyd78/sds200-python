@@ -11,7 +11,10 @@ from sds200.favorites_storage import (
     FavoritesStorageDocument,
     FavoritesStorageSnapshot,
 )
-from sds200.favorites_storage_evidence import favorites_tree_evidence
+from sds200.favorites_storage_evidence import (
+    favorites_tree_evidence,
+    favorites_unmanaged_tree_sha256,
+)
 from sds200.favorites_storage_local import FavoritesCopiedTreeStorageSource
 from sds200.favorites_storage_usb import (
     FavoritesUsbStorageQualificationReason,
@@ -3277,3 +3280,244 @@ def test_usb_active_hpd_delete_retains_bounded_artifact_when_unlink_fails(
     assert not target.exists()
     assert bounded is not None
     assert bounded.read_bytes() == hpd
+
+
+def test_usb_preflight_retains_exact_unmanaged_tree_identity(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(tmp_path)
+    nested = favorites_directory / "attachments"
+    nested.mkdir()
+    (nested / "offline.bin").write_bytes(b"preserve")
+    (favorites_directory / "ONE.HPD").write_bytes(b"case-variant-unmanaged")
+
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(_CHANGED_CATALOG),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+
+    assert preflight.unmanaged_sha256 == favorites_unmanaged_tree_sha256(
+        favorites_directory
+    )
+    assert len(preflight.unmanaged_sha256) == 64
+
+
+def test_usb_preflight_refuses_unstable_unmanaged_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _,
+    ) = _usb_write_fixture(tmp_path)
+    real_unmanaged = write_usb.favorites_unmanaged_tree_sha256
+    calls = 0
+
+    def unstable_unmanaged(root: Path) -> str:
+        nonlocal calls
+        digest = real_unmanaged(root)
+        calls += 1
+        if calls == 2:
+            return "0" * 64 if digest != "0" * 64 else "1" * 64
+        return digest
+
+    monkeypatch.setattr(
+        write_usb,
+        "favorites_unmanaged_tree_sha256",
+        unstable_unmanaged,
+    )
+
+    with pytest.raises(
+        FavoritesUsbWritePreflightError,
+        match="unmanaged content or structure changed",
+    ) as raised:
+        preflight_favorites_usb_write(
+            plan_favorites_write(
+                _snapshot(),
+                _snapshot(_CHANGED_CATALOG),
+            ),
+            mount_directory,
+            mountinfo,
+            sys_dev_block_directory=dev_block,
+        )
+
+    assert raised.value.reason is FavoritesUsbWritePreflightReason.TARGET_STALE
+
+
+def test_usb_preparation_binds_unmanaged_identity_across_active_backup_and_stage(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(tmp_path)
+    nested = favorites_directory / "attachments"
+    nested.mkdir()
+    (nested / "offline.bin").write_bytes(b"preserve")
+    (favorites_directory / "ONE.HPD").write_bytes(b"case-variant-unmanaged")
+
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(_CHANGED_CATALOG),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = tmp_path / "host-state" / "favorites-usb-writes"
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = write_usb._create_verified_usb_host_backup(
+            preflight,
+            paths,
+        )
+        prepared = write_usb._create_verified_usb_host_staging(
+            preflight,
+            paths,
+            backup,
+        )
+        ready = write_usb._require_usb_preactivation_ready(
+            preflight,
+            paths,
+            backup,
+            prepared,
+        )
+
+    expected = preflight.unmanaged_sha256
+    assert backup.unmanaged_sha256 == expected
+    assert prepared.unmanaged_sha256 == expected
+    assert ready.unmanaged_sha256 == expected
+    assert favorites_unmanaged_tree_sha256(favorites_directory) == expected
+    assert favorites_unmanaged_tree_sha256(backup.directory) == expected
+    assert favorites_unmanaged_tree_sha256(prepared.directory) == expected
+
+
+def test_usb_verified_backup_revalidation_checks_unmanaged_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _,
+    ) = _usb_write_fixture(tmp_path)
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(_CHANGED_CATALOG),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = tmp_path / "host-state" / "favorites-usb-writes"
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = write_usb._create_verified_usb_host_backup(
+            preflight,
+            paths,
+        )
+        real_unmanaged = write_usb.favorites_unmanaged_tree_sha256
+
+        def mismatching_backup_digest(root: Path) -> str:
+            digest = real_unmanaged(root)
+            if root == backup.directory:
+                return "0" * 64 if digest != "0" * 64 else "1" * 64
+            return digest
+
+        monkeypatch.setattr(
+            write_usb,
+            "favorites_unmanaged_tree_sha256",
+            mismatching_backup_digest,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="backup unmanaged tree identity changed",
+        ):
+            write_usb._require_verified_usb_host_backup_current(
+                preflight,
+                paths,
+                backup,
+            )
+
+
+def test_usb_verified_staging_revalidation_checks_unmanaged_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _,
+    ) = _usb_write_fixture(tmp_path)
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(_CHANGED_CATALOG),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = tmp_path / "host-state" / "favorites-usb-writes"
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = write_usb._create_verified_usb_host_backup(
+            preflight,
+            paths,
+        )
+        prepared = write_usb._create_verified_usb_host_staging(
+            preflight,
+            paths,
+            backup,
+        )
+        real_unmanaged = write_usb.favorites_unmanaged_tree_sha256
+
+        def mismatching_stage_digest(root: Path) -> str:
+            digest = real_unmanaged(root)
+            if root == prepared.directory:
+                return "0" * 64 if digest != "0" * 64 else "1" * 64
+            return digest
+
+        monkeypatch.setattr(
+            write_usb,
+            "favorites_unmanaged_tree_sha256",
+            mismatching_stage_digest,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="staging unmanaged tree identity changed",
+        ):
+            write_usb._require_verified_usb_host_staging_current(
+                preflight,
+                paths,
+                prepared,
+            )
