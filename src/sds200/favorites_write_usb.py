@@ -9306,6 +9306,516 @@ def _remove_usb_recovery_intended_only_hpd(
     assert mutation_started
 
 
+@dataclass(frozen=True, slots=True)
+class _FavoritesUsbRecoveredState:
+    target_evidence: _FavoritesUsbRecoveryTargetEvidence
+    snapshot: FavoritesStorageSnapshot
+    snapshot_sha256: str
+    unmanaged_sha256: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(
+            self.target_evidence,
+            _FavoritesUsbRecoveryTargetEvidence,
+        ):
+            raise TypeError(
+                "Favorites USB recovered state target evidence must be "
+                "_FavoritesUsbRecoveryTargetEvidence."
+            )
+        if not isinstance(
+            self.snapshot,
+            FavoritesStorageSnapshot,
+        ):
+            raise TypeError(
+                "Favorites USB recovered state snapshot must be "
+                "FavoritesStorageSnapshot."
+            )
+        _validate_unmanaged_sha256(
+            self.snapshot_sha256,
+            label="Favorites USB recovered managed snapshot SHA-256",
+        )
+        _validate_unmanaged_sha256(
+            self.unmanaged_sha256,
+            label="Favorites USB recovered unmanaged tree SHA-256",
+        )
+        if (
+            self.snapshot_sha256
+            != favorites_storage_snapshot_sha256(
+                self.snapshot
+            )
+        ):
+            raise ValueError(
+                "Favorites USB recovered managed snapshot SHA-256 must match "
+                "the exact recovered snapshot."
+            )
+        if (
+            self.unmanaged_sha256
+            != self.target_evidence.unmanaged_sha256
+        ):
+            raise ValueError(
+                "Favorites USB recovered unmanaged SHA-256 must match the "
+                "fresh recovery-target evidence."
+            )
+
+
+def _read_usb_recovery_managed_snapshot(
+    favorites_directory: Path,
+) -> FavoritesStorageSnapshot:
+    if not isinstance(
+        favorites_directory,
+        Path,
+    ):
+        raise TypeError(
+            "Favorites USB recovery managed readback path must be pathlib.Path."
+        )
+    if not favorites_directory.is_absolute():
+        raise ValueError(
+            "Favorites USB recovery managed readback path must be absolute."
+        )
+
+    try:
+        return FavoritesCopiedTreeStorageSource(
+            favorites_directory
+        ).read_snapshot()
+    except FavoritesCopiedTreeStorageError as error:
+        raise _FavoritesUsbWritePreparationError(
+            error.path,
+            "Could not read the active USB managed snapshot during recovery "
+            f"verification: {error.message}",
+        ) from error
+
+
+def _require_usb_recovery_target_matches(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    backup: _FavoritesUsbVerifiedBackup,
+    expected: _FavoritesUsbRecoveryTargetEvidence,
+    *,
+    stage: str,
+) -> _FavoritesUsbRecoveryTargetEvidence:
+    if not isinstance(
+        expected,
+        _FavoritesUsbRecoveryTargetEvidence,
+    ):
+        raise TypeError(
+            "Favorites USB recovery target comparison requires "
+            "_FavoritesUsbRecoveryTargetEvidence."
+        )
+    if not isinstance(
+        stage,
+        str,
+    ):
+        raise TypeError(
+            "Favorites USB recovery target comparison stage must be str."
+        )
+    if not stage:
+        raise ValueError(
+            "Favorites USB recovery target comparison stage must not be empty."
+        )
+
+    current = _require_usb_recovery_target_ready(
+        preflight,
+        paths,
+        backup,
+    )
+    if current != expected:
+        raise _FavoritesUsbWritePreparationError(
+            expected.favorites_directory,
+            "USB recovery target evidence changed during "
+            f"{stage}.",
+        )
+    return current
+
+
+def _recover_usb_active_managed_state(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    backup: _FavoritesUsbVerifiedBackup,
+    *,
+    activation_artifact: _FavoritesUsbMediaRecoveryArtifact | None = None,
+) -> _FavoritesUsbRecoveredState:
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB managed recovery requires FavoritesUsbWritePreflight."
+        )
+    if not isinstance(
+        backup,
+        _FavoritesUsbVerifiedBackup,
+    ):
+        raise TypeError(
+            "Favorites USB managed recovery requires _FavoritesUsbVerifiedBackup."
+        )
+    if (
+        activation_artifact is not None
+        and not isinstance(
+            activation_artifact,
+            _FavoritesUsbMediaRecoveryArtifact,
+        )
+    ):
+        raise TypeError(
+            "Favorites USB managed recovery activation artifact must be "
+            "_FavoritesUsbMediaRecoveryArtifact or None."
+        )
+
+    _require_host_operation_paths_match_preflight(
+        preflight,
+        paths,
+    )
+    _require_active_usb_host_lock(
+        paths
+    )
+    _require_usb_activation_filesystem(
+        preflight
+    )
+    _require_verified_usb_host_backup_current(
+        preflight,
+        paths,
+        backup,
+    )
+
+    recovery_plan = _usb_recovery_plan(
+        preflight,
+        backup,
+    )
+    expected_target = _require_usb_recovery_target_ready(
+        preflight,
+        paths,
+        backup,
+    )
+    temporary = expected_target.temporary_path
+
+    verified_activation_artifact: (
+        _FavoritesUsbVerifiedRecoveryArtifact | None
+    ) = None
+
+    if activation_artifact is None:
+        if os.path.lexists(
+            temporary
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                temporary,
+                "USB recovery found a bounded media temporary path without "
+                "verified activation-artifact provenance.",
+            )
+    else:
+        verified_activation_artifact = (
+            _require_current_usb_recovery_artifact(
+                preflight,
+                paths,
+                backup,
+                activation_artifact,
+            )
+        )
+        if (
+            verified_activation_artifact.target_evidence
+            != expected_target
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                activation_artifact.path,
+                "Verified activation recovery artifact does not bind to the "
+                "same fresh recovery target evidence.",
+            )
+
+    baseline = backup.snapshot
+    intended = preflight.plan.intended_snapshot
+    intended_documents = {
+        document.filename: document
+        for document in intended.documents
+    }
+
+    for document in recovery_plan.restore_documents:
+        _require_usb_recovery_target_matches(
+            preflight,
+            paths,
+            backup,
+            expected_target,
+            stage=(
+                "pre-restore verification for "
+                f"{document.filename}"
+            ),
+        )
+
+        intended_document = intended_documents.get(
+            document.filename
+        )
+        allowed_existing_content = (
+            None
+            if (
+                intended_document is None
+                or intended_document.content
+                == document.content
+            )
+            else intended_document.content
+        )
+        allow_absent = (
+            intended_document is None
+        )
+
+        _restore_usb_active_managed_file(
+            preflight,
+            paths,
+            document.filename,
+            document.content,
+            allowed_existing_content=allowed_existing_content,
+            allow_absent=allow_absent,
+        )
+
+        _require_usb_recovery_target_matches(
+            preflight,
+            paths,
+            backup,
+            expected_target,
+            stage=(
+                "post-restore verification for "
+                f"{document.filename}"
+            ),
+        )
+
+    _require_usb_recovery_target_matches(
+        preflight,
+        paths,
+        backup,
+        expected_target,
+        stage="pre-catalog restoration verification",
+    )
+
+    allowed_catalog_content = (
+        None
+        if intended.catalog_bytes
+        == recovery_plan.restore_catalog_bytes
+        else intended.catalog_bytes
+    )
+    _restore_usb_active_managed_file(
+        preflight,
+        paths,
+        "f_list.cfg",
+        recovery_plan.restore_catalog_bytes,
+        allowed_existing_content=allowed_catalog_content,
+        allow_absent=False,
+    )
+
+    _require_usb_recovery_target_matches(
+        preflight,
+        paths,
+        backup,
+        expected_target,
+        stage="post-catalog restoration verification",
+    )
+
+    if verified_activation_artifact is not None:
+        _cleanup_verified_usb_recovery_artifact(
+            preflight,
+            paths,
+            backup,
+            verified_activation_artifact,
+        )
+        _require_usb_recovery_target_matches(
+            preflight,
+            paths,
+            backup,
+            expected_target,
+            stage="post-activation-artifact cleanup verification",
+        )
+
+    if os.path.lexists(
+        temporary
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            temporary,
+            "USB recovery cannot begin intended-only removals while a "
+            "bounded activation artifact remains.",
+        )
+
+    for document in recovery_plan.remove_documents:
+        _require_usb_recovery_target_matches(
+            preflight,
+            paths,
+            backup,
+            expected_target,
+            stage=(
+                "pre-removal verification for "
+                f"{document.filename}"
+            ),
+        )
+
+        try:
+            _remove_usb_recovery_intended_only_hpd(
+                preflight,
+                paths,
+                backup,
+                document,
+            )
+        except _FavoritesUsbMediaMutationError as error:
+            removal_artifact = error.recovery_artifact
+            if removal_artifact is None:
+                raise
+
+            try:
+                verified_removal_artifact = (
+                    _require_current_usb_recovery_removal_artifact(
+                        preflight,
+                        paths,
+                        backup,
+                        removal_artifact,
+                    )
+                )
+            except _FavoritesUsbWritePreparationError as bind_error:
+                raise _FavoritesUsbMediaMutationError(
+                    bind_error.path,
+                    "Could not bind the exact intended-only recovery artifact "
+                    f"after removal failure: {bind_error.message}",
+                    mutation_started=True,
+                    recovery_artifact=removal_artifact,
+                ) from bind_error
+
+            if (
+                verified_removal_artifact.target_evidence
+                != expected_target
+            ):
+                raise _FavoritesUsbMediaMutationError(
+                    removal_artifact.path,
+                    "Intended-only recovery artifact no longer binds to the "
+                    "same fresh recovery target evidence.",
+                    mutation_started=True,
+                    recovery_artifact=removal_artifact,
+                ) from error
+
+            _cleanup_verified_usb_recovery_removal_artifact(
+                preflight,
+                paths,
+                backup,
+                verified_removal_artifact,
+            )
+
+        _require_usb_recovery_target_matches(
+            preflight,
+            paths,
+            backup,
+            expected_target,
+            stage=(
+                "post-removal verification for "
+                f"{document.filename}"
+            ),
+        )
+
+        if os.path.lexists(
+            temporary
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                temporary,
+                "USB recovery intended-only removal left a bounded temporary "
+                "path before the next recovery step.",
+            )
+
+    if os.path.lexists(
+        temporary
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            temporary,
+            "USB recovery cannot perform final managed readback while a "
+            "bounded temporary artifact remains.",
+        )
+
+    before_readback = _require_usb_recovery_target_matches(
+        preflight,
+        paths,
+        backup,
+        expected_target,
+        stage="initial final-readback target verification",
+    )
+
+    first_snapshot = _read_usb_recovery_managed_snapshot(
+        before_readback.favorites_directory
+    )
+    if first_snapshot != baseline:
+        raise _FavoritesUsbWritePreparationError(
+            before_readback.favorites_directory,
+            "Recovered USB managed snapshot does not exactly match the "
+            "verified pre-operation baseline.",
+        )
+
+    middle_readback = _require_usb_recovery_target_matches(
+        preflight,
+        paths,
+        backup,
+        expected_target,
+        stage="mid-final-readback target verification",
+    )
+
+    if os.path.lexists(
+        temporary
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            temporary,
+            "Bounded USB recovery temporary path appeared during final "
+            "managed readback.",
+        )
+
+    second_snapshot = _read_usb_recovery_managed_snapshot(
+        middle_readback.favorites_directory
+    )
+    if (
+        second_snapshot != baseline
+        or second_snapshot != first_snapshot
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            middle_readback.favorites_directory,
+            "Recovered USB managed snapshot changed during final exact "
+            "baseline readback.",
+        )
+
+    final_target = _require_usb_recovery_target_matches(
+        preflight,
+        paths,
+        backup,
+        expected_target,
+        stage="final recovered-target verification",
+    )
+
+    if os.path.lexists(
+        temporary
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            temporary,
+            "Bounded USB recovery temporary path exists after final "
+            "recovered-target verification.",
+        )
+
+    if (
+        final_target.unmanaged_sha256
+        != preflight.unmanaged_sha256
+        or final_target.unmanaged_sha256
+        != backup.unmanaged_sha256
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            final_target.favorites_directory,
+            "Recovered USB unmanaged content does not match the exact "
+            "pre-operation baseline identity.",
+        )
+
+    _require_verified_usb_host_backup_current(
+        preflight,
+        paths,
+        backup,
+    )
+
+    return _FavoritesUsbRecoveredState(
+        target_evidence=final_target,
+        snapshot=second_snapshot,
+        snapshot_sha256=(
+            favorites_storage_snapshot_sha256(
+                second_snapshot
+            )
+        ),
+        unmanaged_sha256=(
+            final_target.unmanaged_sha256
+        ),
+    )
+
+
 def _replace_usb_active_managed_file(
     preflight: FavoritesUsbWritePreflight,
     paths: _FavoritesUsbHostOperationPaths,

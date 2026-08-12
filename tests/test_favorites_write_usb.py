@@ -9666,3 +9666,741 @@ def test_usb_recovery_removal_artifact_cleanup_preserves_postunlink_target(
         assert not write_usb.os.path.lexists(
             temporary
         )
+
+
+_RECOVERY_ORCHESTRATION_BASELINE_KEEP = (
+    b"TargetModel\tBCDx36HP\r\n"
+    b"FormatVersion\t1.00\r\n"
+    b"Department\tBaseline keep\r\n"
+)
+_RECOVERY_ORCHESTRATION_INTENDED_KEEP = (
+    b"TargetModel\tBCDx36HP\r\n"
+    b"FormatVersion\t1.00\r\n"
+    b"Department\tIntended keep\r\n"
+)
+_RECOVERY_ORCHESTRATION_REMOVED = (
+    b"TargetModel\tBCDx36HP\r\n"
+    b"FormatVersion\t1.00\r\n"
+    b"Department\tBaseline removed\r\n"
+)
+_RECOVERY_ORCHESTRATION_ADDED = (
+    b"TargetModel\tBCDx36HP\r\n"
+    b"FormatVersion\t1.00\r\n"
+    b"Department\tIntended added\r\n"
+)
+
+
+def _usb_recovery_orchestration_fixture(
+    tmp_path: Path,
+) -> tuple[
+    write_usb.FavoritesUsbWritePreflight,
+    Path,
+    Path,
+    FavoritesStorageSnapshot,
+    FavoritesStorageSnapshot,
+]:
+    baseline = FavoritesStorageSnapshot(
+        catalog_bytes=_BASELINE_CATALOG,
+        documents=(
+            FavoritesStorageDocument(
+                filename="keep.hpd",
+                content=_RECOVERY_ORCHESTRATION_BASELINE_KEEP,
+            ),
+            FavoritesStorageDocument(
+                filename="removed.hpd",
+                content=_RECOVERY_ORCHESTRATION_REMOVED,
+            ),
+        ),
+    )
+    intended = FavoritesStorageSnapshot(
+        catalog_bytes=_CHANGED_CATALOG,
+        documents=(
+            FavoritesStorageDocument(
+                filename="added.hpd",
+                content=_RECOVERY_ORCHESTRATION_ADDED,
+            ),
+            FavoritesStorageDocument(
+                filename="keep.hpd",
+                content=_RECOVERY_ORCHESTRATION_INTENDED_KEEP,
+            ),
+        ),
+    )
+
+    (
+        preflight,
+        _prepared,
+        favorites_directory,
+    ) = _prepared_usb_activation_fixture(
+        tmp_path,
+        baseline=baseline,
+        intended=intended,
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+    return (
+        preflight,
+        favorites_directory,
+        host_root,
+        baseline,
+        intended,
+    )
+
+
+def _set_usb_recovery_fixture_to_intended_state(
+    favorites_directory: Path,
+    intended: FavoritesStorageSnapshot,
+) -> None:
+    removed = (
+        favorites_directory
+        / "removed.hpd"
+    )
+    if write_usb.os.path.lexists(
+        removed
+    ):
+        removed.unlink()
+
+    (
+        favorites_directory
+        / "f_list.cfg"
+    ).write_bytes(
+        intended.catalog_bytes
+    )
+    for document in intended.documents:
+        (
+            favorites_directory
+            / document.filename
+        ).write_bytes(
+            document.content
+        )
+
+
+def test_usb_recovery_orchestrator_restores_exact_baseline(
+    tmp_path: Path,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        baseline,
+        intended,
+    ) = _usb_recovery_orchestration_fixture(
+        tmp_path
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        _set_usb_recovery_fixture_to_intended_state(
+            favorites_directory,
+            intended,
+        )
+
+        recovered = (
+            write_usb._recover_usb_active_managed_state(
+                preflight,
+                paths,
+                backup,
+            )
+        )
+
+        assert recovered.snapshot == baseline
+        assert recovered.snapshot_sha256 == (
+            write_usb.favorites_storage_snapshot_sha256(
+                baseline
+            )
+        )
+        assert recovered.unmanaged_sha256 == (
+            preflight.unmanaged_sha256
+        )
+        assert (
+            write_usb._read_usb_recovery_managed_snapshot(
+                favorites_directory
+            )
+            == baseline
+        )
+        assert not write_usb.os.path.lexists(
+            write_usb._usb_media_temporary_path(
+                preflight,
+                paths,
+            )
+        )
+
+
+def test_usb_recovery_orchestrator_binds_baseline_artifact_before_restore_and_cleans_after_catalog(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        baseline,
+        intended,
+    ) = _usb_recovery_orchestration_fixture(
+        tmp_path
+    )
+    baseline_documents = {
+        document.filename: document
+        for document in baseline.documents
+    }
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+
+        (
+            favorites_directory
+            / "keep.hpd"
+        ).write_bytes(
+            _RECOVERY_ORCHESTRATION_INTENDED_KEEP
+        )
+        (
+            favorites_directory
+            / "added.hpd"
+        ).write_bytes(
+            _RECOVERY_ORCHESTRATION_ADDED
+        )
+        (
+            favorites_directory
+            / "f_list.cfg"
+        ).write_bytes(
+            intended.catalog_bytes
+        )
+
+        removed = (
+            favorites_directory
+            / "removed.hpd"
+        )
+        temporary = (
+            write_usb._usb_media_temporary_path(
+                preflight,
+                paths,
+            )
+        )
+        write_usb.os.replace(
+            removed,
+            temporary,
+        )
+        artifact = (
+            write_usb._FavoritesUsbMediaRecoveryArtifact(
+                path=temporary,
+                managed_filename="removed.hpd",
+                content_sha256=(
+                    write_usb._usb_media_content_sha256(
+                        baseline_documents[
+                            "removed.hpd"
+                        ].content
+                    )
+                ),
+            )
+        )
+
+        events: list[str] = []
+        real_bind = (
+            write_usb._require_current_usb_recovery_artifact
+        )
+        real_restore = (
+            write_usb._restore_usb_active_managed_file
+        )
+        real_cleanup = (
+            write_usb._cleanup_verified_usb_recovery_artifact
+        )
+        real_remove = (
+            write_usb._remove_usb_recovery_intended_only_hpd
+        )
+
+        def recording_bind(
+            current_preflight: write_usb.FavoritesUsbWritePreflight,
+            current_paths: write_usb._FavoritesUsbHostOperationPaths,
+            current_backup: write_usb._FavoritesUsbVerifiedBackup,
+            current_artifact: write_usb._FavoritesUsbMediaRecoveryArtifact,
+        ) -> write_usb._FavoritesUsbVerifiedRecoveryArtifact:
+            events.append(
+                "bind:baseline-artifact"
+            )
+            return real_bind(
+                current_preflight,
+                current_paths,
+                current_backup,
+                current_artifact,
+            )
+
+        def recording_restore(
+            current_preflight: write_usb.FavoritesUsbWritePreflight,
+            current_paths: write_usb._FavoritesUsbHostOperationPaths,
+            filename: str,
+            baseline_content: bytes,
+            *,
+            allowed_existing_content: bytes | None,
+            allow_absent: bool,
+        ) -> None:
+            events.append(
+                f"restore:{filename}"
+            )
+            real_restore(
+                current_preflight,
+                current_paths,
+                filename,
+                baseline_content,
+                allowed_existing_content=allowed_existing_content,
+                allow_absent=allow_absent,
+            )
+
+        def recording_cleanup(
+            current_preflight: write_usb.FavoritesUsbWritePreflight,
+            current_paths: write_usb._FavoritesUsbHostOperationPaths,
+            current_backup: write_usb._FavoritesUsbVerifiedBackup,
+            verified_artifact: write_usb._FavoritesUsbVerifiedRecoveryArtifact,
+        ) -> None:
+            events.append(
+                "cleanup:baseline-artifact"
+            )
+            real_cleanup(
+                current_preflight,
+                current_paths,
+                current_backup,
+                verified_artifact,
+            )
+
+        def recording_remove(
+            current_preflight: write_usb.FavoritesUsbWritePreflight,
+            current_paths: write_usb._FavoritesUsbHostOperationPaths,
+            current_backup: write_usb._FavoritesUsbVerifiedBackup,
+            document: FavoritesStorageDocument,
+        ) -> None:
+            events.append(
+                f"remove:{document.filename}"
+            )
+            real_remove(
+                current_preflight,
+                current_paths,
+                current_backup,
+                document,
+            )
+
+        monkeypatch.setattr(
+            write_usb,
+            "_require_current_usb_recovery_artifact",
+            recording_bind,
+        )
+        monkeypatch.setattr(
+            write_usb,
+            "_restore_usb_active_managed_file",
+            recording_restore,
+        )
+        monkeypatch.setattr(
+            write_usb,
+            "_cleanup_verified_usb_recovery_artifact",
+            recording_cleanup,
+        )
+        monkeypatch.setattr(
+            write_usb,
+            "_remove_usb_recovery_intended_only_hpd",
+            recording_remove,
+        )
+
+        recovered = (
+            write_usb._recover_usb_active_managed_state(
+                preflight,
+                paths,
+                backup,
+                activation_artifact=artifact,
+            )
+        )
+
+        assert recovered.snapshot == baseline
+        assert events == [
+            "bind:baseline-artifact",
+            "restore:keep.hpd",
+            "restore:removed.hpd",
+            "restore:f_list.cfg",
+            "cleanup:baseline-artifact",
+            "bind:baseline-artifact",
+            "bind:baseline-artifact",
+            "remove:added.hpd",
+        ]
+        assert not write_usb.os.path.lexists(
+            temporary
+        )
+
+
+def test_usb_recovery_orchestrator_reconciles_intended_only_cleanup_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        baseline,
+        intended,
+    ) = _usb_recovery_orchestration_fixture(
+        tmp_path
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        _set_usb_recovery_fixture_to_intended_state(
+            favorites_directory,
+            intended,
+        )
+        temporary = (
+            write_usb._usb_media_temporary_path(
+                preflight,
+                paths,
+            )
+        )
+
+        real_unlink = Path.unlink
+        injected = False
+
+        def failing_once(
+            path: Path,
+            *args: object,
+            **kwargs: object,
+        ) -> None:
+            nonlocal injected
+            if (
+                path == temporary
+                and not injected
+            ):
+                injected = True
+                raise OSError(
+                    "injected intended-only cleanup survivor"
+                )
+            real_unlink(
+                path,
+                *args,
+                **kwargs,
+            )
+
+        monkeypatch.setattr(
+            Path,
+            "unlink",
+            failing_once,
+        )
+
+        recovered = (
+            write_usb._recover_usb_active_managed_state(
+                preflight,
+                paths,
+                backup,
+            )
+        )
+
+        assert injected
+        assert recovered.snapshot == baseline
+        assert not write_usb.os.path.lexists(
+            favorites_directory
+            / "added.hpd"
+        )
+        assert not write_usb.os.path.lexists(
+            temporary
+        )
+
+
+def test_usb_recovery_orchestrator_refuses_unknown_same_name_content_without_overwrite(
+    tmp_path: Path,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        _baseline,
+        intended,
+    ) = _usb_recovery_orchestration_fixture(
+        tmp_path
+    )
+    unknown = b"unknown concurrent managed content"
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        _set_usb_recovery_fixture_to_intended_state(
+            favorites_directory,
+            intended,
+        )
+        (
+            favorites_directory
+            / "keep.hpd"
+        ).write_bytes(
+            unknown
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="explicitly allowed operation-known state",
+        ) as raised:
+            write_usb._recover_usb_active_managed_state(
+                preflight,
+                paths,
+                backup,
+            )
+
+        assert raised.value.mutation_started is False
+        assert (
+            favorites_directory
+            / "keep.hpd"
+        ).read_bytes() == unknown
+
+
+def test_usb_recovery_orchestrator_never_deletes_unknown_extra_managed_hpd(
+    tmp_path: Path,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        _baseline,
+        intended,
+    ) = _usb_recovery_orchestration_fixture(
+        tmp_path
+    )
+    unknown = b"unknown extra managed HPD"
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        _set_usb_recovery_fixture_to_intended_state(
+            favorites_directory,
+            intended,
+        )
+        extra = (
+            favorites_directory
+            / "external.hpd"
+        )
+        extra.write_bytes(
+            unknown
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="does not exactly match",
+        ):
+            write_usb._recover_usb_active_managed_state(
+                preflight,
+                paths,
+                backup,
+            )
+
+        assert extra.read_bytes() == unknown
+
+
+def test_usb_recovery_orchestrator_refuses_unmanaged_change_before_managed_mutation(
+    tmp_path: Path,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        baseline,
+        _intended,
+    ) = _usb_recovery_orchestration_fixture(
+        tmp_path
+    )
+    unmanaged = (
+        favorites_directory
+        / "external-notes.txt"
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        unmanaged.write_bytes(
+            b"unexpected unmanaged content"
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="unmanaged changes",
+        ):
+            write_usb._recover_usb_active_managed_state(
+                preflight,
+                paths,
+                backup,
+            )
+
+        assert (
+            write_usb._read_usb_recovery_managed_snapshot(
+                favorites_directory
+            )
+            == baseline
+        )
+        assert unmanaged.read_bytes() == (
+            b"unexpected unmanaged content"
+        )
+
+
+def test_usb_recovery_orchestrator_detects_managed_change_between_final_readbacks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        _baseline,
+        intended,
+    ) = _usb_recovery_orchestration_fixture(
+        tmp_path
+    )
+    raced = b"managed content changed between final readbacks"
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        _set_usb_recovery_fixture_to_intended_state(
+            favorites_directory,
+            intended,
+        )
+
+        real_read = (
+            write_usb._read_usb_recovery_managed_snapshot
+        )
+        calls = 0
+
+        def racing_read(
+            path: Path,
+        ) -> FavoritesStorageSnapshot:
+            nonlocal calls
+            snapshot = real_read(
+                path
+            )
+            calls += 1
+            if calls == 1:
+                (
+                    favorites_directory
+                    / "keep.hpd"
+                ).write_bytes(
+                    raced
+                )
+            return snapshot
+
+        monkeypatch.setattr(
+            write_usb,
+            "_read_usb_recovery_managed_snapshot",
+            racing_read,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="changed during final exact baseline readback",
+        ):
+            write_usb._recover_usb_active_managed_state(
+                preflight,
+                paths,
+                backup,
+            )
+
+        assert calls == 2
+        assert (
+            favorites_directory
+            / "keep.hpd"
+        ).read_bytes() == raced
+
+
+def test_usb_recovery_orchestrator_refuses_unowned_bounded_temp_before_mutation(
+    tmp_path: Path,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        baseline,
+        _intended,
+    ) = _usb_recovery_orchestration_fixture(
+        tmp_path
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        temporary = (
+            write_usb._usb_media_temporary_path(
+                preflight,
+                paths,
+            )
+        )
+        temporary.write_bytes(
+            b"unowned bounded temp content"
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="without verified activation-artifact provenance",
+        ):
+            write_usb._recover_usb_active_managed_state(
+                preflight,
+                paths,
+                backup,
+            )
+
+        assert temporary.read_bytes() == (
+            b"unowned bounded temp content"
+        )
+        assert (
+            write_usb._read_usb_recovery_managed_snapshot(
+                favorites_directory
+            )
+            == baseline
+        )
