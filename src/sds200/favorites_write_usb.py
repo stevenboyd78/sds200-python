@@ -7,7 +7,7 @@ import os
 import shutil
 import stat
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -1913,6 +1913,479 @@ def _usb_managed_activation_plan(
         ),
         document_deletions=document_deletions,
     )
+
+
+_USB_SUPPORTED_ACTIVATION_FILESYSTEMS = frozenset(
+    {
+        "vfat",
+    }
+)
+_USB_MEDIA_TEMP_PREFIX = ".sds200-usb-write-"
+
+
+class _FavoritesUsbMediaMutationError(RuntimeError):
+    def __init__(
+        self,
+        path: Path,
+        message: str,
+        *,
+        mutation_started: bool,
+    ) -> None:
+        if not isinstance(
+            path,
+            Path,
+        ):
+            raise TypeError(
+                "Favorites USB media-mutation error path must be pathlib.Path."
+            )
+        if not isinstance(
+            message,
+            str,
+        ):
+            raise TypeError(
+                "Favorites USB media-mutation error message must be str."
+            )
+        if type(mutation_started) is not bool:
+            raise TypeError(
+                "Favorites USB media-mutation started flag must be bool."
+            )
+
+        self.path = path
+        self.message = message
+        self.mutation_started = mutation_started
+
+        super().__init__(
+            f"Favorites USB media mutation failed at {path}: {message} "
+            f"(mutation_started={str(mutation_started).lower()})"
+        )
+
+
+def _require_usb_activation_filesystem(
+    preflight: FavoritesUsbWritePreflight,
+) -> str:
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB activation filesystem check requires "
+            "FavoritesUsbWritePreflight."
+        )
+
+    filesystem_type = (
+        preflight.qualification.mount.filesystem_type
+    )
+    if (
+        filesystem_type
+        not in _USB_SUPPORTED_ACTIVATION_FILESYSTEMS
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            preflight.qualification.mount_directory,
+            (
+                "Favorites USB activation does not support mounted filesystem "
+                f"type {filesystem_type!r}; supported types: "
+                f"{sorted(_USB_SUPPORTED_ACTIVATION_FILESYSTEMS)!r}."
+            ),
+        )
+
+    return filesystem_type
+
+
+def _usb_media_temporary_path(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+) -> Path:
+    _require_host_operation_paths_match_preflight(
+        preflight,
+        paths,
+    )
+
+    return (
+        preflight.qualification.favorites_directory
+        / (
+            f"{_USB_MEDIA_TEMP_PREFIX}"
+            f"{paths.operation_id[:16]}.tmp"
+        )
+    )
+
+
+def _require_usb_managed_activation_filename(
+    filename: str,
+) -> str:
+    if not isinstance(
+        filename,
+        str,
+    ):
+        raise TypeError(
+            "Favorites USB managed activation filename must be str."
+        )
+
+    if filename == "f_list.cfg":
+        return filename
+
+    if (
+        not filename.endswith(".hpd")
+        or not filename
+        or filename in {".", ".."}
+        or "/" in filename
+        or "\\" in filename
+        or "\x00" in filename
+    ):
+        raise ValueError(
+            "Favorites USB managed activation filename must be f_list.cfg "
+            "or one safe immediate lowercase-.hpd filename."
+        )
+
+    return filename
+
+
+def _read_usb_activation_regular_file(
+    path: Path,
+) -> bytes:
+    if not isinstance(
+        path,
+        Path,
+    ):
+        raise TypeError(
+            "Favorites USB activation read path must be pathlib.Path."
+        )
+
+    try:
+        initial = path.lstat()
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            path,
+            f"Could not inspect USB activation file: {error}",
+        ) from error
+
+    if stat.S_ISLNK(
+        initial.st_mode
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            path,
+            "USB activation file must not be a symbolic link.",
+        )
+    if not stat.S_ISREG(
+        initial.st_mode
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            path,
+            "USB activation file must be a regular file.",
+        )
+
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_BINARY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+
+    try:
+        descriptor = os.open(
+            path,
+            flags,
+        )
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            path,
+            f"Could not open USB activation file: {error}",
+        ) from error
+
+    try:
+        opened = os.fstat(
+            descriptor
+        )
+        if not stat.S_ISREG(
+            opened.st_mode
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                path,
+                "USB activation file changed to a non-regular file.",
+            )
+        if (
+            opened.st_dev,
+            opened.st_ino,
+        ) != (
+            initial.st_dev,
+            initial.st_ino,
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                path,
+                "USB activation file changed while being opened.",
+            )
+
+        try:
+            with os.fdopen(
+                descriptor,
+                "rb",
+                closefd=False,
+            ) as handle:
+                content = handle.read()
+        except OSError as error:
+            raise _FavoritesUsbWritePreparationError(
+                path,
+                f"Could not read USB activation file: {error}",
+            ) from error
+
+        final = os.fstat(
+            descriptor
+        )
+        if (
+            final.st_dev,
+            final.st_ino,
+            final.st_size,
+            final.st_mtime_ns,
+        ) != (
+            opened.st_dev,
+            opened.st_ino,
+            opened.st_size,
+            opened.st_mtime_ns,
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                path,
+                "USB activation file changed while being read.",
+            )
+
+        return content
+    finally:
+        os.close(
+            descriptor
+        )
+
+
+def _replace_usb_active_managed_file(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    filename: str,
+    content: bytes,
+) -> None:
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB active-file replacement requires "
+            "FavoritesUsbWritePreflight."
+        )
+    if not isinstance(
+        content,
+        bytes,
+    ):
+        raise TypeError(
+            "Favorites USB active-file replacement content must be bytes."
+        )
+
+    filename = (
+        _require_usb_managed_activation_filename(
+            filename
+        )
+    )
+    _require_host_operation_paths_match_preflight(
+        preflight,
+        paths,
+    )
+    _require_active_usb_host_lock(
+        paths
+    )
+    _require_usb_activation_filesystem(
+        preflight
+    )
+
+    root = (
+        preflight.qualification.favorites_directory
+    )
+    target = root / filename
+    temporary = _usb_media_temporary_path(
+        preflight,
+        paths,
+    )
+
+    if os.path.lexists(
+        temporary
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            temporary,
+            "USB activation temporary artifact already exists.",
+            mutation_started=False,
+        )
+
+    try:
+        observed = target.lstat()
+    except FileNotFoundError:
+        mode = 0o600
+    except OSError as error:
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            f"Could not inspect active managed file: {error}",
+            mutation_started=False,
+        ) from error
+    else:
+        if stat.S_ISLNK(
+            observed.st_mode
+        ):
+            raise _FavoritesUsbMediaMutationError(
+                target,
+                "Active managed file must not be a symbolic link.",
+                mutation_started=False,
+            )
+        if not stat.S_ISREG(
+            observed.st_mode
+        ):
+            raise _FavoritesUsbMediaMutationError(
+                target,
+                "Active managed file must be a regular file.",
+                mutation_started=False,
+            )
+        mode = observed.st_mode & 0o7777
+
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_BINARY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+
+    descriptor: int | None = None
+    temporary_identity: tuple[int, int] | None = None
+    mutation_started = False
+
+    try:
+        try:
+            descriptor = os.open(
+                temporary,
+                flags,
+                mode,
+            )
+        except OSError as error:
+            raise _FavoritesUsbMediaMutationError(
+                temporary,
+                f"Could not create USB activation temporary file: {error}",
+                mutation_started=False,
+            ) from error
+
+        opened = os.fstat(
+            descriptor
+        )
+        if not stat.S_ISREG(
+            opened.st_mode
+        ):
+            raise _FavoritesUsbMediaMutationError(
+                temporary,
+                "USB activation temporary path is not a regular file.",
+                mutation_started=False,
+            )
+        temporary_identity = (
+            opened.st_dev,
+            opened.st_ino,
+        )
+
+        try:
+            with os.fdopen(
+                descriptor,
+                "wb",
+                closefd=False,
+            ) as handle:
+                handle.write(
+                    content
+                )
+                handle.flush()
+                os.fsync(
+                    handle.fileno()
+                )
+        except OSError as error:
+            raise _FavoritesUsbMediaMutationError(
+                temporary,
+                f"Could not write USB activation temporary file: {error}",
+                mutation_started=False,
+            ) from error
+        finally:
+            os.close(
+                descriptor
+            )
+            descriptor = None
+
+        try:
+            temporary_content = (
+                _read_usb_activation_regular_file(
+                    temporary
+                )
+            )
+        except _FavoritesUsbWritePreparationError as error:
+            raise _FavoritesUsbMediaMutationError(
+                error.path,
+                error.message,
+                mutation_started=False,
+            ) from error
+
+        if temporary_content != content:
+            raise _FavoritesUsbMediaMutationError(
+                temporary,
+                "USB activation temporary file failed exact readback.",
+                mutation_started=False,
+            )
+
+        try:
+            os.replace(
+                temporary,
+                target,
+            )
+        except OSError as error:
+            raise _FavoritesUsbMediaMutationError(
+                target,
+                f"Could not replace active managed file: {error}",
+                mutation_started=False,
+            ) from error
+
+        mutation_started = True
+
+        try:
+            active_content = (
+                _read_usb_activation_regular_file(
+                    target
+                )
+            )
+        except _FavoritesUsbWritePreparationError as error:
+            raise _FavoritesUsbMediaMutationError(
+                error.path,
+                error.message,
+                mutation_started=True,
+            ) from error
+
+        if active_content != content:
+            raise _FavoritesUsbMediaMutationError(
+                target,
+                "Replaced active managed file failed exact readback.",
+                mutation_started=True,
+            )
+    finally:
+        if descriptor is not None:
+            os.close(
+                descriptor
+            )
+
+        if (
+            not mutation_started
+            and temporary_identity is not None
+        ):
+            try:
+                current = temporary.lstat()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
+            else:
+                if (
+                    stat.S_ISREG(
+                        current.st_mode
+                    )
+                    and (
+                        current.st_dev,
+                        current.st_ino,
+                    )
+                    == temporary_identity
+                ):
+                    with suppress(OSError):
+                        temporary.unlink()
 
 __all__ = [
     "FavoritesUsbWritePreflight",

@@ -2447,3 +2447,419 @@ def test_usb_managed_activation_plan_noop_has_no_steps(
     assert activation.write_catalog is False
     assert activation.document_deletions == ()
     assert activation.is_noop
+
+
+def _prepared_usb_activation_fixture(
+    tmp_path: Path,
+    *,
+    baseline: FavoritesStorageSnapshot,
+    intended: FavoritesStorageSnapshot,
+) -> tuple[
+    FavoritesUsbWritePreflight,
+    Path,
+    Path,
+]:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path,
+        catalog=baseline.catalog_bytes,
+    )
+
+    for document in baseline.documents:
+        (
+            favorites_directory
+            / document.filename
+        ).write_bytes(
+            document.content
+        )
+
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            baseline,
+            intended,
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+
+    return (
+        preflight,
+        mountinfo,
+        favorites_directory,
+    )
+
+
+def test_usb_active_file_replace_creates_new_hpd_from_verified_operation(
+    tmp_path: Path,
+) -> None:
+    hpd = (
+        b"TargetModel\tBCDx36HP\r\n"
+        b"FormatVersion\t1.00\r\n"
+        b"Department\tAdded\r\n"
+    )
+    baseline = _snapshot()
+    intended = FavoritesStorageSnapshot(
+        catalog_bytes=_BASELINE_CATALOG,
+        documents=(
+            FavoritesStorageDocument(
+                filename="added.hpd",
+                content=hpd,
+            ),
+        ),
+    )
+    (
+        preflight,
+        _,
+        favorites_directory,
+    ) = _prepared_usb_activation_fixture(
+        tmp_path,
+        baseline=baseline,
+        intended=intended,
+    )
+    unmanaged = (
+        favorites_directory
+        / "unmanaged.bin"
+    )
+    unmanaged.write_bytes(
+        b"preserve"
+    )
+
+    # The unmanaged file was added after preflight only to prove this primitive
+    # does not touch unrelated names; the low-level primitive intentionally does
+    # not substitute for the final preactivation gate.
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        write_usb._replace_usb_active_managed_file(
+            preflight,
+            paths,
+            "added.hpd",
+            hpd,
+        )
+        temporary = (
+            write_usb._usb_media_temporary_path(
+                preflight,
+                paths,
+            )
+        )
+
+    assert (
+        favorites_directory
+        / "added.hpd"
+    ).read_bytes() == hpd
+    assert unmanaged.read_bytes() == b"preserve"
+    assert not temporary.exists()
+
+
+def test_usb_active_file_replace_replaces_catalog_and_preserves_mode(
+    tmp_path: Path,
+) -> None:
+    baseline = _snapshot()
+    intended = _snapshot(
+        _CHANGED_CATALOG
+    )
+    (
+        preflight,
+        _,
+        favorites_directory,
+    ) = _prepared_usb_activation_fixture(
+        tmp_path,
+        baseline=baseline,
+        intended=intended,
+    )
+    catalog = (
+        favorites_directory
+        / "f_list.cfg"
+    )
+    catalog.chmod(
+        0o640
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        write_usb._replace_usb_active_managed_file(
+            preflight,
+            paths,
+            "f_list.cfg",
+            _CHANGED_CATALOG,
+        )
+
+    assert catalog.read_bytes() == _CHANGED_CATALOG
+    assert (
+        catalog.stat().st_mode
+        & 0o777
+    ) == 0o640
+
+
+def test_usb_active_file_replace_refuses_unsupported_filesystem(
+    tmp_path: Path,
+) -> None:
+    baseline = _snapshot()
+    intended = _snapshot(
+        _CHANGED_CATALOG
+    )
+    (
+        preflight,
+        mountinfo,
+        favorites_directory,
+    ) = _prepared_usb_activation_fixture(
+        tmp_path,
+        baseline=baseline,
+        intended=intended,
+    )
+    mountinfo.write_text(
+        mountinfo.read_text(
+            encoding="utf-8"
+        ).replace(
+            " - vfat ",
+            " - ext4 ",
+        ),
+        encoding="utf-8",
+    )
+    unsupported = preflight_favorites_usb_write(
+        preflight.plan,
+        preflight.requested_path,
+        mountinfo,
+        sys_dev_block_directory=(
+            preflight.sys_dev_block_directory
+        ),
+    )
+    before = (
+        favorites_directory
+        / "f_list.cfg"
+    ).read_bytes()
+    host_root = (
+        tmp_path
+        / "host-state-unsupported"
+        / "favorites-usb-writes"
+    )
+
+    with (
+        write_usb._usb_host_operation_lock(
+            unsupported,
+            host_root,
+        ) as paths,
+        pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="does not support mounted filesystem",
+        ),
+    ):
+        write_usb._replace_usb_active_managed_file(
+            unsupported,
+            paths,
+            "f_list.cfg",
+            _CHANGED_CATALOG,
+        )
+
+    assert (
+        favorites_directory
+        / "f_list.cfg"
+    ).read_bytes() == before
+
+
+def test_usb_active_file_replace_refuses_existing_temp_artifact(
+    tmp_path: Path,
+) -> None:
+    baseline = _snapshot()
+    intended = _snapshot(
+        _CHANGED_CATALOG
+    )
+    (
+        preflight,
+        _,
+        favorites_directory,
+    ) = _prepared_usb_activation_fixture(
+        tmp_path,
+        baseline=baseline,
+        intended=intended,
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        temporary = (
+            write_usb._usb_media_temporary_path(
+                preflight,
+                paths,
+            )
+        )
+        temporary.write_bytes(
+            b"existing unmanaged collision"
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+        ) as raised:
+            write_usb._replace_usb_active_managed_file(
+                preflight,
+                paths,
+                "f_list.cfg",
+                _CHANGED_CATALOG,
+            )
+
+    assert raised.value.mutation_started is False
+    assert temporary.read_bytes() == b"existing unmanaged collision"
+    assert (
+        favorites_directory
+        / "f_list.cfg"
+    ).read_bytes() == _BASELINE_CATALOG
+
+
+def test_usb_active_file_replace_refuses_symlink_race_without_writing(
+    tmp_path: Path,
+) -> None:
+    hpd = (
+        b"TargetModel\tBCDx36HP\r\n"
+        b"FormatVersion\t1.00\r\n"
+    )
+    baseline = _snapshot()
+    intended = FavoritesStorageSnapshot(
+        catalog_bytes=_BASELINE_CATALOG,
+        documents=(
+            FavoritesStorageDocument(
+                filename="added.hpd",
+                content=hpd,
+            ),
+        ),
+    )
+    (
+        preflight,
+        _,
+        favorites_directory,
+    ) = _prepared_usb_activation_fixture(
+        tmp_path,
+        baseline=baseline,
+        intended=intended,
+    )
+    outside = tmp_path / "outside.hpd"
+    outside.write_bytes(
+        b"outside"
+    )
+    target = (
+        favorites_directory
+        / "added.hpd"
+    )
+    _symlink_or_skip(
+        target,
+        outside,
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+
+    with (
+        write_usb._usb_host_operation_lock(
+            preflight,
+            host_root,
+        ) as paths,
+        pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="must not be a symbolic link",
+        ) as raised,
+    ):
+        write_usb._replace_usb_active_managed_file(
+            preflight,
+            paths,
+            "added.hpd",
+            hpd,
+        )
+
+    assert raised.value.mutation_started is False
+    assert outside.read_bytes() == b"outside"
+    assert target.is_symlink()
+
+
+def test_usb_active_file_replace_surfaces_post_replace_readback_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    baseline = _snapshot()
+    intended = _snapshot(
+        _CHANGED_CATALOG
+    )
+    (
+        preflight,
+        _,
+        favorites_directory,
+    ) = _prepared_usb_activation_fixture(
+        tmp_path,
+        baseline=baseline,
+        intended=intended,
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+    real_read = (
+        write_usb._read_usb_activation_regular_file
+    )
+    calls = 0
+
+    def failing_second_read(
+        path: Path,
+    ) -> bytes:
+        nonlocal calls
+        calls += 1
+        content = real_read(
+            path
+        )
+        if calls == 2:
+            return b"corrupted-readback"
+        return content
+
+    monkeypatch.setattr(
+        write_usb,
+        "_read_usb_activation_regular_file",
+        failing_second_read,
+    )
+
+    with (
+        write_usb._usb_host_operation_lock(
+            preflight,
+            host_root,
+        ) as paths,
+        pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="failed exact readback",
+        ) as raised,
+    ):
+        write_usb._replace_usb_active_managed_file(
+            preflight,
+            paths,
+            "f_list.cfg",
+            _CHANGED_CATALOG,
+        )
+
+    assert raised.value.mutation_started is True
+    assert (
+        favorites_directory
+        / "f_list.cfg"
+    ).read_bytes() == _CHANGED_CATALOG
