@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
 import stat
@@ -11,6 +12,7 @@ from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import cast
 
 from .favorites_schema import validate_favorites_workspace
 from .favorites_storage import (
@@ -644,6 +646,1755 @@ class _FavoritesUsbHostOperationPaths:
                 raise ValueError(
                     "Favorites USB host operation paths must be absolute."
                 )
+
+
+_USB_ROLLBACK_MANIFEST_SCHEMA = "sds200.favorites-usb.rollback"
+_USB_ROLLBACK_MANIFEST_VERSION = 1
+_USB_ROLLBACK_MANIFEST_MAX_BYTES = 64 * 1024
+
+
+class _FavoritesUsbRollbackPhase(StrEnum):
+    PREPARED = "prepared"
+    MUTATION_STARTED = "mutation_started"
+    RECOVERY_REQUIRED = "recovery_required"
+    RECOVERY_IN_PROGRESS = "recovery_in_progress"
+    RECOVERED = "recovered"
+    RECOVERY_INCOMPLETE = "recovery_incomplete"
+    COMPLETED = "completed"
+
+
+_USB_ROLLBACK_PHASE_STATE: dict[
+    _FavoritesUsbRollbackPhase,
+    tuple[bool, bool, bool, bool],
+] = {
+    _FavoritesUsbRollbackPhase.PREPARED: (
+        False,
+        False,
+        False,
+        False,
+    ),
+    _FavoritesUsbRollbackPhase.MUTATION_STARTED: (
+        True,
+        False,
+        False,
+        False,
+    ),
+    _FavoritesUsbRollbackPhase.RECOVERY_REQUIRED: (
+        True,
+        True,
+        False,
+        False,
+    ),
+    _FavoritesUsbRollbackPhase.RECOVERY_IN_PROGRESS: (
+        True,
+        True,
+        True,
+        False,
+    ),
+    _FavoritesUsbRollbackPhase.RECOVERED: (
+        True,
+        False,
+        True,
+        True,
+    ),
+    _FavoritesUsbRollbackPhase.RECOVERY_INCOMPLETE: (
+        True,
+        True,
+        True,
+        False,
+    ),
+    _FavoritesUsbRollbackPhase.COMPLETED: (
+        True,
+        False,
+        False,
+        False,
+    ),
+}
+
+
+_USB_ROLLBACK_ALLOWED_TRANSITIONS = frozenset(
+    {
+        (
+            _FavoritesUsbRollbackPhase.PREPARED,
+            _FavoritesUsbRollbackPhase.MUTATION_STARTED,
+        ),
+        (
+            _FavoritesUsbRollbackPhase.MUTATION_STARTED,
+            _FavoritesUsbRollbackPhase.COMPLETED,
+        ),
+        (
+            _FavoritesUsbRollbackPhase.MUTATION_STARTED,
+            _FavoritesUsbRollbackPhase.RECOVERY_REQUIRED,
+        ),
+        (
+            _FavoritesUsbRollbackPhase.RECOVERY_REQUIRED,
+            _FavoritesUsbRollbackPhase.RECOVERY_IN_PROGRESS,
+        ),
+        (
+            _FavoritesUsbRollbackPhase.RECOVERY_IN_PROGRESS,
+            _FavoritesUsbRollbackPhase.RECOVERED,
+        ),
+        (
+            _FavoritesUsbRollbackPhase.RECOVERY_IN_PROGRESS,
+            _FavoritesUsbRollbackPhase.RECOVERY_INCOMPLETE,
+        ),
+    }
+)
+
+
+def _require_usb_rollback_absolute_path(
+    value: Path,
+    *,
+    label: str,
+) -> None:
+    if not isinstance(
+        value,
+        Path,
+    ):
+        raise TypeError(
+            f"{label} must be pathlib.Path."
+        )
+    if not value.is_absolute():
+        raise ValueError(
+            f"{label} must be absolute."
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _FavoritesUsbRollbackManifest:
+    revision: int
+    operation_id: str
+    target_lock_key: str
+    mount_directory: Path
+    favorites_directory: Path
+    mount_id: int
+    parent_id: int
+    device_major: int
+    device_minor: int
+    filesystem_type: str
+    mount_source: str
+    block_device_name: str
+    block_sysfs_path: Path
+    usb_ancestor_path: Path | None
+    removable: bool | None
+    backup_directory: Path
+    staging_directory: Path
+    baseline_snapshot_sha256: str
+    intended_snapshot_sha256: str
+    baseline_tree_sha256: str
+    phase: _FavoritesUsbRollbackPhase
+    bounded_artifact_present: bool
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.revision) is not int
+            or self.revision <= 0
+        ):
+            raise ValueError(
+                "Favorites USB rollback manifest revision must be a "
+                "positive integer."
+            )
+
+        for digest_label, digest_value in (
+            (
+                "Favorites USB rollback operation ID",
+                self.operation_id,
+            ),
+            (
+                "Favorites USB rollback target lock key",
+                self.target_lock_key,
+            ),
+            (
+                "Favorites USB rollback baseline snapshot SHA-256",
+                self.baseline_snapshot_sha256,
+            ),
+            (
+                "Favorites USB rollback intended snapshot SHA-256",
+                self.intended_snapshot_sha256,
+            ),
+            (
+                "Favorites USB rollback baseline tree SHA-256",
+                self.baseline_tree_sha256,
+            ),
+        ):
+            _validate_unmanaged_sha256(
+                digest_value,
+                label=digest_label,
+            )
+
+        for path_label, path_value in (
+            (
+                "Favorites USB rollback mount directory",
+                self.mount_directory,
+            ),
+            (
+                "Favorites USB rollback Favorites directory",
+                self.favorites_directory,
+            ),
+            (
+                "Favorites USB rollback block sysfs path",
+                self.block_sysfs_path,
+            ),
+            (
+                "Favorites USB rollback backup directory",
+                self.backup_directory,
+            ),
+            (
+                "Favorites USB rollback staging directory",
+                self.staging_directory,
+            ),
+        ):
+            _require_usb_rollback_absolute_path(
+                path_value,
+                label=path_label,
+            )
+
+        if self.usb_ancestor_path is not None:
+            _require_usb_rollback_absolute_path(
+                self.usb_ancestor_path,
+                label=(
+                    "Favorites USB rollback USB ancestor path"
+                ),
+            )
+
+        for mount_label, mount_value in (
+            (
+                "Favorites USB rollback mount ID",
+                self.mount_id,
+            ),
+            (
+                "Favorites USB rollback parent mount ID",
+                self.parent_id,
+            ),
+        ):
+            if (
+                type(mount_value) is not int
+                or mount_value <= 0
+            ):
+                raise ValueError(
+                    f"{mount_label} must be a positive integer."
+                )
+
+        for device_label, device_value in (
+            (
+                "Favorites USB rollback device major",
+                self.device_major,
+            ),
+            (
+                "Favorites USB rollback device minor",
+                self.device_minor,
+            ),
+        ):
+            if (
+                type(device_value) is not int
+                or device_value < 0
+            ):
+                raise ValueError(
+                    f"{device_label} must be a non-negative integer."
+                )
+
+        for text_label, text_value in (
+            (
+                "Favorites USB rollback filesystem type",
+                self.filesystem_type,
+            ),
+            (
+                "Favorites USB rollback mount source",
+                self.mount_source,
+            ),
+            (
+                "Favorites USB rollback block device name",
+                self.block_device_name,
+            ),
+        ):
+            if (
+                not isinstance(
+                    text_value,
+                    str,
+                )
+                or not text_value
+            ):
+                raise ValueError(
+                    f"{text_label} must be a non-empty string."
+                )
+
+        if (
+            self.removable is not None
+            and type(self.removable) is not bool
+        ):
+            raise TypeError(
+                "Favorites USB rollback removable evidence must be bool "
+                "or None."
+            )
+        if not isinstance(
+            self.phase,
+            _FavoritesUsbRollbackPhase,
+        ):
+            raise TypeError(
+                "Favorites USB rollback phase must be "
+                "_FavoritesUsbRollbackPhase."
+            )
+        if type(
+            self.bounded_artifact_present
+        ) is not bool:
+            raise TypeError(
+                "Favorites USB rollback bounded-artifact flag must be bool."
+            )
+
+    @property
+    def media_mutation_started(
+        self,
+    ) -> bool:
+        return _USB_ROLLBACK_PHASE_STATE[
+            self.phase
+        ][0]
+
+    @property
+    def recovery_required(
+        self,
+    ) -> bool:
+        return _USB_ROLLBACK_PHASE_STATE[
+            self.phase
+        ][1]
+
+    @property
+    def recovery_attempted(
+        self,
+    ) -> bool:
+        return _USB_ROLLBACK_PHASE_STATE[
+            self.phase
+        ][2]
+
+    @property
+    def recovery_completed(
+        self,
+    ) -> bool:
+        return _USB_ROLLBACK_PHASE_STATE[
+            self.phase
+        ][3]
+
+    @property
+    def backup_retained(
+        self,
+    ) -> bool:
+        return True
+
+    def as_dict(
+        self,
+    ) -> dict[str, object]:
+        return {
+            "schema": _USB_ROLLBACK_MANIFEST_SCHEMA,
+            "version": _USB_ROLLBACK_MANIFEST_VERSION,
+            "revision": self.revision,
+            "operation_id": self.operation_id,
+            "target_lock_key": self.target_lock_key,
+            "target": {
+                "mount_directory": str(
+                    self.mount_directory
+                ),
+                "favorites_directory": str(
+                    self.favorites_directory
+                ),
+                "mount_id": self.mount_id,
+                "parent_id": self.parent_id,
+                "device_major": self.device_major,
+                "device_minor": self.device_minor,
+                "filesystem_type": self.filesystem_type,
+                "mount_source": self.mount_source,
+                "block_device_name": self.block_device_name,
+                "block_sysfs_path": str(
+                    self.block_sysfs_path
+                ),
+                "usb_ancestor_path": (
+                    None
+                    if self.usb_ancestor_path is None
+                    else str(
+                        self.usb_ancestor_path
+                    )
+                ),
+                "removable": self.removable,
+            },
+            "host": {
+                "backup_directory": str(
+                    self.backup_directory
+                ),
+                "staging_directory": str(
+                    self.staging_directory
+                ),
+            },
+            "identity": {
+                "baseline_snapshot_sha256":
+                    self.baseline_snapshot_sha256,
+                "intended_snapshot_sha256":
+                    self.intended_snapshot_sha256,
+                "baseline_tree_sha256":
+                    self.baseline_tree_sha256,
+            },
+            "phase": self.phase.value,
+            "media_mutation_started":
+                self.media_mutation_started,
+            "recovery_required":
+                self.recovery_required,
+            "recovery_attempted":
+                self.recovery_attempted,
+            "recovery_completed":
+                self.recovery_completed,
+            "backup_retained":
+                self.backup_retained,
+            "bounded_artifact_present":
+                self.bounded_artifact_present,
+        }
+
+
+def _usb_rollback_manifest(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    *,
+    revision: int,
+    phase: _FavoritesUsbRollbackPhase,
+    bounded_artifact_present: bool,
+) -> _FavoritesUsbRollbackManifest:
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB rollback manifest construction requires "
+            "FavoritesUsbWritePreflight."
+        )
+
+    _require_host_operation_paths_match_preflight(
+        preflight,
+        paths,
+    )
+
+    mount = (
+        preflight.qualification.mount
+    )
+    block = (
+        preflight.qualification.block_device
+    )
+
+    return _FavoritesUsbRollbackManifest(
+        revision=revision,
+        operation_id=paths.operation_id,
+        target_lock_key=paths.target_lock_key,
+        mount_directory=(
+            preflight.qualification.mount_directory
+        ),
+        favorites_directory=(
+            preflight.qualification.favorites_directory
+        ),
+        mount_id=mount.mount_id,
+        parent_id=mount.parent_id,
+        device_major=mount.device_major,
+        device_minor=mount.device_minor,
+        filesystem_type=mount.filesystem_type,
+        mount_source=mount.mount_source,
+        block_device_name=block.device_name,
+        block_sysfs_path=block.sysfs_path,
+        usb_ancestor_path=block.usb_ancestor_path,
+        removable=block.removable,
+        backup_directory=paths.backup_directory,
+        staging_directory=paths.staging_directory,
+        baseline_snapshot_sha256=(
+            favorites_storage_snapshot_sha256(
+                preflight.plan.baseline_snapshot
+            )
+        ),
+        intended_snapshot_sha256=(
+            favorites_storage_snapshot_sha256(
+                preflight.plan.intended_snapshot
+            )
+        ),
+        baseline_tree_sha256=(
+            preflight.tree_evidence.sha256
+        ),
+        phase=phase,
+        bounded_artifact_present=(
+            bounded_artifact_present
+        ),
+    )
+
+
+def _require_usb_rollback_manifest_matches_preflight(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    manifest: _FavoritesUsbRollbackManifest,
+) -> None:
+    if not isinstance(
+        manifest,
+        _FavoritesUsbRollbackManifest,
+    ):
+        raise TypeError(
+            "Favorites USB rollback manifest verification requires "
+            "_FavoritesUsbRollbackManifest."
+        )
+
+    expected = _usb_rollback_manifest(
+        preflight,
+        paths,
+        revision=manifest.revision,
+        phase=manifest.phase,
+        bounded_artifact_present=(
+            manifest.bounded_artifact_present
+        ),
+    )
+
+    if manifest != expected:
+        raise _FavoritesUsbWritePreparationError(
+            paths.rollback_manifest_path,
+            "Favorites USB rollback manifest identity/evidence does not "
+            "match this exact preflight operation.",
+        )
+
+
+def _require_usb_rollback_manifest_transition(
+    current: _FavoritesUsbRollbackManifest | None,
+    proposed: _FavoritesUsbRollbackManifest,
+    *,
+    path: Path,
+) -> None:
+    if current is not None and not isinstance(
+        current,
+        _FavoritesUsbRollbackManifest,
+    ):
+        raise TypeError(
+            "Current Favorites USB rollback manifest must be "
+            "_FavoritesUsbRollbackManifest or None."
+        )
+    if not isinstance(
+        proposed,
+        _FavoritesUsbRollbackManifest,
+    ):
+        raise TypeError(
+            "Proposed Favorites USB rollback manifest must be "
+            "_FavoritesUsbRollbackManifest."
+        )
+    if not isinstance(
+        path,
+        Path,
+    ):
+        raise TypeError(
+            "Favorites USB rollback transition path must be pathlib.Path."
+        )
+
+    if current is None:
+        if (
+            proposed.revision != 1
+            or proposed.phase
+            is not _FavoritesUsbRollbackPhase.PREPARED
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                path,
+                "Initial Favorites USB rollback manifest must be PREPARED "
+                "at revision 1.",
+            )
+        return
+
+    if (
+        proposed.operation_id
+        != current.operation_id
+        or proposed.target_lock_key
+        != current.target_lock_key
+        or proposed.mount_directory
+        != current.mount_directory
+        or proposed.favorites_directory
+        != current.favorites_directory
+        or proposed.mount_id
+        != current.mount_id
+        or proposed.parent_id
+        != current.parent_id
+        or proposed.device_major
+        != current.device_major
+        or proposed.device_minor
+        != current.device_minor
+        or proposed.filesystem_type
+        != current.filesystem_type
+        or proposed.mount_source
+        != current.mount_source
+        or proposed.block_device_name
+        != current.block_device_name
+        or proposed.block_sysfs_path
+        != current.block_sysfs_path
+        or proposed.usb_ancestor_path
+        != current.usb_ancestor_path
+        or proposed.removable
+        != current.removable
+        or proposed.backup_directory
+        != current.backup_directory
+        or proposed.staging_directory
+        != current.staging_directory
+        or proposed.baseline_snapshot_sha256
+        != current.baseline_snapshot_sha256
+        or proposed.intended_snapshot_sha256
+        != current.intended_snapshot_sha256
+        or proposed.baseline_tree_sha256
+        != current.baseline_tree_sha256
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            path,
+            "Favorites USB rollback manifest update cannot change durable "
+            "operation identity/evidence.",
+        )
+
+    if proposed.revision != current.revision + 1:
+        raise _FavoritesUsbWritePreparationError(
+            path,
+            "Favorites USB rollback manifest revision must advance by "
+            "exactly one.",
+        )
+
+    if (
+        current.phase,
+        proposed.phase,
+    ) not in _USB_ROLLBACK_ALLOWED_TRANSITIONS:
+        raise _FavoritesUsbWritePreparationError(
+            path,
+            "Favorites USB rollback manifest phase transition is not "
+            f"allowed: {current.phase.value!r} -> {proposed.phase.value!r}.",
+        )
+
+
+def _usb_rollback_require_object(
+    value: object,
+    *,
+    label: str,
+) -> dict[str, object]:
+    if not isinstance(
+        value,
+        dict,
+    ):
+        raise ValueError(
+            f"{label} must be a JSON object."
+        )
+
+    if any(
+        not isinstance(
+            key,
+            str,
+        )
+        for key in value
+    ):
+        raise ValueError(
+            f"{label} keys must be strings."
+        )
+
+    return cast(
+        dict[str, object],
+        value,
+    )
+
+
+def _usb_rollback_require_exact_keys(
+    value: dict[str, object],
+    expected: frozenset[str],
+    *,
+    label: str,
+) -> None:
+    observed = frozenset(
+        value
+    )
+    if observed != expected:
+        missing = sorted(
+            expected - observed
+        )
+        extra = sorted(
+            observed - expected
+        )
+        raise ValueError(
+            f"{label} has unsupported fields; "
+            f"missing={missing!r}, extra={extra!r}."
+        )
+
+
+def _usb_rollback_require_string(
+    value: object,
+    *,
+    label: str,
+) -> str:
+    if (
+        not isinstance(
+            value,
+            str,
+        )
+        or not value
+    ):
+        raise ValueError(
+            f"{label} must be a non-empty string."
+        )
+    return value
+
+
+def _usb_rollback_require_integer(
+    value: object,
+    *,
+    label: str,
+    positive: bool,
+) -> int:
+    if type(value) is not int:
+        raise ValueError(
+            f"{label} must be an integer."
+        )
+    checked = value
+    if (
+        positive
+        and checked <= 0
+    ):
+        raise ValueError(
+            f"{label} must be positive."
+        )
+    if (
+        not positive
+        and checked < 0
+    ):
+        raise ValueError(
+            f"{label} must be non-negative."
+        )
+    return checked
+
+
+def _usb_rollback_require_boolean(
+    value: object,
+    *,
+    label: str,
+) -> bool:
+    if type(value) is not bool:
+        raise ValueError(
+            f"{label} must be boolean."
+        )
+    return value
+
+
+def _usb_rollback_reject_duplicate_object(
+    pairs: list[tuple[str, object]],
+) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(
+                "Favorites USB rollback JSON contains duplicate "
+                f"object key {key!r}."
+            )
+        result[key] = value
+    return result
+
+
+def _usb_rollback_manifest_from_payload(
+    payload: object,
+) -> _FavoritesUsbRollbackManifest:
+    root = _usb_rollback_require_object(
+        payload,
+        label="Favorites USB rollback manifest",
+    )
+    _usb_rollback_require_exact_keys(
+        root,
+        frozenset(
+            {
+                "schema",
+                "version",
+                "revision",
+                "operation_id",
+                "target_lock_key",
+                "target",
+                "host",
+                "identity",
+                "phase",
+                "media_mutation_started",
+                "recovery_required",
+                "recovery_attempted",
+                "recovery_completed",
+                "backup_retained",
+                "bounded_artifact_present",
+            }
+        ),
+        label="Favorites USB rollback manifest",
+    )
+
+    if (
+        root["schema"]
+        != _USB_ROLLBACK_MANIFEST_SCHEMA
+    ):
+        raise ValueError(
+            "Favorites USB rollback manifest schema is unsupported."
+        )
+    if (
+        type(root["version"]) is not int
+        or root["version"]
+        != _USB_ROLLBACK_MANIFEST_VERSION
+    ):
+        raise ValueError(
+            "Favorites USB rollback manifest version is unsupported."
+        )
+
+    target = _usb_rollback_require_object(
+        root["target"],
+        label="Favorites USB rollback target",
+    )
+    _usb_rollback_require_exact_keys(
+        target,
+        frozenset(
+            {
+                "mount_directory",
+                "favorites_directory",
+                "mount_id",
+                "parent_id",
+                "device_major",
+                "device_minor",
+                "filesystem_type",
+                "mount_source",
+                "block_device_name",
+                "block_sysfs_path",
+                "usb_ancestor_path",
+                "removable",
+            }
+        ),
+        label="Favorites USB rollback target",
+    )
+
+    host = _usb_rollback_require_object(
+        root["host"],
+        label="Favorites USB rollback host",
+    )
+    _usb_rollback_require_exact_keys(
+        host,
+        frozenset(
+            {
+                "backup_directory",
+                "staging_directory",
+            }
+        ),
+        label="Favorites USB rollback host",
+    )
+
+    identity = _usb_rollback_require_object(
+        root["identity"],
+        label="Favorites USB rollback identity",
+    )
+    _usb_rollback_require_exact_keys(
+        identity,
+        frozenset(
+            {
+                "baseline_snapshot_sha256",
+                "intended_snapshot_sha256",
+                "baseline_tree_sha256",
+            }
+        ),
+        label="Favorites USB rollback identity",
+    )
+
+    phase_text = _usb_rollback_require_string(
+        root["phase"],
+        label="Favorites USB rollback phase",
+    )
+    try:
+        phase = _FavoritesUsbRollbackPhase(
+            phase_text
+        )
+    except ValueError as error:
+        raise ValueError(
+            "Favorites USB rollback manifest phase is unsupported."
+        ) from error
+
+    removable_value = target[
+        "removable"
+    ]
+    if (
+        removable_value is not None
+        and type(removable_value) is not bool
+    ):
+        raise ValueError(
+            "Favorites USB rollback removable evidence must be boolean "
+            "or null."
+        )
+
+    usb_ancestor_value = target[
+        "usb_ancestor_path"
+    ]
+    if (
+        usb_ancestor_value is not None
+        and not isinstance(
+            usb_ancestor_value,
+            str,
+        )
+    ):
+        raise ValueError(
+            "Favorites USB rollback USB ancestor path must be string "
+            "or null."
+        )
+
+    manifest = _FavoritesUsbRollbackManifest(
+        revision=_usb_rollback_require_integer(
+            root["revision"],
+            label="Favorites USB rollback revision",
+            positive=True,
+        ),
+        operation_id=_usb_rollback_require_string(
+            root["operation_id"],
+            label="Favorites USB rollback operation ID",
+        ),
+        target_lock_key=_usb_rollback_require_string(
+            root["target_lock_key"],
+            label="Favorites USB rollback target lock key",
+        ),
+        mount_directory=Path(
+            _usb_rollback_require_string(
+                target["mount_directory"],
+                label=(
+                    "Favorites USB rollback mount directory"
+                ),
+            )
+        ),
+        favorites_directory=Path(
+            _usb_rollback_require_string(
+                target["favorites_directory"],
+                label=(
+                    "Favorites USB rollback Favorites directory"
+                ),
+            )
+        ),
+        mount_id=_usb_rollback_require_integer(
+            target["mount_id"],
+            label="Favorites USB rollback mount ID",
+            positive=True,
+        ),
+        parent_id=_usb_rollback_require_integer(
+            target["parent_id"],
+            label=(
+                "Favorites USB rollback parent mount ID"
+            ),
+            positive=True,
+        ),
+        device_major=_usb_rollback_require_integer(
+            target["device_major"],
+            label=(
+                "Favorites USB rollback device major"
+            ),
+            positive=False,
+        ),
+        device_minor=_usb_rollback_require_integer(
+            target["device_minor"],
+            label=(
+                "Favorites USB rollback device minor"
+            ),
+            positive=False,
+        ),
+        filesystem_type=_usb_rollback_require_string(
+            target["filesystem_type"],
+            label=(
+                "Favorites USB rollback filesystem type"
+            ),
+        ),
+        mount_source=_usb_rollback_require_string(
+            target["mount_source"],
+            label="Favorites USB rollback mount source",
+        ),
+        block_device_name=_usb_rollback_require_string(
+            target["block_device_name"],
+            label=(
+                "Favorites USB rollback block device name"
+            ),
+        ),
+        block_sysfs_path=Path(
+            _usb_rollback_require_string(
+                target["block_sysfs_path"],
+                label=(
+                    "Favorites USB rollback block sysfs path"
+                ),
+            )
+        ),
+        usb_ancestor_path=(
+            None
+            if usb_ancestor_value is None
+            else Path(
+                usb_ancestor_value
+            )
+        ),
+        removable=removable_value,
+        backup_directory=Path(
+            _usb_rollback_require_string(
+                host["backup_directory"],
+                label=(
+                    "Favorites USB rollback backup directory"
+                ),
+            )
+        ),
+        staging_directory=Path(
+            _usb_rollback_require_string(
+                host["staging_directory"],
+                label=(
+                    "Favorites USB rollback staging directory"
+                ),
+            )
+        ),
+        baseline_snapshot_sha256=(
+            _usb_rollback_require_string(
+                identity[
+                    "baseline_snapshot_sha256"
+                ],
+                label=(
+                    "Favorites USB rollback baseline snapshot SHA-256"
+                ),
+            )
+        ),
+        intended_snapshot_sha256=(
+            _usb_rollback_require_string(
+                identity[
+                    "intended_snapshot_sha256"
+                ],
+                label=(
+                    "Favorites USB rollback intended snapshot SHA-256"
+                ),
+            )
+        ),
+        baseline_tree_sha256=(
+            _usb_rollback_require_string(
+                identity[
+                    "baseline_tree_sha256"
+                ],
+                label=(
+                    "Favorites USB rollback baseline tree SHA-256"
+                ),
+            )
+        ),
+        phase=phase,
+        bounded_artifact_present=(
+            _usb_rollback_require_boolean(
+                root[
+                    "bounded_artifact_present"
+                ],
+                label=(
+                    "Favorites USB rollback bounded-artifact flag"
+                ),
+            )
+        ),
+    )
+
+    expected_flags = {
+        "media_mutation_started":
+            manifest.media_mutation_started,
+        "recovery_required":
+            manifest.recovery_required,
+        "recovery_attempted":
+            manifest.recovery_attempted,
+        "recovery_completed":
+            manifest.recovery_completed,
+        "backup_retained":
+            manifest.backup_retained,
+    }
+
+    for key, expected in expected_flags.items():
+        observed = _usb_rollback_require_boolean(
+            root[key],
+            label=(
+                "Favorites USB rollback "
+                f"{key.replace('_', ' ')}"
+            ),
+        )
+        if observed is not expected:
+            raise ValueError(
+                "Favorites USB rollback manifest lifecycle flags do not "
+                f"match phase {manifest.phase.value!r}."
+            )
+
+    return manifest
+
+
+def _usb_rollback_manifest_bytes(
+    manifest: _FavoritesUsbRollbackManifest,
+) -> bytes:
+    if not isinstance(
+        manifest,
+        _FavoritesUsbRollbackManifest,
+    ):
+        raise TypeError(
+            "Favorites USB rollback serialization requires "
+            "_FavoritesUsbRollbackManifest."
+        )
+
+    return (
+        json.dumps(
+            manifest.as_dict(),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode(
+        "utf-8"
+    )
+
+
+def _parse_usb_rollback_manifest_bytes(
+    content: bytes,
+) -> _FavoritesUsbRollbackManifest:
+    if not isinstance(
+        content,
+        bytes,
+    ):
+        raise TypeError(
+            "Favorites USB rollback manifest content must be bytes."
+        )
+    if (
+        not content
+        or len(content)
+        > _USB_ROLLBACK_MANIFEST_MAX_BYTES
+    ):
+        raise ValueError(
+            "Favorites USB rollback manifest size is invalid."
+        )
+
+    try:
+        text = content.decode(
+            "utf-8",
+        )
+    except UnicodeDecodeError as error:
+        raise ValueError(
+            "Favorites USB rollback manifest must be valid UTF-8."
+        ) from error
+
+    try:
+        payload = json.loads(
+            text,
+            object_pairs_hook=(
+                _usb_rollback_reject_duplicate_object
+            ),
+        )
+    except (
+        json.JSONDecodeError,
+        ValueError,
+    ) as error:
+        raise ValueError(
+            "Favorites USB rollback manifest is not valid strict JSON."
+        ) from error
+
+    manifest = (
+        _usb_rollback_manifest_from_payload(
+            payload
+        )
+    )
+
+    if (
+        _usb_rollback_manifest_bytes(
+            manifest
+        )
+        != content
+    ):
+        raise ValueError(
+            "Favorites USB rollback manifest is not in canonical form."
+        )
+
+    return manifest
+
+
+def _read_usb_host_durable_regular_file(
+    path: Path,
+) -> bytes:
+    if not isinstance(
+        path,
+        Path,
+    ):
+        raise TypeError(
+            "Favorites USB durable host read path must be pathlib.Path."
+        )
+    if not path.is_absolute():
+        raise ValueError(
+            "Favorites USB durable host read path must be absolute."
+        )
+
+    no_follow = getattr(
+        os,
+        "O_NOFOLLOW",
+        None,
+    )
+    if (
+        no_follow is None
+        or no_follow == 0
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            path,
+            "Durable Favorites USB host records require O_NOFOLLOW support.",
+        )
+
+    try:
+        initial = path.lstat()
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            path,
+            f"Could not inspect durable Favorites USB host record: {error}",
+        ) from error
+
+    if stat.S_ISLNK(
+        initial.st_mode
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            path,
+            "Durable Favorites USB host record must not be a symbolic link.",
+        )
+    if not stat.S_ISREG(
+        initial.st_mode
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            path,
+            "Durable Favorites USB host record must be a regular file.",
+        )
+    if (
+        initial.st_size <= 0
+        or initial.st_size
+        > _USB_ROLLBACK_MANIFEST_MAX_BYTES
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            path,
+            "Durable Favorites USB host record size is invalid.",
+        )
+
+    flags = (
+        os.O_RDONLY
+        | getattr(
+            os,
+            "O_BINARY",
+            0,
+        )
+        | no_follow
+    )
+
+    try:
+        descriptor = os.open(
+            path,
+            flags,
+        )
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            path,
+            f"Could not open durable Favorites USB host record: {error}",
+        ) from error
+
+    try:
+        opened = os.fstat(
+            descriptor
+        )
+        if not stat.S_ISREG(
+            opened.st_mode
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                path,
+                "Durable Favorites USB host record changed to a "
+                "non-regular file while opening.",
+            )
+        if (
+            opened.st_dev,
+            opened.st_ino,
+        ) != (
+            initial.st_dev,
+            initial.st_ino,
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                path,
+                "Durable Favorites USB host record changed while opening.",
+            )
+        if (
+            opened.st_size <= 0
+            or opened.st_size
+            > _USB_ROLLBACK_MANIFEST_MAX_BYTES
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                path,
+                "Durable Favorites USB host record size changed outside "
+                "the allowed bound.",
+            )
+
+        chunks: list[bytes] = []
+        remaining = (
+            _USB_ROLLBACK_MANIFEST_MAX_BYTES
+            + 1
+        )
+        while remaining > 0:
+            try:
+                chunk = os.read(
+                    descriptor,
+                    min(
+                        8192,
+                        remaining,
+                    ),
+                )
+            except OSError as error:
+                raise _FavoritesUsbWritePreparationError(
+                    path,
+                    "Could not read durable Favorites USB host record: "
+                    f"{error}",
+                ) from error
+            if not chunk:
+                break
+            chunks.append(
+                chunk
+            )
+            remaining -= len(
+                chunk
+            )
+
+        content = b"".join(
+            chunks
+        )
+        if len(
+            content
+        ) > _USB_ROLLBACK_MANIFEST_MAX_BYTES:
+            raise _FavoritesUsbWritePreparationError(
+                path,
+                "Durable Favorites USB host record exceeds the maximum "
+                "allowed size.",
+            )
+
+        final = os.fstat(
+            descriptor
+        )
+        if (
+            final.st_dev,
+            final.st_ino,
+            final.st_size,
+            final.st_mtime_ns,
+            final.st_mode,
+        ) != (
+            opened.st_dev,
+            opened.st_ino,
+            opened.st_size,
+            opened.st_mtime_ns,
+            opened.st_mode,
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                path,
+                "Durable Favorites USB host record changed while reading.",
+            )
+
+        return content
+    finally:
+        os.close(
+            descriptor
+        )
+
+
+def _read_usb_rollback_manifest(
+    path: Path,
+) -> _FavoritesUsbRollbackManifest:
+    try:
+        content = (
+            _read_usb_host_durable_regular_file(
+                path
+            )
+        )
+        return (
+            _parse_usb_rollback_manifest_bytes(
+                content
+            )
+        )
+    except _FavoritesUsbWritePreparationError:
+        raise
+    except (
+        TypeError,
+        ValueError,
+    ) as error:
+        raise _FavoritesUsbWritePreparationError(
+            path,
+            f"Could not parse durable Favorites USB rollback manifest: {error}",
+        ) from error
+
+
+def _usb_rollback_manifest_temporary_path(
+    paths: _FavoritesUsbHostOperationPaths,
+) -> Path:
+    if not isinstance(
+        paths,
+        _FavoritesUsbHostOperationPaths,
+    ):
+        raise TypeError(
+            "Favorites USB rollback temporary path requires "
+            "_FavoritesUsbHostOperationPaths."
+        )
+
+    return (
+        paths.operation_directory
+        / ".rollback.json.tmp"
+    )
+
+
+def _fsync_usb_host_directory(
+    path: Path,
+) -> None:
+    if not isinstance(
+        path,
+        Path,
+    ):
+        raise TypeError(
+            "Favorites USB host directory synchronization requires "
+            "pathlib.Path."
+        )
+
+    directory_flag = getattr(
+        os,
+        "O_DIRECTORY",
+        None,
+    )
+    no_follow = getattr(
+        os,
+        "O_NOFOLLOW",
+        None,
+    )
+    if (
+        directory_flag is None
+        or directory_flag == 0
+        or no_follow is None
+        or no_follow == 0
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            path,
+            "Durable Favorites USB host records require O_DIRECTORY and "
+            "O_NOFOLLOW support.",
+        )
+
+    flags = (
+        os.O_RDONLY
+        | directory_flag
+        | no_follow
+    )
+    try:
+        descriptor = os.open(
+            path,
+            flags,
+        )
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            path,
+            f"Could not open durable-record directory for synchronization: "
+            f"{error}",
+        ) from error
+
+    try:
+        observed = os.fstat(
+            descriptor
+        )
+        if not stat.S_ISDIR(
+            observed.st_mode
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                path,
+                "Durable-record synchronization target is not a directory.",
+            )
+        try:
+            os.fsync(
+                descriptor
+            )
+        except OSError as error:
+            raise _FavoritesUsbWritePreparationError(
+                path,
+                "Could not synchronize durable Favorites USB host directory: "
+                f"{error}",
+            ) from error
+    finally:
+        os.close(
+            descriptor
+        )
+
+
+def _write_usb_rollback_manifest(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    manifest: _FavoritesUsbRollbackManifest,
+) -> None:
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB rollback writer requires "
+            "FavoritesUsbWritePreflight."
+        )
+    if not isinstance(
+        manifest,
+        _FavoritesUsbRollbackManifest,
+    ):
+        raise TypeError(
+            "Favorites USB rollback writer requires "
+            "_FavoritesUsbRollbackManifest."
+        )
+
+    _require_host_operation_paths_match_preflight(
+        preflight,
+        paths,
+    )
+    _require_active_usb_host_lock(
+        paths
+    )
+    _require_private_host_directory(
+        paths.operation_directory,
+        create=False,
+    )
+    _require_usb_rollback_manifest_matches_preflight(
+        preflight,
+        paths,
+        manifest,
+    )
+
+    manifest_path = (
+        paths.rollback_manifest_path
+    )
+    temporary = (
+        _usb_rollback_manifest_temporary_path(
+            paths
+        )
+    )
+
+    current: _FavoritesUsbRollbackManifest | None
+    try:
+        manifest_path.lstat()
+    except FileNotFoundError:
+        current = None
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            manifest_path,
+            f"Could not inspect current Favorites USB rollback manifest: "
+            f"{error}",
+        ) from error
+    else:
+        current = (
+            _read_usb_rollback_manifest(
+                manifest_path
+            )
+        )
+        _require_usb_rollback_manifest_matches_preflight(
+            preflight,
+            paths,
+            current,
+        )
+
+    _require_usb_rollback_manifest_transition(
+        current,
+        manifest,
+        path=manifest_path,
+    )
+
+    if os.path.lexists(
+        temporary
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            temporary,
+            "Favorites USB rollback manifest temporary path already exists.",
+        )
+
+    no_follow = getattr(
+        os,
+        "O_NOFOLLOW",
+        None,
+    )
+    if (
+        no_follow is None
+        or no_follow == 0
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            temporary,
+            "Durable Favorites USB rollback writes require O_NOFOLLOW "
+            "support.",
+        )
+
+    content = (
+        _usb_rollback_manifest_bytes(
+            manifest
+        )
+    )
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(
+            os,
+            "O_BINARY",
+            0,
+        )
+        | no_follow
+    )
+
+    descriptor: int | None = None
+    temporary_identity: tuple[int, int] | None = None
+    published = False
+
+    try:
+        try:
+            descriptor = os.open(
+                temporary,
+                flags,
+                0o600,
+            )
+        except OSError as error:
+            raise _FavoritesUsbWritePreparationError(
+                temporary,
+                "Could not exclusively create Favorites USB rollback "
+                f"temporary file: {error}",
+            ) from error
+
+        opened = os.fstat(
+            descriptor
+        )
+        if not stat.S_ISREG(
+            opened.st_mode
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                temporary,
+                "Favorites USB rollback temporary path is not a regular file.",
+            )
+
+        temporary_identity = (
+            opened.st_dev,
+            opened.st_ino,
+        )
+
+        offset = 0
+        while offset < len(
+            content
+        ):
+            try:
+                written = os.write(
+                    descriptor,
+                    content[offset:],
+                )
+            except OSError as error:
+                raise _FavoritesUsbWritePreparationError(
+                    temporary,
+                    f"Could not write Favorites USB rollback temporary "
+                    f"file: {error}",
+                ) from error
+
+            if written <= 0:
+                raise _FavoritesUsbWritePreparationError(
+                    temporary,
+                    "Favorites USB rollback temporary write returned zero "
+                    "bytes.",
+                )
+            offset += written
+
+        try:
+            os.fsync(
+                descriptor
+            )
+        except OSError as error:
+            raise _FavoritesUsbWritePreparationError(
+                temporary,
+                f"Could not synchronize Favorites USB rollback temporary "
+                f"file: {error}",
+            ) from error
+
+        os.close(
+            descriptor
+        )
+        descriptor = None
+
+        temporary_content = (
+            _read_usb_host_durable_regular_file(
+                temporary
+            )
+        )
+        if temporary_content != content:
+            raise _FavoritesUsbWritePreparationError(
+                temporary,
+                "Favorites USB rollback temporary file failed exact "
+                "readback.",
+            )
+
+        temporary_manifest = (
+            _parse_usb_rollback_manifest_bytes(
+                temporary_content
+            )
+        )
+        if temporary_manifest != manifest:
+            raise _FavoritesUsbWritePreparationError(
+                temporary,
+                "Favorites USB rollback temporary manifest failed exact "
+                "schema readback.",
+            )
+
+        # Revalidate the currently published manifest immediately before
+        # replacement so an unexpected host-side change is never silently
+        # overwritten.
+        if current is None:
+            if os.path.lexists(
+                manifest_path
+            ):
+                raise _FavoritesUsbWritePreparationError(
+                    manifest_path,
+                    "Favorites USB rollback manifest appeared before its "
+                    "initial publish.",
+                )
+        else:
+            observed_current = (
+                _read_usb_rollback_manifest(
+                    manifest_path
+                )
+            )
+            if observed_current != current:
+                raise _FavoritesUsbWritePreparationError(
+                    manifest_path,
+                    "Favorites USB rollback manifest changed before guarded "
+                    "update publication.",
+                )
+
+        try:
+            os.replace(
+                temporary,
+                manifest_path,
+            )
+        except OSError as error:
+            raise _FavoritesUsbWritePreparationError(
+                manifest_path,
+                f"Could not atomically publish Favorites USB rollback "
+                f"manifest: {error}",
+            ) from error
+
+        published = True
+
+        _fsync_usb_host_directory(
+            paths.operation_directory
+        )
+
+        final_manifest = (
+            _read_usb_rollback_manifest(
+                manifest_path
+            )
+        )
+        if final_manifest != manifest:
+            raise _FavoritesUsbWritePreparationError(
+                manifest_path,
+                "Published Favorites USB rollback manifest failed exact "
+                "post-fsync readback.",
+            )
+    finally:
+        if descriptor is not None:
+            os.close(
+                descriptor
+            )
+
+        if (
+            not published
+            and temporary_identity is not None
+        ):
+            try:
+                observed = temporary.lstat()
+            except (
+                FileNotFoundError,
+                OSError,
+            ):
+                pass
+            else:
+                if (
+                    stat.S_ISREG(
+                        observed.st_mode
+                    )
+                    and (
+                        observed.st_dev,
+                        observed.st_ino,
+                    )
+                    == temporary_identity
+                ):
+                    with suppress(
+                        OSError
+                    ):
+                        temporary.unlink()
 
 
 def _canonical_host_state_candidate(

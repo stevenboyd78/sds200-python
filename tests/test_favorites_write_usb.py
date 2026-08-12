@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import FrozenInstanceError
 from pathlib import Path
@@ -6002,3 +6003,941 @@ def test_usb_verified_recovery_artifact_cleanup_does_not_delete_postunlink_repla
     assert raised.value.mutation_started is True
     assert target.read_bytes() == hpd
     assert temporary.read_bytes() == replacement
+
+
+def _usb_rollback_manifest_test_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[
+    write_usb.FavoritesUsbWritePreflight,
+    write_usb._FavoritesUsbHostOperationPaths,
+    object,
+]:
+    (
+        preflight,
+        paths,
+        _backup,
+        _artifact,
+        _temporary,
+        _hpd,
+        lock,
+    ) = _usb_recovery_artifact_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+
+    assert not write_usb.os.path.lexists(
+        paths.rollback_manifest_path
+    )
+    assert not write_usb.os.path.lexists(
+        write_usb._usb_rollback_manifest_temporary_path(
+            paths
+        )
+    )
+
+    return (
+        preflight,
+        paths,
+        lock,
+    )
+
+
+def _usb_rollback_manifest_for_test(
+    preflight: write_usb.FavoritesUsbWritePreflight,
+    paths: write_usb._FavoritesUsbHostOperationPaths,
+    *,
+    revision: int,
+    phase: write_usb._FavoritesUsbRollbackPhase,
+    bounded_artifact_present: bool = False,
+) -> write_usb._FavoritesUsbRollbackManifest:
+    return write_usb._usb_rollback_manifest(
+        preflight,
+        paths,
+        revision=revision,
+        phase=phase,
+        bounded_artifact_present=(
+            bounded_artifact_present
+        ),
+    )
+
+
+def test_usb_rollback_manifest_initial_prepared_write_is_canonical_and_exact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_rollback_manifest_test_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    manifest = (
+        _usb_rollback_manifest_for_test(
+            preflight,
+            paths,
+            revision=1,
+            phase=(
+                write_usb._FavoritesUsbRollbackPhase.PREPARED
+            ),
+        )
+    )
+
+    try:
+        write_usb._write_usb_rollback_manifest(
+            preflight,
+            paths,
+            manifest,
+        )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+    content = (
+        paths.rollback_manifest_path.read_bytes()
+    )
+    assert content.endswith(
+        b"\n"
+    )
+    assert (
+        content
+        == write_usb._usb_rollback_manifest_bytes(
+            manifest
+        )
+    )
+    assert (
+        write_usb._read_usb_rollback_manifest(
+            paths.rollback_manifest_path
+        )
+        == manifest
+    )
+
+    payload = json.loads(
+        content
+    )
+    assert payload["schema"] == (
+        "sds200.favorites-usb.rollback"
+    )
+    assert payload["version"] == 1
+    assert payload["revision"] == 1
+    assert payload["phase"] == "prepared"
+    assert (
+        payload["media_mutation_started"]
+        is False
+    )
+    assert (
+        payload["recovery_required"]
+        is False
+    )
+    assert (
+        payload["recovery_attempted"]
+        is False
+    )
+    assert (
+        payload["recovery_completed"]
+        is False
+    )
+    assert payload["backup_retained"] is True
+
+
+def test_usb_rollback_manifest_serializes_identity_evidence_without_raw_programming_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_rollback_manifest_test_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    manifest = (
+        _usb_rollback_manifest_for_test(
+            preflight,
+            paths,
+            revision=1,
+            phase=(
+                write_usb._FavoritesUsbRollbackPhase.PREPARED
+            ),
+            bounded_artifact_present=True,
+        )
+    )
+
+    try:
+        write_usb._write_usb_rollback_manifest(
+            preflight,
+            paths,
+            manifest,
+        )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+    payload = json.loads(
+        paths.rollback_manifest_path.read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert set(payload) == {
+        "schema",
+        "version",
+        "revision",
+        "operation_id",
+        "target_lock_key",
+        "target",
+        "host",
+        "identity",
+        "phase",
+        "media_mutation_started",
+        "recovery_required",
+        "recovery_attempted",
+        "recovery_completed",
+        "backup_retained",
+        "bounded_artifact_present",
+    }
+    assert set(
+        payload["identity"]
+    ) == {
+        "baseline_snapshot_sha256",
+        "intended_snapshot_sha256",
+        "baseline_tree_sha256",
+    }
+    assert set(
+        payload["host"]
+    ) == {
+        "backup_directory",
+        "staging_directory",
+    }
+
+    serialized = (
+        paths.rollback_manifest_path.read_text(
+            encoding="utf-8"
+        )
+    )
+    for forbidden_key in (
+        '"catalog_bytes"',
+        '"content"',
+        '"documents"',
+        '"filename"',
+        '"managed_filename"',
+        '"records"',
+        '"baseline_snapshot"',
+        '"intended_snapshot"',
+        '"message"',
+        '"diagnostic"',
+    ):
+        assert forbidden_key not in serialized
+
+
+def test_usb_rollback_manifest_allows_only_exact_revisioned_phase_transition(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_rollback_manifest_test_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    prepared = (
+        _usb_rollback_manifest_for_test(
+            preflight,
+            paths,
+            revision=1,
+            phase=(
+                write_usb._FavoritesUsbRollbackPhase.PREPARED
+            ),
+        )
+    )
+    started = (
+        _usb_rollback_manifest_for_test(
+            preflight,
+            paths,
+            revision=2,
+            phase=(
+                write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED
+            ),
+            bounded_artifact_present=True,
+        )
+    )
+
+    try:
+        write_usb._write_usb_rollback_manifest(
+            preflight,
+            paths,
+            prepared,
+        )
+        write_usb._write_usb_rollback_manifest(
+            preflight,
+            paths,
+            started,
+        )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+    assert (
+        write_usb._read_usb_rollback_manifest(
+            paths.rollback_manifest_path
+        )
+        == started
+    )
+    assert started.media_mutation_started
+    assert not started.recovery_required
+    assert started.bounded_artifact_present
+
+
+@pytest.mark.parametrize(
+    ("revision", "phase"),
+    [
+        (
+            2,
+            write_usb._FavoritesUsbRollbackPhase.PREPARED,
+        ),
+        (
+            1,
+            write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED,
+        ),
+        (
+            1,
+            write_usb._FavoritesUsbRollbackPhase.RECOVERY_REQUIRED,
+        ),
+    ],
+)
+def test_usb_rollback_manifest_refuses_invalid_initial_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    revision: int,
+    phase: write_usb._FavoritesUsbRollbackPhase,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_rollback_manifest_test_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    manifest = (
+        _usb_rollback_manifest_for_test(
+            preflight,
+            paths,
+            revision=revision,
+            phase=phase,
+        )
+    )
+
+    try:
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="Initial .* PREPARED .* revision 1",
+        ):
+            write_usb._write_usb_rollback_manifest(
+                preflight,
+                paths,
+                manifest,
+            )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+    assert not write_usb.os.path.lexists(
+        paths.rollback_manifest_path
+    )
+
+
+def test_usb_rollback_manifest_refuses_skipped_revision_without_overwrite(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_rollback_manifest_test_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    prepared = (
+        _usb_rollback_manifest_for_test(
+            preflight,
+            paths,
+            revision=1,
+            phase=(
+                write_usb._FavoritesUsbRollbackPhase.PREPARED
+            ),
+        )
+    )
+    skipped = (
+        _usb_rollback_manifest_for_test(
+            preflight,
+            paths,
+            revision=3,
+            phase=(
+                write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED
+            ),
+        )
+    )
+
+    try:
+        write_usb._write_usb_rollback_manifest(
+            preflight,
+            paths,
+            prepared,
+        )
+        before = (
+            paths.rollback_manifest_path.read_bytes()
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="revision must advance by exactly one",
+        ):
+            write_usb._write_usb_rollback_manifest(
+                preflight,
+                paths,
+                skipped,
+            )
+
+        assert (
+            paths.rollback_manifest_path.read_bytes()
+            == before
+        )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+
+def test_usb_rollback_manifest_refuses_disallowed_phase_transition_without_overwrite(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_rollback_manifest_test_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    prepared = (
+        _usb_rollback_manifest_for_test(
+            preflight,
+            paths,
+            revision=1,
+            phase=(
+                write_usb._FavoritesUsbRollbackPhase.PREPARED
+            ),
+        )
+    )
+    invalid = (
+        _usb_rollback_manifest_for_test(
+            preflight,
+            paths,
+            revision=2,
+            phase=(
+                write_usb._FavoritesUsbRollbackPhase.RECOVERY_REQUIRED
+            ),
+        )
+    )
+
+    try:
+        write_usb._write_usb_rollback_manifest(
+            preflight,
+            paths,
+            prepared,
+        )
+        before = (
+            paths.rollback_manifest_path.read_bytes()
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="phase transition is not allowed",
+        ):
+            write_usb._write_usb_rollback_manifest(
+                preflight,
+                paths,
+                invalid,
+            )
+
+        assert (
+            paths.rollback_manifest_path.read_bytes()
+            == before
+        )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+
+def test_usb_rollback_manifest_refuses_lifecycle_flag_disagreement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_rollback_manifest_test_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    manifest = (
+        _usb_rollback_manifest_for_test(
+            preflight,
+            paths,
+            revision=1,
+            phase=(
+                write_usb._FavoritesUsbRollbackPhase.PREPARED
+            ),
+        )
+    )
+    payload = manifest.as_dict()
+    payload[
+        "media_mutation_started"
+    ] = True
+    content = (
+        json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode(
+        "utf-8"
+    )
+
+    try:
+        with pytest.raises(
+            ValueError,
+            match="lifecycle flags do not match phase",
+        ):
+            write_usb._parse_usb_rollback_manifest_bytes(
+                content
+            )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+
+def test_usb_rollback_manifest_refuses_unknown_or_noncanonical_existing_record(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_rollback_manifest_test_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    manifest = (
+        _usb_rollback_manifest_for_test(
+            preflight,
+            paths,
+            revision=2,
+            phase=(
+                write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED
+            ),
+        )
+    )
+    paths.rollback_manifest_path.write_text(
+        '{"schema":"future"}\n',
+        encoding="utf-8",
+    )
+    before = (
+        paths.rollback_manifest_path.read_bytes()
+    )
+
+    try:
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="Could not parse durable .* rollback manifest",
+        ):
+            write_usb._write_usb_rollback_manifest(
+                preflight,
+                paths,
+                manifest,
+            )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+    assert (
+        paths.rollback_manifest_path.read_bytes()
+        == before
+    )
+
+
+def test_usb_rollback_manifest_refuses_symlink_manifest_without_overwrite(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_rollback_manifest_test_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    outside = (
+        tmp_path
+        / "outside-rollback.json"
+    )
+    outside.write_text(
+        '{"outside":true}\n',
+        encoding="utf-8",
+    )
+    _symlink_or_skip(
+        paths.rollback_manifest_path,
+        outside,
+    )
+    manifest = (
+        _usb_rollback_manifest_for_test(
+            preflight,
+            paths,
+            revision=2,
+            phase=(
+                write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED
+            ),
+        )
+    )
+
+    try:
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="must not be a symbolic link",
+        ):
+            write_usb._write_usb_rollback_manifest(
+                preflight,
+                paths,
+                manifest,
+            )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+    assert paths.rollback_manifest_path.is_symlink()
+    assert outside.read_text(
+        encoding="utf-8"
+    ) == '{"outside":true}\n'
+
+
+def test_usb_rollback_manifest_refuses_unknown_temporary_collision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_rollback_manifest_test_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    temporary = (
+        write_usb._usb_rollback_manifest_temporary_path(
+            paths
+        )
+    )
+    temporary.write_bytes(
+        b"unknown-host-temp"
+    )
+    manifest = (
+        _usb_rollback_manifest_for_test(
+            preflight,
+            paths,
+            revision=1,
+            phase=(
+                write_usb._FavoritesUsbRollbackPhase.PREPARED
+            ),
+        )
+    )
+
+    try:
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="temporary path already exists",
+        ):
+            write_usb._write_usb_rollback_manifest(
+                preflight,
+                paths,
+                manifest,
+            )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+    assert temporary.read_bytes() == (
+        b"unknown-host-temp"
+    )
+    assert not write_usb.os.path.lexists(
+        paths.rollback_manifest_path
+    )
+
+
+def test_usb_rollback_manifest_prepublication_failure_cleans_only_owned_temp(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_rollback_manifest_test_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    manifest = (
+        _usb_rollback_manifest_for_test(
+            preflight,
+            paths,
+            revision=1,
+            phase=(
+                write_usb._FavoritesUsbRollbackPhase.PREPARED
+            ),
+        )
+    )
+    temporary = (
+        write_usb._usb_rollback_manifest_temporary_path(
+            paths
+        )
+    )
+    real_fsync = write_usb.os.fsync
+    failed = False
+
+    def failing_fsync(
+        descriptor: int,
+    ) -> None:
+        nonlocal failed
+        if not failed:
+            failed = True
+            raise OSError(
+                "injected rollback temp fsync failure"
+            )
+        real_fsync(
+            descriptor
+        )
+
+    monkeypatch.setattr(
+        write_usb.os,
+        "fsync",
+        failing_fsync,
+    )
+
+    try:
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="rollback temporary file",
+        ):
+            write_usb._write_usb_rollback_manifest(
+                preflight,
+                paths,
+                manifest,
+            )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+    assert failed
+    assert not write_usb.os.path.lexists(
+        temporary
+    )
+    assert not write_usb.os.path.lexists(
+        paths.rollback_manifest_path
+    )
+
+
+def test_usb_rollback_manifest_published_record_is_fsynced_and_exactly_read_back(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_rollback_manifest_test_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    manifest = (
+        _usb_rollback_manifest_for_test(
+            preflight,
+            paths,
+            revision=1,
+            phase=(
+                write_usb._FavoritesUsbRollbackPhase.PREPARED
+            ),
+        )
+    )
+    fsync_calls: list[int] = []
+    real_fsync = write_usb.os.fsync
+
+    def recording_fsync(
+        descriptor: int,
+    ) -> None:
+        fsync_calls.append(
+            descriptor
+        )
+        real_fsync(
+            descriptor
+        )
+
+    monkeypatch.setattr(
+        write_usb.os,
+        "fsync",
+        recording_fsync,
+    )
+
+    try:
+        write_usb._write_usb_rollback_manifest(
+            preflight,
+            paths,
+            manifest,
+        )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+    assert len(fsync_calls) >= 2
+    assert (
+        write_usb._read_usb_rollback_manifest(
+            paths.rollback_manifest_path
+        )
+        == manifest
+    )
+
+
+def test_usb_rollback_manifest_terminal_completed_state_cannot_regress(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_rollback_manifest_test_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    prepared = (
+        _usb_rollback_manifest_for_test(
+            preflight,
+            paths,
+            revision=1,
+            phase=(
+                write_usb._FavoritesUsbRollbackPhase.PREPARED
+            ),
+        )
+    )
+    started = (
+        _usb_rollback_manifest_for_test(
+            preflight,
+            paths,
+            revision=2,
+            phase=(
+                write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED
+            ),
+        )
+    )
+    completed = (
+        _usb_rollback_manifest_for_test(
+            preflight,
+            paths,
+            revision=3,
+            phase=(
+                write_usb._FavoritesUsbRollbackPhase.COMPLETED
+            ),
+        )
+    )
+    regressed = (
+        _usb_rollback_manifest_for_test(
+            preflight,
+            paths,
+            revision=4,
+            phase=(
+                write_usb._FavoritesUsbRollbackPhase.RECOVERY_REQUIRED
+            ),
+        )
+    )
+
+    try:
+        for manifest in (
+            prepared,
+            started,
+            completed,
+        ):
+            write_usb._write_usb_rollback_manifest(
+                preflight,
+                paths,
+                manifest,
+            )
+
+        before = (
+            paths.rollback_manifest_path.read_bytes()
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="phase transition is not allowed",
+        ):
+            write_usb._write_usb_rollback_manifest(
+                preflight,
+                paths,
+                regressed,
+            )
+
+        assert (
+            paths.rollback_manifest_path.read_bytes()
+            == before
+        )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
