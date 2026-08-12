@@ -2397,6 +2397,1395 @@ def _write_usb_rollback_manifest(
                         temporary.unlink()
 
 
+_USB_OPERATION_REPORT_SCHEMA = "sds200.favorites-usb.operation-report"
+_USB_OPERATION_REPORT_VERSION = 1
+_USB_OPERATION_REPORT_MAX_BYTES = _USB_ROLLBACK_MANIFEST_MAX_BYTES
+
+
+class _FavoritesUsbVerificationOutcome(StrEnum):
+    NOT_ATTEMPTED = "not_attempted"
+    VERIFIED = "verified"
+    FAILED = "failed"
+
+
+class _FavoritesUsbActivationOutcome(StrEnum):
+    NOT_STARTED = "not_started"
+    COMPLETED = "completed"
+    FAILED_BEFORE_MUTATION = "failed_before_mutation"
+    FAILED_AFTER_MUTATION = "failed_after_mutation"
+
+
+class _FavoritesUsbRecoveryOutcome(StrEnum):
+    NOT_REQUIRED = "not_required"
+    NOT_ATTEMPTED = "not_attempted"
+    RECOVERED = "recovered"
+    INCOMPLETE = "incomplete"
+
+
+class _FavoritesUsbFailureCode(StrEnum):
+    PREACTIVATION_FAILED = "preactivation_failed"
+    ACTIVATION_FAILED_BEFORE_MUTATION = (
+        "activation_failed_before_mutation"
+    )
+    ACTIVATION_FAILED_AFTER_MUTATION = (
+        "activation_failed_after_mutation"
+    )
+    POSTACTIVATION_VERIFICATION_FAILED = (
+        "postactivation_verification_failed"
+    )
+    RECOVERY_NOT_ATTEMPTED = "recovery_not_attempted"
+    RECOVERY_INCOMPLETE = "recovery_incomplete"
+
+
+@dataclass(frozen=True, slots=True)
+class _FavoritesUsbOperationReport:
+    rollback_manifest: _FavoritesUsbRollbackManifest
+    backup_verification: _FavoritesUsbVerificationOutcome
+    staging_verification: _FavoritesUsbVerificationOutcome
+    preactivation_verification: _FavoritesUsbVerificationOutcome
+    postactivation_verification: _FavoritesUsbVerificationOutcome
+    unmanaged_preservation: _FavoritesUsbVerificationOutcome
+    activation_outcome: _FavoritesUsbActivationOutcome
+    recovery_outcome: _FavoritesUsbRecoveryOutcome
+    active_snapshot_sha256: str | None
+    failure_code: _FavoritesUsbFailureCode | None
+
+    def __post_init__(self) -> None:
+        if not isinstance(
+            self.rollback_manifest,
+            _FavoritesUsbRollbackManifest,
+        ):
+            raise TypeError(
+                "Favorites USB operation report requires "
+                "_FavoritesUsbRollbackManifest."
+            )
+
+        for verification_label, verification_value in (
+            (
+                "backup verification",
+                self.backup_verification,
+            ),
+            (
+                "staging verification",
+                self.staging_verification,
+            ),
+            (
+                "preactivation verification",
+                self.preactivation_verification,
+            ),
+            (
+                "postactivation verification",
+                self.postactivation_verification,
+            ),
+            (
+                "unmanaged preservation",
+                self.unmanaged_preservation,
+            ),
+        ):
+            if not isinstance(
+                verification_value,
+                _FavoritesUsbVerificationOutcome,
+            ):
+                raise TypeError(
+                    "Favorites USB operation "
+                    f"{verification_label} must be "
+                    "_FavoritesUsbVerificationOutcome."
+                )
+
+        if not isinstance(
+            self.activation_outcome,
+            _FavoritesUsbActivationOutcome,
+        ):
+            raise TypeError(
+                "Favorites USB operation activation outcome must be "
+                "_FavoritesUsbActivationOutcome."
+            )
+        if not isinstance(
+            self.recovery_outcome,
+            _FavoritesUsbRecoveryOutcome,
+        ):
+            raise TypeError(
+                "Favorites USB operation recovery outcome must be "
+                "_FavoritesUsbRecoveryOutcome."
+            )
+
+        if self.active_snapshot_sha256 is not None:
+            _validate_unmanaged_sha256(
+                self.active_snapshot_sha256,
+                label=(
+                    "Favorites USB operation active snapshot SHA-256"
+                ),
+            )
+
+        if (
+            self.failure_code is not None
+            and not isinstance(
+                self.failure_code,
+                _FavoritesUsbFailureCode,
+            )
+        ):
+            raise TypeError(
+                "Favorites USB operation failure code must be "
+                "_FavoritesUsbFailureCode or None."
+            )
+
+        _require_usb_operation_report_consistent(
+            self
+        )
+
+    @property
+    def is_success(
+        self,
+    ) -> bool:
+        return (
+            self.rollback_manifest.phase
+            is _FavoritesUsbRollbackPhase.COMPLETED
+        )
+
+    def as_dict(
+        self,
+    ) -> dict[str, object]:
+        rollback = (
+            self.rollback_manifest.as_dict()
+        )
+        identity = cast(
+            dict[str, object],
+            rollback["identity"],
+        )
+
+        return {
+            "schema": _USB_OPERATION_REPORT_SCHEMA,
+            "version": _USB_OPERATION_REPORT_VERSION,
+            "operation_id":
+                self.rollback_manifest.operation_id,
+            "target_lock_key":
+                self.rollback_manifest.target_lock_key,
+            "target": rollback["target"],
+            "host": rollback["host"],
+            "identity": {
+                "baseline_snapshot_sha256":
+                    identity[
+                        "baseline_snapshot_sha256"
+                    ],
+                "intended_snapshot_sha256":
+                    identity[
+                        "intended_snapshot_sha256"
+                    ],
+                "baseline_tree_sha256":
+                    identity[
+                        "baseline_tree_sha256"
+                    ],
+                "active_snapshot_sha256":
+                    self.active_snapshot_sha256,
+            },
+            "verification": {
+                "backup":
+                    self.backup_verification.value,
+                "staging":
+                    self.staging_verification.value,
+                "preactivation":
+                    self.preactivation_verification.value,
+                "postactivation":
+                    self.postactivation_verification.value,
+                "unmanaged_preserved":
+                    self.unmanaged_preservation.value,
+            },
+            "activation_outcome":
+                self.activation_outcome.value,
+            "recovery_outcome":
+                self.recovery_outcome.value,
+            "rollback_revision":
+                self.rollback_manifest.revision,
+            "rollback_phase":
+                self.rollback_manifest.phase.value,
+            "bounded_artifact_present":
+                self.rollback_manifest.bounded_artifact_present,
+            "backup_retained":
+                self.rollback_manifest.backup_retained,
+            "failure_code": (
+                None
+                if self.failure_code is None
+                else self.failure_code.value
+            ),
+        }
+
+
+def _require_usb_operation_report_consistent(
+    report: _FavoritesUsbOperationReport,
+) -> None:
+    if not isinstance(
+        report,
+        _FavoritesUsbOperationReport,
+    ):
+        raise TypeError(
+            "Favorites USB operation consistency requires "
+            "_FavoritesUsbOperationReport."
+        )
+
+    rollback = report.rollback_manifest
+    phase = rollback.phase
+
+    if (
+        report.backup_verification
+        is not _FavoritesUsbVerificationOutcome.VERIFIED
+        or report.staging_verification
+        is not _FavoritesUsbVerificationOutcome.VERIFIED
+    ):
+        raise ValueError(
+            "Favorites USB operation report requires verified host backup "
+            "and staging evidence."
+        )
+
+    if phase is _FavoritesUsbRollbackPhase.PREPARED:
+        if report.activation_outcome not in {
+            _FavoritesUsbActivationOutcome.NOT_STARTED,
+            _FavoritesUsbActivationOutcome.FAILED_BEFORE_MUTATION,
+        }:
+            raise ValueError(
+                "PREPARED rollback report requires activation not started "
+                "or failed before mutation."
+            )
+        if (
+            report.recovery_outcome
+            is not _FavoritesUsbRecoveryOutcome.NOT_REQUIRED
+        ):
+            raise ValueError(
+                "PREPARED rollback report cannot require or claim recovery."
+            )
+        if rollback.bounded_artifact_present:
+            raise ValueError(
+                "PREPARED rollback report cannot claim a media recovery "
+                "artifact."
+            )
+        if report.active_snapshot_sha256 is not None:
+            raise ValueError(
+                "PREPARED rollback report must not claim a final active "
+                "snapshot identity."
+            )
+        if (
+            report.activation_outcome
+            is _FavoritesUsbActivationOutcome.NOT_STARTED
+        ):
+            if (
+                report.preactivation_verification
+                is not _FavoritesUsbVerificationOutcome.FAILED
+                or report.failure_code
+                is not _FavoritesUsbFailureCode.PREACTIVATION_FAILED
+            ):
+                raise ValueError(
+                    "Activation-not-started report requires failed "
+                    "preactivation verification and PREACTIVATION_FAILED."
+                )
+        else:
+            if (
+                report.preactivation_verification
+                is not _FavoritesUsbVerificationOutcome.VERIFIED
+                or report.failure_code
+                is not _FavoritesUsbFailureCode.ACTIVATION_FAILED_BEFORE_MUTATION
+            ):
+                raise ValueError(
+                    "Before-mutation activation failure requires verified "
+                    "preactivation and ACTIVATION_FAILED_BEFORE_MUTATION."
+                )
+        if (
+            report.postactivation_verification
+            is not _FavoritesUsbVerificationOutcome.NOT_ATTEMPTED
+        ):
+            raise ValueError(
+                "No-mutation failure report cannot claim postactivation "
+                "verification."
+            )
+
+    elif phase is _FavoritesUsbRollbackPhase.COMPLETED:
+        if (
+            report.activation_outcome
+            is not _FavoritesUsbActivationOutcome.COMPLETED
+            or report.recovery_outcome
+            is not _FavoritesUsbRecoveryOutcome.NOT_REQUIRED
+        ):
+            raise ValueError(
+                "COMPLETED rollback report requires completed activation "
+                "with recovery not required."
+            )
+        if (
+            report.preactivation_verification
+            is not _FavoritesUsbVerificationOutcome.VERIFIED
+            or report.postactivation_verification
+            is not _FavoritesUsbVerificationOutcome.VERIFIED
+            or report.unmanaged_preservation
+            is not _FavoritesUsbVerificationOutcome.VERIFIED
+        ):
+            raise ValueError(
+                "Completed Favorites USB operation requires verified "
+                "preactivation, postactivation, and unmanaged preservation."
+            )
+        if (
+            report.active_snapshot_sha256
+            != rollback.intended_snapshot_sha256
+        ):
+            raise ValueError(
+                "Completed Favorites USB operation active snapshot identity "
+                "must equal the intended snapshot identity."
+            )
+        if report.failure_code is not None:
+            raise ValueError(
+                "Completed Favorites USB operation cannot carry a failure "
+                "code."
+            )
+        if rollback.bounded_artifact_present:
+            raise ValueError(
+                "Completed Favorites USB operation cannot retain a bounded "
+                "recovery artifact."
+            )
+
+    elif phase is _FavoritesUsbRollbackPhase.RECOVERY_REQUIRED:
+        if (
+            report.activation_outcome
+            is not _FavoritesUsbActivationOutcome.FAILED_AFTER_MUTATION
+            or report.recovery_outcome
+            is not _FavoritesUsbRecoveryOutcome.NOT_ATTEMPTED
+            or report.failure_code
+            is not _FavoritesUsbFailureCode.RECOVERY_NOT_ATTEMPTED
+        ):
+            raise ValueError(
+                "RECOVERY_REQUIRED report requires failed-after-mutation "
+                "activation, recovery not attempted, and "
+                "RECOVERY_NOT_ATTEMPTED."
+            )
+        if (
+            report.preactivation_verification
+            is not _FavoritesUsbVerificationOutcome.VERIFIED
+        ):
+            raise ValueError(
+                "Post-mutation failure report requires verified "
+                "preactivation."
+            )
+
+    elif phase is _FavoritesUsbRollbackPhase.RECOVERED:
+        if (
+            report.activation_outcome
+            is not _FavoritesUsbActivationOutcome.FAILED_AFTER_MUTATION
+            or report.recovery_outcome
+            is not _FavoritesUsbRecoveryOutcome.RECOVERED
+        ):
+            raise ValueError(
+                "RECOVERED rollback report requires failed-after-mutation "
+                "activation followed by recovered rollback."
+            )
+        if report.failure_code not in {
+            _FavoritesUsbFailureCode.ACTIVATION_FAILED_AFTER_MUTATION,
+            _FavoritesUsbFailureCode.POSTACTIVATION_VERIFICATION_FAILED,
+        }:
+            raise ValueError(
+                "Recovered operation report requires an activation or "
+                "postactivation verification failure code."
+            )
+        if (
+            report.preactivation_verification
+            is not _FavoritesUsbVerificationOutcome.VERIFIED
+            or report.unmanaged_preservation
+            is not _FavoritesUsbVerificationOutcome.VERIFIED
+        ):
+            raise ValueError(
+                "Recovered Favorites USB operation requires verified "
+                "preactivation and unmanaged preservation."
+            )
+        if (
+            report.active_snapshot_sha256
+            != rollback.baseline_snapshot_sha256
+        ):
+            raise ValueError(
+                "Recovered Favorites USB operation active snapshot identity "
+                "must equal the baseline snapshot identity."
+            )
+        if rollback.bounded_artifact_present:
+            raise ValueError(
+                "Recovered Favorites USB operation cannot retain a bounded "
+                "recovery artifact."
+            )
+
+    elif phase is _FavoritesUsbRollbackPhase.RECOVERY_INCOMPLETE:
+        if (
+            report.activation_outcome
+            is not _FavoritesUsbActivationOutcome.FAILED_AFTER_MUTATION
+            or report.recovery_outcome
+            is not _FavoritesUsbRecoveryOutcome.INCOMPLETE
+            or report.failure_code
+            is not _FavoritesUsbFailureCode.RECOVERY_INCOMPLETE
+        ):
+            raise ValueError(
+                "RECOVERY_INCOMPLETE report requires failed-after-mutation "
+                "activation, incomplete recovery, and RECOVERY_INCOMPLETE."
+            )
+        if (
+            report.preactivation_verification
+            is not _FavoritesUsbVerificationOutcome.VERIFIED
+        ):
+            raise ValueError(
+                "Incomplete recovery report requires verified preactivation."
+            )
+
+    else:
+        raise ValueError(
+            "Favorites USB operation report requires a reportable rollback "
+            f"phase, not {phase.value!r}."
+        )
+
+    if (
+        phase is not _FavoritesUsbRollbackPhase.COMPLETED
+        and report.failure_code is None
+    ):
+        raise ValueError(
+            "Failed Favorites USB operation report requires a predefined "
+            "failure code."
+        )
+
+
+def _usb_operation_report(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    rollback_manifest: _FavoritesUsbRollbackManifest,
+    *,
+    backup_verification: _FavoritesUsbVerificationOutcome,
+    staging_verification: _FavoritesUsbVerificationOutcome,
+    preactivation_verification: _FavoritesUsbVerificationOutcome,
+    postactivation_verification: _FavoritesUsbVerificationOutcome,
+    unmanaged_preservation: _FavoritesUsbVerificationOutcome,
+    activation_outcome: _FavoritesUsbActivationOutcome,
+    recovery_outcome: _FavoritesUsbRecoveryOutcome,
+    active_snapshot_sha256: str | None,
+    failure_code: _FavoritesUsbFailureCode | None,
+) -> _FavoritesUsbOperationReport:
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB operation report construction requires "
+            "FavoritesUsbWritePreflight."
+        )
+
+    _require_host_operation_paths_match_preflight(
+        preflight,
+        paths,
+    )
+    _require_usb_rollback_manifest_matches_preflight(
+        preflight,
+        paths,
+        rollback_manifest,
+    )
+
+    return _FavoritesUsbOperationReport(
+        rollback_manifest=rollback_manifest,
+        backup_verification=backup_verification,
+        staging_verification=staging_verification,
+        preactivation_verification=preactivation_verification,
+        postactivation_verification=postactivation_verification,
+        unmanaged_preservation=unmanaged_preservation,
+        activation_outcome=activation_outcome,
+        recovery_outcome=recovery_outcome,
+        active_snapshot_sha256=active_snapshot_sha256,
+        failure_code=failure_code,
+    )
+
+
+def _usb_operation_report_rollback_manifest(
+    report: _FavoritesUsbOperationReport,
+) -> _FavoritesUsbRollbackManifest:
+    if not isinstance(
+        report,
+        _FavoritesUsbOperationReport,
+    ):
+        raise TypeError(
+            "Favorites USB operation report rollback extraction requires "
+            "_FavoritesUsbOperationReport."
+        )
+    return report.rollback_manifest
+
+
+def _require_usb_operation_report_matches(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    rollback_manifest: _FavoritesUsbRollbackManifest,
+    report: _FavoritesUsbOperationReport,
+) -> None:
+    if not isinstance(
+        report,
+        _FavoritesUsbOperationReport,
+    ):
+        raise TypeError(
+            "Favorites USB operation report correlation requires "
+            "_FavoritesUsbOperationReport."
+        )
+
+    _require_host_operation_paths_match_preflight(
+        preflight,
+        paths,
+    )
+    _require_usb_rollback_manifest_matches_preflight(
+        preflight,
+        paths,
+        rollback_manifest,
+    )
+
+    if (
+        _usb_operation_report_rollback_manifest(
+            report
+        )
+        != rollback_manifest
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            paths.operation_directory,
+            "Favorites USB operation report does not correlate to the exact "
+            "final rollback manifest.",
+        )
+
+
+def _usb_operation_report_require_enum(
+    enum_type: type[
+        _FavoritesUsbVerificationOutcome
+        | _FavoritesUsbActivationOutcome
+        | _FavoritesUsbRecoveryOutcome
+        | _FavoritesUsbFailureCode
+    ],
+    value: object,
+    *,
+    label: str,
+) -> (
+    _FavoritesUsbVerificationOutcome
+    | _FavoritesUsbActivationOutcome
+    | _FavoritesUsbRecoveryOutcome
+    | _FavoritesUsbFailureCode
+):
+    text = _usb_rollback_require_string(
+        value,
+        label=label,
+    )
+    try:
+        return enum_type(
+            text
+        )
+    except ValueError as error:
+        raise ValueError(
+            f"{label} is unsupported."
+        ) from error
+
+
+def _usb_operation_report_from_payload(
+    payload: object,
+) -> _FavoritesUsbOperationReport:
+    root = _usb_rollback_require_object(
+        payload,
+        label="Favorites USB operation report",
+    )
+    _usb_rollback_require_exact_keys(
+        root,
+        frozenset(
+            {
+                "schema",
+                "version",
+                "operation_id",
+                "target_lock_key",
+                "target",
+                "host",
+                "identity",
+                "verification",
+                "activation_outcome",
+                "recovery_outcome",
+                "rollback_revision",
+                "rollback_phase",
+                "bounded_artifact_present",
+                "backup_retained",
+                "failure_code",
+            }
+        ),
+        label="Favorites USB operation report",
+    )
+
+    if root["schema"] != _USB_OPERATION_REPORT_SCHEMA:
+        raise ValueError(
+            "Favorites USB operation report schema is unsupported."
+        )
+    if (
+        type(root["version"]) is not int
+        or root["version"]
+        != _USB_OPERATION_REPORT_VERSION
+    ):
+        raise ValueError(
+            "Favorites USB operation report version is unsupported."
+        )
+
+    identity = _usb_rollback_require_object(
+        root["identity"],
+        label="Favorites USB operation report identity",
+    )
+    _usb_rollback_require_exact_keys(
+        identity,
+        frozenset(
+            {
+                "baseline_snapshot_sha256",
+                "intended_snapshot_sha256",
+                "baseline_tree_sha256",
+                "active_snapshot_sha256",
+            }
+        ),
+        label="Favorites USB operation report identity",
+    )
+
+    verification = _usb_rollback_require_object(
+        root["verification"],
+        label="Favorites USB operation report verification",
+    )
+    _usb_rollback_require_exact_keys(
+        verification,
+        frozenset(
+            {
+                "backup",
+                "staging",
+                "preactivation",
+                "postactivation",
+                "unmanaged_preserved",
+            }
+        ),
+        label="Favorites USB operation report verification",
+    )
+
+    rollback_phase_text = _usb_rollback_require_string(
+        root["rollback_phase"],
+        label="Favorites USB operation report rollback phase",
+    )
+    try:
+        rollback_phase = _FavoritesUsbRollbackPhase(
+            rollback_phase_text
+        )
+    except ValueError as error:
+        raise ValueError(
+            "Favorites USB operation report rollback phase is unsupported."
+        ) from error
+
+    rollback_state = (
+        _USB_ROLLBACK_PHASE_STATE[
+            rollback_phase
+        ]
+    )
+
+    rollback_payload: dict[str, object] = {
+        "schema": _USB_ROLLBACK_MANIFEST_SCHEMA,
+        "version": _USB_ROLLBACK_MANIFEST_VERSION,
+        "revision": root["rollback_revision"],
+        "operation_id": root["operation_id"],
+        "target_lock_key": root["target_lock_key"],
+        "target": root["target"],
+        "host": root["host"],
+        "identity": {
+            "baseline_snapshot_sha256":
+                identity[
+                    "baseline_snapshot_sha256"
+                ],
+            "intended_snapshot_sha256":
+                identity[
+                    "intended_snapshot_sha256"
+                ],
+            "baseline_tree_sha256":
+                identity[
+                    "baseline_tree_sha256"
+                ],
+        },
+        "phase": rollback_phase.value,
+        "media_mutation_started":
+            rollback_state[0],
+        "recovery_required":
+            rollback_state[1],
+        "recovery_attempted":
+            rollback_state[2],
+        "recovery_completed":
+            rollback_state[3],
+        "backup_retained":
+            root["backup_retained"],
+        "bounded_artifact_present":
+            root["bounded_artifact_present"],
+    }
+
+    rollback_manifest = (
+        _usb_rollback_manifest_from_payload(
+            rollback_payload
+        )
+    )
+
+    active_snapshot_value = identity[
+        "active_snapshot_sha256"
+    ]
+    active_snapshot_sha256: str | None
+    if active_snapshot_value is not None:
+        active_snapshot_sha256 = (
+            _usb_rollback_require_string(
+                active_snapshot_value,
+                label=(
+                    "Favorites USB operation report active snapshot SHA-256"
+                ),
+            )
+        )
+    else:
+        active_snapshot_sha256 = None
+
+    failure_code_value = root[
+        "failure_code"
+    ]
+    failure_code: _FavoritesUsbFailureCode | None
+    if failure_code_value is None:
+        failure_code = None
+    else:
+        parsed_failure = (
+            _usb_operation_report_require_enum(
+                _FavoritesUsbFailureCode,
+                failure_code_value,
+                label=(
+                    "Favorites USB operation report failure code"
+                ),
+            )
+        )
+        if not isinstance(
+            parsed_failure,
+            _FavoritesUsbFailureCode,
+        ):
+            raise AssertionError(
+                "USB failure-code parser returned wrong enum."
+            )
+        failure_code = parsed_failure
+
+    parsed_backup = _usb_operation_report_require_enum(
+        _FavoritesUsbVerificationOutcome,
+        verification["backup"],
+        label=(
+            "Favorites USB operation report backup verification"
+        ),
+    )
+    parsed_staging = _usb_operation_report_require_enum(
+        _FavoritesUsbVerificationOutcome,
+        verification["staging"],
+        label=(
+            "Favorites USB operation report staging verification"
+        ),
+    )
+    parsed_preactivation = (
+        _usb_operation_report_require_enum(
+            _FavoritesUsbVerificationOutcome,
+            verification["preactivation"],
+            label=(
+                "Favorites USB operation report preactivation verification"
+            ),
+        )
+    )
+    parsed_postactivation = (
+        _usb_operation_report_require_enum(
+            _FavoritesUsbVerificationOutcome,
+            verification["postactivation"],
+            label=(
+                "Favorites USB operation report postactivation verification"
+            ),
+        )
+    )
+    parsed_unmanaged = _usb_operation_report_require_enum(
+        _FavoritesUsbVerificationOutcome,
+        verification["unmanaged_preserved"],
+        label=(
+            "Favorites USB operation report unmanaged preservation"
+        ),
+    )
+    parsed_activation = _usb_operation_report_require_enum(
+        _FavoritesUsbActivationOutcome,
+        root["activation_outcome"],
+        label=(
+            "Favorites USB operation report activation outcome"
+        ),
+    )
+    parsed_recovery = _usb_operation_report_require_enum(
+        _FavoritesUsbRecoveryOutcome,
+        root["recovery_outcome"],
+        label=(
+            "Favorites USB operation report recovery outcome"
+        ),
+    )
+
+    for parsed_verification in (
+        parsed_backup,
+        parsed_staging,
+        parsed_preactivation,
+        parsed_postactivation,
+        parsed_unmanaged,
+    ):
+        if not isinstance(
+            parsed_verification,
+            _FavoritesUsbVerificationOutcome,
+        ):
+            raise AssertionError(
+                "USB verification parser returned wrong enum."
+            )
+
+    if not isinstance(
+        parsed_backup,
+        _FavoritesUsbVerificationOutcome,
+    ):
+        raise AssertionError(
+            "USB backup verification parser returned wrong enum."
+        )
+    if not isinstance(
+        parsed_staging,
+        _FavoritesUsbVerificationOutcome,
+    ):
+        raise AssertionError(
+            "USB staging verification parser returned wrong enum."
+        )
+    if not isinstance(
+        parsed_preactivation,
+        _FavoritesUsbVerificationOutcome,
+    ):
+        raise AssertionError(
+            "USB preactivation verification parser returned wrong enum."
+        )
+    if not isinstance(
+        parsed_postactivation,
+        _FavoritesUsbVerificationOutcome,
+    ):
+        raise AssertionError(
+            "USB postactivation verification parser returned wrong enum."
+        )
+    if not isinstance(
+        parsed_unmanaged,
+        _FavoritesUsbVerificationOutcome,
+    ):
+        raise AssertionError(
+            "USB unmanaged verification parser returned wrong enum."
+        )
+    if not isinstance(
+        parsed_activation,
+        _FavoritesUsbActivationOutcome,
+    ):
+        raise AssertionError(
+            "USB activation parser returned wrong enum."
+        )
+    if not isinstance(
+        parsed_recovery,
+        _FavoritesUsbRecoveryOutcome,
+    ):
+        raise AssertionError(
+            "USB recovery parser returned wrong enum."
+        )
+
+    return _FavoritesUsbOperationReport(
+        rollback_manifest=rollback_manifest,
+        backup_verification=parsed_backup,
+        staging_verification=parsed_staging,
+        preactivation_verification=parsed_preactivation,
+        postactivation_verification=parsed_postactivation,
+        unmanaged_preservation=parsed_unmanaged,
+        activation_outcome=parsed_activation,
+        recovery_outcome=parsed_recovery,
+        active_snapshot_sha256=active_snapshot_sha256,
+        failure_code=failure_code,
+    )
+
+
+def _usb_operation_report_bytes(
+    report: _FavoritesUsbOperationReport,
+) -> bytes:
+    if not isinstance(
+        report,
+        _FavoritesUsbOperationReport,
+    ):
+        raise TypeError(
+            "Favorites USB operation report serialization requires "
+            "_FavoritesUsbOperationReport."
+        )
+
+    return (
+        json.dumps(
+            report.as_dict(),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode(
+        "utf-8"
+    )
+
+
+def _parse_usb_operation_report_bytes(
+    content: bytes,
+) -> _FavoritesUsbOperationReport:
+    if not isinstance(
+        content,
+        bytes,
+    ):
+        raise TypeError(
+            "Favorites USB operation report content must be bytes."
+        )
+    if (
+        not content
+        or len(content)
+        > _USB_OPERATION_REPORT_MAX_BYTES
+    ):
+        raise ValueError(
+            "Favorites USB operation report size is invalid."
+        )
+
+    try:
+        text = content.decode(
+            "utf-8"
+        )
+    except UnicodeDecodeError as error:
+        raise ValueError(
+            "Favorites USB operation report must be valid UTF-8."
+        ) from error
+
+    try:
+        payload = json.loads(
+            text,
+            object_pairs_hook=(
+                _usb_rollback_reject_duplicate_object
+            ),
+        )
+    except (
+        json.JSONDecodeError,
+        ValueError,
+    ) as error:
+        raise ValueError(
+            "Favorites USB operation report is not valid strict JSON."
+        ) from error
+
+    report = _usb_operation_report_from_payload(
+        payload
+    )
+
+    if (
+        _usb_operation_report_bytes(
+            report
+        )
+        != content
+    ):
+        raise ValueError(
+            "Favorites USB operation report is not in canonical form."
+        )
+
+    return report
+
+
+def _read_usb_operation_report(
+    path: Path,
+) -> _FavoritesUsbOperationReport:
+    try:
+        content = (
+            _read_usb_host_durable_regular_file(
+                path
+            )
+        )
+        if len(
+            content
+        ) > _USB_OPERATION_REPORT_MAX_BYTES:
+            raise ValueError(
+                "Favorites USB operation report exceeds the maximum "
+                "allowed size."
+            )
+        return (
+            _parse_usb_operation_report_bytes(
+                content
+            )
+        )
+    except _FavoritesUsbWritePreparationError:
+        raise
+    except (
+        TypeError,
+        ValueError,
+    ) as error:
+        raise _FavoritesUsbWritePreparationError(
+            path,
+            f"Could not parse durable Favorites USB operation report: {error}",
+        ) from error
+
+
+def _usb_operation_report_destination(
+    paths: _FavoritesUsbHostOperationPaths,
+    report: _FavoritesUsbOperationReport,
+) -> Path:
+    if not isinstance(
+        paths,
+        _FavoritesUsbHostOperationPaths,
+    ):
+        raise TypeError(
+            "Favorites USB operation report destination requires "
+            "_FavoritesUsbHostOperationPaths."
+        )
+    if not isinstance(
+        report,
+        _FavoritesUsbOperationReport,
+    ):
+        raise TypeError(
+            "Favorites USB operation report destination requires "
+            "_FavoritesUsbOperationReport."
+        )
+
+    return (
+        paths.operation_report_path
+        if report.is_success
+        else paths.failure_report_path
+    )
+
+
+def _usb_operation_report_temporary_paths(
+    paths: _FavoritesUsbHostOperationPaths,
+) -> tuple[Path, Path]:
+    if not isinstance(
+        paths,
+        _FavoritesUsbHostOperationPaths,
+    ):
+        raise TypeError(
+            "Favorites USB operation report temporary paths require "
+            "_FavoritesUsbHostOperationPaths."
+        )
+
+    return (
+        paths.operation_directory
+        / ".report.json.tmp",
+        paths.operation_directory
+        / ".failure.json.tmp",
+    )
+
+
+def _write_usb_operation_report(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    rollback_manifest: _FavoritesUsbRollbackManifest,
+    report: _FavoritesUsbOperationReport,
+) -> Path:
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB operation report writer requires "
+            "FavoritesUsbWritePreflight."
+        )
+
+    _require_host_operation_paths_match_preflight(
+        preflight,
+        paths,
+    )
+    _require_active_usb_host_lock(
+        paths
+    )
+    _require_private_host_directory(
+        paths.operation_directory,
+        create=False,
+    )
+    _require_usb_operation_report_matches(
+        preflight,
+        paths,
+        rollback_manifest,
+        report,
+    )
+
+    destination = (
+        _usb_operation_report_destination(
+            paths,
+            report,
+        )
+    )
+    success_temp, failure_temp = (
+        _usb_operation_report_temporary_paths(
+            paths
+        )
+    )
+    temporary = (
+        success_temp
+        if report.is_success
+        else failure_temp
+    )
+
+    for final_path in (
+        paths.operation_report_path,
+        paths.failure_report_path,
+    ):
+        if os.path.lexists(
+            final_path
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                final_path,
+                "Favorites USB final operation report path already exists.",
+            )
+
+    for temp_path in (
+        success_temp,
+        failure_temp,
+    ):
+        if os.path.lexists(
+            temp_path
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                temp_path,
+                "Favorites USB operation report temporary path already exists.",
+            )
+
+    current_rollback = (
+        _read_usb_rollback_manifest(
+            paths.rollback_manifest_path
+        )
+    )
+    if current_rollback != rollback_manifest:
+        raise _FavoritesUsbWritePreparationError(
+            paths.rollback_manifest_path,
+            "Favorites USB rollback manifest changed before final report "
+            "publication.",
+        )
+
+    no_follow = getattr(
+        os,
+        "O_NOFOLLOW",
+        None,
+    )
+    if (
+        no_follow is None
+        or no_follow == 0
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            temporary,
+            "Durable Favorites USB operation reports require O_NOFOLLOW "
+            "support.",
+        )
+
+    content = (
+        _usb_operation_report_bytes(
+            report
+        )
+    )
+
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(
+            os,
+            "O_BINARY",
+            0,
+        )
+        | no_follow
+    )
+
+    descriptor: int | None = None
+    temporary_identity: tuple[int, int] | None = None
+    published = False
+
+    try:
+        try:
+            descriptor = os.open(
+                temporary,
+                flags,
+                0o600,
+            )
+        except OSError as error:
+            raise _FavoritesUsbWritePreparationError(
+                temporary,
+                "Could not exclusively create Favorites USB operation "
+                f"report temporary file: {error}",
+            ) from error
+
+        opened = os.fstat(
+            descriptor
+        )
+        if not stat.S_ISREG(
+            opened.st_mode
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                temporary,
+                "Favorites USB operation report temporary path is not a "
+                "regular file.",
+            )
+
+        temporary_identity = (
+            opened.st_dev,
+            opened.st_ino,
+        )
+
+        offset = 0
+        while offset < len(
+            content
+        ):
+            try:
+                written = os.write(
+                    descriptor,
+                    content[offset:],
+                )
+            except OSError as error:
+                raise _FavoritesUsbWritePreparationError(
+                    temporary,
+                    "Could not write Favorites USB operation report "
+                    f"temporary file: {error}",
+                ) from error
+
+            if written <= 0:
+                raise _FavoritesUsbWritePreparationError(
+                    temporary,
+                    "Favorites USB operation report temporary write returned "
+                    "zero bytes.",
+                )
+            offset += written
+
+        try:
+            os.fsync(
+                descriptor
+            )
+        except OSError as error:
+            raise _FavoritesUsbWritePreparationError(
+                temporary,
+                "Could not synchronize Favorites USB operation report "
+                f"temporary file: {error}",
+            ) from error
+
+        os.close(
+            descriptor
+        )
+        descriptor = None
+
+        temporary_content = (
+            _read_usb_host_durable_regular_file(
+                temporary
+            )
+        )
+        if temporary_content != content:
+            raise _FavoritesUsbWritePreparationError(
+                temporary,
+                "Favorites USB operation report temporary file failed exact "
+                "readback.",
+            )
+
+        temporary_report = (
+            _parse_usb_operation_report_bytes(
+                temporary_content
+            )
+        )
+        if temporary_report != report:
+            raise _FavoritesUsbWritePreparationError(
+                temporary,
+                "Favorites USB operation report temporary schema failed "
+                "exact readback.",
+            )
+
+        observed_rollback = (
+            _read_usb_rollback_manifest(
+                paths.rollback_manifest_path
+            )
+        )
+        if observed_rollback != rollback_manifest:
+            raise _FavoritesUsbWritePreparationError(
+                paths.rollback_manifest_path,
+                "Favorites USB rollback manifest changed immediately before "
+                "final report publication.",
+            )
+
+        for final_path in (
+            paths.operation_report_path,
+            paths.failure_report_path,
+        ):
+            if os.path.lexists(
+                final_path
+            ):
+                raise _FavoritesUsbWritePreparationError(
+                    final_path,
+                    "Favorites USB final operation report path appeared "
+                    "before publication.",
+                )
+
+        try:
+            os.replace(
+                temporary,
+                destination,
+            )
+        except OSError as error:
+            raise _FavoritesUsbWritePreparationError(
+                destination,
+                "Could not atomically publish Favorites USB operation "
+                f"report: {error}",
+            ) from error
+
+        published = True
+
+        _fsync_usb_host_directory(
+            paths.operation_directory
+        )
+
+        final_report = (
+            _read_usb_operation_report(
+                destination
+            )
+        )
+        if final_report != report:
+            raise _FavoritesUsbWritePreparationError(
+                destination,
+                "Published Favorites USB operation report failed exact "
+                "post-fsync readback.",
+            )
+
+        final_rollback = (
+            _read_usb_rollback_manifest(
+                paths.rollback_manifest_path
+            )
+        )
+        if final_rollback != rollback_manifest:
+            raise _FavoritesUsbWritePreparationError(
+                paths.rollback_manifest_path,
+                "Favorites USB rollback manifest changed during final "
+                "operation-report publication.",
+            )
+
+        alternate = (
+            paths.failure_report_path
+            if report.is_success
+            else paths.operation_report_path
+        )
+        if os.path.lexists(
+            alternate
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                alternate,
+                "Favorites USB operation produced more than one final "
+                "report path.",
+            )
+
+        return destination
+    finally:
+        if descriptor is not None:
+            os.close(
+                descriptor
+            )
+
+        if (
+            not published
+            and temporary_identity is not None
+        ):
+            try:
+                observed = temporary.lstat()
+            except (
+                FileNotFoundError,
+                OSError,
+            ):
+                pass
+            else:
+                if (
+                    stat.S_ISREG(
+                        observed.st_mode
+                    )
+                    and (
+                        observed.st_dev,
+                        observed.st_ino,
+                    )
+                    == temporary_identity
+                ):
+                    with suppress(
+                        OSError
+                    ):
+                        temporary.unlink()
+
+
 def _canonical_host_state_candidate(
     host_state_directory: Path,
     preflight: FavoritesUsbWritePreflight,

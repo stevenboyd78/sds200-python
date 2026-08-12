@@ -6941,3 +6941,1169 @@ def test_usb_rollback_manifest_terminal_completed_state_cannot_regress(
             None,
             None,
         )
+
+
+def _usb_operation_report_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[
+    write_usb.FavoritesUsbWritePreflight,
+    write_usb._FavoritesUsbHostOperationPaths,
+    object,
+]:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_rollback_manifest_test_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+
+    return (
+        preflight,
+        paths,
+        lock,
+    )
+
+
+def _usb_write_rollback_sequence(
+    preflight: write_usb.FavoritesUsbWritePreflight,
+    paths: write_usb._FavoritesUsbHostOperationPaths,
+    phases: tuple[
+        write_usb._FavoritesUsbRollbackPhase,
+        ...,
+    ],
+    *,
+    final_artifact_present: bool = False,
+) -> write_usb._FavoritesUsbRollbackManifest:
+    final: write_usb._FavoritesUsbRollbackManifest | None = None
+
+    for revision, phase in enumerate(
+        phases,
+        start=1,
+    ):
+        final = write_usb._usb_rollback_manifest(
+            preflight,
+            paths,
+            revision=revision,
+            phase=phase,
+            bounded_artifact_present=(
+                final_artifact_present
+                if revision == len(phases)
+                else False
+            ),
+        )
+        write_usb._write_usb_rollback_manifest(
+            preflight,
+            paths,
+            final,
+        )
+
+    assert final is not None
+    return final
+
+
+def _usb_success_operation_report(
+    preflight: write_usb.FavoritesUsbWritePreflight,
+    paths: write_usb._FavoritesUsbHostOperationPaths,
+    rollback: write_usb._FavoritesUsbRollbackManifest,
+) -> write_usb._FavoritesUsbOperationReport:
+    return write_usb._usb_operation_report(
+        preflight,
+        paths,
+        rollback,
+        backup_verification=(
+            write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+        ),
+        staging_verification=(
+            write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+        ),
+        preactivation_verification=(
+            write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+        ),
+        postactivation_verification=(
+            write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+        ),
+        unmanaged_preservation=(
+            write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+        ),
+        activation_outcome=(
+            write_usb._FavoritesUsbActivationOutcome.COMPLETED
+        ),
+        recovery_outcome=(
+            write_usb._FavoritesUsbRecoveryOutcome.NOT_REQUIRED
+        ),
+        active_snapshot_sha256=(
+            rollback.intended_snapshot_sha256
+        ),
+        failure_code=None,
+    )
+
+
+def test_usb_operation_report_success_is_canonical_private_and_correlated(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_operation_report_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+
+    try:
+        rollback = _usb_write_rollback_sequence(
+            preflight,
+            paths,
+            (
+                write_usb._FavoritesUsbRollbackPhase.PREPARED,
+                write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED,
+                write_usb._FavoritesUsbRollbackPhase.COMPLETED,
+            ),
+        )
+        report = _usb_success_operation_report(
+            preflight,
+            paths,
+            rollback,
+        )
+
+        written = write_usb._write_usb_operation_report(
+            preflight,
+            paths,
+            rollback,
+            report,
+        )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+    assert written == paths.operation_report_path
+    assert written.is_file()
+    assert not write_usb.os.path.lexists(
+        paths.failure_report_path
+    )
+
+    content = written.read_bytes()
+    assert (
+        content
+        == write_usb._usb_operation_report_bytes(
+            report
+        )
+    )
+    assert (
+        write_usb._read_usb_operation_report(
+            written
+        )
+        == report
+    )
+
+    payload = json.loads(
+        content
+    )
+    assert payload["schema"] == (
+        "sds200.favorites-usb.operation-report"
+    )
+    assert payload["version"] == 1
+    assert payload["operation_id"] == rollback.operation_id
+    assert payload["rollback_revision"] == rollback.revision
+    assert payload["rollback_phase"] == "completed"
+    assert payload["activation_outcome"] == "completed"
+    assert payload["recovery_outcome"] == "not_required"
+    assert payload["failure_code"] is None
+    assert payload["backup_retained"] is True
+
+    serialized = content.decode(
+        "utf-8"
+    )
+    for forbidden_key in (
+        '"catalog_bytes"',
+        '"content"',
+        '"documents"',
+        '"filename"',
+        '"managed_filename"',
+        '"records"',
+        '"baseline_snapshot"',
+        '"intended_snapshot"',
+        '"message"',
+        '"diagnostic"',
+        '"traceback"',
+    ):
+        assert forbidden_key not in serialized
+
+
+def test_usb_operation_failure_report_preactivation_uses_failure_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_operation_report_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+
+    try:
+        rollback = _usb_write_rollback_sequence(
+            preflight,
+            paths,
+            (
+                write_usb._FavoritesUsbRollbackPhase.PREPARED,
+            ),
+        )
+        report = write_usb._usb_operation_report(
+            preflight,
+            paths,
+            rollback,
+            backup_verification=(
+                write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+            ),
+            staging_verification=(
+                write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+            ),
+            preactivation_verification=(
+                write_usb._FavoritesUsbVerificationOutcome.FAILED
+            ),
+            postactivation_verification=(
+                write_usb._FavoritesUsbVerificationOutcome.NOT_ATTEMPTED
+            ),
+            unmanaged_preservation=(
+                write_usb._FavoritesUsbVerificationOutcome.FAILED
+            ),
+            activation_outcome=(
+                write_usb._FavoritesUsbActivationOutcome.NOT_STARTED
+            ),
+            recovery_outcome=(
+                write_usb._FavoritesUsbRecoveryOutcome.NOT_REQUIRED
+            ),
+            active_snapshot_sha256=None,
+            failure_code=(
+                write_usb._FavoritesUsbFailureCode.PREACTIVATION_FAILED
+            ),
+        )
+
+        written = write_usb._write_usb_operation_report(
+            preflight,
+            paths,
+            rollback,
+            report,
+        )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+    assert written == paths.failure_report_path
+    assert written.is_file()
+    assert not write_usb.os.path.lexists(
+        paths.operation_report_path
+    )
+    assert (
+        write_usb._read_usb_operation_report(
+            written
+        )
+        == report
+    )
+
+
+def test_usb_operation_failure_report_recovered_correlates_to_baseline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_operation_report_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+
+    try:
+        rollback = _usb_write_rollback_sequence(
+            preflight,
+            paths,
+            (
+                write_usb._FavoritesUsbRollbackPhase.PREPARED,
+                write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED,
+                write_usb._FavoritesUsbRollbackPhase.RECOVERY_REQUIRED,
+                write_usb._FavoritesUsbRollbackPhase.RECOVERY_IN_PROGRESS,
+                write_usb._FavoritesUsbRollbackPhase.RECOVERED,
+            ),
+        )
+        report = write_usb._usb_operation_report(
+            preflight,
+            paths,
+            rollback,
+            backup_verification=(
+                write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+            ),
+            staging_verification=(
+                write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+            ),
+            preactivation_verification=(
+                write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+            ),
+            postactivation_verification=(
+                write_usb._FavoritesUsbVerificationOutcome.FAILED
+            ),
+            unmanaged_preservation=(
+                write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+            ),
+            activation_outcome=(
+                write_usb._FavoritesUsbActivationOutcome.FAILED_AFTER_MUTATION
+            ),
+            recovery_outcome=(
+                write_usb._FavoritesUsbRecoveryOutcome.RECOVERED
+            ),
+            active_snapshot_sha256=(
+                rollback.baseline_snapshot_sha256
+            ),
+            failure_code=(
+                write_usb._FavoritesUsbFailureCode.POSTACTIVATION_VERIFICATION_FAILED
+            ),
+        )
+
+        written = write_usb._write_usb_operation_report(
+            preflight,
+            paths,
+            rollback,
+            report,
+        )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+    assert written == paths.failure_report_path
+    payload = json.loads(
+        written.read_text(
+            encoding="utf-8"
+        )
+    )
+    assert payload["rollback_phase"] == "recovered"
+    assert payload["recovery_outcome"] == "recovered"
+    assert (
+        payload["identity"]["active_snapshot_sha256"]
+        == rollback.baseline_snapshot_sha256
+    )
+
+
+def test_usb_operation_failure_report_incomplete_preserves_artifact_flag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_operation_report_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+
+    try:
+        rollback = _usb_write_rollback_sequence(
+            preflight,
+            paths,
+            (
+                write_usb._FavoritesUsbRollbackPhase.PREPARED,
+                write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED,
+                write_usb._FavoritesUsbRollbackPhase.RECOVERY_REQUIRED,
+                write_usb._FavoritesUsbRollbackPhase.RECOVERY_IN_PROGRESS,
+                write_usb._FavoritesUsbRollbackPhase.RECOVERY_INCOMPLETE,
+            ),
+            final_artifact_present=True,
+        )
+        report = write_usb._usb_operation_report(
+            preflight,
+            paths,
+            rollback,
+            backup_verification=(
+                write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+            ),
+            staging_verification=(
+                write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+            ),
+            preactivation_verification=(
+                write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+            ),
+            postactivation_verification=(
+                write_usb._FavoritesUsbVerificationOutcome.FAILED
+            ),
+            unmanaged_preservation=(
+                write_usb._FavoritesUsbVerificationOutcome.FAILED
+            ),
+            activation_outcome=(
+                write_usb._FavoritesUsbActivationOutcome.FAILED_AFTER_MUTATION
+            ),
+            recovery_outcome=(
+                write_usb._FavoritesUsbRecoveryOutcome.INCOMPLETE
+            ),
+            active_snapshot_sha256=None,
+            failure_code=(
+                write_usb._FavoritesUsbFailureCode.RECOVERY_INCOMPLETE
+            ),
+        )
+
+        written = write_usb._write_usb_operation_report(
+            preflight,
+            paths,
+            rollback,
+            report,
+        )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+    payload = json.loads(
+        written.read_text(
+            encoding="utf-8"
+        )
+    )
+    assert payload["rollback_phase"] == "recovery_incomplete"
+    assert payload["bounded_artifact_present"] is True
+    assert payload["backup_retained"] is True
+
+
+@pytest.mark.parametrize(
+    (
+        "phase",
+        "activation",
+        "recovery",
+        "active_identity",
+        "failure_code",
+    ),
+    [
+        (
+            write_usb._FavoritesUsbRollbackPhase.COMPLETED,
+            write_usb._FavoritesUsbActivationOutcome.COMPLETED,
+            write_usb._FavoritesUsbRecoveryOutcome.NOT_REQUIRED,
+            None,
+            None,
+        ),
+        (
+            write_usb._FavoritesUsbRollbackPhase.RECOVERED,
+            write_usb._FavoritesUsbActivationOutcome.FAILED_AFTER_MUTATION,
+            write_usb._FavoritesUsbRecoveryOutcome.RECOVERED,
+            "intended",
+            write_usb._FavoritesUsbFailureCode.ACTIVATION_FAILED_AFTER_MUTATION,
+        ),
+    ],
+)
+def test_usb_operation_report_refuses_invalid_terminal_active_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: write_usb._FavoritesUsbRollbackPhase,
+    activation: write_usb._FavoritesUsbActivationOutcome,
+    recovery: write_usb._FavoritesUsbRecoveryOutcome,
+    active_identity: str | None,
+    failure_code: write_usb._FavoritesUsbFailureCode | None,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_operation_report_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+
+    try:
+        if phase is write_usb._FavoritesUsbRollbackPhase.COMPLETED:
+            phases = (
+                write_usb._FavoritesUsbRollbackPhase.PREPARED,
+                write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED,
+                write_usb._FavoritesUsbRollbackPhase.COMPLETED,
+            )
+        else:
+            phases = (
+                write_usb._FavoritesUsbRollbackPhase.PREPARED,
+                write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED,
+                write_usb._FavoritesUsbRollbackPhase.RECOVERY_REQUIRED,
+                write_usb._FavoritesUsbRollbackPhase.RECOVERY_IN_PROGRESS,
+                write_usb._FavoritesUsbRollbackPhase.RECOVERED,
+            )
+
+        rollback = _usb_write_rollback_sequence(
+            preflight,
+            paths,
+            phases,
+        )
+
+        if active_identity == "intended":
+            observed_identity = rollback.intended_snapshot_sha256
+        else:
+            observed_identity = None
+
+        with pytest.raises(
+            ValueError,
+            match="active snapshot identity",
+        ):
+            write_usb._usb_operation_report(
+                preflight,
+                paths,
+                rollback,
+                backup_verification=(
+                    write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+                ),
+                staging_verification=(
+                    write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+                ),
+                preactivation_verification=(
+                    write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+                ),
+                postactivation_verification=(
+                    write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+                    if phase
+                    is write_usb._FavoritesUsbRollbackPhase.COMPLETED
+                    else write_usb._FavoritesUsbVerificationOutcome.FAILED
+                ),
+                unmanaged_preservation=(
+                    write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+                ),
+                activation_outcome=activation,
+                recovery_outcome=recovery,
+                active_snapshot_sha256=observed_identity,
+                failure_code=failure_code,
+            )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+
+def test_usb_operation_report_refuses_nonreportable_rollback_phase(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_operation_report_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+
+    try:
+        rollback = _usb_write_rollback_sequence(
+            preflight,
+            paths,
+            (
+                write_usb._FavoritesUsbRollbackPhase.PREPARED,
+                write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED,
+            ),
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="reportable rollback phase",
+        ):
+            write_usb._usb_operation_report(
+                preflight,
+                paths,
+                rollback,
+                backup_verification=(
+                    write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+                ),
+                staging_verification=(
+                    write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+                ),
+                preactivation_verification=(
+                    write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+                ),
+                postactivation_verification=(
+                    write_usb._FavoritesUsbVerificationOutcome.NOT_ATTEMPTED
+                ),
+                unmanaged_preservation=(
+                    write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+                ),
+                activation_outcome=(
+                    write_usb._FavoritesUsbActivationOutcome.FAILED_AFTER_MUTATION
+                ),
+                recovery_outcome=(
+                    write_usb._FavoritesUsbRecoveryOutcome.NOT_ATTEMPTED
+                ),
+                active_snapshot_sha256=None,
+                failure_code=(
+                    write_usb._FavoritesUsbFailureCode.RECOVERY_NOT_ATTEMPTED
+                ),
+            )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+
+def test_usb_operation_report_refuses_mismatched_rollback_correlation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_operation_report_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+
+    try:
+        rollback = _usb_write_rollback_sequence(
+            preflight,
+            paths,
+            (
+                write_usb._FavoritesUsbRollbackPhase.PREPARED,
+                write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED,
+                write_usb._FavoritesUsbRollbackPhase.COMPLETED,
+            ),
+        )
+        report = _usb_success_operation_report(
+            preflight,
+            paths,
+            rollback,
+        )
+        mismatched = write_usb._usb_rollback_manifest(
+            preflight,
+            paths,
+            revision=rollback.revision,
+            phase=rollback.phase,
+            bounded_artifact_present=True,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="does not correlate",
+        ):
+            write_usb._write_usb_operation_report(
+                preflight,
+                paths,
+                mismatched,
+                report,
+            )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+
+def test_usb_operation_report_refuses_existing_final_report_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_operation_report_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+
+    try:
+        rollback = _usb_write_rollback_sequence(
+            preflight,
+            paths,
+            (
+                write_usb._FavoritesUsbRollbackPhase.PREPARED,
+                write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED,
+                write_usb._FavoritesUsbRollbackPhase.COMPLETED,
+            ),
+        )
+        report = _usb_success_operation_report(
+            preflight,
+            paths,
+            rollback,
+        )
+        paths.failure_report_path.write_bytes(
+            b"existing-final-report"
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="final operation report path already exists",
+        ):
+            write_usb._write_usb_operation_report(
+                preflight,
+                paths,
+                rollback,
+                report,
+            )
+
+        assert paths.failure_report_path.read_bytes() == (
+            b"existing-final-report"
+        )
+        assert not write_usb.os.path.lexists(
+            paths.operation_report_path
+        )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+
+def test_usb_operation_report_refuses_unknown_temp_collision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_operation_report_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+
+    try:
+        rollback = _usb_write_rollback_sequence(
+            preflight,
+            paths,
+            (
+                write_usb._FavoritesUsbRollbackPhase.PREPARED,
+                write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED,
+                write_usb._FavoritesUsbRollbackPhase.COMPLETED,
+            ),
+        )
+        report = _usb_success_operation_report(
+            preflight,
+            paths,
+            rollback,
+        )
+        success_temp, _failure_temp = (
+            write_usb._usb_operation_report_temporary_paths(
+                paths
+            )
+        )
+        success_temp.write_bytes(
+            b"unknown-temp"
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="temporary path already exists",
+        ):
+            write_usb._write_usb_operation_report(
+                preflight,
+                paths,
+                rollback,
+                report,
+            )
+
+        assert success_temp.read_bytes() == (
+            b"unknown-temp"
+        )
+        assert not write_usb.os.path.lexists(
+            paths.operation_report_path
+        )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+
+def test_usb_operation_report_refuses_symlink_final_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_operation_report_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    outside = (
+        tmp_path
+        / "outside-report.json"
+    )
+    outside.write_bytes(
+        b"outside"
+    )
+
+    try:
+        rollback = _usb_write_rollback_sequence(
+            preflight,
+            paths,
+            (
+                write_usb._FavoritesUsbRollbackPhase.PREPARED,
+                write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED,
+                write_usb._FavoritesUsbRollbackPhase.COMPLETED,
+            ),
+        )
+        report = _usb_success_operation_report(
+            preflight,
+            paths,
+            rollback,
+        )
+        _symlink_or_skip(
+            paths.operation_report_path,
+            outside,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="final operation report path already exists",
+        ):
+            write_usb._write_usb_operation_report(
+                preflight,
+                paths,
+                rollback,
+                report,
+            )
+
+        assert paths.operation_report_path.is_symlink()
+        assert outside.read_bytes() == b"outside"
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+
+def test_usb_operation_report_prepublication_failure_cleans_only_owned_temp(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_operation_report_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+
+    try:
+        rollback = _usb_write_rollback_sequence(
+            preflight,
+            paths,
+            (
+                write_usb._FavoritesUsbRollbackPhase.PREPARED,
+                write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED,
+                write_usb._FavoritesUsbRollbackPhase.COMPLETED,
+            ),
+        )
+        report = _usb_success_operation_report(
+            preflight,
+            paths,
+            rollback,
+        )
+        success_temp, _failure_temp = (
+            write_usb._usb_operation_report_temporary_paths(
+                paths
+            )
+        )
+
+        real_fsync = write_usb.os.fsync
+        failed = False
+
+        def failing_fsync(
+            descriptor: int,
+        ) -> None:
+            nonlocal failed
+            if not failed:
+                failed = True
+                raise OSError(
+                    "injected operation-report temp fsync failure"
+                )
+            real_fsync(
+                descriptor
+            )
+
+        monkeypatch.setattr(
+            write_usb.os,
+            "fsync",
+            failing_fsync,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="operation report temporary file",
+        ):
+            write_usb._write_usb_operation_report(
+                preflight,
+                paths,
+                rollback,
+                report,
+            )
+
+        assert failed
+        assert not write_usb.os.path.lexists(
+            success_temp
+        )
+        assert not write_usb.os.path.lexists(
+            paths.operation_report_path
+        )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+
+def test_usb_operation_report_revalidates_rollback_before_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_operation_report_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+
+    try:
+        rollback = _usb_write_rollback_sequence(
+            preflight,
+            paths,
+            (
+                write_usb._FavoritesUsbRollbackPhase.PREPARED,
+                write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED,
+                write_usb._FavoritesUsbRollbackPhase.COMPLETED,
+            ),
+        )
+        report = _usb_success_operation_report(
+            preflight,
+            paths,
+            rollback,
+        )
+
+        real_read = write_usb._read_usb_host_durable_regular_file
+        report_temp_reads = 0
+
+        def changing_read(
+            path: Path,
+        ) -> bytes:
+            nonlocal report_temp_reads
+            content = real_read(
+                path
+            )
+            success_temp, _failure_temp = (
+                write_usb._usb_operation_report_temporary_paths(
+                    paths
+                )
+            )
+            if path == success_temp:
+                report_temp_reads += 1
+                if report_temp_reads == 1:
+                    replacement = write_usb._usb_rollback_manifest(
+                        preflight,
+                        paths,
+                        revision=rollback.revision,
+                        phase=rollback.phase,
+                        bounded_artifact_present=True,
+                    )
+                    paths.rollback_manifest_path.write_bytes(
+                        write_usb._usb_rollback_manifest_bytes(
+                            replacement
+                        )
+                    )
+            return content
+
+        monkeypatch.setattr(
+            write_usb,
+            "_read_usb_host_durable_regular_file",
+            changing_read,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="rollback manifest changed immediately before",
+        ):
+            write_usb._write_usb_operation_report(
+                preflight,
+                paths,
+                rollback,
+                report,
+            )
+
+        assert not write_usb.os.path.lexists(
+            paths.operation_report_path
+        )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+
+def test_usb_operation_report_final_publication_fsyncs_and_reads_exactly(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_operation_report_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+
+    try:
+        rollback = _usb_write_rollback_sequence(
+            preflight,
+            paths,
+            (
+                write_usb._FavoritesUsbRollbackPhase.PREPARED,
+                write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED,
+                write_usb._FavoritesUsbRollbackPhase.COMPLETED,
+            ),
+        )
+        report = _usb_success_operation_report(
+            preflight,
+            paths,
+            rollback,
+        )
+
+        fsync_calls: list[int] = []
+        real_fsync = write_usb.os.fsync
+
+        def recording_fsync(
+            descriptor: int,
+        ) -> None:
+            fsync_calls.append(
+                descriptor
+            )
+            real_fsync(
+                descriptor
+            )
+
+        monkeypatch.setattr(
+            write_usb.os,
+            "fsync",
+            recording_fsync,
+        )
+
+        written = write_usb._write_usb_operation_report(
+            preflight,
+            paths,
+            rollback,
+            report,
+        )
+
+        assert len(fsync_calls) >= 2
+        assert (
+            write_usb._read_usb_operation_report(
+                written
+            )
+            == report
+        )
+        assert (
+            write_usb._read_usb_rollback_manifest(
+                paths.rollback_manifest_path
+            )
+            == rollback
+        )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+
+def test_usb_operation_report_parser_refuses_duplicate_or_noncanonical_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        lock,
+    ) = _usb_operation_report_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+
+    try:
+        rollback = _usb_write_rollback_sequence(
+            preflight,
+            paths,
+            (
+                write_usb._FavoritesUsbRollbackPhase.PREPARED,
+                write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED,
+                write_usb._FavoritesUsbRollbackPhase.COMPLETED,
+            ),
+        )
+        report = _usb_success_operation_report(
+            preflight,
+            paths,
+            rollback,
+        )
+        canonical = write_usb._usb_operation_report_bytes(
+            report
+        )
+        payload = json.loads(
+            canonical
+        )
+
+        pretty = (
+            json.dumps(
+                payload,
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        ).encode(
+            "utf-8"
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="not in canonical form",
+        ):
+            write_usb._parse_usb_operation_report_bytes(
+                pretty
+            )
+
+        duplicate = canonical.replace(
+            b'{"activation_outcome":',
+            b'{"activation_outcome":"completed","activation_outcome":',
+            1,
+        )
+        with pytest.raises(
+            ValueError,
+            match="not valid strict JSON",
+        ):
+            write_usb._parse_usb_operation_report_bytes(
+                duplicate
+            )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
