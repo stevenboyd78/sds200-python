@@ -7,7 +7,7 @@ import json
 import os
 import shutil
 import stat
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from enum import StrEnum
@@ -10095,6 +10095,8 @@ def _activate_usb_managed_state(
     backup: _FavoritesUsbVerifiedBackup,
     prepared: _FavoritesUsbPreparedStage,
     preactivation: _FavoritesUsbPreactivationEvidence,
+    *,
+    mutation_start: Callable[[], None] | None = None,
 ) -> _FavoritesUsbActivatedState:
     if not isinstance(
         preflight,
@@ -10128,6 +10130,16 @@ def _activate_usb_managed_state(
             "Favorites USB managed activation requires "
             "_FavoritesUsbPreactivationEvidence."
         )
+    if (
+        mutation_start is not None
+        and not callable(
+            mutation_start
+        )
+    ):
+        raise TypeError(
+            "Favorites USB managed activation mutation-start hook must be "
+            "callable or None."
+        )
 
     activation_plan = _usb_managed_activation_plan(
         preflight
@@ -10142,6 +10154,36 @@ def _activate_usb_managed_state(
         )
 
     mutation_started = False
+    mutation_barrier_completed = False
+
+    def _begin_activation_mutation() -> None:
+        nonlocal mutation_started
+        nonlocal mutation_barrier_completed
+
+        if mutation_barrier_completed:
+            return
+
+        if mutation_start is not None:
+            try:
+                mutation_start()
+            except _FavoritesUsbWritePreparationError as error:
+                raise _activation_execution_error_from_preparation(
+                    error,
+                    stage=(
+                        _FavoritesUsbActivationFailureStage
+                        .MUTATION_EXECUTION
+                    ),
+                    mutation_started=False,
+                ) from error
+
+            # The durable caller uses this hook to publish and exactly read
+            # back PREPARED -> MUTATION_STARTED. Once the hook returns,
+            # activation must conservatively classify every later failure as
+            # post-mutation even if the first media primitive itself refuses
+            # before its local write.
+            mutation_started = True
+
+        mutation_barrier_completed = True
 
     try:
         _require_host_operation_paths_match_preflight(
@@ -10256,6 +10298,8 @@ def _activate_usb_managed_state(
                     f"activation write {filename!r}.",
                 )
 
+            _begin_activation_mutation()
+
             _write_usb_activation_managed_file_exact_state(
                 preflight,
                 paths,
@@ -10329,6 +10373,8 @@ def _activate_usb_managed_state(
                     "Bounded USB media temporary path appeared before "
                     "catalog activation.",
                 )
+
+            _begin_activation_mutation()
 
             _write_usb_activation_managed_file_exact_state(
                 preflight,
@@ -10407,6 +10453,8 @@ def _activate_usb_managed_state(
                     "Bounded USB media temporary path appeared before "
                     f"activation deletion {filename!r}.",
                 )
+
+            _begin_activation_mutation()
 
             _delete_usb_active_managed_hpd(
                 preflight,

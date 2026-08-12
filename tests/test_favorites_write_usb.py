@@ -11095,3 +11095,497 @@ def test_usb_activation_orchestrator_refuses_noop_without_media_mutation(
     assert favorites_tree_evidence(
         favorites_directory
     ) == before
+
+
+def test_usb_activation_mutation_barrier_runs_once_before_first_media_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        _favorites_directory,
+        host_root,
+        _baseline,
+        intended,
+    ) = _usb_activation_orchestration_prepared(
+        tmp_path
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        prepared = (
+            write_usb._create_verified_usb_host_staging(
+                preflight,
+                paths,
+                backup,
+            )
+        )
+        preactivation = (
+            write_usb._require_usb_preactivation_ready(
+                preflight,
+                paths,
+                backup,
+                prepared,
+            )
+        )
+
+        events: list[str] = []
+        real_write = (
+            write_usb._write_usb_activation_managed_file_exact_state
+        )
+        real_delete = (
+            write_usb._delete_usb_active_managed_hpd
+        )
+
+        def mutation_start() -> None:
+            events.append(
+                "barrier"
+            )
+
+        def recording_write(
+            current_preflight: write_usb.FavoritesUsbWritePreflight,
+            current_paths: write_usb._FavoritesUsbHostOperationPaths,
+            filename: str,
+            intended_content: bytes,
+            *,
+            baseline_content: bytes | None,
+        ) -> None:
+            events.append(
+                f"write:{filename}"
+            )
+            real_write(
+                current_preflight,
+                current_paths,
+                filename,
+                intended_content,
+                baseline_content=baseline_content,
+            )
+
+        def recording_delete(
+            current_preflight: write_usb.FavoritesUsbWritePreflight,
+            current_paths: write_usb._FavoritesUsbHostOperationPaths,
+            filename: str,
+            expected_content: bytes,
+        ) -> None:
+            events.append(
+                f"delete:{filename}"
+            )
+            real_delete(
+                current_preflight,
+                current_paths,
+                filename,
+                expected_content,
+            )
+
+        monkeypatch.setattr(
+            write_usb,
+            "_write_usb_activation_managed_file_exact_state",
+            recording_write,
+        )
+        monkeypatch.setattr(
+            write_usb,
+            "_delete_usb_active_managed_hpd",
+            recording_delete,
+        )
+
+        activated = (
+            write_usb._activate_usb_managed_state(
+                preflight,
+                paths,
+                backup,
+                prepared,
+                preactivation,
+                mutation_start=mutation_start,
+            )
+        )
+
+        assert activated.snapshot == intended
+        assert events == [
+            "barrier",
+            "write:added.hpd",
+            "write:keep.hpd",
+            "write:f_list.cfg",
+            "delete:removed.hpd",
+        ]
+
+
+def test_usb_activation_mutation_barrier_failure_prevents_first_media_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        _baseline,
+        _intended,
+    ) = _usb_activation_orchestration_prepared(
+        tmp_path
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        prepared = (
+            write_usb._create_verified_usb_host_staging(
+                preflight,
+                paths,
+                backup,
+            )
+        )
+        preactivation = (
+            write_usb._require_usb_preactivation_ready(
+                preflight,
+                paths,
+                backup,
+                prepared,
+            )
+        )
+        before = favorites_tree_evidence(
+            favorites_directory
+        )
+        media_called = False
+
+        def failing_barrier() -> None:
+            raise write_usb._FavoritesUsbWritePreparationError(
+                paths.rollback_manifest_path,
+                "injected durable mutation-start barrier failure",
+            )
+
+        def forbidden_write(
+            current_preflight: write_usb.FavoritesUsbWritePreflight,
+            current_paths: write_usb._FavoritesUsbHostOperationPaths,
+            filename: str,
+            intended_content: bytes,
+            *,
+            baseline_content: bytes | None,
+        ) -> None:
+            nonlocal media_called
+            media_called = True
+            raise AssertionError(
+                "media write must not run after barrier failure"
+            )
+
+        monkeypatch.setattr(
+            write_usb,
+            "_write_usb_activation_managed_file_exact_state",
+            forbidden_write,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbActivationExecutionError,
+            match="injected durable mutation-start barrier failure",
+        ) as raised:
+            write_usb._activate_usb_managed_state(
+                preflight,
+                paths,
+                backup,
+                prepared,
+                preactivation,
+                mutation_start=failing_barrier,
+            )
+
+        assert raised.value.stage is (
+            write_usb._FavoritesUsbActivationFailureStage
+            .MUTATION_EXECUTION
+        )
+        assert raised.value.mutation_started is False
+        assert raised.value.recovery_artifact is None
+        assert not media_called
+        assert favorites_tree_evidence(
+            favorites_directory
+        ) == before
+
+
+def test_usb_activation_mutation_barrier_covers_catalog_only_first_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        _favorites_directory,
+        host_root,
+        _baseline,
+        _intended,
+    ) = _usb_activation_orchestration_prepared(
+        tmp_path
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        prepared = (
+            write_usb._create_verified_usb_host_staging(
+                preflight,
+                paths,
+                backup,
+            )
+        )
+        preactivation = (
+            write_usb._require_usb_preactivation_ready(
+                preflight,
+                paths,
+                backup,
+                prepared,
+            )
+        )
+        events: list[str] = []
+
+        monkeypatch.setattr(
+            write_usb,
+            "_usb_managed_activation_plan",
+            lambda _current_preflight: (
+                write_usb._FavoritesUsbManagedActivationPlan(
+                    document_writes=(),
+                    write_catalog=True,
+                    document_deletions=(),
+                )
+            ),
+        )
+
+        def mutation_start() -> None:
+            events.append(
+                "barrier"
+            )
+
+        def refusing_catalog(
+            current_preflight: write_usb.FavoritesUsbWritePreflight,
+            current_paths: write_usb._FavoritesUsbHostOperationPaths,
+            filename: str,
+            intended_content: bytes,
+            *,
+            baseline_content: bytes | None,
+        ) -> None:
+            events.append(
+                f"write:{filename}"
+            )
+            raise write_usb._FavoritesUsbMediaMutationError(
+                current_preflight.qualification.favorites_directory
+                / filename,
+                "injected catalog refusal after durable barrier",
+                mutation_started=False,
+            )
+
+        monkeypatch.setattr(
+            write_usb,
+            "_write_usb_activation_managed_file_exact_state",
+            refusing_catalog,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbActivationExecutionError,
+            match="injected catalog refusal after durable barrier",
+        ) as raised:
+            write_usb._activate_usb_managed_state(
+                preflight,
+                paths,
+                backup,
+                prepared,
+                preactivation,
+                mutation_start=mutation_start,
+            )
+
+        assert events == [
+            "barrier",
+            "write:f_list.cfg",
+        ]
+        assert raised.value.mutation_started is True
+        assert raised.value.stage is (
+            write_usb._FavoritesUsbActivationFailureStage
+            .MUTATION_EXECUTION
+        )
+
+
+def test_usb_activation_mutation_barrier_covers_deletion_only_first_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        _favorites_directory,
+        host_root,
+        _baseline,
+        _intended,
+    ) = _usb_activation_orchestration_prepared(
+        tmp_path
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        prepared = (
+            write_usb._create_verified_usb_host_staging(
+                preflight,
+                paths,
+                backup,
+            )
+        )
+        preactivation = (
+            write_usb._require_usb_preactivation_ready(
+                preflight,
+                paths,
+                backup,
+                prepared,
+            )
+        )
+        events: list[str] = []
+
+        monkeypatch.setattr(
+            write_usb,
+            "_usb_managed_activation_plan",
+            lambda _current_preflight: (
+                write_usb._FavoritesUsbManagedActivationPlan(
+                    document_writes=(),
+                    write_catalog=False,
+                    document_deletions=(
+                        "removed.hpd",
+                    ),
+                )
+            ),
+        )
+
+        def mutation_start() -> None:
+            events.append(
+                "barrier"
+            )
+
+        def refusing_delete(
+            current_preflight: write_usb.FavoritesUsbWritePreflight,
+            current_paths: write_usb._FavoritesUsbHostOperationPaths,
+            filename: str,
+            expected_content: bytes,
+        ) -> None:
+            events.append(
+                f"delete:{filename}"
+            )
+            raise write_usb._FavoritesUsbMediaMutationError(
+                current_preflight.qualification.favorites_directory
+                / filename,
+                "injected deletion refusal after durable barrier",
+                mutation_started=False,
+            )
+
+        monkeypatch.setattr(
+            write_usb,
+            "_delete_usb_active_managed_hpd",
+            refusing_delete,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbActivationExecutionError,
+            match="injected deletion refusal after durable barrier",
+        ) as raised:
+            write_usb._activate_usb_managed_state(
+                preflight,
+                paths,
+                backup,
+                prepared,
+                preactivation,
+                mutation_start=mutation_start,
+            )
+
+        assert events == [
+            "barrier",
+            "delete:removed.hpd",
+        ]
+        assert raised.value.mutation_started is True
+        assert raised.value.stage is (
+            write_usb._FavoritesUsbActivationFailureStage
+            .MUTATION_EXECUTION
+        )
+
+
+def test_usb_activation_mutation_barrier_is_not_called_for_noop(
+    tmp_path: Path,
+) -> None:
+    baseline = _snapshot()
+    (
+        preflight,
+        _mountinfo,
+        _favorites_directory,
+    ) = _prepared_usb_activation_fixture(
+        tmp_path,
+        baseline=baseline,
+        intended=baseline,
+    )
+    host_root = (
+        tmp_path
+        / "host-state-noop-barrier"
+        / "favorites-usb-writes"
+    )
+    calls = 0
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        prepared = (
+            write_usb._create_verified_usb_host_staging(
+                preflight,
+                paths,
+                backup,
+            )
+        )
+        preactivation = (
+            write_usb._require_usb_preactivation_ready(
+                preflight,
+                paths,
+                backup,
+                prepared,
+            )
+        )
+
+        def mutation_start() -> None:
+            nonlocal calls
+            calls += 1
+
+        with pytest.raises(
+            write_usb._FavoritesUsbActivationExecutionError,
+            match="No-op Favorites USB write plan",
+        ) as raised:
+            write_usb._activate_usb_managed_state(
+                preflight,
+                paths,
+                backup,
+                prepared,
+                preactivation,
+                mutation_start=mutation_start,
+            )
+
+        assert raised.value.mutation_started is False
+        assert calls == 0
