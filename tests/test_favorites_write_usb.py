@@ -3521,3 +3521,473 @@ def test_usb_verified_staging_revalidation_checks_unmanaged_identity(
                 paths,
                 prepared,
             )
+
+
+def test_usb_recovery_target_accepts_managed_divergence_and_owned_temp(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    unmanaged = (
+        favorites_directory
+        / "offline.bin"
+    )
+    unmanaged.write_bytes(
+        b"preserve"
+    )
+
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(
+                _CHANGED_CATALOG
+            ),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+
+        (
+            favorites_directory
+            / "f_list.cfg"
+        ).write_bytes(
+            b"partially-activated-managed-catalog"
+        )
+
+        temporary = (
+            write_usb._usb_media_temporary_path(
+                preflight,
+                paths,
+            )
+        )
+        temporary.write_bytes(
+            b"operation-owned-displaced-managed-content"
+        )
+
+        def forbidden_public_qualification(
+            *args: object,
+            **kwargs: object,
+        ) -> object:
+            raise AssertionError(
+                "Post-mutation recovery must not call "
+                "public storage qualification."
+            )
+
+        monkeypatch.setattr(
+            write_usb,
+            "qualify_favorites_usb_storage_path",
+            forbidden_public_qualification,
+        )
+
+        evidence = (
+            write_usb._require_usb_recovery_target_ready(
+                preflight,
+                paths,
+                backup,
+            )
+        )
+
+    assert (
+        evidence.mount
+        == preflight.qualification.mount
+    )
+    assert (
+        evidence.block_device
+        == preflight.qualification.block_device
+    )
+    assert (
+        evidence.mount_directory
+        == preflight.qualification.mount_directory
+    )
+    assert (
+        evidence.favorites_directory
+        == preflight.qualification.favorites_directory
+    )
+    assert (
+        evidence.unmanaged_sha256
+        == preflight.unmanaged_sha256
+    )
+    assert (
+        evidence.temporary_path
+        == temporary
+    )
+    assert temporary.read_bytes() == (
+        b"operation-owned-displaced-managed-content"
+    )
+    assert unmanaged.read_bytes() == b"preserve"
+
+
+def test_usb_recovery_target_refuses_unexpected_unmanaged_change(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    unmanaged = (
+        favorites_directory
+        / "offline.bin"
+    )
+    unmanaged.write_bytes(
+        b"before"
+    )
+
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(
+                _CHANGED_CATALOG
+            ),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        unmanaged.write_bytes(
+            b"after"
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="unmanaged changes beyond",
+        ):
+            write_usb._require_usb_recovery_target_ready(
+                preflight,
+                paths,
+                backup,
+            )
+
+
+def test_usb_recovery_target_refuses_symlink_at_owned_temp_name(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(
+                _CHANGED_CATALOG
+            ),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+    outside = (
+        tmp_path
+        / "outside.bin"
+    )
+    outside.write_bytes(
+        b"outside"
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        temporary = (
+            write_usb._usb_media_temporary_path(
+                preflight,
+                paths,
+            )
+        )
+        temporary.symlink_to(
+            outside
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="symbolic links",
+        ):
+            write_usb._require_usb_recovery_target_ready(
+                preflight,
+                paths,
+                backup,
+            )
+
+    assert outside.read_bytes() == b"outside"
+
+
+def test_usb_recovery_target_refuses_read_only_transition(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(
+                _CHANGED_CATALOG
+            ),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+
+        current = mountinfo.read_text(
+            encoding="utf-8"
+        )
+        mountinfo.write_text(
+            current.replace(
+                " rw ",
+                " ro ",
+            ).replace(
+                " rw\n",
+                " ro\n",
+            ),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="no longer writable",
+        ):
+            write_usb._require_usb_recovery_target_ready(
+                preflight,
+                paths,
+                backup,
+            )
+
+
+def test_usb_recovery_target_refuses_block_device_evidence_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(
+                _CHANGED_CATALOG
+            ),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+    real_reader = (
+        write_usb.read_linux_block_device_evidence
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+
+        def changed_block_device(
+            device_major: int,
+            device_minor: int,
+            *,
+            sys_dev_block_directory: Path,
+        ) -> object:
+            evidence = real_reader(
+                device_major,
+                device_minor,
+                sys_dev_block_directory=(
+                    sys_dev_block_directory
+                ),
+            )
+            return (
+                write_usb.LinuxBlockDeviceEvidence(
+                    device_major=(
+                        evidence.device_major
+                    ),
+                    device_minor=(
+                        evidence.device_minor
+                    ),
+                    sysfs_path=(
+                        evidence.sysfs_path
+                    ),
+                    device_name=(
+                        evidence.device_name
+                    ),
+                    usb_ancestor_path=(
+                        evidence.usb_ancestor_path
+                    ),
+                    removable=(
+                        not evidence.removable
+                        if evidence.removable
+                        is not None
+                        else True
+                    ),
+                )
+            )
+
+        monkeypatch.setattr(
+            write_usb,
+            "read_linux_block_device_evidence",
+            changed_block_device,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="block-device evidence changed",
+        ):
+            write_usb._require_usb_recovery_target_ready(
+                preflight,
+                paths,
+                backup,
+            )
+
+
+def test_usb_recovery_target_revalidates_verified_backup(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(
+                _CHANGED_CATALOG
+            ),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = (
+            write_usb._create_verified_usb_host_backup(
+                preflight,
+                paths,
+            )
+        )
+        (
+            backup.directory
+            / "changed.bin"
+        ).write_bytes(
+            b"changed"
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="backup changed after verification",
+        ):
+            write_usb._require_usb_recovery_target_ready(
+                preflight,
+                paths,
+                backup,
+            )

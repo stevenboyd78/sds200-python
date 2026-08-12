@@ -20,6 +20,7 @@ from .favorites_storage import (
 from .favorites_storage_evidence import (
     FavoritesTreeEvidence,
     FavoritesTreeEvidenceError,
+    _favorites_unmanaged_tree_sha256,
     favorites_storage_snapshot_sha256,
     favorites_tree_evidence,
     favorites_unmanaged_tree_sha256,
@@ -31,10 +32,17 @@ from .favorites_storage_local import (
 from .favorites_storage_usb import (
     DEFAULT_LINUX_MOUNTINFO_PATH,
     DEFAULT_LINUX_SYS_DEV_BLOCK_DIRECTORY,
+    FAVORITES_USB_STORAGE_RELATIVE_DIRECTORY,
     FavoritesUsbStorageQualification,
     FavoritesUsbStorageQualificationError,
     FavoritesUsbStorageQualificationReason,
+    LinuxBlockDeviceError,
+    LinuxBlockDeviceEvidence,
+    LinuxMountInfoEntry,
+    LinuxMountInfoError,
     qualify_favorites_usb_storage_path,
+    read_linux_block_device_evidence,
+    read_linux_mountinfo,
 )
 from .favorites_write_plan import FavoritesWritePlan
 
@@ -2130,6 +2138,686 @@ def _usb_media_temporary_path(
             f"{_USB_MEDIA_TEMP_PREFIX}"
             f"{paths.operation_id[:16]}.tmp"
         )
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _FavoritesUsbRecoveryTargetEvidence:
+    mount: LinuxMountInfoEntry
+    block_device: LinuxBlockDeviceEvidence
+    mount_directory: Path
+    favorites_directory: Path
+    unmanaged_sha256: str
+    temporary_path: Path
+
+    def __post_init__(self) -> None:
+        if not isinstance(
+            self.mount,
+            LinuxMountInfoEntry,
+        ):
+            raise TypeError(
+                "Favorites USB recovery target mount must be "
+                "LinuxMountInfoEntry."
+            )
+        if not isinstance(
+            self.block_device,
+            LinuxBlockDeviceEvidence,
+        ):
+            raise TypeError(
+                "Favorites USB recovery target block device must be "
+                "LinuxBlockDeviceEvidence."
+            )
+
+        for label, value in (
+            (
+                "mount directory",
+                self.mount_directory,
+            ),
+            (
+                "Favorites directory",
+                self.favorites_directory,
+            ),
+            (
+                "temporary path",
+                self.temporary_path,
+            ),
+        ):
+            if not isinstance(
+                value,
+                Path,
+            ):
+                raise TypeError(
+                    "Favorites USB recovery target "
+                    f"{label} must be pathlib.Path."
+                )
+            if not value.is_absolute():
+                raise ValueError(
+                    "Favorites USB recovery target "
+                    f"{label} must be absolute."
+                )
+
+        _validate_unmanaged_sha256(
+            self.unmanaged_sha256,
+            label=(
+                "Favorites USB recovery target unmanaged "
+                "tree SHA-256"
+            ),
+        )
+
+        if (
+            self.mount.device_number
+            != self.block_device.device_number
+        ):
+            raise ValueError(
+                "Favorites USB recovery target mount and "
+                "block-device identities must match."
+            )
+        if not self.block_device.is_usb:
+            raise ValueError(
+                "Favorites USB recovery target requires "
+                "proven USB ancestry."
+            )
+        if not self.mount.is_writable:
+            raise ValueError(
+                "Favorites USB recovery target requires "
+                "a writable mount."
+            )
+        if (
+            self.temporary_path.parent
+            != self.favorites_directory
+        ):
+            raise ValueError(
+                "Favorites USB recovery temporary path must "
+                "remain directly inside the Favorites directory."
+            )
+        if (
+            not self.temporary_path.name.startswith(
+                _USB_MEDIA_TEMP_PREFIX
+            )
+            or not self.temporary_path.name.endswith(
+                ".tmp"
+            )
+        ):
+            raise ValueError(
+                "Favorites USB recovery temporary path must use "
+                "the bounded operation-owned media filename."
+            )
+
+
+def _usb_recovery_directory_status(
+    path: Path,
+    *,
+    description: str,
+) -> os.stat_result:
+    try:
+        observed = path.lstat()
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            path,
+            f"Could not inspect {description}: {error}",
+        ) from error
+
+    if stat.S_ISLNK(
+        observed.st_mode
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            path,
+            f"{description} must not be a symbolic link.",
+        )
+    if not stat.S_ISDIR(
+        observed.st_mode
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            path,
+            f"{description} must be a directory.",
+        )
+
+    return observed
+
+
+def _usb_recovery_filesystem_device_number(
+    observed: os.stat_result,
+) -> tuple[int, int]:
+    return (
+        os.major(
+            observed.st_dev
+        ),
+        os.minor(
+            observed.st_dev
+        ),
+    )
+
+
+def _usb_recovery_matching_mount(
+    preflight: FavoritesUsbWritePreflight,
+) -> tuple[
+    LinuxMountInfoEntry,
+    Path,
+]:
+    try:
+        requested_status = (
+            preflight.requested_path.lstat()
+        )
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            preflight.requested_path,
+            (
+                "Could not inspect original USB recovery "
+                f"requested path: {error}"
+            ),
+        ) from error
+
+    if stat.S_ISLNK(
+        requested_status.st_mode
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            preflight.requested_path,
+            (
+                "Original USB recovery requested path must "
+                "not be a symbolic link."
+            ),
+        )
+    if not stat.S_ISDIR(
+        requested_status.st_mode
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            preflight.requested_path,
+            (
+                "Original USB recovery requested path must "
+                "remain a directory."
+            ),
+        )
+
+    try:
+        resolved_requested = (
+            preflight.requested_path.resolve(
+                strict=True
+            )
+        )
+    except (OSError, RuntimeError) as error:
+        raise _FavoritesUsbWritePreparationError(
+            preflight.requested_path,
+            (
+                "Could not resolve original USB recovery "
+                f"requested path: {error}"
+            ),
+        ) from error
+
+    try:
+        mount_entries = read_linux_mountinfo(
+            preflight.mountinfo_path
+        )
+    except LinuxMountInfoError as error:
+        raise _FavoritesUsbWritePreparationError(
+            preflight.mountinfo_path,
+            (
+                "Could not read current USB recovery mount "
+                f"evidence: {error}"
+            ),
+        ) from error
+
+    matching_mounts: list[
+        LinuxMountInfoEntry
+    ] = []
+
+    for mount in mount_entries:
+        try:
+            mount_root = (
+                mount.mount_point.resolve(
+                    strict=True
+                )
+            )
+        except (OSError, RuntimeError):
+            continue
+
+        favorites_path = (
+            mount_root
+            / FAVORITES_USB_STORAGE_RELATIVE_DIRECTORY
+        )
+        try:
+            resolved_favorites_path = (
+                favorites_path.resolve(
+                    strict=True
+                )
+            )
+        except (OSError, RuntimeError):
+            resolved_favorites_path = (
+                favorites_path
+            )
+
+        if resolved_requested in (
+            mount_root,
+            resolved_favorites_path,
+        ):
+            matching_mounts.append(
+                mount
+            )
+
+    if len(
+        matching_mounts
+    ) != 1:
+        raise _FavoritesUsbWritePreparationError(
+            preflight.requested_path,
+            (
+                "Original USB recovery requested path no "
+                "longer identifies exactly one mounted target."
+            ),
+        )
+
+    return (
+        matching_mounts[0],
+        resolved_requested,
+    )
+
+
+def _require_usb_recovery_target_ready(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    backup: _FavoritesUsbVerifiedBackup,
+) -> _FavoritesUsbRecoveryTargetEvidence:
+    # Re-establish the same physical USB target after managed mutation.
+
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB recovery target requires "
+            "FavoritesUsbWritePreflight."
+        )
+    if not isinstance(
+        backup,
+        _FavoritesUsbVerifiedBackup,
+    ):
+        raise TypeError(
+            "Favorites USB recovery target requires "
+            "_FavoritesUsbVerifiedBackup."
+        )
+
+    _require_host_operation_paths_match_preflight(
+        preflight,
+        paths,
+    )
+    _require_active_usb_host_lock(
+        paths
+    )
+    _require_private_host_directory(
+        paths.operation_directory,
+        create=False,
+    )
+    _require_verified_usb_host_backup_current(
+        preflight,
+        paths,
+        backup,
+    )
+
+    expected = (
+        preflight.qualification
+    )
+    (
+        current_mount,
+        resolved_requested,
+    ) = _usb_recovery_matching_mount(
+        preflight
+    )
+
+    if not current_mount.is_writable:
+        raise _FavoritesUsbWritePreparationError(
+            current_mount.mount_point,
+            "USB recovery target is no longer writable.",
+        )
+    if current_mount != expected.mount:
+        raise _FavoritesUsbWritePreparationError(
+            current_mount.mount_point,
+            (
+                "USB recovery mount evidence changed from "
+                "the original preflight."
+            ),
+        )
+
+    try:
+        current_block_device = (
+            read_linux_block_device_evidence(
+                current_mount.device_major,
+                current_mount.device_minor,
+                sys_dev_block_directory=(
+                    preflight.sys_dev_block_directory
+                ),
+            )
+        )
+    except LinuxBlockDeviceError as error:
+        raise _FavoritesUsbWritePreparationError(
+            expected.block_device.sysfs_path,
+            (
+                "Could not read current USB recovery "
+                f"block-device evidence: {error}"
+            ),
+        ) from error
+
+    if (
+        current_block_device
+        != expected.block_device
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            current_block_device.sysfs_path,
+            (
+                "USB recovery block-device evidence changed "
+                "from the original preflight."
+            ),
+        )
+    if not current_block_device.is_usb:
+        raise _FavoritesUsbWritePreparationError(
+            current_block_device.sysfs_path,
+            (
+                "USB recovery target no longer has proven "
+                "USB ancestry."
+            ),
+        )
+
+    _require_usb_activation_filesystem(
+        preflight
+    )
+
+    mount_status = (
+        _usb_recovery_directory_status(
+            current_mount.mount_point,
+            description=(
+                "USB recovery mounted scanner storage root"
+            ),
+        )
+    )
+    if (
+        _usb_recovery_filesystem_device_number(
+            mount_status
+        )
+        != current_mount.device_number
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            current_mount.mount_point,
+            (
+                "USB recovery mounted root no longer matches "
+                "mountinfo device identity."
+            ),
+        )
+
+    try:
+        resolved_mount = (
+            current_mount.mount_point.resolve(
+                strict=True
+            )
+        )
+    except (OSError, RuntimeError) as error:
+        raise _FavoritesUsbWritePreparationError(
+            current_mount.mount_point,
+            (
+                "Could not resolve USB recovery mounted "
+                f"root: {error}"
+            ),
+        ) from error
+
+    if (
+        resolved_mount
+        != expected.mount_directory
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            resolved_mount,
+            (
+                "USB recovery canonical mount path changed "
+                "from preflight."
+            ),
+        )
+
+    bcd_directory = (
+        resolved_mount
+        / "BCDx36HP"
+    )
+    _usb_recovery_directory_status(
+        bcd_directory,
+        description=(
+            "USB recovery BCDx36HP directory"
+        ),
+    )
+
+    favorites_directory = (
+        resolved_mount
+        / FAVORITES_USB_STORAGE_RELATIVE_DIRECTORY
+    )
+    favorites_status = (
+        _usb_recovery_directory_status(
+            favorites_directory,
+            description=(
+                "USB recovery Favorites directory"
+            ),
+        )
+    )
+    if (
+        _usb_recovery_filesystem_device_number(
+            favorites_status
+        )
+        != current_mount.device_number
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            favorites_directory,
+            (
+                "USB recovery Favorites directory no longer "
+                "matches mountinfo device identity."
+            ),
+        )
+
+    try:
+        resolved_favorites = (
+            favorites_directory.resolve(
+                strict=True
+            )
+        )
+    except (OSError, RuntimeError) as error:
+        raise _FavoritesUsbWritePreparationError(
+            favorites_directory,
+            (
+                "Could not resolve USB recovery Favorites "
+                f"directory: {error}"
+            ),
+        ) from error
+
+    if (
+        resolved_favorites
+        != expected.favorites_directory
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            resolved_favorites,
+            (
+                "USB recovery canonical Favorites path changed "
+                "from preflight."
+            ),
+        )
+
+    if resolved_requested not in (
+        resolved_mount,
+        resolved_favorites,
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            preflight.requested_path,
+            (
+                "Original USB recovery requested path no longer "
+                "identifies the qualified mounted target."
+            ),
+        )
+
+    requested_status = (
+        _usb_recovery_directory_status(
+            preflight.requested_path,
+            description=(
+                "original USB recovery requested path"
+            ),
+        )
+    )
+    if (
+        _usb_recovery_filesystem_device_number(
+            requested_status
+        )
+        != current_mount.device_number
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            preflight.requested_path,
+            (
+                "Original USB recovery requested path changed "
+                "device identity."
+            ),
+        )
+
+    temporary_path = (
+        _usb_media_temporary_path(
+            preflight,
+            paths,
+        )
+    )
+
+    try:
+        unmanaged_sha256 = (
+            _favorites_unmanaged_tree_sha256(
+                resolved_favorites,
+                excluded_root_regular_filename=(
+                    temporary_path.name
+                ),
+            )
+        )
+    except FavoritesTreeEvidenceError as error:
+        raise _FavoritesUsbWritePreparationError(
+            error.path,
+            (
+                "Could not safely verify USB recovery "
+                "unmanaged preservation evidence: "
+                f"{error.message}"
+            ),
+        ) from error
+
+    if (
+        unmanaged_sha256
+        != preflight.unmanaged_sha256
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            resolved_favorites,
+            (
+                "USB recovery target has unmanaged changes "
+                "beyond the exact operation-owned temporary file."
+            ),
+        )
+
+    _require_verified_usb_host_backup_current(
+        preflight,
+        paths,
+        backup,
+    )
+
+    (
+        final_mount,
+        final_resolved_requested,
+    ) = _usb_recovery_matching_mount(
+        preflight
+    )
+    if (
+        final_mount
+        != current_mount
+        or final_resolved_requested
+        != resolved_requested
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            expected.mount_directory,
+            (
+                "USB recovery mount evidence changed during "
+                "target verification."
+            ),
+        )
+
+    try:
+        final_block_device = (
+            read_linux_block_device_evidence(
+                current_mount.device_major,
+                current_mount.device_minor,
+                sys_dev_block_directory=(
+                    preflight.sys_dev_block_directory
+                ),
+            )
+        )
+    except LinuxBlockDeviceError as error:
+        raise _FavoritesUsbWritePreparationError(
+            expected.block_device.sysfs_path,
+            (
+                "Could not re-read USB recovery "
+                f"block-device evidence: {error}"
+            ),
+        ) from error
+
+    if (
+        final_block_device
+        != current_block_device
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            final_block_device.sysfs_path,
+            (
+                "USB recovery block-device evidence changed "
+                "during target verification."
+            ),
+        )
+
+    final_mount_status = (
+        _usb_recovery_directory_status(
+            resolved_mount,
+            description=(
+                "USB recovery mounted scanner storage root"
+            ),
+        )
+    )
+    final_favorites_status = (
+        _usb_recovery_directory_status(
+            resolved_favorites,
+            description=(
+                "USB recovery Favorites directory"
+            ),
+        )
+    )
+
+    if (
+        final_mount_status.st_dev,
+        final_mount_status.st_ino,
+        final_mount_status.st_mode,
+    ) != (
+        mount_status.st_dev,
+        mount_status.st_ino,
+        mount_status.st_mode,
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            resolved_mount,
+            (
+                "USB recovery mounted root changed during "
+                "target verification."
+            ),
+        )
+
+    if (
+        final_favorites_status.st_dev,
+        final_favorites_status.st_ino,
+        final_favorites_status.st_mode,
+    ) != (
+        favorites_status.st_dev,
+        favorites_status.st_ino,
+        favorites_status.st_mode,
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            resolved_favorites,
+            (
+                "USB recovery Favorites directory changed "
+                "during target verification."
+            ),
+        )
+
+    return _FavoritesUsbRecoveryTargetEvidence(
+        mount=current_mount,
+        block_device=current_block_device,
+        mount_directory=resolved_mount,
+        favorites_directory=resolved_favorites,
+        unmanaged_sha256=unmanaged_sha256,
+        temporary_path=temporary_path,
     )
 
 
