@@ -3991,3 +3991,282 @@ def test_usb_recovery_target_revalidates_verified_backup(
                 paths,
                 backup,
             )
+
+
+def test_usb_recovery_plan_restores_baseline_and_removes_only_introduced_hpd() -> None:
+    baseline = write_usb.FavoritesStorageSnapshot(
+        catalog_bytes=b"baseline-catalog",
+        documents=(
+            write_usb.FavoritesStorageDocument(
+                filename="zeta.hpd",
+                content=b"baseline-zeta",
+            ),
+            write_usb.FavoritesStorageDocument(
+                filename="alpha.hpd",
+                content=b"baseline-alpha",
+            ),
+            write_usb.FavoritesStorageDocument(
+                filename="updated.hpd",
+                content=b"baseline-updated",
+            ),
+        ),
+    )
+    intended = write_usb.FavoritesStorageSnapshot(
+        catalog_bytes=b"intended-catalog",
+        documents=(
+            write_usb.FavoritesStorageDocument(
+                filename="updated.hpd",
+                content=b"intended-updated",
+            ),
+            write_usb.FavoritesStorageDocument(
+                filename="added.hpd",
+                content=b"intended-added",
+            ),
+            write_usb.FavoritesStorageDocument(
+                filename="zeta.hpd",
+                content=b"baseline-zeta",
+            ),
+        ),
+    )
+
+    recovery = write_usb._build_usb_recovery_plan(
+        baseline,
+        intended,
+    )
+
+    assert tuple(
+        document.filename
+        for document in recovery.restore_documents
+    ) == (
+        "alpha.hpd",
+        "updated.hpd",
+        "zeta.hpd",
+    )
+    assert tuple(
+        document.content
+        for document in recovery.restore_documents
+    ) == (
+        b"baseline-alpha",
+        b"baseline-updated",
+        b"baseline-zeta",
+    )
+    assert (
+        recovery.restore_catalog_bytes
+        == b"baseline-catalog"
+    )
+    assert recovery.remove_documents == (
+        write_usb.FavoritesStorageDocument(
+            filename="added.hpd",
+            content=b"intended-added",
+        ),
+    )
+
+
+def test_usb_recovery_plan_never_removes_updated_or_baseline_deleted_hpd() -> None:
+    baseline = write_usb.FavoritesStorageSnapshot(
+        catalog_bytes=b"baseline",
+        documents=(
+            write_usb.FavoritesStorageDocument(
+                filename="updated.hpd",
+                content=b"old",
+            ),
+            write_usb.FavoritesStorageDocument(
+                filename="deleted-by-intended.hpd",
+                content=b"restore-me",
+            ),
+        ),
+    )
+    intended = write_usb.FavoritesStorageSnapshot(
+        catalog_bytes=b"intended",
+        documents=(
+            write_usb.FavoritesStorageDocument(
+                filename="updated.hpd",
+                content=b"new",
+            ),
+        ),
+    )
+
+    recovery = write_usb._build_usb_recovery_plan(
+        baseline,
+        intended,
+    )
+
+    assert {
+        document.filename
+        for document in recovery.restore_documents
+    } == {
+        "updated.hpd",
+        "deleted-by-intended.hpd",
+    }
+    assert recovery.remove_documents == ()
+
+
+def test_usb_recovery_plan_removal_retains_exact_intended_content() -> None:
+    baseline = write_usb.FavoritesStorageSnapshot(
+        catalog_bytes=b"baseline",
+        documents=(),
+    )
+    intended = write_usb.FavoritesStorageSnapshot(
+        catalog_bytes=b"intended",
+        documents=(
+            write_usb.FavoritesStorageDocument(
+                filename="new.hpd",
+                content=b"exact-intended-bytes",
+            ),
+        ),
+    )
+
+    recovery = write_usb._build_usb_recovery_plan(
+        baseline,
+        intended,
+    )
+
+    assert recovery.remove_documents == (
+        write_usb.FavoritesStorageDocument(
+            filename="new.hpd",
+            content=b"exact-intended-bytes",
+        ),
+    )
+
+
+def test_usb_recovery_plan_rejects_unsupported_document_name() -> None:
+    baseline = write_usb.FavoritesStorageSnapshot(
+        catalog_bytes=b"baseline",
+        documents=(
+            write_usb.FavoritesStorageDocument(
+                filename="notes.txt",
+                content=b"unsupported",
+            ),
+        ),
+    )
+    intended = write_usb.FavoritesStorageSnapshot(
+        catalog_bytes=b"intended",
+        documents=(),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="lowercase-.hpd",
+    ):
+        write_usb._build_usb_recovery_plan(
+            baseline,
+            intended,
+        )
+
+
+def test_usb_recovery_plan_binds_verified_backup_baseline_without_media_mutation(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(
+                _CHANGED_CATALOG
+            ),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = write_usb._create_verified_usb_host_backup(
+            preflight,
+            paths,
+        )
+        before = favorites_tree_evidence(
+            favorites_directory
+        )
+
+        recovery = write_usb._usb_recovery_plan(
+            preflight,
+            backup,
+        )
+
+        after = favorites_tree_evidence(
+            favorites_directory
+        )
+
+    assert (
+        recovery.restore_catalog_bytes
+        == preflight.plan.baseline_snapshot.catalog_bytes
+    )
+    assert recovery.restore_documents == tuple(
+        sorted(
+            preflight.plan.baseline_snapshot.documents,
+            key=lambda document: document.filename.encode(
+                "utf-8"
+            ),
+        )
+    )
+    assert recovery.remove_documents == ()
+    assert after == before
+
+
+def test_usb_recovery_plan_rejects_backup_snapshot_not_exact_baseline(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    preflight = preflight_favorites_usb_write(
+        plan_favorites_write(
+            _snapshot(),
+            _snapshot(
+                _CHANGED_CATALOG
+            ),
+        ),
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = write_usb._create_verified_usb_host_backup(
+            preflight,
+            paths,
+        )
+        mismatched = write_usb._FavoritesUsbVerifiedBackup(
+            directory=backup.directory,
+            tree_evidence=backup.tree_evidence,
+            unmanaged_sha256=backup.unmanaged_sha256,
+            snapshot=preflight.plan.intended_snapshot,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="exact write-plan baseline",
+        ):
+            write_usb._usb_recovery_plan(
+                preflight,
+                mismatched,
+            )

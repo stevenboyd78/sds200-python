@@ -14,6 +14,7 @@ from pathlib import Path
 
 from .favorites_schema import validate_favorites_workspace
 from .favorites_storage import (
+    FavoritesStorageDocument,
     FavoritesStorageSnapshot,
     project_favorites_storage_snapshot,
 )
@@ -2044,6 +2045,265 @@ def _usb_managed_activation_plan(
             != intended.catalog_bytes
         ),
         document_deletions=document_deletions,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _FavoritesUsbRecoveryPlan:
+    restore_documents: tuple[FavoritesStorageDocument, ...]
+    restore_catalog_bytes: bytes
+    remove_documents: tuple[FavoritesStorageDocument, ...]
+
+    def __post_init__(self) -> None:
+        if type(self.restore_documents) is not tuple:
+            raise TypeError(
+                "Favorites USB recovery restore documents must be a tuple."
+            )
+        if type(self.remove_documents) is not tuple:
+            raise TypeError(
+                "Favorites USB recovery removal documents must be a tuple."
+            )
+        if not isinstance(
+            self.restore_catalog_bytes,
+            bytes,
+        ):
+            raise TypeError(
+                "Favorites USB recovery catalog content must be bytes."
+            )
+
+        for label, documents in (
+            (
+                "restore documents",
+                self.restore_documents,
+            ),
+            (
+                "removal documents",
+                self.remove_documents,
+            ),
+        ):
+            if any(
+                not isinstance(
+                    document,
+                    FavoritesStorageDocument,
+                )
+                for document in documents
+            ):
+                raise TypeError(
+                    f"Favorites USB recovery {label} must contain "
+                    "FavoritesStorageDocument values."
+                )
+
+            names = tuple(
+                document.filename
+                for document in documents
+            )
+            if len(
+                set(names)
+            ) != len(names):
+                raise ValueError(
+                    f"Favorites USB recovery {label} must have unique filenames."
+                )
+            if names != tuple(
+                sorted(
+                    names,
+                    key=lambda value: value.encode(
+                        "utf-8"
+                    ),
+                )
+            ):
+                raise ValueError(
+                    f"Favorites USB recovery {label} must be deterministically "
+                    "ordered by filename."
+                )
+            for name in names:
+                checked = (
+                    _require_usb_managed_activation_filename(
+                        name
+                    )
+                )
+                if checked == "f_list.cfg":
+                    raise ValueError(
+                        f"Favorites USB recovery {label} may contain only "
+                        "lowercase-.hpd documents."
+                    )
+
+        restore_names = {
+            document.filename
+            for document in self.restore_documents
+        }
+        removal_names = {
+            document.filename
+            for document in self.remove_documents
+        }
+        overlap = (
+            restore_names
+            & removal_names
+        )
+        if overlap:
+            raise ValueError(
+                "Favorites USB recovery must not restore and remove "
+                "the same HPD filename."
+            )
+
+
+def _build_usb_recovery_plan(
+    baseline: FavoritesStorageSnapshot,
+    intended: FavoritesStorageSnapshot,
+) -> _FavoritesUsbRecoveryPlan:
+    if not isinstance(
+        baseline,
+        FavoritesStorageSnapshot,
+    ):
+        raise TypeError(
+            "Favorites USB recovery baseline must be FavoritesStorageSnapshot."
+        )
+    if not isinstance(
+        intended,
+        FavoritesStorageSnapshot,
+    ):
+        raise TypeError(
+            "Favorites USB recovery intended value must be "
+            "FavoritesStorageSnapshot."
+        )
+
+    baseline_documents: dict[
+        str,
+        FavoritesStorageDocument,
+    ] = {}
+    for document in baseline.documents:
+        checked = (
+            _require_usb_managed_activation_filename(
+                document.filename
+            )
+        )
+        if checked == "f_list.cfg":
+            raise _FavoritesUsbWritePreparationError(
+                Path(document.filename),
+                "USB recovery baseline documents must be lowercase-.hpd files.",
+            )
+        if checked in baseline_documents:
+            raise _FavoritesUsbWritePreparationError(
+                Path(document.filename),
+                "USB recovery baseline HPD filenames are not unique.",
+            )
+        baseline_documents[
+            checked
+        ] = document
+
+    intended_documents: dict[
+        str,
+        FavoritesStorageDocument,
+    ] = {}
+    for document in intended.documents:
+        checked = (
+            _require_usb_managed_activation_filename(
+                document.filename
+            )
+        )
+        if checked == "f_list.cfg":
+            raise _FavoritesUsbWritePreparationError(
+                Path(document.filename),
+                "USB recovery intended documents must be lowercase-.hpd files.",
+            )
+        if checked in intended_documents:
+            raise _FavoritesUsbWritePreparationError(
+                Path(document.filename),
+                "USB recovery intended HPD filenames are not unique.",
+            )
+        intended_documents[
+            checked
+        ] = document
+
+    restore_documents = tuple(
+        baseline_documents[name]
+        for name in sorted(
+            baseline_documents,
+            key=lambda value: value.encode(
+                "utf-8"
+            ),
+        )
+    )
+
+    introduced_names = (
+        set(intended_documents)
+        - set(baseline_documents)
+    )
+    remove_documents = tuple(
+        intended_documents[name]
+        for name in sorted(
+            introduced_names,
+            key=lambda value: value.encode(
+                "utf-8"
+            ),
+        )
+    )
+
+    return _FavoritesUsbRecoveryPlan(
+        restore_documents=restore_documents,
+        restore_catalog_bytes=baseline.catalog_bytes,
+        remove_documents=remove_documents,
+    )
+
+
+def _usb_recovery_plan(
+    preflight: FavoritesUsbWritePreflight,
+    backup: _FavoritesUsbVerifiedBackup,
+) -> _FavoritesUsbRecoveryPlan:
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB recovery planning requires "
+            "FavoritesUsbWritePreflight."
+        )
+    if not isinstance(
+        backup,
+        _FavoritesUsbVerifiedBackup,
+    ):
+        raise TypeError(
+            "Favorites USB recovery planning requires "
+            "_FavoritesUsbVerifiedBackup."
+        )
+
+    if preflight.plan.is_blocked:
+        raise _FavoritesUsbWritePreparationError(
+            preflight.qualification.favorites_directory,
+            "Blocked Favorites write plan cannot produce a USB recovery plan.",
+        )
+
+    baseline = (
+        preflight.plan.baseline_snapshot
+    )
+    intended = (
+        preflight.plan.intended_snapshot
+    )
+
+    if (
+        backup.snapshot
+        != baseline
+        or backup.snapshot
+        != preflight.observed_snapshot
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            backup.directory,
+            "Verified USB host backup does not contain the exact "
+            "write-plan baseline snapshot.",
+        )
+
+    if (
+        backup.unmanaged_sha256
+        != preflight.unmanaged_sha256
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            backup.directory,
+            "Verified USB host backup unmanaged identity does not "
+            "match the preflight baseline.",
+        )
+
+    return _build_usb_recovery_plan(
+        backup.snapshot,
+        intended,
     )
 
 
