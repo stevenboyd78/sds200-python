@@ -2863,3 +2863,417 @@ def test_usb_active_file_replace_surfaces_post_replace_readback_failure(
         favorites_directory
         / "f_list.cfg"
     ).read_bytes() == _CHANGED_CATALOG
+
+
+def test_usb_active_hpd_delete_removes_exact_file_and_preserves_unmanaged(
+    tmp_path: Path,
+) -> None:
+    hpd = (
+        b"TargetModel\tBCDx36HP\r\n"
+        b"FormatVersion\t1.00\r\n"
+        b"Department\tRemove\r\n"
+    )
+    baseline = FavoritesStorageSnapshot(
+        catalog_bytes=_BASELINE_CATALOG,
+        documents=(
+            FavoritesStorageDocument(
+                filename="remove.hpd",
+                content=hpd,
+            ),
+        ),
+    )
+    intended = _snapshot()
+    (
+        preflight,
+        _,
+        favorites_directory,
+    ) = _prepared_usb_activation_fixture(
+        tmp_path,
+        baseline=baseline,
+        intended=intended,
+    )
+    unmanaged = (
+        favorites_directory
+        / "unmanaged.bin"
+    )
+    unmanaged.write_bytes(
+        b"preserve"
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        write_usb._delete_usb_active_managed_hpd(
+            preflight,
+            paths,
+            "remove.hpd",
+            hpd,
+        )
+        temporary = (
+            write_usb._usb_media_temporary_path(
+                preflight,
+                paths,
+            )
+        )
+
+    assert not (
+        favorites_directory
+        / "remove.hpd"
+    ).exists()
+    assert unmanaged.read_bytes() == b"preserve"
+    assert not temporary.exists()
+
+
+def test_usb_active_hpd_delete_refuses_unexpected_content_without_mutation(
+    tmp_path: Path,
+) -> None:
+    hpd = (
+        b"TargetModel\tBCDx36HP\r\n"
+        b"FormatVersion\t1.00\r\n"
+    )
+    baseline = FavoritesStorageSnapshot(
+        catalog_bytes=_BASELINE_CATALOG,
+        documents=(
+            FavoritesStorageDocument(
+                filename="remove.hpd",
+                content=hpd,
+            ),
+        ),
+    )
+    intended = _snapshot()
+    (
+        preflight,
+        _,
+        favorites_directory,
+    ) = _prepared_usb_activation_fixture(
+        tmp_path,
+        baseline=baseline,
+        intended=intended,
+    )
+    target = (
+        favorites_directory
+        / "remove.hpd"
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+
+    with (
+        write_usb._usb_host_operation_lock(
+            preflight,
+            host_root,
+        ) as paths,
+        pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="expected exact content",
+        ) as raised,
+    ):
+        write_usb._delete_usb_active_managed_hpd(
+            preflight,
+            paths,
+            "remove.hpd",
+            b"different",
+        )
+
+    assert raised.value.mutation_started is False
+    assert target.read_bytes() == hpd
+
+
+def test_usb_active_hpd_delete_refuses_symlink_without_mutation(
+    tmp_path: Path,
+) -> None:
+    baseline = _snapshot()
+    intended = _snapshot()
+    (
+        preflight,
+        _,
+        favorites_directory,
+    ) = _prepared_usb_activation_fixture(
+        tmp_path,
+        baseline=baseline,
+        intended=intended,
+    )
+    outside = tmp_path / "outside.hpd"
+    outside.write_bytes(
+        b"outside"
+    )
+    target = (
+        favorites_directory
+        / "remove.hpd"
+    )
+    _symlink_or_skip(
+        target,
+        outside,
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+
+    with (
+        write_usb._usb_host_operation_lock(
+            preflight,
+            host_root,
+        ) as paths,
+        pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="must not be a symbolic link",
+        ) as raised,
+    ):
+        write_usb._delete_usb_active_managed_hpd(
+            preflight,
+            paths,
+            "remove.hpd",
+            b"outside",
+        )
+
+    assert raised.value.mutation_started is False
+    assert target.is_symlink()
+    assert outside.read_bytes() == b"outside"
+
+
+def test_usb_active_hpd_delete_refuses_existing_temp_artifact(
+    tmp_path: Path,
+) -> None:
+    hpd = (
+        b"TargetModel\tBCDx36HP\r\n"
+        b"FormatVersion\t1.00\r\n"
+    )
+    baseline = FavoritesStorageSnapshot(
+        catalog_bytes=_BASELINE_CATALOG,
+        documents=(
+            FavoritesStorageDocument(
+                filename="remove.hpd",
+                content=hpd,
+            ),
+        ),
+    )
+    intended = _snapshot()
+    (
+        preflight,
+        _,
+        favorites_directory,
+    ) = _prepared_usb_activation_fixture(
+        tmp_path,
+        baseline=baseline,
+        intended=intended,
+    )
+    target = (
+        favorites_directory
+        / "remove.hpd"
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        temporary = (
+            write_usb._usb_media_temporary_path(
+                preflight,
+                paths,
+            )
+        )
+        temporary.write_bytes(
+            b"collision"
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="temporary artifact already exists",
+        ) as raised:
+            write_usb._delete_usb_active_managed_hpd(
+                preflight,
+                paths,
+                "remove.hpd",
+                hpd,
+            )
+
+    assert raised.value.mutation_started is False
+    assert target.read_bytes() == hpd
+    assert temporary.read_bytes() == b"collision"
+
+
+def test_usb_active_hpd_delete_restores_when_post_move_verification_disagrees(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hpd = (
+        b"TargetModel\tBCDx36HP\r\n"
+        b"FormatVersion\t1.00\r\n"
+    )
+    baseline = FavoritesStorageSnapshot(
+        catalog_bytes=_BASELINE_CATALOG,
+        documents=(
+            FavoritesStorageDocument(
+                filename="remove.hpd",
+                content=hpd,
+            ),
+        ),
+    )
+    intended = _snapshot()
+    (
+        preflight,
+        _,
+        favorites_directory,
+    ) = _prepared_usb_activation_fixture(
+        tmp_path,
+        baseline=baseline,
+        intended=intended,
+    )
+    target = (
+        favorites_directory
+        / "remove.hpd"
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+    real_read = (
+        write_usb._read_usb_activation_regular_file
+    )
+    calls = 0
+
+    def disagree_after_move(
+        path: Path,
+    ) -> bytes:
+        nonlocal calls
+        calls += 1
+        content = real_read(
+            path
+        )
+        if calls == 2:
+            return b"unexpected"
+        return content
+
+    monkeypatch.setattr(
+        write_usb,
+        "_read_usb_activation_regular_file",
+        disagree_after_move,
+    )
+
+    with (
+        write_usb._usb_host_operation_lock(
+            preflight,
+            host_root,
+        ) as paths,
+        pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="post-move verification",
+        ) as raised,
+    ):
+        write_usb._delete_usb_active_managed_hpd(
+            preflight,
+            paths,
+            "remove.hpd",
+            hpd,
+        )
+
+    assert raised.value.mutation_started is True
+    assert target.read_bytes() == hpd
+
+
+def test_usb_active_hpd_delete_retains_bounded_artifact_when_unlink_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hpd = (
+        b"TargetModel\tBCDx36HP\r\n"
+        b"FormatVersion\t1.00\r\n"
+    )
+    baseline = FavoritesStorageSnapshot(
+        catalog_bytes=_BASELINE_CATALOG,
+        documents=(
+            FavoritesStorageDocument(
+                filename="remove.hpd",
+                content=hpd,
+            ),
+        ),
+    )
+    intended = _snapshot()
+    (
+        preflight,
+        _,
+        favorites_directory,
+    ) = _prepared_usb_activation_fixture(
+        tmp_path,
+        baseline=baseline,
+        intended=intended,
+    )
+    target = (
+        favorites_directory
+        / "remove.hpd"
+    )
+    host_root = (
+        tmp_path
+        / "host-state"
+        / "favorites-usb-writes"
+    )
+    real_unlink = Path.unlink
+    bounded: Path | None = None
+
+    def failing_bounded_unlink(
+        path: Path,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        if (
+            path.name.startswith(
+                write_usb._USB_MEDIA_TEMP_PREFIX
+            )
+            and path.parent == favorites_directory
+        ):
+            raise OSError(
+                "injected bounded-artifact unlink failure"
+            )
+        real_unlink(
+            path,
+            *args,
+            **kwargs,
+        )
+
+    monkeypatch.setattr(
+        Path,
+        "unlink",
+        failing_bounded_unlink,
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        bounded = (
+            write_usb._usb_media_temporary_path(
+                preflight,
+                paths,
+            )
+        )
+        with pytest.raises(
+            write_usb._FavoritesUsbMediaMutationError,
+            match="finalize active HPD deletion",
+        ) as raised:
+            write_usb._delete_usb_active_managed_hpd(
+                preflight,
+                paths,
+                "remove.hpd",
+                hpd,
+            )
+
+    assert raised.value.mutation_started is True
+    assert not target.exists()
+    assert bounded is not None
+    assert bounded.read_bytes() == hpd

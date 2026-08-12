@@ -2387,6 +2387,202 @@ def _replace_usb_active_managed_file(
                     with suppress(OSError):
                         temporary.unlink()
 
+
+def _delete_usb_active_managed_hpd(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    filename: str,
+    expected_content: bytes,
+) -> None:
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB active HPD deletion requires "
+            "FavoritesUsbWritePreflight."
+        )
+    if not isinstance(
+        expected_content,
+        bytes,
+    ):
+        raise TypeError(
+            "Favorites USB active HPD deletion expected content must be bytes."
+        )
+
+    filename = (
+        _require_usb_managed_activation_filename(
+            filename
+        )
+    )
+    if filename == "f_list.cfg":
+        raise ValueError(
+            "Favorites USB active HPD deletion cannot delete f_list.cfg."
+        )
+
+    _require_host_operation_paths_match_preflight(
+        preflight,
+        paths,
+    )
+    _require_active_usb_host_lock(
+        paths
+    )
+    _require_usb_activation_filesystem(
+        preflight
+    )
+
+    root = (
+        preflight.qualification.favorites_directory
+    )
+    target = root / filename
+    temporary = _usb_media_temporary_path(
+        preflight,
+        paths,
+    )
+
+    if os.path.lexists(
+        temporary
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            temporary,
+            "USB HPD deletion temporary artifact already exists.",
+            mutation_started=False,
+        )
+
+    try:
+        initial = target.lstat()
+    except OSError as error:
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            f"Could not inspect active HPD before deletion: {error}",
+            mutation_started=False,
+        ) from error
+
+    if stat.S_ISLNK(
+        initial.st_mode
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Active HPD deletion target must not be a symbolic link.",
+            mutation_started=False,
+        )
+    if not stat.S_ISREG(
+        initial.st_mode
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Active HPD deletion target must be a regular file.",
+            mutation_started=False,
+        )
+
+    try:
+        observed_content = (
+            _read_usb_activation_regular_file(
+                target
+            )
+        )
+    except _FavoritesUsbWritePreparationError as error:
+        raise _FavoritesUsbMediaMutationError(
+            error.path,
+            error.message,
+            mutation_started=False,
+        ) from error
+
+    if observed_content != expected_content:
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Active HPD deletion target no longer has the expected exact content.",
+            mutation_started=False,
+        )
+
+    try:
+        current = target.lstat()
+    except OSError as error:
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            f"Could not re-inspect active HPD before deletion: {error}",
+            mutation_started=False,
+        ) from error
+
+    if (
+        current.st_dev,
+        current.st_ino,
+        current.st_size,
+        current.st_mtime_ns,
+    ) != (
+        initial.st_dev,
+        initial.st_ino,
+        initial.st_size,
+        initial.st_mtime_ns,
+    ):
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            "Active HPD deletion target changed before mutation.",
+            mutation_started=False,
+        )
+
+    try:
+        os.replace(
+            target,
+            temporary,
+        )
+    except OSError as error:
+        raise _FavoritesUsbMediaMutationError(
+            target,
+            f"Could not move active HPD into the bounded deletion artifact: {error}",
+            mutation_started=False,
+        ) from error
+
+    mutation_started = True
+
+    try:
+        try:
+            displaced_content = (
+                _read_usb_activation_regular_file(
+                    temporary
+                )
+            )
+        except _FavoritesUsbWritePreparationError as error:
+            raise _FavoritesUsbMediaMutationError(
+                error.path,
+                error.message,
+                mutation_started=True,
+            ) from error
+
+        if displaced_content != expected_content:
+            # The path changed between verification and the file-level replace.
+            # Restore only when the original target name is still absent; never
+            # overwrite a concurrent replacement supplied by another writer.
+            if not os.path.lexists(
+                target
+            ):
+                with suppress(OSError):
+                    os.replace(
+                        temporary,
+                        target,
+                    )
+            raise _FavoritesUsbMediaMutationError(
+                temporary,
+                "Displaced HPD failed exact post-move verification.",
+                mutation_started=True,
+            )
+
+        try:
+            temporary.unlink()
+        except OSError as error:
+            raise _FavoritesUsbMediaMutationError(
+                temporary,
+                f"Could not finalize active HPD deletion: {error}",
+                mutation_started=True,
+            ) from error
+    except BaseException:
+        # A successful move means active media has changed even when a later
+        # verification or cleanup step fails. Leave any surviving bounded
+        # artifact intact for the higher-level recovery path.
+        raise
+
+    assert mutation_started
+
 __all__ = [
     "FavoritesUsbWritePreflight",
     "FavoritesUsbWritePreflightError",
