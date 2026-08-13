@@ -609,6 +609,17 @@ from .radioreference_records import (
     RadioReferenceWsdlParameter,
     radioreference_operation_contract,
 )
+from .radioreference_soap import (
+    RADIOREFERENCE_SOAP_DEFAULT_MAX_DOCUMENT_BYTES,
+    RADIOREFERENCE_SOAP_DEFAULT_MAX_ELEMENTS,
+    RADIOREFERENCE_SOAP_DEFAULT_MAX_REFERENCE_DEPTH,
+    RADIOREFERENCE_SOAP_DEFAULT_MAX_REFERENCES,
+    RADIOREFERENCE_SOAP_ENCODING_NAMESPACE,
+    RADIOREFERENCE_SOAP_ENVELOPE_NAMESPACE,
+    RADIOREFERENCE_XML_SCHEMA_INSTANCE_NAMESPACE,
+    RadioReferenceSoapDecoder,
+    RadioReferenceSoapResult,
+)
 from .recording_identity import RecordingIdentity, safe_recording_component
 from .recording_inventory import (
     RecordingAudioStatus,
@@ -1170,6 +1181,16 @@ __all__ = [
     "RadioReferenceWsdlOperationContract",
     "RadioReferenceWsdlParameter",
     "radioreference_operation_contract",
+
+"RADIOREFERENCE_SOAP_DEFAULT_MAX_DOCUMENT_BYTES",
+"RADIOREFERENCE_SOAP_DEFAULT_MAX_ELEMENTS",
+"RADIOREFERENCE_SOAP_DEFAULT_MAX_REFERENCES",
+"RADIOREFERENCE_SOAP_DEFAULT_MAX_REFERENCE_DEPTH",
+"RADIOREFERENCE_SOAP_ENCODING_NAMESPACE",
+"RADIOREFERENCE_SOAP_ENVELOPE_NAMESPACE",
+"RADIOREFERENCE_XML_SCHEMA_INSTANCE_NAMESPACE",
+"RadioReferenceSoapDecoder",
+"RadioReferenceSoapResult",
     "RECORDING_METADATA_SCHEMA",
     "RECORDING_METADATA_VERSION",
     "RECORDING_ORGANIZATION_COMPONENTS",
