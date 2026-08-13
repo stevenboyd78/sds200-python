@@ -21,9 +21,10 @@ and ideas that are not ready for scheduling are recorded in
   validation while keeping secret-bearing request bytes ephemeral.
 - Add a dependency-free offline provider-to-`FavoritesExternalRecordObservation`
   mapping layer without opening a provider session or mutating Favorites data.
-- Start with `RadioReferenceFrequency` conventional records because they carry
-  an explicit provider `frequency_id`. Do not invent identities for provider
-  shapes that lack a reviewed record identifier.
+- Start with `RadioReferenceFrequency` conventional records and
+  `RadioReferenceTalkgroup` records because they carry explicit provider
+  `frequency_id` and `talkgroup_id` identities. Do not invent identities for
+  provider shapes that lack a reviewed record identifier.
 - Keep `FavoritesExternalSourceIdentity` caller-supplied. Require its provider
   to be `radioreference`, preserve its opaque dataset value, and namespace the
   provider frequency identifier as the external record ID.
@@ -36,11 +37,16 @@ and ideas that are not ready for scheduling are recorded in
   Do not fall back to description or infer naming precedence.
 - Keep provider `lastUpdated` as provider evidence only. Use the caller's
   timezone-aware observation time and set normalized `revision` to `None`.
+- Map the reviewed talkgroup slice only as provider `alphaTag` to normalized
+  `name`. Preserve exact text and namespace the provider talkgroup identifier as
+  the external record ID. Do not map the provider talkgroup decimal value until
+  a stable normalized field contract is supported across observed 17- and
+  18-field TGID records.
 - Keep tone, mode, service/tag translation, encryption, input frequency,
-  hierarchy placement, deletion inference, search-result identity, trunked
-  mapping, merge acceptance, HTTP/TLS transport, live provider access, MyRR,
-  background synchronization, and Favorites storage mutation outside this first
-  slice.
+  hierarchy placement, deletion inference, search-result identity, additional
+  trunked mapping, merge acceptance, HTTP/TLS transport, live provider access,
+  MyRR, background synchronization, and Favorites storage mutation outside this
+  first slice.
 - Use only synthetic provider DTOs and local fixtures in automated tests.
 
 

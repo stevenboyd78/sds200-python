@@ -13,7 +13,9 @@ from sds200 import (
     FavoritesExternalSourceIdentity,
     RadioReferenceFrequency,
     RadioReferenceTag,
+    RadioReferenceTalkgroup,
     radioreference_frequency_observation,
+    radioreference_talkgroup_observation,
 )
 
 
@@ -46,6 +48,29 @@ def _frequency(
         subcategory_id=7,
         sort=10,
         last_updated=datetime(2026, 8, 13, 9, 21, 4),
+    )
+
+
+
+def _talkgroup(
+    *,
+    alpha_tag: str = "Ops",
+    description: str = "Operations",
+) -> RadioReferenceTalkgroup:
+    return RadioReferenceTalkgroup(
+        talkgroup_id=200,
+        decimal=12345,
+        subfleet="",
+        ltr=False,
+        slot="",
+        description=description,
+        alpha_tag=alpha_tag,
+        mode="D",
+        encryption=0,
+        tags=(RadioReferenceTag(tag_id=2, description="Fire Dispatch"),),
+        category_id=30,
+        sort=1,
+        date=datetime(2026, 8, 13, 9, 21, 4),
     )
 
 
@@ -219,6 +244,116 @@ def test_frequency_observation_is_immutable() -> None:
 
     with pytest.raises(FrozenInstanceError):
         observation.fields = ()  # type: ignore[misc]
+
+
+
+def test_talkgroup_observation_maps_only_reviewed_first_slice() -> None:
+    source = _source()
+    observed_at = datetime(2026, 8, 13, 13, 45, tzinfo=UTC)
+
+    observation = radioreference_talkgroup_observation(
+        _talkgroup(),
+        source=source,
+        observed_at=observed_at,
+    )
+
+    assert observation.identity.source is source
+    assert observation.identity.record_id == "talkgroup-200"
+    assert observation.evidence.observed_at is observed_at
+    assert observation.evidence.revision is None
+    assert observation.state is FavoritesExternalRecordObservationState.ACTIVE
+    assert tuple(field.name for field in observation.fields) == ("name",)
+    assert observation.fields[0].state is (
+        FavoritesExternalFieldObservationState.VALUE
+    )
+    assert observation.fields[0].value == "Ops"
+
+
+def test_talkgroup_observation_preserves_alpha_tag_without_fallback() -> None:
+    observation = radioreference_talkgroup_observation(
+        _talkgroup(alpha_tag="", description="Do not use this description"),
+        source=_source(),
+        observed_at=datetime(2026, 8, 13, tzinfo=UTC),
+    )
+
+    assert observation.fields[0].value == ""
+
+
+def test_talkgroup_observation_preserves_padded_alpha_tag_value() -> None:
+    observation = radioreference_talkgroup_observation(
+        _talkgroup(alpha_tag=" Ops "),
+        source=_source(),
+        observed_at=datetime(2026, 8, 13, tzinfo=UTC),
+    )
+
+    assert observation.fields[0].value == " Ops "
+
+
+def test_talkgroup_observation_does_not_map_unreviewed_decimal_field() -> None:
+    observation = radioreference_talkgroup_observation(
+        _talkgroup(),
+        source=_source(),
+        observed_at=datetime(2026, 8, 13, tzinfo=UTC),
+    )
+
+    assert tuple(field.name for field in observation.fields) == ("name",)
+    assert all(field.value != "12345" for field in observation.fields)
+
+
+def test_talkgroup_observation_does_not_treat_date_as_revision() -> None:
+    observation = radioreference_talkgroup_observation(
+        replace(
+            _talkgroup(),
+            date=datetime(2030, 1, 2, 3, 4, 5),
+        ),
+        source=_source(),
+        observed_at=datetime(2026, 8, 13, tzinfo=UTC),
+    )
+
+    assert observation.evidence.revision is None
+
+
+def test_talkgroup_observation_requires_radioreference_source() -> None:
+    with pytest.raises(
+        ValueError,
+        match="source provider must be radioreference",
+    ):
+        radioreference_talkgroup_observation(
+            _talkgroup(),
+            source=_source(provider="other-provider"),
+            observed_at=datetime(2026, 8, 13, tzinfo=UTC),
+        )
+
+
+def test_talkgroup_observation_requires_timezone_aware_observation_time() -> None:
+    with pytest.raises(
+        ValueError,
+        match="observation time must be timezone-aware",
+    ):
+        radioreference_talkgroup_observation(
+            _talkgroup(),
+            source=_source(),
+            observed_at=datetime(2026, 8, 13),
+        )
+
+
+def test_talkgroup_observation_rejects_wrong_argument_type() -> None:
+    with pytest.raises(
+        TypeError,
+        match="requires RadioReferenceTalkgroup",
+    ):
+        radioreference_talkgroup_observation(
+            object(),  # type: ignore[arg-type]
+            source=_source(),
+            observed_at=datetime(2026, 8, 13, tzinfo=UTC),
+        )
+
+
+def test_talkgroup_mapping_symbol_is_package_export() -> None:
+    assert (
+        sds200.radioreference_talkgroup_observation
+        is radioreference_talkgroup_observation
+    )
 
 
 def test_radioreference_mapping_symbol_is_package_export() -> None:
