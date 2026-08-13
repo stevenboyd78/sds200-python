@@ -1032,6 +1032,67 @@ def test_decoder_rejects_doctype_and_entity_input() -> None:
         )
 
 
+def test_decoder_rejects_utf16_doctype_that_bypasses_ascii_byte_scan() -> None:
+    safe_response = _array_response(
+        RadioReferenceWsdlOperation.GET_TAG,
+        "tag",
+    ).decode()
+    response = (
+        '<?xml version="1.0" encoding="utf-16"?>'
+        '<!DOCTYPE soap:Envelope [<!ENTITY leak "secret">]>'
+        + safe_response
+    ).encode("utf-16")
+
+    with pytest.raises(RadioReferenceError) as captured:
+        RadioReferenceSoapDecoder().decode(
+            RadioReferenceWsdlOperation.GET_TAG,
+            response,
+        )
+
+    assert captured.value.reason is RadioReferenceErrorReason.INVALID_RESPONSE
+    assert captured.value.__cause__ is None
+
+
+def test_decoder_accepts_safe_utf16_xml_without_dtd() -> None:
+    safe_response = _array_response(
+        RadioReferenceWsdlOperation.GET_TAG,
+        "tag",
+    ).decode()
+    response = (
+        '<?xml version="1.0" encoding="utf-16"?>'
+        + safe_response
+    ).encode("utf-16")
+
+    assert (
+        RadioReferenceSoapDecoder().decode(
+            RadioReferenceWsdlOperation.GET_TAG,
+            response,
+        )
+        == ()
+    )
+
+
+def test_decoder_allows_builtin_xml_entities_without_dtd() -> None:
+    response = _array_response(
+        RadioReferenceWsdlOperation.GET_TAG,
+        "tag",
+        _tag_item("Fire &amp; Rescue"),
+        count=1,
+    )
+
+    decoded = RadioReferenceSoapDecoder().decode(
+        RadioReferenceWsdlOperation.GET_TAG,
+        response,
+    )
+
+    assert decoded == (
+        RadioReferenceTag(
+            tag_id=2,
+            description="Fire & Rescue",
+        ),
+    )
+
+
 def test_decoder_enforces_document_size_bound() -> None:
     response = _array_response(
         RadioReferenceWsdlOperation.GET_TAG,
@@ -1101,6 +1162,39 @@ def test_decoder_rejects_reference_cycles() -> None:
         RadioReferenceWsdlOperation.GET_TAG,
         "",
         return_attributes=' href="#a"',
+        extra_body=(
+            '<multiRef id="a" href="#b" />'
+            '<multiRef id="b" href="#a" />'
+        ),
+    )
+
+    with pytest.raises(RadioReferenceError):
+        RadioReferenceSoapDecoder().decode(
+            RadioReferenceWsdlOperation.GET_TAG,
+            response,
+        )
+
+
+def test_decoder_rejects_unreferenced_missing_reference() -> None:
+    response = _soap(
+        RadioReferenceWsdlOperation.GET_TAG,
+        "",
+        return_attributes=_array_attributes("tag", 0),
+        extra_body='<multiRef id="unused" href="#missing" />',
+    )
+
+    with pytest.raises(RadioReferenceError):
+        RadioReferenceSoapDecoder().decode(
+            RadioReferenceWsdlOperation.GET_TAG,
+            response,
+        )
+
+
+def test_decoder_rejects_unreferenced_reference_cycle() -> None:
+    response = _soap(
+        RadioReferenceWsdlOperation.GET_TAG,
+        "",
+        return_attributes=_array_attributes("tag", 0),
         extra_body=(
             '<multiRef id="a" href="#b" />'
             '<multiRef id="b" href="#a" />'

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Final, TypeAlias
+from xml.parsers import expat
 
 from .radioreference import RadioReferenceError, RadioReferenceErrorReason
 from .radioreference_records import (
@@ -90,6 +91,7 @@ _DATETIME_PATTERN = re.compile(
 _ARRAY_TYPE_PATTERN = re.compile(
     r"(?P<type>[^\[\]]+)\[(?P<count>[0-9]*)\]\Z"
 )
+_EXPAT_NAMESPACE_SEPARATOR = "\x1f"
 
 RadioReferenceSoapResult: TypeAlias = (
     RadioReferenceCountryInfo
@@ -135,6 +137,73 @@ def _validate_positive_limit(value: int, *, label: str) -> None:
 
 def _invalid_response() -> RadioReferenceError:
     return RadioReferenceError(RadioReferenceErrorReason.INVALID_RESPONSE)
+
+
+def _expanded_xml_name(name: str) -> str:
+    if _EXPAT_NAMESPACE_SEPARATOR not in name:
+        return name
+    namespace, local_name = name.split(_EXPAT_NAMESPACE_SEPARATOR, 1)
+    if not namespace or not local_name:
+        raise _DecodeFailure
+    return f"{{{namespace}}}{local_name}"
+
+
+def _parse_document(
+    xml: bytes,
+    *,
+    max_elements: int,
+) -> ET.Element:
+    builder = ET.TreeBuilder()
+    parser = expat.ParserCreate(
+        namespace_separator=_EXPAT_NAMESPACE_SEPARATOR
+    )
+    parser.buffer_text = True
+    element_count = 0
+
+    def start_element(
+        name: str,
+        attributes: dict[str, str],
+    ) -> None:
+        nonlocal element_count
+        element_count += 1
+        if element_count > max_elements:
+            raise _DecodeFailure
+        builder.start(
+            _expanded_xml_name(name),
+            {
+                _expanded_xml_name(attribute): value
+                for attribute, value in attributes.items()
+            },
+        )
+
+    def end_element(name: str) -> None:
+        builder.end(_expanded_xml_name(name))
+
+    def reject_declaration(*_args: object) -> None:
+        raise _DecodeFailure
+
+    def reject_external_entity(*_args: object) -> int:
+        raise _DecodeFailure
+
+    parser.StartElementHandler = start_element
+    parser.EndElementHandler = end_element
+    parser.CharacterDataHandler = builder.data
+    parser.StartDoctypeDeclHandler = reject_declaration
+    parser.EntityDeclHandler = reject_declaration
+    parser.UnparsedEntityDeclHandler = reject_declaration
+    parser.NotationDeclHandler = reject_declaration
+    parser.ExternalEntityRefHandler = reject_external_entity
+    parser.SetParamEntityParsing(expat.XML_PARAM_ENTITY_PARSING_NEVER)
+
+    try:
+        parser.Parse(xml, True)
+    except expat.ExpatError:
+        raise _DecodeFailure from None
+
+    try:
+        return builder.close()
+    except (IndexError, AssertionError):
+        raise _DecodeFailure from None
 
 
 def _require_no_nil(element: ET.Element) -> None:
@@ -1586,15 +1655,11 @@ def _parse_trunk_voices(
 def _index_document(
     root: ET.Element,
     *,
-    max_elements: int,
     max_references: int,
 ) -> dict[str, ET.Element]:
     references: dict[str, ET.Element] = {}
 
-    for element_count, element in enumerate(root.iter(), start=1):
-        if element_count > max_elements:
-            raise _DecodeFailure
-
+    for element in root.iter():
         reference_id = element.attrib.get("id")
         if reference_id is not None:
             if not reference_id or reference_id in references:
@@ -1610,6 +1675,15 @@ def _index_document(
             raise _DecodeFailure
 
     return references
+
+
+def _validate_reference_graph(
+    root: ET.Element,
+    context: _Context,
+) -> None:
+    for element in root.iter():
+        if "href" in element.attrib:
+            _resolve(element, context, ())
 
 
 def _soap_return(
@@ -1772,19 +1846,20 @@ class RadioReferenceSoapDecoder:
         try:
             if not xml or len(xml) > self.max_document_bytes:
                 raise _DecodeFailure
-            if b"<!DOCTYPE" in xml or b"<!ENTITY" in xml:
-                raise _DecodeFailure
 
-            root = ET.fromstring(xml)
+            root = _parse_document(
+                xml,
+                max_elements=self.max_elements,
+            )
             references = _index_document(
                 root,
-                max_elements=self.max_elements,
                 max_references=self.max_references,
             )
             context = _Context(
                 references=references,
                 max_reference_depth=self.max_reference_depth,
             )
+            _validate_reference_graph(root, context)
             return_node = _soap_return(root, operation)
             return _decode_result(
                 operation,
