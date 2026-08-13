@@ -25,6 +25,8 @@ from sds200 import (
     RadioReferenceTrunkSystem,
     RadioReferenceTrunkSystemId,
     RadioReferenceWsdlOperation,
+    RadioReferenceWsdlOperationContract,
+    RadioReferenceWsdlParameter,
     radioreference_operation_contract,
 )
 
@@ -159,6 +161,38 @@ def test_operation_lookup_requires_typed_operation() -> None:
         radioreference_operation_contract("getCountryInfo")  # type: ignore[arg-type]
 
 
+def test_operation_contract_rejects_mutable_request_parameters() -> None:
+    with pytest.raises(TypeError):
+        RadioReferenceWsdlOperationContract(
+            operation=RadioReferenceWsdlOperation.GET_COUNTRY_INFO,
+            request_parameters=[  # type: ignore[arg-type]
+                RadioReferenceWsdlParameter("coid", "xsd:int")
+            ],
+            response_type="tns:CountryInfo",
+        )
+
+
+@pytest.mark.parametrize(
+    ("name", "type_name", "error"),
+    (
+        ("", "xsd:int", ValueError),
+        ("coid", "", ValueError),
+        (1, "xsd:int", TypeError),
+        ("coid", 1, TypeError),
+    ),
+)
+def test_wsdl_parameter_requires_nonempty_strings(
+    name: object,
+    type_name: object,
+    error: type[Exception],
+) -> None:
+    with pytest.raises(error):
+        RadioReferenceWsdlParameter(
+            name=name,  # type: ignore[arg-type]
+            type_name=type_name,  # type: ignore[arg-type]
+        )
+
+
 def test_provider_frequency_is_immutable_and_preserves_exact_provider_evidence() -> None:
     frequency = _frequency()
 
@@ -201,6 +235,24 @@ def test_provider_decimal_fields_require_decimal_not_float() -> None:
     with pytest.raises(TypeError):
         RadioReferenceRectangle(
             northwest_latitude=40.1,  # type: ignore[arg-type]
+            northwest_longitude=Decimal("-105.2"),
+            southeast_latitude=Decimal("39.9"),
+            southeast_longitude=Decimal("-104.9"),
+        )
+
+
+@pytest.mark.parametrize(
+    "value",
+    (
+        Decimal("NaN"),
+        Decimal("Infinity"),
+        Decimal("-Infinity"),
+    ),
+)
+def test_provider_decimal_fields_reject_nonfinite_values(value: Decimal) -> None:
+    with pytest.raises(ValueError):
+        RadioReferenceRectangle(
+            northwest_latitude=value,
             northwest_longitude=Decimal("-105.2"),
             southeast_latitude=Decimal("39.9"),
             southeast_longitude=Decimal("-104.9"),

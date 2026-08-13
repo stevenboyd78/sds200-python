@@ -48,6 +48,16 @@ class RadioReferenceWsdlParameter:
     name: str
     type_name: str
 
+    def __post_init__(self) -> None:
+        if type(self.name) is not str:
+            raise TypeError("RadioReference WSDL parameter name must be a string.")
+        if not self.name:
+            raise ValueError("RadioReference WSDL parameter name must not be empty.")
+        if type(self.type_name) is not str:
+            raise TypeError("RadioReference WSDL parameter type must be a string.")
+        if not self.type_name:
+            raise ValueError("RadioReference WSDL parameter type must not be empty.")
+
 
 @dataclass(frozen=True, slots=True)
 class RadioReferenceWsdlOperationContract:
@@ -56,6 +66,28 @@ class RadioReferenceWsdlOperationContract:
     operation: RadioReferenceWsdlOperation
     request_parameters: tuple[RadioReferenceWsdlParameter, ...]
     response_type: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.operation, RadioReferenceWsdlOperation):
+            raise TypeError(
+                "RadioReference WSDL contract operation must be "
+                "RadioReferenceWsdlOperation."
+            )
+        if type(self.request_parameters) is not tuple:
+            raise TypeError(
+                "RadioReference WSDL request parameters must be an immutable tuple."
+            )
+        if any(
+            not isinstance(parameter, RadioReferenceWsdlParameter)
+            for parameter in self.request_parameters
+        ):
+            raise TypeError(
+                "RadioReference WSDL request parameters contain an invalid item type."
+            )
+        if type(self.response_type) is not str:
+            raise TypeError("RadioReference WSDL response type must be a string.")
+        if not self.response_type:
+            raise ValueError("RadioReference WSDL response type must not be empty.")
 
     @property
     def soap_action(self) -> str:
@@ -244,6 +276,8 @@ def _require_xsd_string(value: str, *, label: str) -> None:
 def _require_xsd_decimal(value: Decimal, *, label: str) -> None:
     if type(value) is not Decimal:
         raise TypeError(f"{label} must be Decimal for xsd:decimal.")
+    if not value.is_finite():
+        raise ValueError(f"{label} must be finite for xsd:decimal.")
 
 
 def _require_xsd_boolean(value: bool, *, label: str) -> None:
