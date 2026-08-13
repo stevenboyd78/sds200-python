@@ -11,69 +11,56 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 22.5 — USB mass-storage Favorites write execution
+### Milestone 22.6 — Read-only Favorites FTP storage foundation
 
-- Begin from the fully merged Milestone 22.4 foundation at
-  `cc963788e7393408da382ee2e7f93358f19b74df`.
-- Treat Milestones 22.1 through 22.4 as complete: immutable write planning,
-  provenance-addressed record editing, verified copied-tree execution, and
-  read-only Linux USB discovery/qualification now define the mutation,
-  storage-safety, and removable-media identity contracts.
-- Add the first USB-storage mutation workflow only for already-mounted writable
-  scanner storage on Linux that can be freshly and unambiguously qualified
-  through the Milestone 22.4 evidence model. Keep mount, unmount, eject, remount,
-  privilege escalation, mount-option changes, and renderer-specific mutation
-  outside this milestone.
-- Execute only an existing `FavoritesWritePlan`. Refuse blocked plans, keep a
-  no-op plan free of storage mutation, and require a freshly qualified managed
-  snapshot to exactly match the plan baseline before preparing any write.
-- Establish a USB-target-specific exclusive operation boundary using host-side
-  state keyed to the canonical target and current mount/device identity. Do not
-  reuse the Milestone 22.3 sibling lock, backup, staging, displaced-tree, or
-  report paths on scanner media; fail closed when exclusivity or target identity
-  cannot be established deterministically.
-- Before modifying active scanner storage, create a complete backup in a
-  host-side workspace outside the scanner volume and verify that backup against
-  exact preflight tree and managed-snapshot evidence. Preserve the verified
-  backup after success or failure until a separate cleanup policy removes it.
-- Build a complete host-side staging tree from verified source material, apply
-  the exact intended managed snapshot while preserving unmanaged material, then
-  parse and read back the staged tree through the existing Favorites storage,
-  projection, and schema layers. Require staged evidence to match the exact
-  intended plan before any active-media mutation.
-- Immediately before activation, re-read Linux mountinfo and sysfs block-device
-  evidence and re-read the active Favorites tree. Require the same canonical
-  mount, device identity, writable state, exact baseline snapshot, and complete
-  preflight tree evidence. Reject unplugged, remounted, replaced, changed,
-  read-only, malformed, or otherwise stale targets without writing.
-- Use a USB/removable-media-specific activation path that does not assume the
-  copied-tree executor's POSIX sibling-directory replacement, hard-link, or
-  filesystem-durability semantics. Limit on-media temporary artifacts to what is
-  required for a verified activation, preserve unmanaged material, and fail
-  closed when the mounted filesystem cannot support the required safety
-  guarantees.
-- After active mutation begins, read back the USB target and require the exact
-  intended managed snapshot plus preserved unmanaged content. If activation or
-  verification fails, restore the exact pre-operation content from the verified
-  backup when possible and surface incomplete recovery explicitly rather than
-  reporting success.
-- Record a durable host-side rollback manifest and operation report containing
-  canonical target identity, mount/device evidence, backup/staging locations,
-  baseline and intended identity, verification state, activation outcome, and
-  recovery outcome without embedding private scanner programming contents.
-- Add deterministic failure-injection coverage for qualification, exclusivity,
-  backup, staging, stale/remount and read-only transitions, device removal,
-  activation, readback, rollback, report generation, and unsupported filesystem
-  semantics using temporary Favorites trees and synthetic Linux evidence.
-  Automated tests must not require privileged operations or physical hardware.
-- After automated safety coverage is clean, perform guarded physical SDS200
-  validation against restorable scanner storage: verify a no-op path and one
-  minimal reversible Favorites change, exact post-write readback, retained
-  backup/report evidence, and safe recovery behavior without automating mount or
-  eject orchestration.
-- Keep backup-retention cleanup policy, FTP transport and writable credentials,
-  CLI/TUI/web/HA confirmation flows, and generalized mount/eject orchestration
-  outside Milestone 22.5.
+- Begin from the fully merged Milestone 22.5 foundation at
+  `556cc58056b5f1762a70ad4bc3a58de59b1a9a32`.
+- Treat Milestones 22.1 through 22.5 as complete: immutable write planning,
+  provenance-addressed editing, verified copied-tree execution, Linux USB
+  qualification, and guarded USB mutation now define the Favorites mutation and
+  storage-safety contracts.
+- Add the first FTP-backed Favorites storage boundary as read-only retrieval into
+  the existing immutable `FavoritesStorageSnapshot` model. Keep FTP transport
+  details out of workspace, hierarchy, comparison, editing, and write-plan
+  semantics.
+- Support FTP only on trusted local networks or trusted VPNs. Do not present
+  plaintext FTP as an authenticated or transport-secure boundary for untrusted
+  networks.
+- Require one explicit scanner host, FTP port, Favorites directory, and read-only
+  credential reference. Preserve the project-wide separation between read-only
+  and writable FTP accounts: this milestone must not accept, resolve, try, or
+  fall back to a writable credential.
+- Store only the read username and a password secret reference in ordinary
+  configuration objects. Resolve the password only while opening the read
+  session, and keep password values out of object representations, exceptions,
+  logs, diagnostics, snapshots, reports, and public API values.
+- Use bounded connection timeouts, listing counts, catalog/document sizes, and
+  complete snapshot size. Reject unsafe or command-injecting remote names,
+  duplicate listing entries, missing catalog evidence, malformed transport
+  values, and over-limit data rather than guessing.
+- Retrieve `f_list.cfg` and immediate `.hpd` documents as exact bytes in
+  deterministic filename order. Capture two complete consecutive remote
+  snapshots and require exact equality before returning one snapshot so a
+  changing remote tree fails closed rather than being presented as stable.
+- Keep the production `ftplib` adapter behind a narrow fakeable session
+  boundary. The read implementation may use connection, login, directory
+  selection, listing, binary retrieval, quit, and close behavior only; no upload,
+  delete, rename, directory creation, permission change, or other mutating FTP
+  command belongs in this milestone.
+- Add deterministic synthetic/fake-transport coverage for credential resolution,
+  authentication and directory failures, listing validation, exact binary
+  retrieval, size limits, remote changes between passes, disconnects, cleanup,
+  secret redaction, and package exports. Automated tests must not require a
+  network FTP server or physical scanner.
+- After automated coverage is clean, perform guarded read-only SDS200 validation:
+  establish the observed Favorites FTP path and listing behavior, verify exact
+  repeatable snapshot retrieval with the configured read-only account, and
+  verify a missing/invalid read credential fails without attempting a writable
+  credential or mutating scanner storage.
+- Keep FTP write execution, writable-credential resolution, remote
+  backup/staging/activation/rollback semantics, credential persistence/UI,
+  CLI/TUI/web/HA Favorites workflows, and public untrusted-network exposure
+  outside Milestone 22.6.
 
 ## Deferred hardware validation
 
@@ -257,14 +244,20 @@ begins.
   explicit read-only/writable state, ambiguity and stale/remount rejection,
   copied-tree read validation, and revalidated explicit-path qualification
   without mounting or mutating media.
-- Milestone 22.5 adds the first verified USB mass-storage write executor:
+- Milestone 22.5 completed the first verified USB mass-storage write executor:
   plan-bound fresh target qualification, host-side exclusive operation state,
   complete verified backup and staging away from scanner media, second exact
   mount/device/tree stale checks before activation, removable-media-specific
   activation without copied-tree sibling assumptions, exact active readback,
-  rollback recovery, durable reporting, and guarded physical SDS200 validation.
-- Support FTP only on trusted local networks or VPNs and preserve separate
-  read-only and explicitly resolved writable credential roles.
+  rollback recovery, durable reporting, deterministic failure coverage, and
+  guarded reversible physical SDS200 validation.
+- Milestone 22.6 adds the first read-only FTP Favorites storage foundation:
+  explicit trusted-network configuration, read-only credential references with
+  no writable fallback, bounded exact binary retrieval, deterministic safe
+  listings, two-pass exact snapshot stability, secret-redacted failures, a
+  fakeable transport boundary, and guarded read-only SDS200 validation.
+- Keep FTP access limited to trusted local networks or VPNs and preserve
+  separate read-only and explicitly resolved writable credential roles.
 - Keep every write operation deterministic, recoverable, auditable, and free of
   silent last-writer-wins behavior.
 
