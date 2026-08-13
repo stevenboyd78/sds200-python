@@ -11,56 +11,50 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 22.6 — Read-only Favorites FTP storage foundation
+### Milestone 23.1 — External Favorites provenance and import-preview foundation
 
-- Begin from the fully merged Milestone 22.5 foundation at
-  `556cc58056b5f1762a70ad4bc3a58de59b1a9a32`.
-- Treat Milestones 22.1 through 22.5 as complete: immutable write planning,
-  provenance-addressed editing, verified copied-tree execution, Linux USB
-  qualification, and guarded USB mutation now define the Favorites mutation and
-  storage-safety contracts.
-- Add the first FTP-backed Favorites storage boundary as read-only retrieval into
-  the existing immutable `FavoritesStorageSnapshot` model. Keep FTP transport
-  details out of workspace, hierarchy, comparison, editing, and write-plan
-  semantics.
-- Support FTP only on trusted local networks or trusted VPNs. Do not present
-  plaintext FTP as an authenticated or transport-secure boundary for untrusted
-  networks.
-- Require one explicit scanner host, FTP port, Favorites directory, and read-only
-  credential reference. Preserve the project-wide separation between read-only
-  and writable FTP accounts: this milestone must not accept, resolve, try, or
-  fall back to a writable credential.
-- Store only the read username and a password secret reference in ordinary
-  configuration objects. Resolve the password only while opening the read
-  session, and keep password values out of object representations, exceptions,
-  logs, diagnostics, snapshots, reports, and public API values.
-- Use bounded connection timeouts, listing counts, catalog/document sizes, and
-  complete snapshot size. Reject unsafe or command-injecting remote names,
-  duplicate listing entries, missing catalog evidence, malformed transport
-  values, and over-limit data rather than guessing.
-- Retrieve `f_list.cfg` and immediate `.hpd` documents as exact bytes in
-  deterministic filename order. Capture two complete consecutive remote
-  snapshots and require exact equality before returning one snapshot so a
-  changing remote tree fails closed rather than being presented as stable.
-- Keep the production `ftplib` adapter behind a narrow fakeable session
-  boundary. The read implementation may use connection, login, directory
-  selection, listing, binary retrieval, quit, and close behavior only; no upload,
-  delete, rename, directory creation, permission change, or other mutating FTP
-  command belongs in this milestone.
-- Add deterministic synthetic/fake-transport coverage for credential resolution,
-  authentication and directory failures, listing validation, exact binary
-  retrieval, size limits, remote changes between passes, disconnects, cleanup,
-  secret redaction, and package exports. Automated tests must not require a
-  network FTP server or physical scanner.
-- After automated coverage is clean, perform guarded read-only SDS200 validation:
-  establish the observed Favorites FTP path and listing behavior, verify exact
-  repeatable snapshot retrieval with the configured read-only account, and
-  verify a missing/invalid read credential fails without attempting a writable
-  credential or mutating scanner storage.
-- Keep FTP write execution, writable-credential resolution, remote
-  backup/staging/activation/rollback semantics, credential persistence/UI,
-  CLI/TUI/web/HA Favorites workflows, and public untrusted-network exposure
-  outside Milestone 22.6.
+- Begin from the fully merged Milestone 22.6 foundation at
+  `e70b36eee89ce9fea4b2634c1fcd65024ca86aeb`.
+- Treat Milestones 21.1 through 22.6 as complete: the lossless Favorites model,
+  renderer-neutral browsing/editing/planning layers, copied-tree and USB write
+  safety, and read-only FTP storage now define the local Favorites boundary.
+- Begin Milestone 23 with a renderer-neutral external-data foundation before any
+  renderer-specific workflow or live synchronization. Preserve exact local
+  Favorites source records as authoritative user data rather than replacing them
+  with a service-specific object model.
+- Define immutable external-source identity, record provenance, field ownership,
+  and last-observed revision/update evidence that can support RadioReference-
+  assisted import without embedding provider credentials or transport details in
+  Favorites snapshots or exports.
+- Model import/update proposals as previewable data only. A proposal must make
+  additions, replacements, removals, unchanged values, local-only values, and
+  conflicts explicit before any existing Favorites editing or write-planning
+  service is invoked.
+- Preserve local-only annotations and locally owned values. External data must
+  not silently overwrite a locally owned field, silently delete a detached local
+  record, or create last-writer-wins synchronization behavior.
+- Define explicit detach semantics so an externally sourced record or field can
+  become locally owned without losing its current scanner-compatible value or
+  preserved unknown source material.
+- Keep source revisions and provider identifiers separate from scanner record
+  identity. Do not assume RadioReference identifiers are SDS Favorites
+  identifiers, filenames, line numbers, or stable scanner provenance.
+- Keep provider account credentials, application keys, tokens, and other secrets
+  behind secret references and out of Favorites data, exports, comparison
+  reports, provenance payloads intended for export, logs, diagnostics, and public
+  API representations.
+- Keep the first implementation transport-independent and deterministic behind a
+  fakeable external-source boundary. Automated tests must use synthetic provider
+  fixtures and must not require RadioReference, MyRR, internet access, or a live
+  scanner.
+- Research RadioReference only through documented/approved interfaces before a
+  concrete network adapter is accepted. Record authentication, licensing,
+  attribution, identifier, revision, rate-limit, and data-shape constraints
+  separately from the renderer-neutral import model.
+- Keep MyRR synchronization, automatic/background synchronization, live remote
+  mutation, renderer-specific import UI, credential persistence/UI, and direct
+  Favorites storage writes outside Milestone 23.1. Do not scrape or depend on
+  undocumented private interfaces.
 
 ## Deferred hardware validation
 
@@ -251,7 +245,7 @@ begins.
   activation without copied-tree sibling assumptions, exact active readback,
   rollback recovery, durable reporting, deterministic failure coverage, and
   guarded reversible physical SDS200 validation.
-- Milestone 22.6 adds the first read-only FTP Favorites storage foundation:
+- Milestone 22.6 completed the first read-only FTP Favorites storage foundation:
   explicit trusted-network configuration, read-only credential references with
   no writable fallback, bounded exact binary retrieval, deterministic safe
   listings, two-pass exact snapshot stability, secret-redacted failures, a
