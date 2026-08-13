@@ -55,19 +55,32 @@ that every field in the containing scanner record becomes externally owned.
 
 ## Preview and conflicts
 
-An import/update proposal is evidence, not a write operation.
+An import/update proposal is evidence, not a write operation. Its change kinds
+describe the relationship between normalized external observations and captured
+local provenance; they do not claim that a provider value is already mapped to a
+supported SDS Favorites field or that a proposed external record can already be
+created on scanner storage.
 
 A deterministic preview should be able to identify:
 
-- proposed additions;
-- proposed replacements;
+- proposed external additions;
+- proposed external replacements;
 - proposed removals when the provider explicitly supports that meaning;
 - unchanged externally owned values;
 - local-only values;
 - ownership conflicts;
-- stale or ambiguous local targets; and
-- provider observations that cannot be represented safely in the current
-  scanner schema.
+- explicit provider absence versus an unprovided field; and
+- the provider revision/update evidence attached to the observation.
+
+The preview carries exact `FavoritesRecordTarget` provenance for linked local
+records. Snapshot-bound stale/ambiguity revalidation remains an acceptance-time
+safety check through the existing Favorites editing/planning boundary rather
+than being inferred from external observations alone.
+
+Provider-specific mapping into supported SDS Favorites fields, record templates,
+and scanner-schema representability also remains a later adapter/acceptance
+concern. This source-neutral foundation must not interpret an external field name
+or provider identifier as proof that a scanner mutation is safe.
 
 No proposal should silently apply last-writer-wins behavior. Acceptance belongs
 to a later explicit editing/planning step using the existing Favorites services.
@@ -142,6 +155,9 @@ Milestone 23.1 does not include:
 - MyRR synchronization;
 - renderer-specific CLI/TUI/web/Home Assistant import workflows;
 - credential persistence UI;
+- provider-specific SDS field mapping, record-template selection, and
+  scanner-schema representability decisions;
+- snapshot-bound acceptance and stale/ambiguous-target revalidation;
 - direct storage mutation; or
 - bypassing existing Favorites editing, validation, write planning, backup, and
   execution safety boundaries.
