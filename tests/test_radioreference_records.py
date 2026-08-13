@@ -8,6 +8,8 @@ import pytest
 
 import sds200
 from sds200 import (
+    RADIOREFERENCE_AUTH_INFO_FIELDS,
+    RADIOREFERENCE_AUTH_INFO_TYPE,
     RADIOREFERENCE_PROGRAMMING_OPERATION_CONTRACTS,
     RADIOREFERENCE_SOAP_ENCODING_STYLE,
     RADIOREFERENCE_SOAP_NAMESPACE,
@@ -24,6 +26,7 @@ from sds200 import (
     RadioReferenceTrunkSiteLicense,
     RadioReferenceTrunkSystem,
     RadioReferenceTrunkSystemId,
+    RadioReferenceWsdlField,
     RadioReferenceWsdlOperation,
     RadioReferenceWsdlOperationContract,
     RadioReferenceWsdlParameter,
@@ -81,6 +84,46 @@ def test_radioreference_wsdl_evidence_constants_are_exact() -> None:
         RADIOREFERENCE_WSDL_EVIDENCE_SHA256
         == "1bb8090cf6415e429eb432dd964b1d26164af7eb2240a8b6d345007821d12f33"
     )
+
+
+def test_auth_info_contract_preserves_exact_reviewed_schema() -> None:
+    assert RADIOREFERENCE_AUTH_INFO_TYPE == "tns:authInfo"
+    assert tuple(
+        (field.name, field.type_name)
+        for field in RADIOREFERENCE_AUTH_INFO_FIELDS
+    ) == (
+        ("username", "xsd:string"),
+        ("password", "xsd:string"),
+        ("appKey", "xsd:string"),
+        ("version", "xsd:string"),
+        ("style", "xsd:string"),
+    )
+
+
+def test_auth_info_contract_is_immutable() -> None:
+    with pytest.raises(FrozenInstanceError):
+        RADIOREFERENCE_AUTH_INFO_FIELDS[0].name = "changed"  # type: ignore[misc]
+
+
+@pytest.mark.parametrize(
+    ("name", "type_name", "error"),
+    (
+        ("", "xsd:string", ValueError),
+        ("username", "", ValueError),
+        (1, "xsd:string", TypeError),
+        ("username", 1, TypeError),
+    ),
+)
+def test_wsdl_field_rejects_invalid_schema_metadata(
+    name: object,
+    type_name: object,
+    error: type[Exception],
+) -> None:
+    with pytest.raises(error):
+        RadioReferenceWsdlField(
+            name=name,  # type: ignore[arg-type]
+            type_name=type_name,  # type: ignore[arg-type]
+        )
 
 
 def test_programming_operation_contracts_cover_reviewed_subset() -> None:
@@ -441,6 +484,8 @@ def test_provider_record_types_are_separate_from_normalized_external_observation
 @pytest.mark.parametrize(
     "name",
     (
+        "RADIOREFERENCE_AUTH_INFO_FIELDS",
+        "RADIOREFERENCE_AUTH_INFO_TYPE",
         "RADIOREFERENCE_PROGRAMMING_OPERATION_CONTRACTS",
         "RADIOREFERENCE_SOAP_ENCODING_STYLE",
         "RADIOREFERENCE_SOAP_NAMESPACE",
@@ -472,6 +517,7 @@ def test_provider_record_types_are_separate_from_normalized_external_observation
         "RadioReferenceTrunkSystemId",
         "RadioReferenceTrunkType",
         "RadioReferenceTrunkVoice",
+        "RadioReferenceWsdlField",
         "RadioReferenceWsdlOperation",
         "RadioReferenceWsdlOperationContract",
         "RadioReferenceWsdlParameter",

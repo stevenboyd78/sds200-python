@@ -11,51 +11,49 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 23.4 — RadioReference offline SOAP response decoder foundation
+### Milestone 23.5 — RadioReference offline SOAP request serializer foundation
 
-- Begin from the fully merged Milestone 23.3 foundation at
-  `af26bda8af0b36acedccf25ea1851f4a40bca735`.
-- Treat Milestone 23.3 as complete: direct public WSDL evidence, exact metadata for
-  the 19 reviewed programming-relevant RPC operations, immutable provider-record
-  DTOs, explicit XML Schema scalar validation, nested provider array modeling,
-  and provider-record hardening now define the provider contract without adding a
-  SOAP parser, authenticated request path, or production network dependency.
-- Add a dependency-free offline SOAP 1.1 RPC/encoded response decoder using only
-  bounded in-memory XML input and the standard library. The decoder must remain
-  separate from `RadioReferenceSession`, credential resolution, HTTP/TLS, and
-  `FavoritesExternalRecordObservation`.
-- Accept only the reviewed programming operation response shapes. Validate the
-  SOAP envelope/body namespace, the expected `<operation>Response` element, the
-  `return` member, and the response type associated with the existing
-  `RadioReferenceWsdlOperationContract`; reject operation/type mismatches rather
-  than guessing.
-- Support the SOAP encoding structures necessary for deterministic offline
-  fixtures, including inline values, SOAP-ENC arrays, and bounded local `id` /
-  `href` references. Reject missing references, duplicate reference identifiers,
-  external references, cycles, excessive reference graphs, and malformed array
-  structure. Supporting a standards-compatible encoding form does not claim that
-  the provider emits that exact wire representation in production.
-- Parse XML Schema scalars without lossy normalization: keep strings verbatim,
-  enforce the existing signed 32-bit `xsd:int` boundary, use finite `Decimal` for
-  `xsd:decimal`, accept only documented XML Schema boolean lexical forms, and
-  parse `xsd:dateTime` deterministically without inventing revision semantics.
-- Treat SOAP Faults, malformed XML, duplicate required fields, missing required
-  fields, scalar conversion failures, and incompatible nested structures as
-  stable redacted invalid-response/service failures. Do not propagate provider
-  fault text, XML fragments, credentials, or arbitrary parser details through
-  public exceptions or diagnostics.
-- Use only schema-derived or hand-authored sanitized fixtures. Automated tests
-  must remain offline and must not require internet access, a RadioReference
-  account, an application key, a premium subscription, live provider data, or a
-  physical scanner.
-- Preserve provider DTOs exactly as provider-side evidence. Do not map them to SDS
-  Favorites fields, infer stable record lifetimes, interpret timestamps as generic
-  revisions, infer deletion from omission, or perform merge/write decisions in
-  this milestone.
-- Keep SOAP request serialization, authenticated/live transport, production
-  endpoint validation, provider-to-SDS mapping, external observation generation,
-  operator merge/acceptance UI, background synchronization, MyRR work, and
-  Favorites storage mutation outside Milestone 23.4.
+- Begin from the fully merged Milestone 23.4 foundation at
+  `a3c267aba92004f47d95579a3f0b6cdcc7c720be`.
+- Treat Milestone 23.4 as complete: the dependency-free bounded SOAP 1.1
+  RPC/encoded response decoder now validates the reviewed programming-operation
+  response shapes, XML namespaces and QNames, scalar values, SOAP-ENC arrays,
+  named array containers, and bounded local `id` / `href` graphs while keeping
+  failures redacted and tests fully offline.
+- Promote the exact reviewed `authInfo` schema into immutable WSDL contract
+  metadata. The audited field order is `username`, `password`, `appKey`,
+  `version`, and `style`, and every field is `xsd:string`.
+- Add a dependency-free offline SOAP 1.1 RPC/encoded request serializer for the
+  existing 19 reviewed programming operations. Request construction must derive
+  operation names, parameter order/types, SOAP actions, target namespace, and
+  encoding style from the reviewed contract rather than duplicate an unrelated
+  operation table.
+- Accept only the reviewed request-side scalar types: signed 32-bit `xsd:int`,
+  finite `Decimal` values for `xsd:decimal`, exact Python strings for
+  `xsd:string`, and the reviewed `tns:authInfo` structure. Reject missing,
+  unexpected, duplicated-by-construction, incorrectly typed, out-of-range, or
+  non-finite values rather than coercing them.
+- Keep request serialization deterministic and standards-compatible with the
+  reviewed RPC/encoded WSDL. Supporting an offline serializer does not claim
+  successful live-provider invocation or establish an approved production
+  endpoint.
+- Restrict this serializer foundation to the reviewed RPC binding. Do not invent
+  a document-style request representation merely because provider configuration
+  can describe the human-documented `doc` style.
+- Treat serialized request bytes as ephemeral secret-bearing material because
+  `authInfo` necessarily contains the resolved application key and end-user
+  password. Do not expose request XML, credentials, secret values, or arbitrary
+  serializer details through `repr`, logs, diagnostics, exception strings,
+  fixtures, or documentation.
+- Use only synthetic credentials and hand-authored/schema-derived request values
+  in automated tests. Normal tests must remain offline and require no internet
+  access, RadioReference account, application key, premium subscription, live
+  provider data, or physical scanner.
+- Keep HTTP/TLS transport, endpoint/redirect validation, live authenticated
+  calls, provider-to-SDS mapping, `FavoritesExternalRecordObservation`
+  generation, import/update previews, operator merge UI, background
+  synchronization, MyRR work, and Favorites storage mutation outside Milestone
+  23.5.
 
 ## Deferred hardware validation
 
@@ -274,6 +272,11 @@ begins.
   RPC/encoded operations, immutable provider-side conventional/trunked DTOs,
   schema-faithful scalar and array modeling, provider-record runtime hardening,
   and offline validation without a SOAP parser or production network adapter.
+- Milestone 23.4 completed the dependency-free offline SOAP response decoder:
+  bounded SOAP 1.1 RPC/encoded XML parsing, strict operation/response-type and
+  QName validation, schema-faithful scalar decoding, SOAP-ENC arrays and named
+  array containers, bounded local reference graphs, stable redacted failures,
+  and fully offline regression coverage without live provider access.
 - Add RadioReference-assisted import with update previews.
 - Preserve provenance and field ownership for externally sourced data.
 - Support merge decisions and detaching local records from an external source.

@@ -573,6 +573,8 @@ from .radioreference import (
     RadioReferenceSource,
 )
 from .radioreference_records import (
+    RADIOREFERENCE_AUTH_INFO_FIELDS,
+    RADIOREFERENCE_AUTH_INFO_TYPE,
     RADIOREFERENCE_PROGRAMMING_OPERATION_CONTRACTS,
     RADIOREFERENCE_SOAP_ENCODING_STYLE,
     RADIOREFERENCE_SOAP_NAMESPACE,
@@ -604,6 +606,7 @@ from .radioreference_records import (
     RadioReferenceTrunkSystemId,
     RadioReferenceTrunkType,
     RadioReferenceTrunkVoice,
+    RadioReferenceWsdlField,
     RadioReferenceWsdlOperation,
     RadioReferenceWsdlOperationContract,
     RadioReferenceWsdlParameter,
@@ -1133,6 +1136,8 @@ __all__ = [
     "RadioHealth",
     "RadioState",
     "RadioStateSnapshot",
+    "RADIOREFERENCE_AUTH_INFO_FIELDS",
+    "RADIOREFERENCE_AUTH_INFO_TYPE",
     "RADIOREFERENCE_DEFAULT_VERSION",
     "RADIOREFERENCE_PROVIDER",
     "RADIOREFERENCE_SERVICE_URL",
@@ -1177,6 +1182,7 @@ __all__ = [
     "RadioReferenceTrunkSystemId",
     "RadioReferenceTrunkType",
     "RadioReferenceTrunkVoice",
+    "RadioReferenceWsdlField",
     "RadioReferenceWsdlOperation",
     "RadioReferenceWsdlOperationContract",
     "RadioReferenceWsdlParameter",
