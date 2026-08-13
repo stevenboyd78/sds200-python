@@ -14409,3 +14409,474 @@ def test_usb_public_execution_symbols_are_package_exports() -> None:
     assert sds200.execute_favorites_usb_write is (
         write_usb.execute_favorites_usb_write
     )
+
+
+def test_usb_failure_matrix_public_qualification_failure(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    mountinfo.write_text(
+        mountinfo.read_text(
+            encoding="utf-8"
+        ).replace(
+            " rw ",
+            " ro ",
+        ).replace(
+            " rw\n",
+            " ro\n",
+        ),
+        encoding="utf-8",
+    )
+    host_root = (
+        tmp_path
+        / "failure-matrix-qualification"
+        / "favorites-usb-writes"
+    )
+
+    with pytest.raises(
+        write_usb.FavoritesUsbWritePreflightError,
+    ) as raised:
+        write_usb.execute_favorites_usb_write(
+            plan_favorites_write(
+                _snapshot(),
+                _snapshot(_CHANGED_CATALOG),
+            ),
+            mount_directory,
+            mountinfo,
+            sys_dev_block_directory=dev_block,
+            host_state_directory=host_root,
+        )
+
+    assert raised.value.reason is (
+        write_usb.FavoritesUsbWritePreflightReason.QUALIFICATION_FAILED
+    )
+    assert raised.value.qualification_reason is (
+        FavoritesUsbStorageQualificationReason.READ_ONLY_MOUNT
+    )
+    assert not host_root.exists()
+
+
+def test_usb_failure_matrix_public_exclusivity_failure(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    plan = plan_favorites_write(
+        _snapshot(),
+        _snapshot(_CHANGED_CATALOG),
+    )
+    preflight = write_usb.preflight_favorites_usb_write(
+        plan,
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "failure-matrix-exclusivity"
+        / "favorites-usb-writes"
+    )
+    before = (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        with pytest.raises(
+            write_usb.FavoritesUsbWriteExecutionError,
+            match="could not complete",
+        ) as raised:
+            write_usb.execute_favorites_usb_write(
+                plan,
+                mount_directory,
+                mountinfo,
+                sys_dev_block_directory=dev_block,
+                host_state_directory=host_root,
+            )
+
+        assert raised.value.operation_id is not None
+        assert raised.value.report_path is None
+        assert raised.value.recovery_status is None
+        assert (
+            write_usb._read_usb_recovery_managed_snapshot(
+                favorites_directory
+            )
+            == before
+        )
+        assert not paths.operation_directory.exists()
+
+    assert not paths.lock_directory.exists()
+
+
+
+def test_usb_failure_matrix_public_backup_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    host_root = (
+        tmp_path
+        / "failure-matrix-backup"
+        / "favorites-usb-writes"
+    )
+    before = (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+    )
+
+    def fail_backup(
+        _preflight: write_usb.FavoritesUsbWritePreflight,
+        paths: write_usb._FavoritesUsbHostOperationPaths,
+    ) -> write_usb._FavoritesUsbVerifiedBackup:
+        raise write_usb._FavoritesUsbWritePreparationError(
+            paths.backup_directory,
+            "injected deterministic backup failure",
+        )
+
+    monkeypatch.setattr(
+        write_usb,
+        "_create_verified_usb_host_backup",
+        fail_backup,
+    )
+
+    with pytest.raises(
+        write_usb.FavoritesUsbWriteExecutionError,
+        match="could not complete",
+    ) as raised:
+        write_usb.execute_favorites_usb_write(
+            plan_favorites_write(
+                _snapshot(),
+                _snapshot(_CHANGED_CATALOG),
+            ),
+            mount_directory,
+            mountinfo,
+            sys_dev_block_directory=dev_block,
+            host_state_directory=host_root,
+        )
+
+    assert raised.value.operation_id is not None
+    assert raised.value.report_path is None
+    assert raised.value.recovery_status is None
+    assert (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+        == before
+    )
+    assert tuple(
+        host_root.rglob(
+            "rollback.json"
+        )
+    ) == ()
+
+
+def test_usb_failure_matrix_public_staging_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    host_root = (
+        tmp_path
+        / "failure-matrix-staging"
+        / "favorites-usb-writes"
+    )
+    before = (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+    )
+
+    def fail_staging(
+        _preflight: write_usb.FavoritesUsbWritePreflight,
+        paths: write_usb._FavoritesUsbHostOperationPaths,
+        _backup: write_usb._FavoritesUsbVerifiedBackup,
+    ) -> write_usb._FavoritesUsbPreparedStage:
+        raise write_usb._FavoritesUsbWritePreparationError(
+            paths.staging_directory,
+            "injected deterministic staging failure",
+        )
+
+    monkeypatch.setattr(
+        write_usb,
+        "_create_verified_usb_host_staging",
+        fail_staging,
+    )
+
+    with pytest.raises(
+        write_usb.FavoritesUsbWriteExecutionError,
+        match="could not complete",
+    ) as raised:
+        write_usb.execute_favorites_usb_write(
+            plan_favorites_write(
+                _snapshot(),
+                _snapshot(_CHANGED_CATALOG),
+            ),
+            mount_directory,
+            mountinfo,
+            sys_dev_block_directory=dev_block,
+            host_state_directory=host_root,
+        )
+
+    assert raised.value.operation_id is not None
+    assert raised.value.report_path is None
+    assert raised.value.recovery_status is None
+    assert (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+        == before
+    )
+    assert tuple(
+        host_root.rglob(
+            "rollback.json"
+        )
+    ) == ()
+
+
+def test_usb_failure_matrix_workflow_read_only_at_final_preactivation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    host_root = (
+        tmp_path
+        / "failure-matrix-read-only"
+        / "favorites-usb-writes"
+    )
+    before = (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+    )
+    real_staging = write_usb._create_verified_usb_host_staging
+
+    def stage_then_remount_read_only(
+        preflight: write_usb.FavoritesUsbWritePreflight,
+        paths: write_usb._FavoritesUsbHostOperationPaths,
+        backup: write_usb._FavoritesUsbVerifiedBackup,
+    ) -> write_usb._FavoritesUsbPreparedStage:
+        prepared = real_staging(
+            preflight,
+            paths,
+            backup,
+        )
+        mountinfo.write_text(
+            mountinfo.read_text(
+                encoding="utf-8"
+            ).replace(
+                " rw ",
+                " ro ",
+            ).replace(
+                " rw\n",
+                " ro\n",
+            ),
+            encoding="utf-8",
+        )
+        return prepared
+
+    monkeypatch.setattr(
+        write_usb,
+        "_create_verified_usb_host_staging",
+        stage_then_remount_read_only,
+    )
+
+    with pytest.raises(
+        write_usb.FavoritesUsbWriteExecutionError,
+        match="preactivation_failed",
+    ) as raised:
+        write_usb.execute_favorites_usb_write(
+            plan_favorites_write(
+                _snapshot(),
+                _snapshot(_CHANGED_CATALOG),
+            ),
+            mount_directory,
+            mountinfo,
+            sys_dev_block_directory=dev_block,
+            host_state_directory=host_root,
+        )
+
+    assert raised.value.report_path is not None
+    assert raised.value.report_path.name == "failure.json"
+    assert raised.value.report_path.is_file()
+    assert raised.value.recovery_status == "not_required"
+    assert (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+        == before
+    )
+
+
+def test_usb_failure_matrix_workflow_device_removed_at_final_preactivation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    host_root = (
+        tmp_path
+        / "failure-matrix-device-removal"
+        / "favorites-usb-writes"
+    )
+    before = (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+    )
+    status = mount_directory.stat()
+    device_link = (
+        dev_block
+        / f"{os.major(status.st_dev)}:{os.minor(status.st_dev)}"
+    )
+    assert device_link.is_symlink()
+
+    real_staging = write_usb._create_verified_usb_host_staging
+
+    def stage_then_remove_device(
+        preflight: write_usb.FavoritesUsbWritePreflight,
+        paths: write_usb._FavoritesUsbHostOperationPaths,
+        backup: write_usb._FavoritesUsbVerifiedBackup,
+    ) -> write_usb._FavoritesUsbPreparedStage:
+        prepared = real_staging(
+            preflight,
+            paths,
+            backup,
+        )
+        device_link.unlink()
+        return prepared
+
+    monkeypatch.setattr(
+        write_usb,
+        "_create_verified_usb_host_staging",
+        stage_then_remove_device,
+    )
+
+    with pytest.raises(
+        write_usb.FavoritesUsbWriteExecutionError,
+        match="preactivation_failed",
+    ) as raised:
+        write_usb.execute_favorites_usb_write(
+            plan_favorites_write(
+                _snapshot(),
+                _snapshot(_CHANGED_CATALOG),
+            ),
+            mount_directory,
+            mountinfo,
+            sys_dev_block_directory=dev_block,
+            host_state_directory=host_root,
+        )
+
+    assert raised.value.report_path is not None
+    assert raised.value.report_path.name == "failure.json"
+    assert raised.value.report_path.is_file()
+    assert raised.value.recovery_status == "not_required"
+    assert (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+        == before
+    )
+
+
+
+def test_usb_failure_matrix_public_unsupported_filesystem(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    mountinfo.write_text(
+        mountinfo.read_text(
+            encoding="utf-8"
+        ).replace(
+            " - vfat ",
+            " - ext4 ",
+        ),
+        encoding="utf-8",
+    )
+    host_root = (
+        tmp_path
+        / "failure-matrix-unsupported-fs"
+        / "favorites-usb-writes"
+    )
+    before = (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+    )
+
+    with pytest.raises(
+        write_usb.FavoritesUsbWriteExecutionError,
+        match="activation_failed_before_mutation",
+    ) as raised:
+        write_usb.execute_favorites_usb_write(
+            plan_favorites_write(
+                _snapshot(),
+                _snapshot(_CHANGED_CATALOG),
+            ),
+            mount_directory,
+            mountinfo,
+            sys_dev_block_directory=dev_block,
+            host_state_directory=host_root,
+        )
+
+    assert raised.value.report_path is not None
+    assert raised.value.report_path.name == "failure.json"
+    assert raised.value.report_path.is_file()
+    assert raised.value.recovery_status == "not_required"
+    assert (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+        == before
+    )
