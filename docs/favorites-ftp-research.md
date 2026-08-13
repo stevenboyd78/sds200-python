@@ -91,13 +91,40 @@ without embedding passwords or arbitrary FTP server response text.
 
 ## Physical validation
 
-After synthetic and fake-transport coverage is clean, guarded SDS200 validation
-remains read-only. It should establish the observed scanner Favorites FTP
-directory and listing shape, verify repeatable exact snapshot retrieval with the
-read-only account, and verify an unavailable or invalid read secret fails
-without writable-credential fallback or Favorites mutation.
+Guarded physical SDS200 validation completed successfully after the automated
+suite was clean. The validation used read-side FTP operations only and did not
+mutate scanner storage.
 
-No write credential is required for Milestone 22.6 validation.
+Observed evidence:
+
+- the read-only FTP account authenticated successfully on the scanner;
+- the Favorites directory exposed by FTP is `/favorites_lists`, not the
+  mass-storage path `/BCDx36HP/favorites_lists`;
+- the FTP login directory exposed four immediate names but neither
+  `f_list.cfg` nor an immediate `favorites_lists` or `BCDx36HP` child;
+- `/favorites_lists` exposed exactly one `f_list.cfg` plus 14 immediate `.hpd`
+  documents, with no path-bearing or control-character names;
+- the production `FavoritesFtpStorageSource` completed its internal two-pass
+  exact snapshot verification against the physical scanner;
+- the validated snapshot contained 14 HPD documents and 1,392,933 total managed
+  bytes, with opaque SHA-256 identity
+  `8859af97c23498a7e73431520009af0a0f03e1a613a2734e1a2c7bec84182a50`;
+- projecting that exact snapshot through the existing storage layer produced 14
+  bindings with zero missing entries, zero ambiguous entries, and zero orphan
+  documents; and
+- a missing read-secret reference failed before FTP session construction, so no
+  writable-credential fallback path was exercised or available.
+
+During diagnostic work, the scanner accepted an initial read-only FTP login but
+a rapid second connection attempt was rejected. A single authenticated session
+successfully performed the bounded path probe, and the production source also
+uses one session for both verification passes. Treat this as observed physical
+behavior rather than a guaranteed scanner FTP concurrency contract.
+
+No write credential was required or used for Milestone 22.6 validation. Real
+scanner credential values are intentionally not recorded in repository
+documentation or fixtures; automated tests continue to use synthetic credential
+values.
 
 ## Deferred write boundary
 
