@@ -12597,3 +12597,348 @@ def test_usb_operation_report_write_failure_reconciliation_refuses_surviving_tem
                 rollback,
                 report,
             )
+
+
+
+def test_usb_recovery_bounded_artifact_observer_reports_absent_for_clean_target(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    plan = plan_favorites_write(
+        _snapshot(),
+        _snapshot(_CHANGED_CATALOG),
+    )
+    preflight = preflight_favorites_usb_write(
+        plan,
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state-bounded-observer-absent"
+        / "favorites-usb-writes"
+    )
+    before = favorites_tree_evidence(
+        favorites_directory
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = write_usb._create_verified_usb_host_backup(
+            preflight,
+            paths,
+        )
+
+        assert (
+            write_usb._observe_usb_recovery_bounded_artifact_present(
+                preflight,
+                paths,
+                backup,
+            )
+            is False
+        )
+
+    assert favorites_tree_evidence(
+        favorites_directory
+    ) == before
+
+
+def test_usb_recovery_bounded_artifact_observer_reports_stable_regular_temp(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    plan = plan_favorites_write(
+        _snapshot(),
+        _snapshot(_CHANGED_CATALOG),
+    )
+    preflight = preflight_favorites_usb_write(
+        plan,
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state-bounded-observer-present"
+        / "favorites-usb-writes"
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = write_usb._create_verified_usb_host_backup(
+            preflight,
+            paths,
+        )
+        temporary = write_usb._usb_media_temporary_path(
+            preflight,
+            paths,
+        )
+        content = b"operation-bounded temporary content"
+        temporary.write_bytes(
+            content
+        )
+
+        assert (
+            write_usb._observe_usb_recovery_bounded_artifact_present(
+                preflight,
+                paths,
+                backup,
+            )
+            is True
+        )
+        assert temporary.read_bytes() == content
+
+    assert (
+        favorites_directory
+        / temporary.name
+    ).read_bytes() == content
+
+
+def test_usb_recovery_bounded_artifact_observer_reports_absent_after_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        paths,
+        backup,
+        verified,
+        target,
+        temporary,
+        hpd,
+        lock,
+    ) = _usb_verified_recovery_cleanup_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+
+    try:
+        assert (
+            write_usb._observe_usb_recovery_bounded_artifact_present(
+                preflight,
+                paths,
+                backup,
+            )
+            is True
+        )
+
+        write_usb._cleanup_verified_usb_recovery_artifact(
+            preflight,
+            paths,
+            backup,
+            verified,
+        )
+
+        assert (
+            write_usb._observe_usb_recovery_bounded_artifact_present(
+                preflight,
+                paths,
+                backup,
+            )
+            is False
+        )
+    finally:
+        lock.__exit__(
+            None,
+            None,
+            None,
+        )
+
+    assert target.read_bytes() == hpd
+    assert not write_usb.os.path.lexists(
+        temporary
+    )
+
+
+def test_usb_recovery_bounded_artifact_observer_refuses_absent_to_present_race(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    plan = plan_favorites_write(
+        _snapshot(),
+        _snapshot(_CHANGED_CATALOG),
+    )
+    preflight = preflight_favorites_usb_write(
+        plan,
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state-bounded-observer-absence-race"
+        / "favorites-usb-writes"
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = write_usb._create_verified_usb_host_backup(
+            preflight,
+            paths,
+        )
+        temporary = write_usb._usb_media_temporary_path(
+            preflight,
+            paths,
+        )
+        real_match = (
+            write_usb._require_usb_recovery_target_matches
+        )
+        changed = False
+
+        def racing_match(
+            current_preflight: write_usb.FavoritesUsbWritePreflight,
+            current_paths: write_usb._FavoritesUsbHostOperationPaths,
+            current_backup: write_usb._FavoritesUsbVerifiedBackup,
+            expected: write_usb._FavoritesUsbRecoveryTargetEvidence,
+            *,
+            stage: str,
+        ) -> write_usb._FavoritesUsbRecoveryTargetEvidence:
+            nonlocal changed
+
+            observed = real_match(
+                current_preflight,
+                current_paths,
+                current_backup,
+                expected,
+                stage=stage,
+            )
+            if not changed:
+                changed = True
+                temporary.write_bytes(
+                    b"appeared during absence observation"
+                )
+            return observed
+
+        monkeypatch.setattr(
+            write_usb,
+            "_require_usb_recovery_target_matches",
+            racing_match,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="appeared while observing its absence",
+        ):
+            write_usb._observe_usb_recovery_bounded_artifact_present(
+                preflight,
+                paths,
+                backup,
+            )
+
+
+def test_usb_recovery_bounded_artifact_observer_refuses_changed_present_temp(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    plan = plan_favorites_write(
+        _snapshot(),
+        _snapshot(_CHANGED_CATALOG),
+    )
+    preflight = preflight_favorites_usb_write(
+        plan,
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state-bounded-observer-presence-race"
+        / "favorites-usb-writes"
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        backup = write_usb._create_verified_usb_host_backup(
+            preflight,
+            paths,
+        )
+        temporary = write_usb._usb_media_temporary_path(
+            preflight,
+            paths,
+        )
+        temporary.write_bytes(
+            b"initial"
+        )
+        real_match = (
+            write_usb._require_usb_recovery_target_matches
+        )
+        changed = False
+
+        def racing_match(
+            current_preflight: write_usb.FavoritesUsbWritePreflight,
+            current_paths: write_usb._FavoritesUsbHostOperationPaths,
+            current_backup: write_usb._FavoritesUsbVerifiedBackup,
+            expected: write_usb._FavoritesUsbRecoveryTargetEvidence,
+            *,
+            stage: str,
+        ) -> write_usb._FavoritesUsbRecoveryTargetEvidence:
+            nonlocal changed
+
+            observed = real_match(
+                current_preflight,
+                current_paths,
+                current_backup,
+                expected,
+                stage=stage,
+            )
+            if not changed:
+                changed = True
+                temporary.write_bytes(
+                    b"changed while present observation"
+                )
+            return observed
+
+        monkeypatch.setattr(
+            write_usb,
+            "_require_usb_recovery_target_matches",
+            racing_match,
+        )
+
+        with pytest.raises(
+            write_usb._FavoritesUsbWritePreparationError,
+            match="changed while observing its presence",
+        ):
+            write_usb._observe_usb_recovery_bounded_artifact_present(
+                preflight,
+                paths,
+                backup,
+            )

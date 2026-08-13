@@ -9675,6 +9675,149 @@ def _require_usb_recovery_target_matches(
     return current
 
 
+
+def _observe_usb_recovery_bounded_artifact_present(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    backup: _FavoritesUsbVerifiedBackup,
+) -> bool:
+    """Observe stable presence of the exact operation-bounded media temp path.
+
+    This is deliberately read-only and does not claim provenance for the
+    bytes occupying that path. It exists so a durable RECOVERY_INCOMPLETE
+    record can report the actual bounded-path state after recovery has partly
+    progressed, including cases where an earlier artifact was already cleaned.
+    """
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB bounded-artifact observation requires "
+            "FavoritesUsbWritePreflight."
+        )
+    if not isinstance(
+        backup,
+        _FavoritesUsbVerifiedBackup,
+    ):
+        raise TypeError(
+            "Favorites USB bounded-artifact observation requires "
+            "_FavoritesUsbVerifiedBackup."
+        )
+
+    expected = _require_usb_recovery_target_ready(
+        preflight,
+        paths,
+        backup,
+    )
+    temporary = expected.temporary_path
+
+    if not os.path.lexists(
+        temporary
+    ):
+        _require_usb_recovery_target_matches(
+            preflight,
+            paths,
+            backup,
+            expected,
+            stage="bounded-artifact absence observation",
+        )
+
+        if os.path.lexists(
+            temporary
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                temporary,
+                "Bounded USB recovery temporary path appeared while "
+                "observing its absence.",
+            )
+
+        return False
+
+    try:
+        initial = temporary.lstat()
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            temporary,
+            "Could not inspect bounded USB recovery temporary path: "
+            f"{error}",
+        ) from error
+
+    if stat.S_ISLNK(
+        initial.st_mode
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            temporary,
+            "Bounded USB recovery temporary path must not be a symbolic link.",
+        )
+    if not stat.S_ISREG(
+        initial.st_mode
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            temporary,
+            "Bounded USB recovery temporary path must be a regular file.",
+        )
+    if (
+        _usb_recovery_filesystem_device_number(
+            initial
+        )
+        != expected.mount.device_number
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            temporary,
+            "Bounded USB recovery temporary path changed device identity.",
+        )
+
+    initial_fingerprint = (
+        _usb_recovery_artifact_fingerprint(
+            initial
+        )
+    )
+
+    _require_usb_recovery_target_matches(
+        preflight,
+        paths,
+        backup,
+        expected,
+        stage="bounded-artifact presence observation",
+    )
+
+    try:
+        final = temporary.lstat()
+    except OSError as error:
+        raise _FavoritesUsbWritePreparationError(
+            temporary,
+            "Bounded USB recovery temporary path disappeared while "
+            f"observing its presence: {error}",
+        ) from error
+
+    if (
+        _usb_recovery_artifact_fingerprint(
+            final
+        )
+        != initial_fingerprint
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            temporary,
+            "Bounded USB recovery temporary path changed while observing "
+            "its presence.",
+        )
+
+    if (
+        _usb_recovery_filesystem_device_number(
+            final
+        )
+        != expected.mount.device_number
+    ):
+        raise _FavoritesUsbWritePreparationError(
+            temporary,
+            "Bounded USB recovery temporary path changed device identity "
+            "during observation.",
+        )
+
+    return True
+
+
 def _recover_usb_active_managed_state(
     preflight: FavoritesUsbWritePreflight,
     paths: _FavoritesUsbHostOperationPaths,
