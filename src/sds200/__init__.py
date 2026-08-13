@@ -557,6 +557,21 @@ from .profiles import (
     repair_profile,
 )
 from .radio import SDS200, SDSScanner
+from .radioreference import (
+    RADIOREFERENCE_DEFAULT_VERSION,
+    RADIOREFERENCE_PROVIDER,
+    RADIOREFERENCE_SERVICE_URL,
+    RADIOREFERENCE_WSDL_URL,
+    RadioReferenceConfiguration,
+    RadioReferenceCredential,
+    RadioReferenceError,
+    RadioReferenceErrorReason,
+    RadioReferenceSecretResolver,
+    RadioReferenceSession,
+    RadioReferenceSessionFactory,
+    RadioReferenceSoapStyle,
+    RadioReferenceSource,
+)
 from .recording_identity import RecordingIdentity, safe_recording_component
 from .recording_inventory import (
     RecordingAudioStatus,
@@ -1070,6 +1085,19 @@ __all__ = [
     "RadioHealth",
     "RadioState",
     "RadioStateSnapshot",
+    "RADIOREFERENCE_DEFAULT_VERSION",
+    "RADIOREFERENCE_PROVIDER",
+    "RADIOREFERENCE_SERVICE_URL",
+    "RADIOREFERENCE_WSDL_URL",
+    "RadioReferenceConfiguration",
+    "RadioReferenceCredential",
+    "RadioReferenceError",
+    "RadioReferenceErrorReason",
+    "RadioReferenceSecretResolver",
+    "RadioReferenceSession",
+    "RadioReferenceSessionFactory",
+    "RadioReferenceSoapStyle",
+    "RadioReferenceSource",
     "RECORDING_METADATA_SCHEMA",
     "RECORDING_METADATA_VERSION",
     "RECORDING_ORGANIZATION_COMPONENTS",

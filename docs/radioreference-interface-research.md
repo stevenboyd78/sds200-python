@@ -27,6 +27,61 @@ The provider documentation must be rechecked before a production adapter ships
 because authentication, approval, licensing, service versions, data shapes, and
 other service rules may change.
 
+## Current documented findings
+
+The provider documentation was reviewed again on 2026-08-13 before defining the
+first code boundary.
+
+The current support article, updated 2026-06-20, confirms that:
+
+- the database service is SOAP/XML and the published WSDL remains the normative
+  machine-readable interface;
+- approved radio/radio-programming applications may receive an application key;
+- every end user must authenticate with that user's own RadioReference account
+  and must satisfy the provider's premium-subscription requirement;
+- credentials must not be pooled or silently substituted between users;
+- the service covers the RadioReference database rather than Broadcastify
+  services; and
+- mirroring or substituting for the public RadioReference website is outside the
+  standard radio-programming use case.
+
+The human-readable SOAP2 documentation identifies production version 18 as the
+current `latest` version. It documents an integer-or-`latest` version selector,
+`rpc` and `doc` SOAP styles, and an `authInfo` structure containing application
+key, username, password, version, and style.
+
+The same documentation explicitly names or references programming-relevant
+operations including:
+
+- `getCountryInfo`, `getCountyInfo`, and `getAgencyInfo` for geographic,
+  agency, and subcategory relationships;
+- `getCountyFreqsByTag` and `getAgencyFreqsByTag` for tagged conventional
+  frequency data;
+- `searchCountyFreq`, `searchMetroFreq`, and `searchStateFreq` for
+  frequency-oriented searches;
+- `getTrsDetails` for trunked-system details; and
+- `getTrsSites` for trunked sites and site-frequency information.
+
+Version notes also document provider data such as frequency/talkgroup encryption,
+DMR color code/talkgroup/slot values, NXDN channel IDs and RAN, site RFSS/NAC,
+location rectangles, and the version-18 trunked-site `tdma_cc` attribute. These
+fields are provider evidence only; their presence does not establish an SDS
+Favorites mapping.
+
+The accessible human-readable documentation does not fully enumerate every
+current WSDL operation signature or establish a generic stable-record-ID,
+revision-token, change-feed, or deletion-feed contract. That absence must not be
+treated as proof that such fields or operations do not exist. A production
+adapter remains blocked on direct inspection of the then-current WSDL and
+sanitized fixtures for every operation actually used.
+
+The current API guidance distinguishes approved radio-programming use from
+redistribution or broader commercial data products, while the general site terms
+reserve additional licensing rights for non-personal/commercial reuse. Approval
+for an application key therefore must not be treated as blanket redistribution
+permission. Provider data must not be copied into repository fixtures or exposed
+as a mirror by this project.
+
 ## Intended product use
 
 The project use case is radio/scanner programming assistance: obtain documented
