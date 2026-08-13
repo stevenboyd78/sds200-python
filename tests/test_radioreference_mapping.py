@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import FrozenInstanceError, replace
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import Decimal, localcontext
 
 import pytest
 
@@ -172,6 +172,25 @@ def test_frequency_observation_rejects_fractional_hz_without_rounding() -> None:
             source=_source(),
             observed_at=datetime(2026, 8, 13, tzinfo=UTC),
         )
+
+
+def test_frequency_observation_fractional_hz_rejection_is_context_independent() -> None:
+    frequency = replace(
+        _frequency(),
+        output_frequency=Decimal("155.1000001"),
+    )
+
+    with localcontext() as context:
+        context.prec = 8
+        with pytest.raises(
+            ValueError,
+            match="cannot be represented as whole Hz without loss",
+        ):
+            radioreference_frequency_observation(
+                frequency,
+                source=_source(),
+                observed_at=datetime(2026, 8, 13, tzinfo=UTC),
+            )
 
 
 def test_frequency_observation_does_not_treat_last_updated_as_revision() -> None:

@@ -19,17 +19,17 @@ from .radioreference_records import (
     RadioReferenceTalkgroup,
 )
 
-_MHZ_TO_HZ = Decimal(1_000_000)
-
 
 def _whole_hz_text(frequency_mhz: Decimal) -> str:
-    frequency_hz = frequency_mhz * _MHZ_TO_HZ
-    if frequency_hz != frequency_hz.to_integral_value():
+    numerator, denominator = frequency_mhz.as_integer_ratio()
+    scaled_numerator = numerator * 1_000_000
+    frequency_hz, remainder = divmod(scaled_numerator, denominator)
+    if remainder:
         raise ValueError(
             "RadioReference frequency cannot be represented as whole Hz "
             "without loss."
         )
-    return str(int(frequency_hz))
+    return str(frequency_hz)
 
 
 def _require_radioreference_source(
