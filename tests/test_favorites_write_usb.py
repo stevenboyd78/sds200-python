@@ -5725,11 +5725,15 @@ def test_usb_verified_recovery_artifact_cleanup_refuses_replaced_artifact_inode(
         monkeypatch,
     )
     old_inode = temporary.stat().st_ino
-    write_usb.os.unlink(
-        temporary
+    replacement = temporary.with_name(
+        f"{temporary.name}.replacement"
     )
-    temporary.write_bytes(
+    replacement.write_bytes(
         hpd
+    )
+    write_usb.os.replace(
+        replacement,
+        temporary,
     )
     new_inode = temporary.stat().st_ino
 
