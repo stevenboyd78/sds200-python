@@ -1,11 +1,11 @@
 # RadioReference documented-interface research
 
 This document records the provider-specific research and security boundary begun
-in Milestone 23.2, extended by the WSDL-contract work in Milestone 23.3 and the
-offline SOAP response decoder in Milestone 23.4, and now used to constrain the
-offline SOAP request serializer work in Milestone 23.5. It remains intentionally
-separate from the renderer-neutral external Favorites model
-introduced in Milestone 23.1.
+in Milestone 23.2, extended by the WSDL-contract work in Milestone 23.3, the
+offline SOAP response decoder in Milestone 23.4, the offline SOAP request
+serializer in Milestone 23.5, and the offline provider-to-observation mapping
+foundation in Milestone 23.6. It remains intentionally separate from the
+renderer-neutral external Favorites model introduced in Milestone 23.1.
 
 The project may use RadioReference only through documented and approved
 interfaces. This document does not authorize scraping, undocumented/private
@@ -301,6 +301,59 @@ authentication, provider-to-SDS mapping, normalized external-observation
 generation, update previews, synchronization, MyRR integration, and Favorites
 mutation remain separate follow-on work.
 
+## Milestone 23.6 offline observation mapping boundary
+
+Milestone 23.6 begins the provider-specific normalization layer without opening a
+network session or mutating Favorites data. The mapper consumes reviewed immutable
+RadioReference provider DTOs and produces immutable
+`FavoritesExternalRecordObservation` values for the source-neutral preview
+machinery.
+
+The caller supplies `FavoritesExternalSourceIdentity` and a timezone-aware
+observation time. The source provider must be exactly `radioreference`; the
+dataset remains opaque caller-owned identity and is not invented from provider
+records. Provider timestamps such as `lastUpdated` and `tgDate` remain provider
+evidence only and are not promoted to generic revision tokens. Normalized
+observation evidence therefore uses the caller's observation time with
+`revision=None`.
+
+The reviewed conventional-frequency slice maps only fields supported by both the
+provider schema and observed HPD semantics:
+
+- provider `frequency_id` becomes the namespaced external record ID
+  `frequency-<id>`;
+- provider `alphaTag` becomes normalized field `name`, preserving exact text,
+  including empty or padded strings, without falling back to description; and
+- provider output frequency, represented by an exact finite `Decimal` in MHz,
+  becomes normalized field `frequency` as the whole-Hz decimal string used by
+  observed HPD conventional channel records.
+
+The MHz-to-Hz conversion must be exact. Values requiring fractional-Hz rounding
+are rejected rather than silently rounded or truncated.
+
+The reviewed talkgroup slice is narrower because observed TGID records have both
+17- and 18-field shapes and the extended form contains an additional position
+whose semantics remain intentionally unmodeled. The current mapping therefore
+uses only:
+
+- provider `talkgroup_id` as namespaced external record ID `talkgroup-<id>`; and
+- provider `alphaTag` as normalized field `name`, with the same exact-text and
+  no-fallback semantics as conventional frequencies.
+
+The provider talkgroup decimal value is deliberately not normalized yet. The
+project has not established a stable source-neutral field contract that is safe
+to apply across both observed TGID shapes. Mode, tone, service/tag translation,
+encryption, input frequency, hierarchy placement, deletion inference, search
+frequency results without provider record identity, trunk-system records without
+a single reviewed system ID, additional trunked records, and provider omission
+semantics likewise remain unmapped.
+
+This mapping work remains dependency-free and offline. Automated tests use
+synthetic provider DTOs and existing local Favorites fixtures only. HTTP/TLS
+transport, live authenticated calls, production endpoint validation, automatic
+synchronization, MyRR integration, operator merge acceptance, and Favorites
+storage mutation remain separate follow-on work.
+
 ## Intended product use
 
 The project use case is radio/scanner programming assistance: obtain documented
@@ -431,10 +484,11 @@ private endpoints.
 
 ## Deferred behavior
 
-Milestone 23.2 does not include:
+The current RadioReference foundation still does not include:
 
 - live production RadioReference synchronization;
-- provider-to-SDS field/template mapping;
+- provider-to-SDS template or hierarchy construction beyond the reviewed
+  normalized frequency/name observations documented for Milestone 23.6;
 - implicit scanner record creation from provider objects;
 - operator merge/acceptance workflows;
 - renderer-specific CLI/TUI/web/Home Assistant import UI;
