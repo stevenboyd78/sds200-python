@@ -167,6 +167,55 @@ Milestone 23.3 must inspect the exact request message parts, return/container
 types, binding SOAP actions, and nested schema relationships for the operation
 subset it intends to model before accepting parser or DTO implementation.
 
+## Milestone 23.3 operation and provider-schema audit evidence
+
+A second read-only audit on 2026-08-13 re-fetched the exact reviewed WSDL
+fingerprint and extracted the operation contracts and reachable provider schema
+used by the programming subset.
+
+Every selected programming operation contained an `authInfo` request part. The
+binding uses RPC style with SOAP encoded bodies and the SOAP encoding URI
+`http://schemas.xmlsoap.org/soap/encoding/`. The selected operations expose SOAP
+actions in the form
+`http://api.radioreference.com/soap2#<operation>`.
+
+The selected response graph reaches 54 provider complex types and 24 SOAP array
+containers. Important exact container relationships include:
+
+- `Freqs -> freq[]`;
+- `searchFreqResults -> searchFreqResult[]`;
+- `TalkgroupCats -> TalkgroupCat[]`;
+- `Talkgroups -> Talkgroup[]`;
+- `TrsSites -> TrsSite[]`;
+- `TrsSiteFreqs -> TrsSiteFreq[]`;
+- `TrsSiteLicenses -> TrsSiteLicense[]`;
+- `TrsSysid -> trsSysidDef[]`;
+- `TrsBandplan -> trsBandplanDef[]`;
+- `TrsList -> TrsListDef[]`;
+- `Cats -> cat[]` and `SubCats -> subcat[]`; and
+- geographic/support arrays for states, counties, agencies, tags, modes,
+  rectangles, and provider lookup records.
+
+No explicit `minOccurs`, `maxOccurs`, `nillable`, `default`, or `fixed` metadata
+was present on the reachable provider fields inspected by the audit. That is
+schema evidence only; it must not be used to invent provider-side optionality,
+nullability, or live response guarantees.
+
+The operation audit also performed credential-free HEAD requests against both
+`https://api.radioreference.com/soap2/index.php` and the WSDL-advertised HTTP
+address. Both returned HTTP 200 without redirect during the audit. This proves
+only that an HTTPS endpoint currently answers a credential-free request; it does
+not establish an approved authenticated invocation contract. A production client
+must remain HTTPS-only and blocked on explicit approved/documented live transport
+validation.
+
+Milestone 23.3 may therefore define immutable provider-record DTOs and static
+reviewed operation metadata from this schema without adding SOAP parsing or live
+network behavior. Those DTOs must keep provider IDs, timestamps, strings,
+decimals, arrays, and nested records separate from
+`FavoritesExternalRecordObservation`, and must not infer SDS mappings, deletion
+semantics, generic revisions, or provider identifier lifetime guarantees.
+
 ## Intended product use
 
 The project use case is radio/scanner programming assistance: obtain documented
