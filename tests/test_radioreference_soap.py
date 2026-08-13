@@ -316,6 +316,133 @@ def test_all_reviewed_array_operations_accept_empty_schema_arrays(
     assert decoded == ()
 
 
+@pytest.mark.parametrize(
+    ("operation", "item_type", "container_type"),
+    (
+        (
+            RadioReferenceWsdlOperation.GET_SUBCATEGORY_FREQUENCIES,
+            "freq",
+            "Freqs",
+        ),
+        (
+            RadioReferenceWsdlOperation.GET_COUNTY_FREQUENCIES_BY_TAG,
+            "freq",
+            "Freqs",
+        ),
+        (
+            RadioReferenceWsdlOperation.GET_AGENCY_FREQUENCIES_BY_TAG,
+            "freq",
+            "Freqs",
+        ),
+        (
+            RadioReferenceWsdlOperation.SEARCH_COUNTY_FREQUENCY,
+            "searchFreqResult",
+            "searchFreqResults",
+        ),
+        (
+            RadioReferenceWsdlOperation.SEARCH_STATE_FREQUENCY,
+            "searchFreqResult",
+            "searchFreqResults",
+        ),
+        (
+            RadioReferenceWsdlOperation.SEARCH_METRO_FREQUENCY,
+            "searchFreqResult",
+            "searchFreqResults",
+        ),
+        (
+            RadioReferenceWsdlOperation.GET_TRUNKED_SYSTEM_SITES,
+            "TrsSite",
+            "TrsSites",
+        ),
+        (
+            RadioReferenceWsdlOperation.GET_TRUNKED_TALKGROUP_CATEGORIES,
+            "TalkgroupCat",
+            "TalkgroupCats",
+        ),
+        (
+            RadioReferenceWsdlOperation.GET_TRUNKED_TALKGROUPS,
+            "Talkgroup",
+            "Talkgroups",
+        ),
+        (
+            RadioReferenceWsdlOperation.GET_TAG,
+            "tag",
+            "tags",
+        ),
+        (
+            RadioReferenceWsdlOperation.GET_MODE,
+            "mode",
+            "modes",
+        ),
+        (
+            RadioReferenceWsdlOperation.GET_TRUNKED_TYPE,
+            "trsTypeDef",
+            "TrsType",
+        ),
+        (
+            RadioReferenceWsdlOperation.GET_TRUNKED_FLAVOR,
+            "trsFlavorDef",
+            "TrsFlavor",
+        ),
+        (
+            RadioReferenceWsdlOperation.GET_TRUNKED_VOICE,
+            "trsVoiceDef",
+            "TrsVoice",
+        ),
+    ),
+)
+def test_all_reviewed_array_operations_accept_named_contract_containers(
+    operation: RadioReferenceWsdlOperation,
+    item_type: str,
+    container_type: str,
+) -> None:
+    response = _soap(
+        operation,
+        "",
+        return_attributes=(
+            f' xsi:type="tns:{container_type}" '
+            f'enc:arrayType="tns:{item_type}[0]"'
+        ),
+    )
+
+    decoded = RadioReferenceSoapDecoder().decode(operation, response)
+
+    assert decoded == ()
+
+
+def test_named_contract_container_type_is_limited_to_top_level_result() -> None:
+    response = _soap(
+        RadioReferenceWsdlOperation.GET_TRUNKED_TALKGROUPS,
+        _item(
+            "<tgId>20</tgId>"
+            "<tgDec>12345</tgDec>"
+            "<tgSubfleet></tgSubfleet>"
+            "<tgLtr>0</tgLtr>"
+            "<tgSlot></tgSlot>"
+            "<tgDescr>Operations</tgDescr>"
+            "<tgAlpha>Ops</tgAlpha>"
+            "<tgMode>D</tgMode>"
+            "<enc>0</enc>"
+            '<tags xsi:type="tns:Talkgroups" '
+            'enc:arrayType="tns:tag[0]" />'
+            "<tgCid>30</tgCid>"
+            "<tgSort>1</tgSort>"
+            "<tgDate>2026-08-13T09:21:04Z</tgDate>",
+            type_name="Talkgroup",
+        ),
+        return_attributes=(
+            ' xsi:type="tns:Talkgroups" '
+            'enc:arrayType="tns:Talkgroup[1]"'
+        ),
+    )
+
+    with pytest.raises(RadioReferenceError):
+        RadioReferenceSoapDecoder().decode(
+            RadioReferenceWsdlOperation.GET_TRUNKED_TALKGROUPS,
+            response,
+        )
+
+
 def test_decode_tag_array_preserves_provider_string_evidence() -> None:
     response = _array_response(
         RadioReferenceWsdlOperation.GET_TAG,

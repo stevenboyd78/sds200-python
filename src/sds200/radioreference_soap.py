@@ -122,6 +122,8 @@ class _Context:
     references: dict[str, ET.Element]
     namespaces: dict[int, dict[str, str]]
     max_reference_depth: int
+    top_level_element_id: int | None = None
+    top_level_response_type: str | None = None
 
 
 def _local_name(name: str) -> str:
@@ -515,10 +517,21 @@ def _array_items(
             resolved,
             context,
         )
-        if declared_qname not in {
+        allowed_declared_types = {
             (RADIOREFERENCE_SOAP_ENCODING_NAMESPACE, "Array"),
             (RADIOREFERENCE_SOAP_NAMESPACE, expected_item_type),
-        }:
+        }
+        if (
+            id(element) == context.top_level_element_id
+            and context.top_level_response_type is not None
+        ):
+            allowed_declared_types.add(
+                (
+                    RADIOREFERENCE_SOAP_NAMESPACE,
+                    context.top_level_response_type,
+                )
+            )
+        if declared_qname not in allowed_declared_types:
             raise _DecodeFailure
 
     declared_count: int | None = None
@@ -1943,10 +1956,20 @@ class RadioReferenceSoapDecoder:
             )
             _validate_reference_graph(root, context)
             return_node = _soap_return(root, operation, context)
+            contract = radioreference_operation_contract(operation)
+            result_context = _Context(
+                references=references,
+                namespaces=namespaces,
+                max_reference_depth=self.max_reference_depth,
+                top_level_element_id=id(return_node),
+                top_level_response_type=_local_name(
+                    contract.response_type
+                ),
+            )
             return _decode_result(
                 operation,
                 return_node,
-                context,
+                result_context,
             )
         except (
             _DecodeFailure,
