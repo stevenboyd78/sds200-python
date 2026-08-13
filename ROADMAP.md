@@ -11,49 +11,38 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 23.5 — RadioReference offline SOAP request serializer foundation
+### Milestone 23.6 — RadioReference offline observation mapping foundation
 
-- Begin from the fully merged Milestone 23.4 foundation at
-  `a3c267aba92004f47d95579a3f0b6cdcc7c720be`.
-- Treat Milestone 23.4 as complete: the dependency-free bounded SOAP 1.1
-  RPC/encoded response decoder now validates the reviewed programming-operation
-  response shapes, XML namespaces and QNames, scalar values, SOAP-ENC arrays,
-  named array containers, and bounded local `id` / `href` graphs while keeping
-  failures redacted and tests fully offline.
-- Promote the exact reviewed `authInfo` schema into immutable WSDL contract
-  metadata. The audited field order is `username`, `password`, `appKey`,
-  `version`, and `style`, and every field is `xsd:string`.
-- Add a dependency-free offline SOAP 1.1 RPC/encoded request serializer for the
-  existing 19 reviewed programming operations. Request construction must derive
-  operation names, parameter order/types, SOAP actions, target namespace, and
-  encoding style from the reviewed contract rather than duplicate an unrelated
-  operation table.
-- Accept only the reviewed request-side scalar types: signed 32-bit `xsd:int`,
-  finite `Decimal` values for `xsd:decimal`, exact Python strings for
-  `xsd:string`, and the reviewed `tns:authInfo` structure. Reject missing,
-  unexpected, duplicated-by-construction, incorrectly typed, out-of-range, or
-  non-finite values rather than coercing them.
-- Keep request serialization deterministic and standards-compatible with the
-  reviewed RPC/encoded WSDL. Supporting an offline serializer does not claim
-  successful live-provider invocation or establish an approved production
-  endpoint.
-- Restrict this serializer foundation to the reviewed RPC binding. Do not invent
-  a document-style request representation merely because provider configuration
-  can describe the human-documented `doc` style.
-- Treat serialized request bytes as ephemeral secret-bearing material because
-  `authInfo` necessarily contains the resolved application key and end-user
-  password. Do not expose request XML, credentials, secret values, or arbitrary
-  serializer details through `repr`, logs, diagnostics, exception strings,
-  fixtures, or documentation.
-- Use only synthetic credentials and hand-authored/schema-derived request values
-  in automated tests. Normal tests must remain offline and require no internet
-  access, RadioReference account, application key, premium subscription, live
-  provider data, or physical scanner.
-- Keep HTTP/TLS transport, endpoint/redirect validation, live authenticated
-  calls, provider-to-SDS mapping, `FavoritesExternalRecordObservation`
-  generation, import/update previews, operator merge UI, background
-  synchronization, MyRR work, and Favorites storage mutation outside Milestone
-  23.5.
+- Begin from the fully merged Milestone 23.5 foundation at
+  `d6a19f53af6946b85f34473e788fc63d8feb4713`.
+- Treat Milestone 23.5 as complete: the reviewed `authInfo` contract and
+  dependency-free SOAP 1.1 RPC/encoded request serializer now cover all 19
+  reviewed programming operations with exact request ordering and scalar
+  validation while keeping secret-bearing request bytes ephemeral.
+- Add a dependency-free offline provider-to-`FavoritesExternalRecordObservation`
+  mapping layer without opening a provider session or mutating Favorites data.
+- Start with `RadioReferenceFrequency` conventional records because they carry
+  an explicit provider `frequency_id`. Do not invent identities for provider
+  shapes that lack a reviewed record identifier.
+- Keep `FavoritesExternalSourceIdentity` caller-supplied. Require its provider
+  to be `radioreference`, preserve its opaque dataset value, and namespace the
+  provider frequency identifier as the external record ID.
+- Map the reviewed first conventional slice only: provider `alphaTag` to the
+  normalized `name` field and provider output frequency from exact decimal MHz
+  to the whole-Hz string representation used by HPD conventional records.
+  Reject values that cannot be represented as whole Hz without loss rather than
+  rounding them.
+- Preserve exact provider alpha-tag text, including empty or padded values.
+  Do not fall back to description or infer naming precedence.
+- Keep provider `lastUpdated` as provider evidence only. Use the caller's
+  timezone-aware observation time and set normalized `revision` to `None`.
+- Keep tone, mode, service/tag translation, encryption, input frequency,
+  hierarchy placement, deletion inference, search-result identity, trunked
+  mapping, merge acceptance, HTTP/TLS transport, live provider access, MyRR,
+  background synchronization, and Favorites storage mutation outside this first
+  slice.
+- Use only synthetic provider DTOs and local fixtures in automated tests.
+
 
 ## Deferred hardware validation
 
@@ -277,6 +266,11 @@ begins.
   QName validation, schema-faithful scalar decoding, SOAP-ENC arrays and named
   array containers, bounded local reference graphs, stable redacted failures,
   and fully offline regression coverage without live provider access.
+- Milestone 23.5 completed the offline SOAP request serializer foundation: exact reviewed
+  `authInfo` metadata, dependency-free deterministic SOAP 1.1 RPC/encoded request
+  serialization for all 19 reviewed programming operations, exact request-side scalar
+  validation, ephemeral secret-bearing request bytes, and fully offline coverage without
+  HTTP/TLS transport or live provider access.
 - Add RadioReference-assisted import with update previews.
 - Preserve provenance and field ownership for externally sourced data.
 - Support merge decisions and detaching local records from an external source.

@@ -572,6 +572,9 @@ from .radioreference import (
     RadioReferenceSoapStyle,
     RadioReferenceSource,
 )
+from .radioreference_mapping import (
+    radioreference_frequency_observation,
+)
 from .radioreference_records import (
     RADIOREFERENCE_AUTH_INFO_FIELDS,
     RADIOREFERENCE_AUTH_INFO_TYPE,
@@ -1155,6 +1158,7 @@ __all__ = [
     "RadioReferenceSessionFactory",
     "RadioReferenceSoapStyle",
     "RadioReferenceSource",
+    "radioreference_frequency_observation",
     "RADIOREFERENCE_PROGRAMMING_OPERATION_CONTRACTS",
     "RADIOREFERENCE_SOAP_ENCODING_STYLE",
     "RADIOREFERENCE_SOAP_NAMESPACE",
