@@ -623,6 +623,10 @@ from .radioreference_soap import (
     RadioReferenceSoapDecoder,
     RadioReferenceSoapResult,
 )
+from .radioreference_soap_request import (
+    RADIOREFERENCE_SOAP_REQUEST_DEFAULT_MAX_DOCUMENT_BYTES,
+    RadioReferenceSoapRequestSerializer,
+)
 from .recording_identity import RecordingIdentity, safe_recording_component
 from .recording_inventory import (
     RecordingAudioStatus,
@@ -1196,6 +1200,8 @@ __all__ = [
     "RADIOREFERENCE_XML_SCHEMA_INSTANCE_NAMESPACE",
     "RadioReferenceSoapDecoder",
     "RadioReferenceSoapResult",
+    "RADIOREFERENCE_SOAP_REQUEST_DEFAULT_MAX_DOCUMENT_BYTES",
+    "RadioReferenceSoapRequestSerializer",
     "RECORDING_METADATA_SCHEMA",
     "RECORDING_METADATA_VERSION",
     "RECORDING_ORGANIZATION_COMPONENTS",
