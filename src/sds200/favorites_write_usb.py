@@ -11592,6 +11592,269 @@ def _execute_usb_write_workflow(
         )
 
 
+class FavoritesUsbWriteExecutionStatus(StrEnum):
+    # Outcome for one public USB Favorites write execution.
+    NOOP = "noop"
+    COMPLETED = "completed"
+
+
+class FavoritesUsbWriteExecutionError(RuntimeError):
+    # Report a failed verified USB Favorites write execution.
+    def __init__(
+        self,
+        message: str,
+        *,
+        operation_id: str | None,
+        report_path: Path | None,
+        recovery_status: str | None,
+    ) -> None:
+        if not isinstance(
+            message,
+            str,
+        ):
+            raise TypeError(
+                "Favorites USB execution error message must be a string."
+            )
+        if not message:
+            raise ValueError(
+                "Favorites USB execution error message must not be empty."
+            )
+        if operation_id is not None:
+            _validate_unmanaged_sha256(
+                operation_id,
+                label="Favorites USB execution operation ID",
+            )
+        if (
+            report_path is not None
+            and not isinstance(
+                report_path,
+                Path,
+            )
+        ):
+            raise TypeError(
+                "Favorites USB execution report path must be pathlib.Path or None."
+            )
+        if (
+            report_path is not None
+            and not report_path.is_absolute()
+        ):
+            raise ValueError(
+                "Favorites USB execution report path must be absolute."
+            )
+        if (
+            recovery_status is not None
+            and not isinstance(
+                recovery_status,
+                str,
+            )
+        ):
+            raise TypeError(
+                "Favorites USB execution recovery status must be str or None."
+            )
+        if recovery_status == "":
+            raise ValueError(
+                "Favorites USB execution recovery status must not be empty."
+            )
+
+        self.operation_id = operation_id
+        self.report_path = report_path
+        self.recovery_status = recovery_status
+        super().__init__(
+            message
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class FavoritesUsbWriteExecutionResult:
+    # Public immutable result for one completed USB Favorites write request.
+    status: FavoritesUsbWriteExecutionStatus
+    target_directory: Path
+    operation_id: str | None = None
+    backup_directory: Path | None = None
+    staging_directory: Path | None = None
+    rollback_manifest_path: Path | None = None
+    operation_report_path: Path | None = None
+
+    def __post_init__(
+        self,
+    ) -> None:
+        if not isinstance(
+            self.status,
+            FavoritesUsbWriteExecutionStatus,
+        ):
+            raise TypeError(
+                "Favorites USB execution status must be "
+                "FavoritesUsbWriteExecutionStatus."
+            )
+        if not isinstance(
+            self.target_directory,
+            Path,
+        ):
+            raise TypeError(
+                "Favorites USB execution target must be pathlib.Path."
+            )
+        if not self.target_directory.is_absolute():
+            raise ValueError(
+                "Favorites USB execution target must be absolute."
+            )
+
+        artifact_paths = (
+            self.backup_directory,
+            self.staging_directory,
+            self.rollback_manifest_path,
+            self.operation_report_path,
+        )
+
+        for path in artifact_paths:
+            if (
+                path is not None
+                and not isinstance(
+                    path,
+                    Path,
+                )
+            ):
+                raise TypeError(
+                    "Favorites USB execution artifact paths must be "
+                    "pathlib.Path or None."
+                )
+            if (
+                path is not None
+                and not path.is_absolute()
+            ):
+                raise ValueError(
+                    "Favorites USB execution artifact paths must be absolute."
+                )
+
+        if self.status is FavoritesUsbWriteExecutionStatus.NOOP:
+            if (
+                self.operation_id is not None
+                or any(
+                    path is not None
+                    for path in artifact_paths
+                )
+            ):
+                raise ValueError(
+                    "No-op Favorites USB execution must retain no operation "
+                    "or host artifact paths."
+                )
+            return
+
+        if self.operation_id is None:
+            raise ValueError(
+                "Completed Favorites USB execution requires an operation ID."
+            )
+        _validate_unmanaged_sha256(
+            self.operation_id,
+            label="Favorites USB execution operation ID",
+        )
+
+        if any(
+            path is None
+            for path in artifact_paths
+        ):
+            raise ValueError(
+                "Completed Favorites USB execution requires all durable "
+                "host artifact paths."
+            )
+
+
+def execute_favorites_usb_write(
+    plan: FavoritesWritePlan,
+    path: Path,
+    mountinfo_path: Path = DEFAULT_LINUX_MOUNTINFO_PATH,
+    *,
+    sys_dev_block_directory: Path = DEFAULT_LINUX_SYS_DEV_BLOCK_DIRECTORY,
+    host_state_directory: Path,
+) -> FavoritesUsbWriteExecutionResult:
+    # Execute one exact verified write against qualified mounted USB storage.
+    if not isinstance(
+        host_state_directory,
+        Path,
+    ):
+        raise TypeError(
+            "Favorites USB execution host-state directory must be pathlib.Path."
+        )
+    if not host_state_directory.is_absolute():
+        raise ValueError(
+            "Favorites USB execution host-state directory must be absolute."
+        )
+
+    preflight = preflight_favorites_usb_write(
+        plan,
+        path,
+        mountinfo_path,
+        sys_dev_block_directory=sys_dev_block_directory,
+    )
+
+    if preflight.is_noop:
+        return FavoritesUsbWriteExecutionResult(
+            status=FavoritesUsbWriteExecutionStatus.NOOP,
+            target_directory=(
+                preflight.qualification.favorites_directory
+            ),
+        )
+
+    try:
+        report = _execute_usb_write_workflow(
+            preflight,
+            host_state_directory,
+        )
+    except _FavoritesUsbWritePreparationError as error:
+        raise FavoritesUsbWriteExecutionError(
+            (
+                "Verified Favorites USB execution could not complete its "
+                "durable workflow."
+            ),
+            operation_id=_usb_operation_id(
+                preflight
+            ),
+            report_path=None,
+            recovery_status=None,
+        ) from error
+
+    paths = _usb_host_operation_paths(
+        preflight,
+        host_state_directory,
+    )
+
+    if not report.is_success:
+        failure_code = (
+            "unknown"
+            if report.failure_code is None
+            else report.failure_code.value
+        )
+        raise FavoritesUsbWriteExecutionError(
+            (
+                "Verified Favorites USB execution failed with durable "
+                f"failure code {failure_code!r}."
+            ),
+            operation_id=(
+                report.rollback_manifest.operation_id
+            ),
+            report_path=(
+                _usb_operation_report_destination(
+                    paths,
+                    report,
+                )
+            ),
+            recovery_status=(
+                report.recovery_outcome.value
+            ),
+        )
+
+    rollback = report.rollback_manifest
+
+    return FavoritesUsbWriteExecutionResult(
+        status=FavoritesUsbWriteExecutionStatus.COMPLETED,
+        target_directory=rollback.favorites_directory,
+        operation_id=rollback.operation_id,
+        backup_directory=rollback.backup_directory,
+        staging_directory=rollback.staging_directory,
+        rollback_manifest_path=paths.rollback_manifest_path,
+        operation_report_path=paths.operation_report_path,
+    )
+
+
 def _replace_usb_active_managed_file(
     preflight: FavoritesUsbWritePreflight,
     paths: _FavoritesUsbHostOperationPaths,
@@ -12037,6 +12300,10 @@ def _delete_usb_active_managed_hpd(
     assert mutation_started
 
 __all__ = [
+    "execute_favorites_usb_write",
+    "FavoritesUsbWriteExecutionStatus",
+    "FavoritesUsbWriteExecutionResult",
+    "FavoritesUsbWriteExecutionError",
     "FavoritesUsbWritePreflight",
     "FavoritesUsbWritePreflightError",
     "FavoritesUsbWritePreflightReason",

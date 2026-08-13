@@ -14087,3 +14087,325 @@ def test_usb_durable_workflow_retries_completed_current(
         )
         == intended
     )
+
+
+def test_usb_public_execution_status_values_are_stable() -> None:
+    assert {
+        status.value
+        for status in write_usb.FavoritesUsbWriteExecutionStatus
+    } == {
+        "noop",
+        "completed",
+    }
+
+
+def test_usb_public_executor_noop_creates_no_host_operation(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    host_root = (
+        tmp_path
+        / "public-noop-host"
+        / "favorites-usb-writes"
+    )
+    baseline = _snapshot()
+    plan = plan_favorites_write(
+        baseline,
+        baseline,
+    )
+
+    result = write_usb.execute_favorites_usb_write(
+        plan,
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+        host_state_directory=host_root,
+    )
+
+    assert result.status is (
+        write_usb.FavoritesUsbWriteExecutionStatus.NOOP
+    )
+    assert result.target_directory == favorites_directory
+    assert result.operation_id is None
+    assert result.backup_directory is None
+    assert result.staging_directory is None
+    assert result.rollback_manifest_path is None
+    assert result.operation_report_path is None
+    assert not host_root.exists()
+    assert (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+        == baseline
+    )
+
+
+def test_usb_public_executor_completes_verified_changed_plan(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    host_root = (
+        tmp_path
+        / "public-completed-host"
+        / "favorites-usb-writes"
+    )
+    baseline = _snapshot()
+    intended = _snapshot(
+        _CHANGED_CATALOG
+    )
+    plan = plan_favorites_write(
+        baseline,
+        intended,
+    )
+
+    result = write_usb.execute_favorites_usb_write(
+        plan,
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+        host_state_directory=host_root,
+    )
+
+    assert result.status is (
+        write_usb.FavoritesUsbWriteExecutionStatus.COMPLETED
+    )
+    assert result.target_directory == favorites_directory
+    assert result.operation_id is not None
+    assert result.backup_directory is not None
+    assert result.backup_directory.is_dir()
+    assert result.staging_directory is not None
+    assert result.staging_directory.is_dir()
+    assert result.rollback_manifest_path is not None
+    assert result.rollback_manifest_path.is_file()
+    assert result.operation_report_path is not None
+    assert result.operation_report_path.is_file()
+    assert (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+        == intended
+    )
+
+
+def test_usb_public_executor_surfaces_durable_failure_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    host_root = (
+        tmp_path
+        / "public-failure-host"
+        / "favorites-usb-writes"
+    )
+    baseline = _snapshot()
+    plan = plan_favorites_write(
+        baseline,
+        _snapshot(
+            _CHANGED_CATALOG
+        ),
+    )
+
+    def failing_preactivation(
+        current_preflight: write_usb.FavoritesUsbWritePreflight,
+        current_paths: write_usb._FavoritesUsbHostOperationPaths,
+        current_backup: write_usb._FavoritesUsbVerifiedBackup,
+        current_stage: write_usb._FavoritesUsbPreparedStage,
+    ) -> write_usb._FavoritesUsbPreactivationEvidence:
+        del current_preflight
+        del current_backup
+        del current_stage
+        raise write_usb._FavoritesUsbWritePreparationError(
+            current_paths.operation_directory,
+            "injected public preactivation failure",
+        )
+
+    monkeypatch.setattr(
+        write_usb,
+        "_require_usb_preactivation_ready",
+        failing_preactivation,
+    )
+
+    with pytest.raises(
+        write_usb.FavoritesUsbWriteExecutionError,
+        match="preactivation_failed",
+    ) as raised:
+        write_usb.execute_favorites_usb_write(
+            plan,
+            mount_directory,
+            mountinfo,
+            sys_dev_block_directory=dev_block,
+            host_state_directory=host_root,
+        )
+
+    assert raised.value.operation_id is not None
+    assert raised.value.report_path is not None
+    assert raised.value.report_path.name == "failure.json"
+    assert raised.value.report_path.is_file()
+    assert raised.value.recovery_status == "not_required"
+    assert (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+        == baseline
+    )
+
+
+def test_usb_public_executor_wraps_unreportable_durable_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    host_root = (
+        tmp_path
+        / "public-unreportable-host"
+        / "favorites-usb-writes"
+    )
+    plan = plan_favorites_write(
+        _snapshot(),
+        _snapshot(
+            _CHANGED_CATALOG
+        ),
+    )
+
+    def failing_workflow(
+        preflight: write_usb.FavoritesUsbWritePreflight,
+        current_host_root: Path,
+    ) -> write_usb._FavoritesUsbOperationReport:
+        del preflight
+        raise write_usb._FavoritesUsbWritePreparationError(
+            current_host_root,
+            "injected unreportable durable failure",
+        )
+
+    monkeypatch.setattr(
+        write_usb,
+        "_execute_usb_write_workflow",
+        failing_workflow,
+    )
+
+    with pytest.raises(
+        write_usb.FavoritesUsbWriteExecutionError,
+        match="could not complete",
+    ) as raised:
+        write_usb.execute_favorites_usb_write(
+            plan,
+            mount_directory,
+            mountinfo,
+            sys_dev_block_directory=dev_block,
+            host_state_directory=host_root,
+        )
+
+    assert raised.value.operation_id is not None
+    assert raised.value.report_path is None
+    assert raised.value.recovery_status is None
+
+
+def test_usb_public_executor_propagates_blocked_preflight_before_target_access(
+    tmp_path: Path,
+) -> None:
+    baseline = _snapshot()
+    blocked = plan_favorites_write(
+        baseline,
+        FavoritesStorageSnapshot(
+            catalog_bytes=b"",
+            documents=(),
+        ),
+    )
+    assert blocked.is_blocked
+    missing = (
+        tmp_path
+        / "missing-scanner-target"
+    )
+    host_root = (
+        tmp_path
+        / "public-blocked-host"
+        / "favorites-usb-writes"
+    )
+
+    with pytest.raises(
+        write_usb.FavoritesUsbWritePreflightError,
+    ) as raised:
+        write_usb.execute_favorites_usb_write(
+            blocked,
+            missing,
+            host_state_directory=host_root,
+        )
+
+    assert raised.value.reason is (
+        write_usb.FavoritesUsbWritePreflightReason.BLOCKED_PLAN
+    )
+    assert not missing.exists()
+    assert not host_root.exists()
+
+
+def test_usb_public_executor_requires_absolute_host_state_directory(
+    tmp_path: Path,
+) -> None:
+    (
+        _mountinfo,
+        _dev_block,
+        mount_directory,
+        _favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="host-state directory must be absolute",
+    ):
+        write_usb.execute_favorites_usb_write(
+            plan_favorites_write(
+                _snapshot(),
+                _snapshot(),
+            ),
+            mount_directory,
+            host_state_directory=Path(
+                "relative-host-state"
+            ),
+        )
+
+
+def test_usb_public_execution_symbols_are_package_exports() -> None:
+    import sds200
+
+    assert sds200.FavoritesUsbWriteExecutionStatus is (
+        write_usb.FavoritesUsbWriteExecutionStatus
+    )
+    assert sds200.FavoritesUsbWriteExecutionError is (
+        write_usb.FavoritesUsbWriteExecutionError
+    )
+    assert sds200.FavoritesUsbWriteExecutionResult is (
+        write_usb.FavoritesUsbWriteExecutionResult
+    )
+    assert sds200.execute_favorites_usb_write is (
+        write_usb.execute_favorites_usb_write
+    )
