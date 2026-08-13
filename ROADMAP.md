@@ -11,48 +11,50 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 23.2 — RadioReference documented-interface and credential foundation
+### Milestone 23.3 — RadioReference WSDL contract and provider-record foundation
 
-- Begin from the fully merged Milestone 23.1 foundation at
-  `d5c96eb516ff34ff3bebd7fbe5006861f0381d23`.
-- Treat Milestone 23.1 as complete: immutable source-neutral external identities,
-  provider observations, field ownership, explicit absence, deterministic import
-  previews, detach semantics, redacted source failures, and exact local
-  `FavoritesRecordTarget` provenance now define the external-data core boundary.
-- Establish the first RadioReference-specific boundary only from currently
-  documented and approved interfaces. The documented production database service
-  is SOAP/XML and is described by RadioReference's published WSDL; do not scrape
-  HTML or depend on undocumented/private endpoints.
-- Preserve the product use case as scanner/radio programming assistance rather
-  than a mirror, directory, or replacement for the RadioReference website.
-- Model the documented authentication boundary explicitly: one approved
-  application key belongs to the application, while each end user authenticates
-  with that user's own RadioReference account and must satisfy the provider's
-  subscription requirements.
-- Keep application keys, passwords, tokens, cookies, and equivalent secrets
-  behind secret references. Usernames and non-secret provider settings may be
-  ordinary configuration, but no secret value may enter Favorites snapshots,
-  provider observations, preview/export payloads, logs, diagnostics, exceptions,
-  or public API representations.
-- Separate RadioReference transport/configuration concerns from the Milestone
-  23.1 normalized `FavoritesExternalRecordObservation` model. Provider-specific
-  identifiers and response objects must not become SDS Favorites filenames,
-  source positions, scanner identities, or write provenance.
-- Research and record the WSDL method/data shapes needed for conventional
-  frequencies, agencies, trunked systems, sites, and talkgroups before accepting
-  a production mapping. Record which identifiers and update/revision fields are
-  documented rather than inferring stability or deletion semantics.
-- Define a narrow fakeable RadioReference transport/client boundary suitable for
-  sanitized SOAP/XML fixtures and deterministic offline tests. Automated tests
-  must not require internet access, a RadioReference account, an application key,
-  a premium subscription, MyRR, or a physical scanner.
-- Treat live RadioReference access as an explicit later validation step after an
-  application key has been approved and the exact documented calls used by this
-  project are reviewed. Do not place real credentials or provider data captured
-  from a private account into the repository.
-- Keep provider-to-SDS field/template mapping, operator merge/acceptance
-  decisions, renderer-specific import workflows, automatic/background sync,
-  MyRR synchronization, and Favorites storage mutation outside Milestone 23.2.
+- Begin from the fully merged Milestone 23.2 foundation at
+  `d54c065682c4f3946733427157e995128c17fa90`.
+- Treat Milestone 23.2 as complete: the documented-interface configuration,
+  credential-reference boundary, stable redacted errors, traceback-secret
+  hardening, fakeable session/source protocols, normalized RadioReference
+  observation validation, and provider research now define the safe provider
+  entry boundary without adding a production SOAP/HTTP dependency.
+- Use the public documented WSDL itself as the machine-readable contract evidence.
+  The 2026-08-13 read-only inspection of `?wsdl&v=latest` produced a 55,955-byte
+  document with SHA-256
+  `1bb8090cf6415e429eb432dd964b1d26164af7eb2240a8b6d345007821d12f33`,
+  target namespace `http://api.radioreference.com/soap2`, one RPC SOAP binding,
+  31 operations, 62 messages, and 74 complex types. Treat that fingerprint as
+  point-in-time research evidence, not as a permanent pin for `latest`.
+- Record exact request-message parameters, response types, array/container
+  relationships, and SOAP actions for only the programming-relevant operations
+  needed by this project before implementing their parser/DTO boundary. Prefer
+  country/state/county/agency/subcategory conventional data and trunked
+  system/site/talkgroup data over unrelated FCC, feed, or account operations.
+- Model immutable provider-side record DTOs separately from
+  `FavoritesExternalRecordObservation`. Preserve documented provider identifiers
+  such as `fid`, `tgId`, `tgCid`, `siteId`, `sid`, `aid`, `ctid`, `stid`, and
+  `coid` as provider evidence only; do not claim lifetime stability, SDS identity,
+  or deletion semantics that the WSDL does not document.
+- Preserve documented timestamp-like fields such as `lastUpdated` and `tgDate`
+  exactly as provider evidence. Do not promote them to generic revision tokens or
+  change-feed guarantees without explicit provider documentation.
+- Keep conventional frequency, trunked-system, site, talkgroup, mode, encryption,
+  tag, tone, color-code, RAN/NAC, location, and related fields provider-specific
+  until a later SDS representability/mapping milestone defines explicit
+  scanner-compatible conversions.
+- The inspected WSDL was fetched over HTTPS but advertises an HTTP SOAP service
+  address. Do not silently downgrade credentials to cleartext HTTP. A production
+  transport remains blocked until the approved/documented HTTPS invocation
+  endpoint and its certificate/redirect behavior are explicitly validated.
+- Use only schema-derived or hand-authored sanitized SOAP/XML fixtures in
+  automated tests. Do not commit live account responses, private provider data,
+  credentials, application keys, or session material.
+- Keep live authenticated requests, a production network adapter or new SOAP/HTTP
+  runtime dependency, provider-to-SDS mapping, operator merge/acceptance UI,
+  automatic/background synchronization, MyRR work, and Favorites storage
+  mutation outside Milestone 23.3.
 
 ## Deferred hardware validation
 
@@ -261,6 +263,11 @@ begins.
   field ownership, deterministic add/replace/remove/unchanged/local-only/conflict
   previews, redacted fakeable source reads, explicit detach behavior, and exact
   local record provenance without provider-specific scanner mapping.
+- Milestone 23.2 completed the first RadioReference-specific documented-interface
+  boundary: secret-reference configuration, user/application credential
+  separation, fakeable provider sessions, stable redacted failures,
+  traceback-secret hardening, normalized observation validation, and documented
+  SOAP/WSDL/licensing research without a production network adapter.
 - Add RadioReference-assisted import with update previews.
 - Preserve provenance and field ownership for externally sourced data.
 - Support merge decisions and detaching local records from an external source.

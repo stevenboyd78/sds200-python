@@ -1,8 +1,9 @@
 # RadioReference documented-interface research
 
-This document records the provider-specific research and security boundary for
-Milestone 23.2. It is intentionally separate from the renderer-neutral external
-Favorites model introduced in Milestone 23.1.
+This document records the provider-specific research and security boundary begun
+in Milestone 23.2 and extended by the WSDL-contract work in Milestone 23.3. It is
+intentionally separate from the renderer-neutral external Favorites model
+introduced in Milestone 23.1.
 
 The project may use RadioReference only through documented and approved
 interfaces. This document does not authorize scraping, undocumented/private
@@ -81,6 +82,139 @@ reserve additional licensing rights for non-personal/commercial reuse. Approval
 for an application key therefore must not be treated as blanket redistribution
 permission. Provider data must not be copied into repository fixtures or exposed
 as a mirror by this project.
+
+## Direct WSDL inspection evidence
+
+A read-only operator audit on 2026-08-13 fetched the documented public
+`https://api.radioreference.com/soap2/?wsdl&v=latest` resource without
+credentials. The response was HTTP 200 with content type `text/xml; charset=utf-8`
+and contained 55,955 bytes. Its SHA-256 was
+`1bb8090cf6415e429eb432dd964b1d26164af7eb2240a8b6d345007821d12f33`.
+
+That fingerprint is point-in-time research evidence for the meaning of `latest`
+during the audit. It must not be treated as a permanent expected hash because the
+provider can legitimately revise the current WSDL.
+
+The inspected document reported:
+
+- root element `definitions`;
+- target namespace `http://api.radioreference.com/soap2`;
+- one service named `RRWsdl`;
+- one port named `RRWsdlPort`;
+- one binding named `RRWsdlBinding`;
+- RPC SOAP style over the SOAP HTTP transport URI;
+- 31 port-type operations;
+- 62 WSDL messages; and
+- 74 complex types.
+
+The service address embedded in that WSDL was
+`http://api.radioreference.com/soap2/index.php`, even though the WSDL itself was
+retrieved successfully over HTTPS. Because `authInfo` carries the application key
+and end-user password on authenticated calls, the implementation must not
+silently follow or construct a cleartext HTTP credential path. Production
+transport work remains blocked until the approved/documented HTTPS invocation
+endpoint and redirect/TLS behavior are explicitly validated.
+
+Programming-relevant operations present in the inspected WSDL include:
+
+- `getCountryInfo`, `getStateInfo`, `getCountyInfo`, and `getAgencyInfo`;
+- `getSubcatFreqs`, `getCountyFreqsByTag`, and `getAgencyFreqsByTag`;
+- `searchCountyFreq`, `searchStateFreq`, and `searchMetroFreq`;
+- `getTrsDetails`, `getTrsSites`, `getTrsTalkgroupCats`, and
+  `getTrsTalkgroups`; and
+- supporting lookup operations including `getTag`, `getMode`, `getTrsType`,
+  `getTrsFlavor`, and `getTrsVoice`.
+
+The WSDL also contains FCC, user, and feed-oriented operations. Their presence
+does not place them in the scanner-programming scope for this project.
+
+The `authInfo` complex type contains `username`, `password`, `appKey`, `version`,
+and `style`, matching the human-readable authentication documentation.
+
+The inspected provider types expose useful provider-side identity and update
+evidence, including:
+
+- conventional `freq`: `fid`, `scid`, and `lastUpdated`;
+- `Talkgroup`: `tgId`, `tgCid`, and `tgDate`;
+- `TalkgroupCat`: `tgCid`, `sid`, and `lastUpdated`;
+- `TrsSite`: `siteId` and `sid`;
+- `TrsListDef`: `sid` and `lastUpdated`;
+- `AgencyInfo`: `aid`, `ctid`, `stid`, and `lastUpdated`;
+- `CountyInfo`: `ctid`, `stid`, and `lastUpdated`;
+- `StateInfo`: `stid`;
+- `CountryInfo`: `coid`; and
+- `Trs`: `lastUpdated` plus provider system-identification/bandplan structures.
+
+Those fields are evidence of the documented schema only. They do not establish
+that every identifier is immutable for the lifetime of a provider record, that
+`lastUpdated` or `tgDate` is a revision token, or that an omitted record represents
+a deletion.
+
+Programming-relevant data fields observed directly in the WSDL include
+conventional output/input frequency, callsign, description, alpha tag, tone,
+color code, DMR talkgroup/slot, mode, encryption, class, tags, and sort order;
+trunked talkgroup decimal/subfleet/slot/description/alpha/mode/encryption/tags;
+trunked site number/zone/RFSS/NAC/RAN/modulation/location, TDMA control-channel
+evidence, licenses, frequencies, and bandplan; and location rectangles/ranges on
+several geographic and provider grouping types.
+
+The port-type operation declarations inspected by the audit did not contain
+explicit WSDL `fault` message declarations. That must not be interpreted as proof
+that authenticated SOAP calls cannot return SOAP Fault responses or transport
+errors.
+
+Milestone 23.3 must inspect the exact request message parts, return/container
+types, binding SOAP actions, and nested schema relationships for the operation
+subset it intends to model before accepting parser or DTO implementation.
+
+## Milestone 23.3 operation and provider-schema audit evidence
+
+A second read-only audit on 2026-08-13 re-fetched the exact reviewed WSDL
+fingerprint and extracted the operation contracts and reachable provider schema
+used by the programming subset.
+
+Every selected programming operation contained an `authInfo` request part. The
+binding uses RPC style with SOAP encoded bodies and the SOAP encoding URI
+`http://schemas.xmlsoap.org/soap/encoding/`. The selected operations expose SOAP
+actions in the form
+`http://api.radioreference.com/soap2#<operation>`.
+
+The selected response graph reaches 54 provider complex types and 24 SOAP array
+containers. Important exact container relationships include:
+
+- `Freqs -> freq[]`;
+- `searchFreqResults -> searchFreqResult[]`;
+- `TalkgroupCats -> TalkgroupCat[]`;
+- `Talkgroups -> Talkgroup[]`;
+- `TrsSites -> TrsSite[]`;
+- `TrsSiteFreqs -> TrsSiteFreq[]`;
+- `TrsSiteLicenses -> TrsSiteLicense[]`;
+- `TrsSysid -> trsSysidDef[]`;
+- `TrsBandplan -> trsBandplanDef[]`;
+- `TrsList -> TrsListDef[]`;
+- `Cats -> cat[]` and `SubCats -> subcat[]`; and
+- geographic/support arrays for states, counties, agencies, tags, modes,
+  rectangles, and provider lookup records.
+
+No explicit `minOccurs`, `maxOccurs`, `nillable`, `default`, or `fixed` metadata
+was present on the reachable provider fields inspected by the audit. That is
+schema evidence only; it must not be used to invent provider-side optionality,
+nullability, or live response guarantees.
+
+The operation audit also performed credential-free HEAD requests against both
+`https://api.radioreference.com/soap2/index.php` and the WSDL-advertised HTTP
+address. Both returned HTTP 200 without redirect during the audit. This proves
+only that an HTTPS endpoint currently answers a credential-free request; it does
+not establish an approved authenticated invocation contract. A production client
+must remain HTTPS-only and blocked on explicit approved/documented live transport
+validation.
+
+Milestone 23.3 may therefore define immutable provider-record DTOs and static
+reviewed operation metadata from this schema without adding SOAP parsing or live
+network behavior. Those DTOs must keep provider IDs, timestamps, strings,
+decimals, arrays, and nested records separate from
+`FavoritesExternalRecordObservation`, and must not infer SDS mappings, deletion
+semantics, generic revisions, or provider identifier lifetime guarantees.
 
 ## Intended product use
 
