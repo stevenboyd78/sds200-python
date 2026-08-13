@@ -282,37 +282,41 @@ class RadioReferenceSource:
     ) -> tuple[FavoritesExternalRecordObservation, ...]:
         """Read one normalized observation set without retaining secret values."""
 
-        application_key = self._resolve_secret(
-            self.configuration.credential.application_key_environment_variable
-        )
-        password = self._resolve_secret(
-            self.configuration.credential.password_environment_variable
-        )
-
+        application_key = ""
+        password = ""
         try:
-            session = self.session_factory(
-                self.configuration,
-                application_key=application_key,
-                password=password,
+            application_key = self._resolve_secret(
+                self.configuration.credential.application_key_environment_variable
             )
-        except RadioReferenceError:
-            raise
-        except Exception:
-            raise RadioReferenceError(
-                RadioReferenceErrorReason.CONNECTION_FAILED
-            ) from None
+            password = self._resolve_secret(
+                self.configuration.credential.password_environment_variable
+            )
 
-        reader = getattr(session, "read_observations", None)
-        closer = getattr(session, "close", None)
-        if not callable(reader) or not callable(closer):
-            _close_after_primary_failure(session)
-            raise _invalid_response()
+            try:
+                session = self.session_factory(
+                    self.configuration,
+                    application_key=application_key,
+                    password=password,
+                )
+            except RadioReferenceError as error:
+                raise RadioReferenceError(error.reason) from None
+            except Exception:
+                raise RadioReferenceError(
+                    RadioReferenceErrorReason.CONNECTION_FAILED
+                ) from None
 
-        try:
+            reader = getattr(session, "read_observations", None)
+            closer = getattr(session, "close", None)
+            if not callable(reader) or not callable(closer):
+                _close_after_primary_failure(session)
+                raise _invalid_response()
+
             try:
                 observations = reader()
             except RadioReferenceError as error:
-                primary_error: RadioReferenceError | None = error
+                primary_error: RadioReferenceError | None = RadioReferenceError(
+                    error.reason
+                )
                 validated = None
             except Exception:
                 primary_error = RadioReferenceError(
@@ -323,14 +327,14 @@ class RadioReferenceSource:
                 try:
                     validated = _validate_observations(observations)
                 except RadioReferenceError as error:
-                    primary_error = error
+                    primary_error = RadioReferenceError(error.reason)
                     validated = None
                 else:
                     primary_error = None
 
             if primary_error is not None:
                 _close_after_primary_failure(session)
-                raise primary_error
+                raise primary_error from None
 
             try:
                 closer()

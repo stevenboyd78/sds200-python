@@ -348,9 +348,27 @@ def test_radioreference_untyped_factory_failure_is_redacted() -> None:
     assert SYNTHETIC_APP_KEY not in str(captured.value)
     assert SYNTHETIC_PASSWORD not in str(captured.value)
     assert captured.value.__cause__ is None
+    assert _read_observations_secret_locals(captured.value) == {
+        "application_key": "",
+        "password": "",
+    }
 
 
-def test_radioreference_typed_authentication_failure_is_preserved() -> None:
+def _read_observations_secret_locals(
+    error: BaseException,
+) -> dict[str, object]:
+    traceback = error.__traceback__
+    while traceback is not None:
+        if traceback.tb_frame.f_code.co_name == "read_observations":
+            return {
+                name: traceback.tb_frame.f_locals.get(name)
+                for name in ("application_key", "password")
+            }
+        traceback = traceback.tb_next
+    raise AssertionError("read_observations traceback frame was not found")
+
+
+def test_radioreference_typed_authentication_failure_reason_is_preserved() -> None:
     error = RadioReferenceError(
         RadioReferenceErrorReason.AUTHENTICATION_FAILED
     )
@@ -366,11 +384,43 @@ def test_radioreference_typed_authentication_failure_is_preserved() -> None:
     with pytest.raises(RadioReferenceError) as captured:
         source.read_observations()
 
-    assert captured.value is error
+    assert captured.value is not error
     assert (
         captured.value.reason
         is RadioReferenceErrorReason.AUTHENTICATION_FAILED
     )
+    assert captured.value.__cause__ is None
+    assert _read_observations_secret_locals(captured.value) == {
+        "application_key": "",
+        "password": "",
+    }
+
+
+def test_radioreference_typed_read_failure_reason_is_preserved_and_redacted() -> None:
+    error = RadioReferenceError(
+        RadioReferenceErrorReason.AUTHENTICATION_FAILED
+    )
+    session = _FakeSession(read_error=error)
+    source = RadioReferenceSource(
+        configuration=_configuration(),
+        session_factory=_RecordingFactory(session),
+        secret_resolver=_resolver,
+    )
+
+    with pytest.raises(RadioReferenceError) as captured:
+        source.read_observations()
+
+    assert captured.value is not error
+    assert (
+        captured.value.reason
+        is RadioReferenceErrorReason.AUTHENTICATION_FAILED
+    )
+    assert captured.value.__cause__ is None
+    assert session.close_calls == 1
+    assert _read_observations_secret_locals(captured.value) == {
+        "application_key": "",
+        "password": "",
+    }
 
 
 def test_radioreference_untyped_read_failure_is_redacted_and_closed() -> None:
