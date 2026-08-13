@@ -1,7 +1,8 @@
 # RadioReference documented-interface research
 
 This document records the provider-specific research and security boundary begun
-in Milestone 23.2 and extended by the WSDL-contract work in Milestone 23.3. It is
+in Milestone 23.2, extended by the WSDL-contract work in Milestone 23.3, and now
+used to constrain the offline SOAP response decoder work in Milestone 23.4. It is
 intentionally separate from the renderer-neutral external Favorites model
 introduced in Milestone 23.1.
 
@@ -215,6 +216,49 @@ network behavior. Those DTOs must keep provider IDs, timestamps, strings,
 decimals, arrays, and nested records separate from
 `FavoritesExternalRecordObservation`, and must not infer SDS mappings, deletion
 semantics, generic revisions, or provider identifier lifetime guarantees.
+
+## Milestone 23.4 offline SOAP decoding boundary
+
+Milestone 23.3 intentionally stopped before SOAP response decoding. The reviewed
+WSDL proves an RPC/encoded contract, operation names, request parts, response
+types, SOAP actions, and provider schema, but it does not prove the exact
+serializer representation that RadioReference will emit for every successful or
+fault response. No private authenticated response was captured for repository
+fixtures.
+
+Milestone 23.4 therefore treats wire decoding as an offline protocol boundary.
+Schema-derived and hand-authored fixtures may exercise standards-compatible SOAP
+1.1 RPC/encoded forms, including inline values, SOAP-ENC arrays, and local
+`id`/`href` references. Passing those fixtures proves only that the project can
+decode those protocol forms deterministically; it does not claim live-provider
+compatibility until a later approved authenticated validation explicitly observes
+the production endpoint.
+
+The decoder must be bounded and fail closed. Its XML input remains in memory,
+must not resolve external resources, and must reject malformed envelopes,
+unexpected operations, response-type mismatches, duplicate required members,
+missing required members, malformed arrays, duplicate or missing reference IDs,
+external references, reference cycles, and excessive reference graphs.
+
+Scalar decoding must remain schema-faithful rather than scanner-aware:
+
+- `xsd:string` values are preserved verbatim rather than stripped or normalized;
+- `xsd:int` stays within the signed 32-bit XML Schema range already enforced by
+  the provider DTOs;
+- `xsd:decimal` is represented by finite `Decimal` values;
+- `xsd:boolean` accepts only XML Schema boolean lexical representations; and
+- `xsd:dateTime` is parsed deterministically as timestamp evidence without
+  promoting it to a generic revision token.
+
+SOAP Fault text and arbitrary malformed-response details are provider-controlled
+input and must not escape through public errors. Parser failures should map to
+stable redacted RadioReference failure classes while preserving the existing
+secret-handling boundary.
+
+This milestone remains offline. It does not add request serialization, HTTP/TLS
+transport, credential use, live provider calls, provider-to-SDS mapping,
+`FavoritesExternalRecordObservation` generation, automatic synchronization,
+MyRR integration, or Favorites mutation.
 
 ## Intended product use
 
