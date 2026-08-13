@@ -15,6 +15,7 @@ RADIOREFERENCE_SOAP_ENCODING_STYLE: Final = (
 RADIOREFERENCE_WSDL_EVIDENCE_SHA256: Final = (
     "1bb8090cf6415e429eb432dd964b1d26164af7eb2240a8b6d345007821d12f33"
 )
+RADIOREFERENCE_AUTH_INFO_TYPE: Final = "tns:authInfo"
 
 
 class RadioReferenceWsdlOperation(StrEnum):
@@ -60,6 +61,24 @@ class RadioReferenceWsdlParameter:
 
 
 @dataclass(frozen=True, slots=True)
+class RadioReferenceWsdlField:
+    """One exact field from a reviewed WSDL complex type."""
+
+    name: str
+    type_name: str
+
+    def __post_init__(self) -> None:
+        if type(self.name) is not str:
+            raise TypeError("RadioReference WSDL field name must be a string.")
+        if not self.name:
+            raise ValueError("RadioReference WSDL field name must not be empty.")
+        if type(self.type_name) is not str:
+            raise TypeError("RadioReference WSDL field type must be a string.")
+        if not self.type_name:
+            raise ValueError("RadioReference WSDL field type must not be empty.")
+
+
+@dataclass(frozen=True, slots=True)
 class RadioReferenceWsdlOperationContract:
     """Exact reviewed RPC/encoded request and response contract."""
 
@@ -101,7 +120,7 @@ class RadioReferenceWsdlOperationContract:
 
         return any(
             parameter.name == "authInfo"
-            and parameter.type_name == "tns:authInfo"
+            and parameter.type_name == RADIOREFERENCE_AUTH_INFO_TYPE
             for parameter in self.request_parameters
         )
 
@@ -110,32 +129,62 @@ def _parameter(name: str, type_name: str) -> RadioReferenceWsdlParameter:
     return RadioReferenceWsdlParameter(name=name, type_name=type_name)
 
 
+def _field(name: str, type_name: str) -> RadioReferenceWsdlField:
+    return RadioReferenceWsdlField(name=name, type_name=type_name)
+
+
+RADIOREFERENCE_AUTH_INFO_FIELDS: Final[
+    tuple[RadioReferenceWsdlField, ...]
+] = (
+    _field("username", "xsd:string"),
+    _field("password", "xsd:string"),
+    _field("appKey", "xsd:string"),
+    _field("version", "xsd:string"),
+    _field("style", "xsd:string"),
+)
+
+
 RADIOREFERENCE_PROGRAMMING_OPERATION_CONTRACTS: Final[
     tuple[RadioReferenceWsdlOperationContract, ...]
 ] = (
     RadioReferenceWsdlOperationContract(
         RadioReferenceWsdlOperation.GET_COUNTRY_INFO,
-        (_parameter("coid", "xsd:int"), _parameter("authInfo", "tns:authInfo")),
+        (
+            _parameter("coid", "xsd:int"),
+            _parameter("authInfo", RADIOREFERENCE_AUTH_INFO_TYPE),
+        ),
         "tns:CountryInfo",
     ),
     RadioReferenceWsdlOperationContract(
         RadioReferenceWsdlOperation.GET_STATE_INFO,
-        (_parameter("stid", "xsd:int"), _parameter("authInfo", "tns:authInfo")),
+        (
+            _parameter("stid", "xsd:int"),
+            _parameter("authInfo", RADIOREFERENCE_AUTH_INFO_TYPE),
+        ),
         "tns:StateInfo",
     ),
     RadioReferenceWsdlOperationContract(
         RadioReferenceWsdlOperation.GET_COUNTY_INFO,
-        (_parameter("ctid", "xsd:int"), _parameter("authInfo", "tns:authInfo")),
+        (
+            _parameter("ctid", "xsd:int"),
+            _parameter("authInfo", RADIOREFERENCE_AUTH_INFO_TYPE),
+        ),
         "tns:CountyInfo",
     ),
     RadioReferenceWsdlOperationContract(
         RadioReferenceWsdlOperation.GET_AGENCY_INFO,
-        (_parameter("aid", "xsd:int"), _parameter("authInfo", "tns:authInfo")),
+        (
+            _parameter("aid", "xsd:int"),
+            _parameter("authInfo", RADIOREFERENCE_AUTH_INFO_TYPE),
+        ),
         "tns:AgencyInfo",
     ),
     RadioReferenceWsdlOperationContract(
         RadioReferenceWsdlOperation.GET_SUBCATEGORY_FREQUENCIES,
-        (_parameter("scid", "xsd:int"), _parameter("authInfo", "tns:authInfo")),
+        (
+            _parameter("scid", "xsd:int"),
+            _parameter("authInfo", RADIOREFERENCE_AUTH_INFO_TYPE),
+        ),
         "tns:Freqs",
     ),
     RadioReferenceWsdlOperationContract(
@@ -143,7 +192,7 @@ RADIOREFERENCE_PROGRAMMING_OPERATION_CONTRACTS: Final[
         (
             _parameter("ctid", "xsd:int"),
             _parameter("tag", "xsd:int"),
-            _parameter("authInfo", "tns:authInfo"),
+            _parameter("authInfo", RADIOREFERENCE_AUTH_INFO_TYPE),
         ),
         "tns:Freqs",
     ),
@@ -152,7 +201,7 @@ RADIOREFERENCE_PROGRAMMING_OPERATION_CONTRACTS: Final[
         (
             _parameter("aid", "xsd:int"),
             _parameter("tag", "xsd:int"),
-            _parameter("authInfo", "tns:authInfo"),
+            _parameter("authInfo", RADIOREFERENCE_AUTH_INFO_TYPE),
         ),
         "tns:Freqs",
     ),
@@ -162,7 +211,7 @@ RADIOREFERENCE_PROGRAMMING_OPERATION_CONTRACTS: Final[
             _parameter("ctid", "xsd:int"),
             _parameter("freq", "xsd:decimal"),
             _parameter("tone", "xsd:string"),
-            _parameter("authInfo", "tns:authInfo"),
+            _parameter("authInfo", RADIOREFERENCE_AUTH_INFO_TYPE),
         ),
         "tns:searchFreqResults",
     ),
@@ -172,7 +221,7 @@ RADIOREFERENCE_PROGRAMMING_OPERATION_CONTRACTS: Final[
             _parameter("stid", "xsd:int"),
             _parameter("freq", "xsd:decimal"),
             _parameter("tone", "xsd:string"),
-            _parameter("authInfo", "tns:authInfo"),
+            _parameter("authInfo", RADIOREFERENCE_AUTH_INFO_TYPE),
         ),
         "tns:searchFreqResults",
     ),
@@ -182,23 +231,32 @@ RADIOREFERENCE_PROGRAMMING_OPERATION_CONTRACTS: Final[
             _parameter("mid", "xsd:int"),
             _parameter("freq", "xsd:decimal"),
             _parameter("tone", "xsd:string"),
-            _parameter("authInfo", "tns:authInfo"),
+            _parameter("authInfo", RADIOREFERENCE_AUTH_INFO_TYPE),
         ),
         "tns:searchFreqResults",
     ),
     RadioReferenceWsdlOperationContract(
         RadioReferenceWsdlOperation.GET_TRUNKED_SYSTEM_DETAILS,
-        (_parameter("sid", "xsd:int"), _parameter("authInfo", "tns:authInfo")),
+        (
+            _parameter("sid", "xsd:int"),
+            _parameter("authInfo", RADIOREFERENCE_AUTH_INFO_TYPE),
+        ),
         "tns:Trs",
     ),
     RadioReferenceWsdlOperationContract(
         RadioReferenceWsdlOperation.GET_TRUNKED_SYSTEM_SITES,
-        (_parameter("sid", "xsd:int"), _parameter("authInfo", "tns:authInfo")),
+        (
+            _parameter("sid", "xsd:int"),
+            _parameter("authInfo", RADIOREFERENCE_AUTH_INFO_TYPE),
+        ),
         "tns:TrsSites",
     ),
     RadioReferenceWsdlOperationContract(
         RadioReferenceWsdlOperation.GET_TRUNKED_TALKGROUP_CATEGORIES,
-        (_parameter("sid", "xsd:int"), _parameter("authInfo", "tns:authInfo")),
+        (
+            _parameter("sid", "xsd:int"),
+            _parameter("authInfo", RADIOREFERENCE_AUTH_INFO_TYPE),
+        ),
         "tns:TalkgroupCats",
     ),
     RadioReferenceWsdlOperationContract(
@@ -208,33 +266,48 @@ RADIOREFERENCE_PROGRAMMING_OPERATION_CONTRACTS: Final[
             _parameter("tgCid", "xsd:int"),
             _parameter("tgTag", "xsd:int"),
             _parameter("tgDec", "xsd:int"),
-            _parameter("authInfo", "tns:authInfo"),
+            _parameter("authInfo", RADIOREFERENCE_AUTH_INFO_TYPE),
         ),
         "tns:Talkgroups",
     ),
     RadioReferenceWsdlOperationContract(
         RadioReferenceWsdlOperation.GET_TAG,
-        (_parameter("id", "xsd:int"), _parameter("authInfo", "tns:authInfo")),
+        (
+            _parameter("id", "xsd:int"),
+            _parameter("authInfo", RADIOREFERENCE_AUTH_INFO_TYPE),
+        ),
         "tns:tags",
     ),
     RadioReferenceWsdlOperationContract(
         RadioReferenceWsdlOperation.GET_MODE,
-        (_parameter("mode", "xsd:int"), _parameter("authInfo", "tns:authInfo")),
+        (
+            _parameter("mode", "xsd:int"),
+            _parameter("authInfo", RADIOREFERENCE_AUTH_INFO_TYPE),
+        ),
         "tns:modes",
     ),
     RadioReferenceWsdlOperationContract(
         RadioReferenceWsdlOperation.GET_TRUNKED_TYPE,
-        (_parameter("id", "xsd:int"), _parameter("authInfo", "tns:authInfo")),
+        (
+            _parameter("id", "xsd:int"),
+            _parameter("authInfo", RADIOREFERENCE_AUTH_INFO_TYPE),
+        ),
         "tns:TrsType",
     ),
     RadioReferenceWsdlOperationContract(
         RadioReferenceWsdlOperation.GET_TRUNKED_FLAVOR,
-        (_parameter("id", "xsd:int"), _parameter("authInfo", "tns:authInfo")),
+        (
+            _parameter("id", "xsd:int"),
+            _parameter("authInfo", RADIOREFERENCE_AUTH_INFO_TYPE),
+        ),
         "tns:TrsFlavor",
     ),
     RadioReferenceWsdlOperationContract(
         RadioReferenceWsdlOperation.GET_TRUNKED_VOICE,
-        (_parameter("id", "xsd:int"), _parameter("authInfo", "tns:authInfo")),
+        (
+            _parameter("id", "xsd:int"),
+            _parameter("authInfo", RADIOREFERENCE_AUTH_INFO_TYPE),
+        ),
         "tns:TrsVoice",
     ),
 )
@@ -1001,6 +1074,8 @@ class RadioReferenceTrunkVoice:
 
 
 __all__ = [
+    "RADIOREFERENCE_AUTH_INFO_FIELDS",
+    "RADIOREFERENCE_AUTH_INFO_TYPE",
     "RADIOREFERENCE_PROGRAMMING_OPERATION_CONTRACTS",
     "RADIOREFERENCE_SOAP_ENCODING_STYLE",
     "RADIOREFERENCE_SOAP_NAMESPACE",
@@ -1032,6 +1107,7 @@ __all__ = [
     "RadioReferenceTrunkSystemId",
     "RadioReferenceTrunkType",
     "RadioReferenceTrunkVoice",
+    "RadioReferenceWsdlField",
     "RadioReferenceWsdlOperation",
     "RadioReferenceWsdlOperationContract",
     "RadioReferenceWsdlParameter",

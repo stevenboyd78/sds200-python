@@ -573,6 +573,8 @@ from .radioreference import (
     RadioReferenceSource,
 )
 from .radioreference_records import (
+    RADIOREFERENCE_AUTH_INFO_FIELDS,
+    RADIOREFERENCE_AUTH_INFO_TYPE,
     RADIOREFERENCE_PROGRAMMING_OPERATION_CONTRACTS,
     RADIOREFERENCE_SOAP_ENCODING_STYLE,
     RADIOREFERENCE_SOAP_NAMESPACE,
@@ -604,6 +606,7 @@ from .radioreference_records import (
     RadioReferenceTrunkSystemId,
     RadioReferenceTrunkType,
     RadioReferenceTrunkVoice,
+    RadioReferenceWsdlField,
     RadioReferenceWsdlOperation,
     RadioReferenceWsdlOperationContract,
     RadioReferenceWsdlParameter,
@@ -619,6 +622,10 @@ from .radioreference_soap import (
     RADIOREFERENCE_XML_SCHEMA_INSTANCE_NAMESPACE,
     RadioReferenceSoapDecoder,
     RadioReferenceSoapResult,
+)
+from .radioreference_soap_request import (
+    RADIOREFERENCE_SOAP_REQUEST_DEFAULT_MAX_DOCUMENT_BYTES,
+    RadioReferenceSoapRequestSerializer,
 )
 from .recording_identity import RecordingIdentity, safe_recording_component
 from .recording_inventory import (
@@ -1133,6 +1140,8 @@ __all__ = [
     "RadioHealth",
     "RadioState",
     "RadioStateSnapshot",
+    "RADIOREFERENCE_AUTH_INFO_FIELDS",
+    "RADIOREFERENCE_AUTH_INFO_TYPE",
     "RADIOREFERENCE_DEFAULT_VERSION",
     "RADIOREFERENCE_PROVIDER",
     "RADIOREFERENCE_SERVICE_URL",
@@ -1177,6 +1186,7 @@ __all__ = [
     "RadioReferenceTrunkSystemId",
     "RadioReferenceTrunkType",
     "RadioReferenceTrunkVoice",
+    "RadioReferenceWsdlField",
     "RadioReferenceWsdlOperation",
     "RadioReferenceWsdlOperationContract",
     "RadioReferenceWsdlParameter",
@@ -1190,6 +1200,8 @@ __all__ = [
     "RADIOREFERENCE_XML_SCHEMA_INSTANCE_NAMESPACE",
     "RadioReferenceSoapDecoder",
     "RadioReferenceSoapResult",
+    "RADIOREFERENCE_SOAP_REQUEST_DEFAULT_MAX_DOCUMENT_BYTES",
+    "RadioReferenceSoapRequestSerializer",
     "RECORDING_METADATA_SCHEMA",
     "RECORDING_METADATA_VERSION",
     "RECORDING_ORGANIZATION_COMPONENTS",

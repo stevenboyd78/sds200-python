@@ -1,9 +1,10 @@
 # RadioReference documented-interface research
 
 This document records the provider-specific research and security boundary begun
-in Milestone 23.2, extended by the WSDL-contract work in Milestone 23.3, and now
-used to constrain the offline SOAP response decoder work in Milestone 23.4. It is
-intentionally separate from the renderer-neutral external Favorites model
+in Milestone 23.2, extended by the WSDL-contract work in Milestone 23.3 and the
+offline SOAP response decoder in Milestone 23.4, and now used to constrain the
+offline SOAP request serializer work in Milestone 23.5. It remains intentionally
+separate from the renderer-neutral external Favorites model
 introduced in Milestone 23.1.
 
 The project may use RadioReference only through documented and approved
@@ -259,6 +260,46 @@ This milestone remains offline. It does not add request serialization, HTTP/TLS
 transport, credential use, live provider calls, provider-to-SDS mapping,
 `FavoritesExternalRecordObservation` generation, automatic synchronization,
 MyRR integration, or Favorites mutation.
+
+## Milestone 23.5 offline SOAP request serialization boundary
+
+The reviewed WSDL evidence is sufficient to define an offline request serializer
+without introducing a production transport. The selected programming operations
+use RPC style, encoded input bodies, the SOAP encoding URI
+`http://schemas.xmlsoap.org/soap/encoding/`, the target namespace
+`http://api.radioreference.com/soap2`, and operation-specific SOAP actions of the
+form `http://api.radioreference.com/soap2#<operation>`.
+
+The WSDL audit also established the exact `authInfo` complex type used by every
+selected programming operation. Its fields, in schema order, are:
+
+- `username: xsd:string`;
+- `password: xsd:string`;
+- `appKey: xsd:string`;
+- `version: xsd:string`; and
+- `style: xsd:string`.
+
+Milestone 23.5 may promote that evidence into immutable contract metadata and use
+it with the existing exact operation request parts. The request-side programming
+subset otherwise needs only `xsd:int`, `xsd:decimal`, and `xsd:string`.
+
+The serializer must remain offline and dependency-free. It may create
+standards-compatible SOAP 1.1 RPC/encoded request bytes from synthetic or
+ephemeral inputs, but passing offline serialization tests must not be described
+as proof that the provider accepted a live request. The audited programming
+binding is RPC; this milestone must not invent an unreviewed document-style wire
+representation.
+
+Serialized `authInfo` necessarily contains resolved secrets. Request XML is
+therefore secret-bearing ephemeral material, not diagnostic or provenance data.
+It must not be retained in public DTOs, logged, included in exception messages,
+stored in fixtures, or copied into documentation. Automated tests must use only
+synthetic credentials.
+
+HTTP/TLS transport, production endpoint and redirect behavior, live
+authentication, provider-to-SDS mapping, normalized external-observation
+generation, update previews, synchronization, MyRR integration, and Favorites
+mutation remain separate follow-on work.
 
 ## Intended product use
 
