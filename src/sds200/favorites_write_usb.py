@@ -11046,6 +11046,552 @@ def _activate_usb_managed_state(
     )
 
 
+def _publish_usb_rollback_transition(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    current: _FavoritesUsbRollbackManifest,
+    *,
+    phase: _FavoritesUsbRollbackPhase,
+    bounded_artifact_present: bool,
+) -> _FavoritesUsbRollbackManifest:
+    # Publish one legal rollback transition with exact failure reconciliation.
+    #
+    # A pre-replace writer failure can reconcile to exact CURRENT. Once media
+    # mutation has begun, stopping there can strand durable state behind the
+    # actual scanner state. Retry only the same immutable proposed transition,
+    # and only once. PROPOSED is always accepted as already durable.
+    proposed = _usb_rollback_manifest(
+        preflight,
+        paths,
+        revision=current.revision + 1,
+        phase=phase,
+        bounded_artifact_present=bounded_artifact_present,
+    )
+
+    for attempt in range(2):
+        try:
+            _write_usb_rollback_manifest(
+                preflight,
+                paths,
+                proposed,
+            )
+        except _FavoritesUsbWritePreparationError as write_error:
+            state = _reconcile_usb_rollback_manifest_write_failure(
+                preflight,
+                paths,
+                current,
+                proposed,
+            )
+
+            if state is _FavoritesUsbRollbackWriteFailureState.PROPOSED:
+                return proposed
+
+            if state is not _FavoritesUsbRollbackWriteFailureState.CURRENT:
+                raise _FavoritesUsbWritePreparationError(
+                    paths.rollback_manifest_path,
+                    "Favorites USB rollback transition reconciliation returned "
+                    "an unsupported durable state.",
+                ) from write_error
+
+            if attempt == 1:
+                raise
+        else:
+            return proposed
+
+    raise AssertionError(
+        "Favorites USB rollback transition bounded retry exhausted "
+        "without returning or raising."
+    )
+
+
+def _publish_usb_terminal_operation_report(
+    preflight: FavoritesUsbWritePreflight,
+    paths: _FavoritesUsbHostOperationPaths,
+    rollback_manifest: _FavoritesUsbRollbackManifest,
+    report: _FavoritesUsbOperationReport,
+) -> _FavoritesUsbOperationReport:
+    # Publish exactly one terminal report, reconciling post-replace failure.
+    try:
+        _write_usb_operation_report(
+            preflight,
+            paths,
+            rollback_manifest,
+            report,
+        )
+    except _FavoritesUsbWritePreparationError:
+        state = _reconcile_usb_operation_report_write_failure(
+            preflight,
+            paths,
+            rollback_manifest,
+            report,
+        )
+        if (
+            state
+            is _FavoritesUsbOperationReportWriteFailureState.ABSENT
+        ):
+            raise
+
+    return report
+
+
+def _execute_usb_write_workflow(
+    preflight: FavoritesUsbWritePreflight,
+    host_state_directory: Path,
+) -> _FavoritesUsbOperationReport:
+    # Execute one private durable USB write/rollback lifecycle.
+    if not isinstance(
+        preflight,
+        FavoritesUsbWritePreflight,
+    ):
+        raise TypeError(
+            "Favorites USB durable workflow requires FavoritesUsbWritePreflight."
+        )
+    if not isinstance(
+        host_state_directory,
+        Path,
+    ):
+        raise TypeError(
+            "Favorites USB durable workflow host-state directory must be "
+            "pathlib.Path."
+        )
+    if not host_state_directory.is_absolute():
+        raise ValueError(
+            "Favorites USB durable workflow host-state directory must be "
+            "absolute."
+        )
+
+    if preflight.plan.is_blocked:
+        raise _FavoritesUsbWritePreparationError(
+            preflight.qualification.favorites_directory,
+            "Blocked Favorites write plan must not enter the durable USB "
+            "write workflow.",
+        )
+    if preflight.is_noop:
+        raise _FavoritesUsbWritePreparationError(
+            preflight.qualification.favorites_directory,
+            "No-op Favorites USB write plan must not create a durable host "
+            "operation or mutate scanner media.",
+        )
+
+    with _usb_host_operation_lock(
+        preflight,
+        host_state_directory,
+    ) as paths:
+        backup = _create_verified_usb_host_backup(
+            preflight,
+            paths,
+        )
+        prepared_stage = _create_verified_usb_host_staging(
+            preflight,
+            paths,
+            backup,
+        )
+
+        rollback = _usb_rollback_manifest(
+            preflight,
+            paths,
+            revision=1,
+            phase=_FavoritesUsbRollbackPhase.PREPARED,
+            bounded_artifact_present=False,
+        )
+
+        try:
+            _write_usb_rollback_manifest(
+                preflight,
+                paths,
+                rollback,
+            )
+        except _FavoritesUsbWritePreparationError:
+            # A raised PREPARED writer never falls through to media work,
+            # even when exact proposed bytes became visible.
+            _reconcile_usb_rollback_manifest_write_failure(
+                preflight,
+                paths,
+                None,
+                rollback,
+            )
+            raise
+
+        try:
+            preactivation = _require_usb_preactivation_ready(
+                preflight,
+                paths,
+                backup,
+                prepared_stage,
+            )
+        except _FavoritesUsbWritePreparationError:
+            report = _usb_operation_report(
+                preflight,
+                paths,
+                rollback,
+                backup_verification=(
+                    _FavoritesUsbVerificationOutcome.VERIFIED
+                ),
+                staging_verification=(
+                    _FavoritesUsbVerificationOutcome.VERIFIED
+                ),
+                preactivation_verification=(
+                    _FavoritesUsbVerificationOutcome.FAILED
+                ),
+                postactivation_verification=(
+                    _FavoritesUsbVerificationOutcome.NOT_ATTEMPTED
+                ),
+                unmanaged_preservation=(
+                    _FavoritesUsbVerificationOutcome.FAILED
+                ),
+                activation_outcome=(
+                    _FavoritesUsbActivationOutcome.NOT_STARTED
+                ),
+                recovery_outcome=(
+                    _FavoritesUsbRecoveryOutcome.NOT_REQUIRED
+                ),
+                active_snapshot_sha256=None,
+                failure_code=(
+                    _FavoritesUsbFailureCode.PREACTIVATION_FAILED
+                ),
+            )
+            return _publish_usb_terminal_operation_report(
+                preflight,
+                paths,
+                rollback,
+                report,
+            )
+
+        mutation_start_reconciliation_failed = False
+
+        def _publish_mutation_started() -> None:
+            nonlocal mutation_start_reconciliation_failed
+            nonlocal rollback
+
+            proposed = _usb_rollback_manifest(
+                preflight,
+                paths,
+                revision=rollback.revision + 1,
+                phase=_FavoritesUsbRollbackPhase.MUTATION_STARTED,
+                bounded_artifact_present=False,
+            )
+
+            try:
+                _write_usb_rollback_manifest(
+                    preflight,
+                    paths,
+                    proposed,
+                )
+            except _FavoritesUsbWritePreparationError:
+                try:
+                    state = (
+                        _reconcile_usb_rollback_manifest_write_failure(
+                            preflight,
+                            paths,
+                            rollback,
+                            proposed,
+                        )
+                    )
+                except _FavoritesUsbWritePreparationError:
+                    mutation_start_reconciliation_failed = True
+                    raise
+
+                if (
+                    state
+                    is _FavoritesUsbRollbackWriteFailureState.PROPOSED
+                ):
+                    rollback = proposed
+
+                # Always raise after the hook writer raised. Even when the
+                # exact proposed state is visible, this prevents the first
+                # media primitive and lets the outer workflow recover
+                # conservatively from durable MUTATION_STARTED.
+                raise
+
+            rollback = proposed
+
+        try:
+            activated = _activate_usb_managed_state(
+                preflight,
+                paths,
+                backup,
+                prepared_stage,
+                preactivation,
+                mutation_start=_publish_mutation_started,
+            )
+        except _FavoritesUsbActivationExecutionError as activation_error:
+            if mutation_start_reconciliation_failed:
+                raise
+
+            if rollback.phase is _FavoritesUsbRollbackPhase.PREPARED:
+                if activation_error.mutation_started:
+                    raise _FavoritesUsbWritePreparationError(
+                        paths.rollback_manifest_path,
+                        "Favorites USB activation reported media mutation "
+                        "while durable rollback state remained PREPARED.",
+                    ) from activation_error
+
+                report = _usb_operation_report(
+                    preflight,
+                    paths,
+                    rollback,
+                    backup_verification=(
+                        _FavoritesUsbVerificationOutcome.VERIFIED
+                    ),
+                    staging_verification=(
+                        _FavoritesUsbVerificationOutcome.VERIFIED
+                    ),
+                    preactivation_verification=(
+                        _FavoritesUsbVerificationOutcome.VERIFIED
+                    ),
+                    postactivation_verification=(
+                        _FavoritesUsbVerificationOutcome.NOT_ATTEMPTED
+                    ),
+                    unmanaged_preservation=(
+                        _FavoritesUsbVerificationOutcome.NOT_ATTEMPTED
+                    ),
+                    activation_outcome=(
+                        _FavoritesUsbActivationOutcome.FAILED_BEFORE_MUTATION
+                    ),
+                    recovery_outcome=(
+                        _FavoritesUsbRecoveryOutcome.NOT_REQUIRED
+                    ),
+                    active_snapshot_sha256=None,
+                    failure_code=(
+                        _FavoritesUsbFailureCode
+                        .ACTIVATION_FAILED_BEFORE_MUTATION
+                    ),
+                )
+                return _publish_usb_terminal_operation_report(
+                    preflight,
+                    paths,
+                    rollback,
+                    report,
+                )
+
+            if (
+                rollback.phase
+                is not _FavoritesUsbRollbackPhase.MUTATION_STARTED
+            ):
+                raise _FavoritesUsbWritePreparationError(
+                    paths.rollback_manifest_path,
+                    "Favorites USB activation failure does not correlate to "
+                    "PREPARED or MUTATION_STARTED durable rollback state.",
+                ) from activation_error
+
+            if (
+                activation_error.stage
+                is _FavoritesUsbActivationFailureStage
+                .POSTACTIVATION_VERIFICATION
+            ):
+                activation_failure_code = (
+                    _FavoritesUsbFailureCode
+                    .POSTACTIVATION_VERIFICATION_FAILED
+                )
+                postactivation_verification = (
+                    _FavoritesUsbVerificationOutcome.FAILED
+                )
+            else:
+                activation_failure_code = (
+                    _FavoritesUsbFailureCode
+                    .ACTIVATION_FAILED_AFTER_MUTATION
+                )
+                postactivation_verification = (
+                    _FavoritesUsbVerificationOutcome.NOT_ATTEMPTED
+                )
+
+            bounded_artifact_present = (
+                _observe_usb_recovery_bounded_artifact_present(
+                    preflight,
+                    paths,
+                    backup,
+                )
+            )
+            rollback = _publish_usb_rollback_transition(
+                preflight,
+                paths,
+                rollback,
+                phase=_FavoritesUsbRollbackPhase.RECOVERY_REQUIRED,
+                bounded_artifact_present=bounded_artifact_present,
+            )
+
+            bounded_artifact_present = (
+                _observe_usb_recovery_bounded_artifact_present(
+                    preflight,
+                    paths,
+                    backup,
+                )
+            )
+            rollback = _publish_usb_rollback_transition(
+                preflight,
+                paths,
+                rollback,
+                phase=_FavoritesUsbRollbackPhase.RECOVERY_IN_PROGRESS,
+                bounded_artifact_present=bounded_artifact_present,
+            )
+
+            try:
+                recovered = _recover_usb_active_managed_state(
+                    preflight,
+                    paths,
+                    backup,
+                    activation_artifact=(
+                        activation_error.recovery_artifact
+                    ),
+                )
+            except (
+                _FavoritesUsbWritePreparationError,
+                _FavoritesUsbMediaMutationError,
+            ) as recovery_error:
+                try:
+                    bounded_artifact_present = (
+                        _observe_usb_recovery_bounded_artifact_present(
+                            preflight,
+                            paths,
+                            backup,
+                        )
+                    )
+                except _FavoritesUsbWritePreparationError as observation_error:
+                    raise observation_error from recovery_error
+
+                rollback = _publish_usb_rollback_transition(
+                    preflight,
+                    paths,
+                    rollback,
+                    phase=_FavoritesUsbRollbackPhase.RECOVERY_INCOMPLETE,
+                    bounded_artifact_present=bounded_artifact_present,
+                )
+                report = _usb_operation_report(
+                    preflight,
+                    paths,
+                    rollback,
+                    backup_verification=(
+                        _FavoritesUsbVerificationOutcome.VERIFIED
+                    ),
+                    staging_verification=(
+                        _FavoritesUsbVerificationOutcome.VERIFIED
+                    ),
+                    preactivation_verification=(
+                        _FavoritesUsbVerificationOutcome.VERIFIED
+                    ),
+                    postactivation_verification=(
+                        postactivation_verification
+                    ),
+                    unmanaged_preservation=(
+                        _FavoritesUsbVerificationOutcome.FAILED
+                    ),
+                    activation_outcome=(
+                        _FavoritesUsbActivationOutcome.FAILED_AFTER_MUTATION
+                    ),
+                    recovery_outcome=(
+                        _FavoritesUsbRecoveryOutcome.INCOMPLETE
+                    ),
+                    active_snapshot_sha256=None,
+                    failure_code=(
+                        _FavoritesUsbFailureCode.RECOVERY_INCOMPLETE
+                    ),
+                )
+                return _publish_usb_terminal_operation_report(
+                    preflight,
+                    paths,
+                    rollback,
+                    report,
+                )
+
+            rollback = _publish_usb_rollback_transition(
+                preflight,
+                paths,
+                rollback,
+                phase=_FavoritesUsbRollbackPhase.RECOVERED,
+                bounded_artifact_present=False,
+            )
+            report = _usb_operation_report(
+                preflight,
+                paths,
+                rollback,
+                backup_verification=(
+                    _FavoritesUsbVerificationOutcome.VERIFIED
+                ),
+                staging_verification=(
+                    _FavoritesUsbVerificationOutcome.VERIFIED
+                ),
+                preactivation_verification=(
+                    _FavoritesUsbVerificationOutcome.VERIFIED
+                ),
+                postactivation_verification=(
+                    postactivation_verification
+                ),
+                unmanaged_preservation=(
+                    _FavoritesUsbVerificationOutcome.VERIFIED
+                ),
+                activation_outcome=(
+                    _FavoritesUsbActivationOutcome.FAILED_AFTER_MUTATION
+                ),
+                recovery_outcome=(
+                    _FavoritesUsbRecoveryOutcome.RECOVERED
+                ),
+                active_snapshot_sha256=(
+                    recovered.snapshot_sha256
+                ),
+                failure_code=activation_failure_code,
+            )
+            return _publish_usb_terminal_operation_report(
+                preflight,
+                paths,
+                rollback,
+                report,
+            )
+
+        if (
+            rollback.phase
+            is not _FavoritesUsbRollbackPhase.MUTATION_STARTED
+        ):
+            raise _FavoritesUsbWritePreparationError(
+                paths.rollback_manifest_path,
+                "Successful Favorites USB activation did not establish "
+                "durable MUTATION_STARTED state.",
+            )
+
+        rollback = _publish_usb_rollback_transition(
+            preflight,
+            paths,
+            rollback,
+            phase=_FavoritesUsbRollbackPhase.COMPLETED,
+            bounded_artifact_present=False,
+        )
+        report = _usb_operation_report(
+            preflight,
+            paths,
+            rollback,
+            backup_verification=(
+                _FavoritesUsbVerificationOutcome.VERIFIED
+            ),
+            staging_verification=(
+                _FavoritesUsbVerificationOutcome.VERIFIED
+            ),
+            preactivation_verification=(
+                _FavoritesUsbVerificationOutcome.VERIFIED
+            ),
+            postactivation_verification=(
+                _FavoritesUsbVerificationOutcome.VERIFIED
+            ),
+            unmanaged_preservation=(
+                _FavoritesUsbVerificationOutcome.VERIFIED
+            ),
+            activation_outcome=(
+                _FavoritesUsbActivationOutcome.COMPLETED
+            ),
+            recovery_outcome=(
+                _FavoritesUsbRecoveryOutcome.NOT_REQUIRED
+            ),
+            active_snapshot_sha256=(
+                activated.snapshot_sha256
+            ),
+            failure_code=None,
+        )
+        return _publish_usb_terminal_operation_report(
+            preflight,
+            paths,
+            rollback,
+            report,
+        )
+
+
 def _replace_usb_active_managed_file(
     preflight: FavoritesUsbWritePreflight,
     paths: _FavoritesUsbHostOperationPaths,

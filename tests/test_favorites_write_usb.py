@@ -12942,3 +12942,1148 @@ def test_usb_recovery_bounded_artifact_observer_refuses_changed_present_temp(
                 paths,
                 backup,
             )
+
+
+def test_usb_durable_workflow_completes_exact_intended_state(
+    tmp_path: Path,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        _baseline,
+        intended,
+    ) = _usb_activation_orchestration_prepared(
+        tmp_path
+    )
+
+    report = write_usb._execute_usb_write_workflow(
+        preflight,
+        host_root,
+    )
+
+    assert report.is_success
+    assert report.rollback_manifest.phase is (
+        write_usb._FavoritesUsbRollbackPhase.COMPLETED
+    )
+    assert report.activation_outcome is (
+        write_usb._FavoritesUsbActivationOutcome.COMPLETED
+    )
+    assert report.recovery_outcome is (
+        write_usb._FavoritesUsbRecoveryOutcome.NOT_REQUIRED
+    )
+    assert report.failure_code is None
+    assert report.active_snapshot_sha256 == (
+        write_usb.favorites_storage_snapshot_sha256(
+            intended
+        )
+    )
+    assert (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+        == intended
+    )
+    assert report.rollback_manifest.backup_directory.is_dir()
+    assert report.rollback_manifest.staging_directory.is_dir()
+    assert not report.rollback_manifest.bounded_artifact_present
+
+
+def test_usb_durable_workflow_refuses_noop_before_host_operation_creation(
+    tmp_path: Path,
+) -> None:
+    baseline = _snapshot()
+    (
+        preflight,
+        _prepared,
+        favorites_directory,
+    ) = _prepared_usb_activation_fixture(
+        tmp_path,
+        baseline=baseline,
+        intended=baseline,
+    )
+    host_root = (
+        tmp_path
+        / "durable-workflow-noop-host"
+    )
+    before = favorites_tree_evidence(
+        favorites_directory
+    )
+
+    with pytest.raises(
+        write_usb._FavoritesUsbWritePreparationError,
+        match="No-op Favorites USB write plan",
+    ):
+        write_usb._execute_usb_write_workflow(
+            preflight,
+            host_root,
+        )
+
+    assert not host_root.exists()
+    assert favorites_tree_evidence(
+        favorites_directory
+    ) == before
+
+
+def test_usb_durable_workflow_reports_preactivation_failure_from_prepared(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        baseline,
+        _intended,
+    ) = _usb_activation_orchestration_prepared(
+        tmp_path
+    )
+
+    def failing_preactivation(
+        current_preflight: write_usb.FavoritesUsbWritePreflight,
+        current_paths: write_usb._FavoritesUsbHostOperationPaths,
+        current_backup: write_usb._FavoritesUsbVerifiedBackup,
+        current_stage: write_usb._FavoritesUsbPreparedStage,
+    ) -> write_usb._FavoritesUsbPreactivationEvidence:
+        del current_preflight
+        del current_backup
+        del current_stage
+        raise write_usb._FavoritesUsbWritePreparationError(
+            current_paths.operation_directory,
+            "injected final preactivation failure",
+        )
+
+    monkeypatch.setattr(
+        write_usb,
+        "_require_usb_preactivation_ready",
+        failing_preactivation,
+    )
+
+    report = write_usb._execute_usb_write_workflow(
+        preflight,
+        host_root,
+    )
+
+    assert report.rollback_manifest.phase is (
+        write_usb._FavoritesUsbRollbackPhase.PREPARED
+    )
+    assert report.activation_outcome is (
+        write_usb._FavoritesUsbActivationOutcome.NOT_STARTED
+    )
+    assert report.failure_code is (
+        write_usb._FavoritesUsbFailureCode.PREACTIVATION_FAILED
+    )
+    assert report.preactivation_verification is (
+        write_usb._FavoritesUsbVerificationOutcome.FAILED
+    )
+    assert report.active_snapshot_sha256 is None
+    assert (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+        == baseline
+    )
+
+
+def test_usb_durable_workflow_mutation_start_current_prevents_media(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        baseline,
+        _intended,
+    ) = _usb_activation_orchestration_prepared(
+        tmp_path
+    )
+    real_write = write_usb._write_usb_rollback_manifest
+
+    def failing_mutation_start(
+        current_preflight: write_usb.FavoritesUsbWritePreflight,
+        current_paths: write_usb._FavoritesUsbHostOperationPaths,
+        manifest: write_usb._FavoritesUsbRollbackManifest,
+    ) -> None:
+        if (
+            manifest.phase
+            is write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED
+        ):
+            raise write_usb._FavoritesUsbWritePreparationError(
+                current_paths.rollback_manifest_path,
+                "injected prepublication mutation-start failure",
+            )
+        real_write(
+            current_preflight,
+            current_paths,
+            manifest,
+        )
+
+    monkeypatch.setattr(
+        write_usb,
+        "_write_usb_rollback_manifest",
+        failing_mutation_start,
+    )
+
+    report = write_usb._execute_usb_write_workflow(
+        preflight,
+        host_root,
+    )
+
+    assert report.rollback_manifest.phase is (
+        write_usb._FavoritesUsbRollbackPhase.PREPARED
+    )
+    assert report.failure_code is (
+        write_usb._FavoritesUsbFailureCode
+        .ACTIVATION_FAILED_BEFORE_MUTATION
+    )
+    assert (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+        == baseline
+    )
+
+
+def test_usb_durable_workflow_mutation_start_proposed_recovers_without_media_primitive(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        baseline,
+        _intended,
+    ) = _usb_activation_orchestration_prepared(
+        tmp_path
+    )
+    real_write = write_usb._write_usb_rollback_manifest
+    injected = False
+
+    def publish_then_fail_mutation_start(
+        current_preflight: write_usb.FavoritesUsbWritePreflight,
+        current_paths: write_usb._FavoritesUsbHostOperationPaths,
+        manifest: write_usb._FavoritesUsbRollbackManifest,
+    ) -> None:
+        nonlocal injected
+
+        if (
+            manifest.phase
+            is write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED
+            and not injected
+        ):
+            injected = True
+            real_write(
+                current_preflight,
+                current_paths,
+                manifest,
+            )
+            raise write_usb._FavoritesUsbWritePreparationError(
+                current_paths.rollback_manifest_path,
+                "injected postpublication mutation-start failure",
+            )
+
+        real_write(
+            current_preflight,
+            current_paths,
+            manifest,
+        )
+
+    monkeypatch.setattr(
+        write_usb,
+        "_write_usb_rollback_manifest",
+        publish_then_fail_mutation_start,
+    )
+
+    report = write_usb._execute_usb_write_workflow(
+        preflight,
+        host_root,
+    )
+
+    assert injected
+    assert report.rollback_manifest.phase is (
+        write_usb._FavoritesUsbRollbackPhase.RECOVERED
+    )
+    assert report.failure_code is (
+        write_usb._FavoritesUsbFailureCode
+        .ACTIVATION_FAILED_AFTER_MUTATION
+    )
+    assert (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+        == baseline
+    )
+
+
+def test_usb_durable_workflow_recovers_postactivation_verification_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        baseline,
+        _intended,
+    ) = _usb_activation_orchestration_prepared(
+        tmp_path
+    )
+
+    def failing_postactivation_read(
+        path: Path,
+    ) -> FavoritesStorageSnapshot:
+        raise write_usb._FavoritesUsbWritePreparationError(
+            path,
+            "injected durable-workflow postactivation readback failure",
+        )
+
+    monkeypatch.setattr(
+        write_usb,
+        "_read_usb_activation_managed_snapshot",
+        failing_postactivation_read,
+    )
+
+    report = write_usb._execute_usb_write_workflow(
+        preflight,
+        host_root,
+    )
+
+    assert report.rollback_manifest.phase is (
+        write_usb._FavoritesUsbRollbackPhase.RECOVERED
+    )
+    assert report.failure_code is (
+        write_usb._FavoritesUsbFailureCode
+        .POSTACTIVATION_VERIFICATION_FAILED
+    )
+    assert report.postactivation_verification is (
+        write_usb._FavoritesUsbVerificationOutcome.FAILED
+    )
+    assert report.unmanaged_preservation is (
+        write_usb._FavoritesUsbVerificationOutcome.VERIFIED
+    )
+    assert (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+        == baseline
+    )
+
+
+def test_usb_durable_workflow_reobserves_absent_artifact_after_partial_recovery_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        baseline,
+        _intended,
+    ) = _usb_activation_orchestration_prepared(
+        tmp_path
+    )
+    baseline_documents = {
+        document.filename: document
+        for document in baseline.documents
+    }
+
+    def activation_with_artifact(
+        current_preflight: write_usb.FavoritesUsbWritePreflight,
+        current_paths: write_usb._FavoritesUsbHostOperationPaths,
+        current_backup: write_usb._FavoritesUsbVerifiedBackup,
+        current_stage: write_usb._FavoritesUsbPreparedStage,
+        current_preactivation: write_usb._FavoritesUsbPreactivationEvidence,
+        *,
+        mutation_start: object = None,
+    ) -> write_usb._FavoritesUsbActivatedState:
+        del current_backup
+        del current_stage
+        del current_preactivation
+
+        assert callable(
+            mutation_start
+        )
+        mutation_start()
+
+        target = (
+            current_preflight.qualification.favorites_directory
+            / "removed.hpd"
+        )
+        temporary = write_usb._usb_media_temporary_path(
+            current_preflight,
+            current_paths,
+        )
+        write_usb.os.replace(
+            target,
+            temporary,
+        )
+        artifact = write_usb._FavoritesUsbMediaRecoveryArtifact(
+            path=temporary,
+            managed_filename="removed.hpd",
+            content_sha256=(
+                write_usb._usb_media_content_sha256(
+                    baseline_documents[
+                        "removed.hpd"
+                    ].content
+                )
+            ),
+        )
+        raise write_usb._FavoritesUsbActivationExecutionError(
+            temporary,
+            "injected activation artifact before recovery",
+            stage=(
+                write_usb._FavoritesUsbActivationFailureStage
+                .MUTATION_EXECUTION
+            ),
+            mutation_started=True,
+            recovery_artifact=artifact,
+        )
+
+    def failing_recovery_read(
+        path: Path,
+    ) -> FavoritesStorageSnapshot:
+        raise write_usb._FavoritesUsbWritePreparationError(
+            path,
+            "injected recovery readback failure after artifact cleanup",
+        )
+
+    monkeypatch.setattr(
+        write_usb,
+        "_activate_usb_managed_state",
+        activation_with_artifact,
+    )
+    monkeypatch.setattr(
+        write_usb,
+        "_read_usb_recovery_managed_snapshot",
+        failing_recovery_read,
+    )
+
+    report = write_usb._execute_usb_write_workflow(
+        preflight,
+        host_root,
+    )
+
+    assert report.rollback_manifest.phase is (
+        write_usb._FavoritesUsbRollbackPhase.RECOVERY_INCOMPLETE
+    )
+    assert report.failure_code is (
+        write_usb._FavoritesUsbFailureCode.RECOVERY_INCOMPLETE
+    )
+    assert report.rollback_manifest.bounded_artifact_present is False
+    temporary = (
+        report.rollback_manifest.favorites_directory
+        / (
+            write_usb._USB_MEDIA_TEMP_PREFIX
+            + report.rollback_manifest.operation_id[:16]
+            + ".tmp"
+        )
+    )
+    assert not write_usb.os.path.lexists(
+        temporary
+    )
+    assert (
+        favorites_directory
+        / "removed.hpd"
+    ).read_bytes() == (
+        baseline_documents[
+            "removed.hpd"
+        ].content
+    )
+
+
+def test_usb_durable_workflow_final_report_postpublication_failure_returns_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        _favorites_directory,
+        host_root,
+        _baseline,
+        _intended,
+    ) = _usb_activation_orchestration_prepared(
+        tmp_path
+    )
+    real_write = write_usb._write_usb_operation_report
+    injected = False
+
+    def publish_then_fail_report(
+        current_preflight: write_usb.FavoritesUsbWritePreflight,
+        current_paths: write_usb._FavoritesUsbHostOperationPaths,
+        rollback: write_usb._FavoritesUsbRollbackManifest,
+        report: write_usb._FavoritesUsbOperationReport,
+    ) -> Path:
+        nonlocal injected
+
+        destination = real_write(
+            current_preflight,
+            current_paths,
+            rollback,
+            report,
+        )
+        if not injected:
+            injected = True
+            raise write_usb._FavoritesUsbWritePreparationError(
+                destination,
+                "injected final report postpublication failure",
+            )
+        return destination
+
+    monkeypatch.setattr(
+        write_usb,
+        "_write_usb_operation_report",
+        publish_then_fail_report,
+    )
+
+    report = write_usb._execute_usb_write_workflow(
+        preflight,
+        host_root,
+    )
+
+    assert injected
+    assert report.is_success
+    assert report.rollback_manifest.phase is (
+        write_usb._FavoritesUsbRollbackPhase.COMPLETED
+    )
+
+
+def test_usb_durable_workflow_final_report_absent_failure_is_not_retried(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        _baseline,
+        intended,
+    ) = _usb_activation_orchestration_prepared(
+        tmp_path
+    )
+    calls = 0
+
+    def failing_report_write(
+        current_preflight: write_usb.FavoritesUsbWritePreflight,
+        current_paths: write_usb._FavoritesUsbHostOperationPaths,
+        rollback: write_usb._FavoritesUsbRollbackManifest,
+        report: write_usb._FavoritesUsbOperationReport,
+    ) -> Path:
+        nonlocal calls
+        del current_preflight
+        del rollback
+        del report
+        calls += 1
+        raise write_usb._FavoritesUsbWritePreparationError(
+            current_paths.operation_report_path,
+            "injected final report prepublication failure",
+        )
+
+    monkeypatch.setattr(
+        write_usb,
+        "_write_usb_operation_report",
+        failing_report_write,
+    )
+
+    with pytest.raises(
+        write_usb._FavoritesUsbWritePreparationError,
+        match="injected final report prepublication failure",
+    ):
+        write_usb._execute_usb_write_workflow(
+            preflight,
+            host_root,
+        )
+
+    assert calls == 1
+    assert (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+        == intended
+    )
+
+
+def test_usb_durable_workflow_initial_prepared_writer_failure_never_activates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        baseline,
+        _intended,
+    ) = _usb_activation_orchestration_prepared(
+        tmp_path
+    )
+    real_write = write_usb._write_usb_rollback_manifest
+    activation_called = False
+
+    def publish_prepared_then_fail(
+        current_preflight: write_usb.FavoritesUsbWritePreflight,
+        current_paths: write_usb._FavoritesUsbHostOperationPaths,
+        manifest: write_usb._FavoritesUsbRollbackManifest,
+    ) -> None:
+        if manifest.phase is write_usb._FavoritesUsbRollbackPhase.PREPARED:
+            real_write(
+                current_preflight,
+                current_paths,
+                manifest,
+            )
+            raise write_usb._FavoritesUsbWritePreparationError(
+                current_paths.rollback_manifest_path,
+                "injected PREPARED postpublication failure",
+            )
+        real_write(
+            current_preflight,
+            current_paths,
+            manifest,
+        )
+
+    def forbidden_activation(
+        *args: object,
+        **kwargs: object,
+    ) -> write_usb._FavoritesUsbActivatedState:
+        nonlocal activation_called
+        activation_called = True
+        raise AssertionError(
+            "activation must not run after PREPARED writer failure"
+        )
+
+    monkeypatch.setattr(
+        write_usb,
+        "_write_usb_rollback_manifest",
+        publish_prepared_then_fail,
+    )
+    monkeypatch.setattr(
+        write_usb,
+        "_activate_usb_managed_state",
+        forbidden_activation,
+    )
+
+    with pytest.raises(
+        write_usb._FavoritesUsbWritePreparationError,
+        match="injected PREPARED postpublication failure",
+    ):
+        write_usb._execute_usb_write_workflow(
+            preflight,
+            host_root,
+        )
+
+    assert activation_called is False
+    assert (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+        == baseline
+    )
+
+
+def test_usb_durable_workflow_completed_postpublication_failure_reconciles(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        _baseline,
+        intended,
+    ) = _usb_activation_orchestration_prepared(
+        tmp_path
+    )
+    real_write = write_usb._write_usb_rollback_manifest
+    injected = False
+
+    def publish_completed_then_fail(
+        current_preflight: write_usb.FavoritesUsbWritePreflight,
+        current_paths: write_usb._FavoritesUsbHostOperationPaths,
+        manifest: write_usb._FavoritesUsbRollbackManifest,
+    ) -> None:
+        nonlocal injected
+
+        if (
+            manifest.phase is write_usb._FavoritesUsbRollbackPhase.COMPLETED
+            and not injected
+        ):
+            injected = True
+            real_write(
+                current_preflight,
+                current_paths,
+                manifest,
+            )
+            raise write_usb._FavoritesUsbWritePreparationError(
+                current_paths.rollback_manifest_path,
+                "injected COMPLETED postpublication failure",
+            )
+
+        real_write(
+            current_preflight,
+            current_paths,
+            manifest,
+        )
+
+    monkeypatch.setattr(
+        write_usb,
+        "_write_usb_rollback_manifest",
+        publish_completed_then_fail,
+    )
+
+    report = write_usb._execute_usb_write_workflow(
+        preflight,
+        host_root,
+    )
+
+    assert injected
+    assert report.is_success
+    assert report.rollback_manifest.phase is (
+        write_usb._FavoritesUsbRollbackPhase.COMPLETED
+    )
+    assert (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+        == intended
+    )
+
+
+def test_usb_rollback_transition_publisher_retries_exact_current_once(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    plan = plan_favorites_write(
+        _snapshot(),
+        _snapshot(_CHANGED_CATALOG),
+    )
+    preflight = preflight_favorites_usb_write(
+        plan,
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state-transition-retry-once"
+        / "favorites-usb-writes"
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        write_usb._create_verified_usb_host_backup(
+            preflight,
+            paths,
+        )
+        current = write_usb._usb_rollback_manifest(
+            preflight,
+            paths,
+            revision=1,
+            phase=write_usb._FavoritesUsbRollbackPhase.PREPARED,
+            bounded_artifact_present=False,
+        )
+        write_usb._write_usb_rollback_manifest(
+            preflight,
+            paths,
+            current,
+        )
+
+        real_write = write_usb._write_usb_rollback_manifest
+        calls = 0
+
+        def fail_first_current(
+            current_preflight: write_usb.FavoritesUsbWritePreflight,
+            current_paths: write_usb._FavoritesUsbHostOperationPaths,
+            manifest: write_usb._FavoritesUsbRollbackManifest,
+        ) -> None:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise write_usb._FavoritesUsbWritePreparationError(
+                    current_paths.rollback_manifest_path,
+                    "injected exact-CURRENT transition failure",
+                )
+            real_write(
+                current_preflight,
+                current_paths,
+                manifest,
+            )
+
+        original = write_usb._write_usb_rollback_manifest
+        write_usb._write_usb_rollback_manifest = fail_first_current
+        try:
+            proposed = write_usb._publish_usb_rollback_transition(
+                preflight,
+                paths,
+                current,
+                phase=write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED,
+                bounded_artifact_present=False,
+            )
+        finally:
+            write_usb._write_usb_rollback_manifest = original
+
+        assert calls == 2
+        assert proposed.phase is (
+            write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED
+        )
+        assert (
+            write_usb._read_usb_rollback_manifest(
+                paths.rollback_manifest_path
+            )
+            == proposed
+        )
+
+
+def test_usb_rollback_transition_publisher_stops_after_two_exact_current_failures(
+    tmp_path: Path,
+) -> None:
+    (
+        mountinfo,
+        dev_block,
+        mount_directory,
+        _favorites_directory,
+    ) = _usb_write_fixture(
+        tmp_path
+    )
+    plan = plan_favorites_write(
+        _snapshot(),
+        _snapshot(_CHANGED_CATALOG),
+    )
+    preflight = preflight_favorites_usb_write(
+        plan,
+        mount_directory,
+        mountinfo,
+        sys_dev_block_directory=dev_block,
+    )
+    host_root = (
+        tmp_path
+        / "host-state-transition-retry-bounded"
+        / "favorites-usb-writes"
+    )
+
+    with write_usb._usb_host_operation_lock(
+        preflight,
+        host_root,
+    ) as paths:
+        write_usb._create_verified_usb_host_backup(
+            preflight,
+            paths,
+        )
+        current = write_usb._usb_rollback_manifest(
+            preflight,
+            paths,
+            revision=1,
+            phase=write_usb._FavoritesUsbRollbackPhase.PREPARED,
+            bounded_artifact_present=False,
+        )
+        write_usb._write_usb_rollback_manifest(
+            preflight,
+            paths,
+            current,
+        )
+
+        calls = 0
+
+        def always_current(
+            _current_preflight: write_usb.FavoritesUsbWritePreflight,
+            current_paths: write_usb._FavoritesUsbHostOperationPaths,
+            _manifest: write_usb._FavoritesUsbRollbackManifest,
+        ) -> None:
+            nonlocal calls
+            calls += 1
+            raise write_usb._FavoritesUsbWritePreparationError(
+                current_paths.rollback_manifest_path,
+                "injected persistent exact-CURRENT transition failure",
+            )
+
+        original = write_usb._write_usb_rollback_manifest
+        write_usb._write_usb_rollback_manifest = always_current
+        try:
+            with pytest.raises(
+                write_usb._FavoritesUsbWritePreparationError,
+                match="persistent exact-CURRENT",
+            ):
+                write_usb._publish_usb_rollback_transition(
+                    preflight,
+                    paths,
+                    current,
+                    phase=(
+                        write_usb._FavoritesUsbRollbackPhase.MUTATION_STARTED
+                    ),
+                    bounded_artifact_present=False,
+                )
+        finally:
+            write_usb._write_usb_rollback_manifest = original
+
+        assert calls == 2
+        assert (
+            write_usb._read_usb_rollback_manifest(
+                paths.rollback_manifest_path
+            )
+            == current
+        )
+
+
+def _run_usb_durable_workflow_with_single_transition_current(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    failed_phase: write_usb._FavoritesUsbRollbackPhase,
+    force_recovery: bool,
+    force_incomplete_recovery: bool = False,
+) -> tuple[
+    write_usb._FavoritesUsbOperationReport,
+    FavoritesStorageSnapshot,
+    FavoritesStorageSnapshot,
+    Path,
+    int,
+]:
+    (
+        preflight,
+        favorites_directory,
+        host_root,
+        baseline,
+        intended,
+    ) = _usb_activation_orchestration_prepared(
+        tmp_path
+    )
+
+    real_write = write_usb._write_usb_rollback_manifest
+    failed_calls = 0
+
+    def fail_first_target_phase(
+        current_preflight: write_usb.FavoritesUsbWritePreflight,
+        current_paths: write_usb._FavoritesUsbHostOperationPaths,
+        manifest: write_usb._FavoritesUsbRollbackManifest,
+    ) -> None:
+        nonlocal failed_calls
+
+        if (
+            manifest.phase is failed_phase
+            and failed_calls == 0
+        ):
+            failed_calls += 1
+            raise write_usb._FavoritesUsbWritePreparationError(
+                current_paths.rollback_manifest_path,
+                "injected workflow transition exact-CURRENT failure",
+            )
+
+        real_write(
+            current_preflight,
+            current_paths,
+            manifest,
+        )
+
+    monkeypatch.setattr(
+        write_usb,
+        "_write_usb_rollback_manifest",
+        fail_first_target_phase,
+    )
+
+    if force_recovery:
+        def failing_postactivation_read(
+            path: Path,
+        ) -> FavoritesStorageSnapshot:
+            raise write_usb._FavoritesUsbWritePreparationError(
+                path,
+                "injected transition-retry recovery path",
+            )
+
+        monkeypatch.setattr(
+            write_usb,
+            "_read_usb_activation_managed_snapshot",
+            failing_postactivation_read,
+        )
+
+    if force_incomplete_recovery:
+        def failing_recovery(
+            _current_preflight: write_usb.FavoritesUsbWritePreflight,
+            current_paths: write_usb._FavoritesUsbHostOperationPaths,
+            _current_backup: write_usb._FavoritesUsbVerifiedBackup,
+            *,
+            activation_artifact: (
+                write_usb._FavoritesUsbMediaRecoveryArtifact | None
+            ) = None,
+        ) -> write_usb._FavoritesUsbRecoveredState:
+            del activation_artifact
+            raise write_usb._FavoritesUsbWritePreparationError(
+                current_paths.operation_directory,
+                "injected incomplete recovery after transition retry",
+            )
+
+        monkeypatch.setattr(
+            write_usb,
+            "_recover_usb_active_managed_state",
+            failing_recovery,
+        )
+
+    report = write_usb._execute_usb_write_workflow(
+        preflight,
+        host_root,
+    )
+
+    return (
+        report,
+        baseline,
+        intended,
+        favorites_directory,
+        failed_calls,
+    )
+
+
+def test_usb_durable_workflow_retries_recovery_required_current(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        report,
+        baseline,
+        _intended,
+        favorites_directory,
+        failed_calls,
+    ) = _run_usb_durable_workflow_with_single_transition_current(
+        tmp_path,
+        monkeypatch,
+        failed_phase=(
+            write_usb._FavoritesUsbRollbackPhase.RECOVERY_REQUIRED
+        ),
+        force_recovery=True,
+    )
+
+    assert failed_calls == 1
+    assert report.rollback_manifest.phase is (
+        write_usb._FavoritesUsbRollbackPhase.RECOVERED
+    )
+    assert (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+        == baseline
+    )
+
+
+def test_usb_durable_workflow_retries_recovery_in_progress_current(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        report,
+        baseline,
+        _intended,
+        favorites_directory,
+        failed_calls,
+    ) = _run_usb_durable_workflow_with_single_transition_current(
+        tmp_path,
+        monkeypatch,
+        failed_phase=(
+            write_usb._FavoritesUsbRollbackPhase.RECOVERY_IN_PROGRESS
+        ),
+        force_recovery=True,
+    )
+
+    assert failed_calls == 1
+    assert report.rollback_manifest.phase is (
+        write_usb._FavoritesUsbRollbackPhase.RECOVERED
+    )
+    assert (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+        == baseline
+    )
+
+
+def test_usb_durable_workflow_retries_recovered_current(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        report,
+        baseline,
+        _intended,
+        favorites_directory,
+        failed_calls,
+    ) = _run_usb_durable_workflow_with_single_transition_current(
+        tmp_path,
+        monkeypatch,
+        failed_phase=write_usb._FavoritesUsbRollbackPhase.RECOVERED,
+        force_recovery=True,
+    )
+
+    assert failed_calls == 1
+    assert report.rollback_manifest.phase is (
+        write_usb._FavoritesUsbRollbackPhase.RECOVERED
+    )
+    assert (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+        == baseline
+    )
+
+
+def test_usb_durable_workflow_retries_recovery_incomplete_current(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        report,
+        _baseline,
+        _intended,
+        _favorites_directory,
+        failed_calls,
+    ) = _run_usb_durable_workflow_with_single_transition_current(
+        tmp_path,
+        monkeypatch,
+        failed_phase=(
+            write_usb._FavoritesUsbRollbackPhase.RECOVERY_INCOMPLETE
+        ),
+        force_recovery=True,
+        force_incomplete_recovery=True,
+    )
+
+    assert failed_calls == 1
+    assert report.rollback_manifest.phase is (
+        write_usb._FavoritesUsbRollbackPhase.RECOVERY_INCOMPLETE
+    )
+    assert report.failure_code is (
+        write_usb._FavoritesUsbFailureCode.RECOVERY_INCOMPLETE
+    )
+
+
+def test_usb_durable_workflow_retries_completed_current(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (
+        report,
+        _baseline,
+        intended,
+        favorites_directory,
+        failed_calls,
+    ) = _run_usb_durable_workflow_with_single_transition_current(
+        tmp_path,
+        monkeypatch,
+        failed_phase=write_usb._FavoritesUsbRollbackPhase.COMPLETED,
+        force_recovery=False,
+    )
+
+    assert failed_calls == 1
+    assert report.is_success
+    assert report.rollback_manifest.phase is (
+        write_usb._FavoritesUsbRollbackPhase.COMPLETED
+    )
+    assert (
+        write_usb._read_usb_recovery_managed_snapshot(
+            favorites_directory
+        )
+        == intended
+    )
