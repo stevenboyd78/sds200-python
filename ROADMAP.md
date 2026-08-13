@@ -11,50 +11,48 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 23.1 — External Favorites provenance and import-preview foundation
+### Milestone 23.2 — RadioReference documented-interface and credential foundation
 
-- Begin from the fully merged Milestone 22.6 foundation at
-  `e70b36eee89ce9fea4b2634c1fcd65024ca86aeb`.
-- Treat Milestones 21.1 through 22.6 as complete: the lossless Favorites model,
-  renderer-neutral browsing/editing/planning layers, copied-tree and USB write
-  safety, and read-only FTP storage now define the local Favorites boundary.
-- Begin Milestone 23 with a renderer-neutral external-data foundation before any
-  renderer-specific workflow or live synchronization. Preserve exact local
-  Favorites source records as authoritative user data rather than replacing them
-  with a service-specific object model.
-- Define immutable external-source identity, record provenance, field ownership,
-  and last-observed revision/update evidence that can support RadioReference-
-  assisted import without embedding provider credentials or transport details in
-  Favorites snapshots or exports.
-- Model import/update proposals as previewable data only. A proposal must make
-  additions, replacements, removals, unchanged values, local-only values, and
-  conflicts explicit before any existing Favorites editing or write-planning
-  service is invoked.
-- Preserve local-only annotations and locally owned values. External data must
-  not silently overwrite a locally owned field, silently delete a detached local
-  record, or create last-writer-wins synchronization behavior.
-- Define explicit detach semantics so an externally sourced record or field can
-  become locally owned without losing its current scanner-compatible value or
-  preserved unknown source material.
-- Keep source revisions and provider identifiers separate from scanner record
-  identity. Do not assume RadioReference identifiers are SDS Favorites
-  identifiers, filenames, line numbers, or stable scanner provenance.
-- Keep provider account credentials, application keys, tokens, and other secrets
-  behind secret references and out of Favorites data, exports, comparison
-  reports, provenance payloads intended for export, logs, diagnostics, and public
-  API representations.
-- Keep the first implementation transport-independent and deterministic behind a
-  fakeable external-source boundary. Automated tests must use synthetic provider
-  fixtures and must not require RadioReference, MyRR, internet access, or a live
-  scanner.
-- Research RadioReference only through documented/approved interfaces before a
-  concrete network adapter is accepted. Record authentication, licensing,
-  attribution, identifier, revision, rate-limit, and data-shape constraints
-  separately from the renderer-neutral import model.
-- Keep MyRR synchronization, automatic/background synchronization, live remote
-  mutation, renderer-specific import UI, credential persistence/UI, and direct
-  Favorites storage writes outside Milestone 23.1. Do not scrape or depend on
-  undocumented private interfaces.
+- Begin from the fully merged Milestone 23.1 foundation at
+  `d5c96eb516ff34ff3bebd7fbe5006861f0381d23`.
+- Treat Milestone 23.1 as complete: immutable source-neutral external identities,
+  provider observations, field ownership, explicit absence, deterministic import
+  previews, detach semantics, redacted source failures, and exact local
+  `FavoritesRecordTarget` provenance now define the external-data core boundary.
+- Establish the first RadioReference-specific boundary only from currently
+  documented and approved interfaces. The documented production database service
+  is SOAP/XML and is described by RadioReference's published WSDL; do not scrape
+  HTML or depend on undocumented/private endpoints.
+- Preserve the product use case as scanner/radio programming assistance rather
+  than a mirror, directory, or replacement for the RadioReference website.
+- Model the documented authentication boundary explicitly: one approved
+  application key belongs to the application, while each end user authenticates
+  with that user's own RadioReference account and must satisfy the provider's
+  subscription requirements.
+- Keep application keys, passwords, tokens, cookies, and equivalent secrets
+  behind secret references. Usernames and non-secret provider settings may be
+  ordinary configuration, but no secret value may enter Favorites snapshots,
+  provider observations, preview/export payloads, logs, diagnostics, exceptions,
+  or public API representations.
+- Separate RadioReference transport/configuration concerns from the Milestone
+  23.1 normalized `FavoritesExternalRecordObservation` model. Provider-specific
+  identifiers and response objects must not become SDS Favorites filenames,
+  source positions, scanner identities, or write provenance.
+- Research and record the WSDL method/data shapes needed for conventional
+  frequencies, agencies, trunked systems, sites, and talkgroups before accepting
+  a production mapping. Record which identifiers and update/revision fields are
+  documented rather than inferring stability or deletion semantics.
+- Define a narrow fakeable RadioReference transport/client boundary suitable for
+  sanitized SOAP/XML fixtures and deterministic offline tests. Automated tests
+  must not require internet access, a RadioReference account, an application key,
+  a premium subscription, MyRR, or a physical scanner.
+- Treat live RadioReference access as an explicit later validation step after an
+  application key has been approved and the exact documented calls used by this
+  project are reviewed. Do not place real credentials or provider data captured
+  from a private account into the repository.
+- Keep provider-to-SDS field/template mapping, operator merge/acceptance
+  decisions, renderer-specific import workflows, automatic/background sync,
+  MyRR synchronization, and Favorites storage mutation outside Milestone 23.2.
 
 ## Deferred hardware validation
 
@@ -257,6 +255,12 @@ begins.
 
 ### Milestone 23 — External Favorites data and synchronization
 
+- Milestone 23.1 completed the renderer-neutral external-data foundation:
+  immutable provider/dataset/record identities, timezone-aware observation
+  evidence, explicit value-versus-absence semantics, external/local/detached
+  field ownership, deterministic add/replace/remove/unchanged/local-only/conflict
+  previews, redacted fakeable source reads, explicit detach behavior, and exact
+  local record provenance without provider-specific scanner mapping.
 - Add RadioReference-assisted import with update previews.
 - Preserve provenance and field ownership for externally sourced data.
 - Support merge decisions and detaching local records from an external source.
