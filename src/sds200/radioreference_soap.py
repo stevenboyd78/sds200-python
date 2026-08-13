@@ -70,6 +70,7 @@ _SOAP_ARRAY_TYPE = (
 )
 _XSI_TYPE = f"{{{RADIOREFERENCE_XML_SCHEMA_INSTANCE_NAMESPACE}}}type"
 _XSI_NIL = f"{{{RADIOREFERENCE_XML_SCHEMA_INSTANCE_NAMESPACE}}}nil"
+_XML_SCHEMA_NAMESPACE = "http://www.w3.org/2001/XMLSchema"
 
 _XSD_INT_MIN = -(2**31)
 _XSD_INT_MAX = 2**31 - 1
@@ -119,6 +120,7 @@ class _DecodeFailure(Exception):
 @dataclass(frozen=True, slots=True)
 class _Context:
     references: dict[str, ET.Element]
+    namespaces: dict[int, dict[str, str]]
     max_reference_depth: int
 
 
@@ -152,13 +154,24 @@ def _parse_document(
     xml: bytes,
     *,
     max_elements: int,
-) -> ET.Element:
+) -> tuple[ET.Element, dict[int, dict[str, str]]]:
     builder = ET.TreeBuilder()
     parser = expat.ParserCreate(
         namespace_separator=_EXPAT_NAMESPACE_SEPARATOR
     )
     parser.buffer_text = True
     element_count = 0
+    namespaces: dict[int, dict[str, str]] = {}
+    namespace_stack: list[dict[str, str]] = [{}]
+    pending_namespaces: dict[str, str] = {}
+
+    def start_namespace(prefix: str | None, uri: str | None) -> None:
+        if uri is None:
+            raise _DecodeFailure
+        normalized_prefix = "" if prefix is None else prefix
+        if normalized_prefix in pending_namespaces:
+            raise _DecodeFailure
+        pending_namespaces[normalized_prefix] = uri
 
     def start_element(
         name: str,
@@ -168,16 +181,26 @@ def _parse_document(
         element_count += 1
         if element_count > max_elements:
             raise _DecodeFailure
-        builder.start(
+
+        scope = dict(namespace_stack[-1])
+        scope.update(pending_namespaces)
+        pending_namespaces.clear()
+
+        element = builder.start(
             _expanded_xml_name(name),
             {
                 _expanded_xml_name(attribute): value
                 for attribute, value in attributes.items()
             },
         )
+        namespaces[id(element)] = scope
+        namespace_stack.append(scope)
 
     def end_element(name: str) -> None:
         builder.end(_expanded_xml_name(name))
+        if len(namespace_stack) <= 1:
+            raise _DecodeFailure
+        namespace_stack.pop()
 
     def reject_declaration(*_args: object) -> None:
         raise _DecodeFailure
@@ -185,6 +208,7 @@ def _parse_document(
     def reject_external_entity(*_args: object) -> int:
         raise _DecodeFailure
 
+    parser.StartNamespaceDeclHandler = start_namespace
     parser.StartElementHandler = start_element
     parser.EndElementHandler = end_element
     parser.CharacterDataHandler = builder.data
@@ -200,10 +224,14 @@ def _parse_document(
     except expat.ExpatError:
         raise _DecodeFailure from None
 
+    if pending_namespaces or len(namespace_stack) != 1:
+        raise _DecodeFailure
+
     try:
-        return builder.close()
+        root = builder.close()
     except (IndexError, AssertionError):
         raise _DecodeFailure from None
+    return root, namespaces
 
 
 def _require_no_nil(element: ET.Element) -> None:
@@ -253,14 +281,50 @@ def _require_complex_text(element: ET.Element) -> None:
             raise _DecodeFailure
 
 
+def _resolved_qname(
+    value: str,
+    element: ET.Element,
+    context: _Context,
+) -> tuple[str, str]:
+    if not value or value != value.strip():
+        raise _DecodeFailure
+
+    if ":" in value:
+        prefix, local_name = value.split(":", 1)
+        if not prefix or not local_name or ":" in local_name:
+            raise _DecodeFailure
+    else:
+        prefix = ""
+        local_name = value
+
+    scope = context.namespaces.get(id(element))
+    if scope is None:
+        raise _DecodeFailure
+    namespace = scope.get(prefix)
+    if namespace is None:
+        raise _DecodeFailure
+    return namespace, local_name
+
+
+def _expected_type_namespace(expected_type: str) -> str:
+    if expected_type in {"boolean", "dateTime", "decimal", "int", "string"}:
+        return _XML_SCHEMA_NAMESPACE
+    return RADIOREFERENCE_SOAP_NAMESPACE
+
+
 def _validate_declared_type(
     element: ET.Element,
     expected_type: str,
+    context: _Context,
 ) -> None:
     declared = element.attrib.get(_XSI_TYPE)
     if declared is None:
         return
-    if _local_name(declared) != expected_type:
+
+    if _resolved_qname(declared, element, context) != (
+        _expected_type_namespace(expected_type),
+        expected_type,
+    ):
         raise _DecodeFailure
 
 
@@ -273,7 +337,7 @@ def _members(
     expected_names: tuple[str, ...],
 ) -> tuple[dict[str, ET.Element], tuple[str, ...]]:
     resolved, resolved_trail = _resolve(element, context, trail)
-    _validate_declared_type(resolved, expected_type)
+    _validate_declared_type(resolved, expected_type, context)
     _require_complex_text(resolved)
 
     expected = set(expected_names)
@@ -298,7 +362,7 @@ def _scalar_element(
     expected_type: str,
 ) -> str:
     resolved, _resolved_trail = _resolve(element, context, trail)
-    _validate_declared_type(resolved, expected_type)
+    _validate_declared_type(resolved, expected_type, context)
     if list(resolved):
         raise _DecodeFailure
     _require_no_nil(resolved)
@@ -445,11 +509,17 @@ def _array_items(
     _require_complex_text(resolved)
 
     declared_type = resolved.attrib.get(_XSI_TYPE)
-    if (
-        declared_type is not None
-        and _local_name(declared_type) not in {"Array", expected_item_type}
-    ):
-        raise _DecodeFailure
+    if declared_type is not None:
+        declared_qname = _resolved_qname(
+            declared_type,
+            resolved,
+            context,
+        )
+        if declared_qname not in {
+            (RADIOREFERENCE_SOAP_ENCODING_NAMESPACE, "Array"),
+            (RADIOREFERENCE_SOAP_NAMESPACE, expected_item_type),
+        }:
+            raise _DecodeFailure
 
     declared_count: int | None = None
     array_type = resolved.attrib.get(_SOAP_ARRAY_TYPE)
@@ -457,7 +527,11 @@ def _array_items(
         match = _ARRAY_TYPE_PATTERN.fullmatch(array_type)
         if match is None:
             raise _DecodeFailure
-        if _local_name(match.group("type")) != expected_item_type:
+        if _resolved_qname(
+            match.group("type"),
+            resolved,
+            context,
+        ) != (RADIOREFERENCE_SOAP_NAMESPACE, expected_item_type):
             raise _DecodeFailure
         count = match.group("count")
         if count:
@@ -1689,6 +1763,7 @@ def _validate_reference_graph(
 def _soap_return(
     root: ET.Element,
     operation: RadioReferenceWsdlOperation,
+    context: _Context,
 ) -> ET.Element:
     if root.tag != _SOAP_ENVELOPE:
         raise _DecodeFailure
@@ -1743,9 +1818,15 @@ def _soap_return(
     return_node = return_nodes[0]
     declared = return_node.attrib.get(_XSI_TYPE)
     if declared is not None:
-        declared_name = _local_name(declared)
         expected_name = _local_name(contract.response_type)
-        if declared_name not in {expected_name, "Array"}:
+        if _resolved_qname(
+            declared,
+            return_node,
+            context,
+        ) not in {
+            (RADIOREFERENCE_SOAP_NAMESPACE, expected_name),
+            (RADIOREFERENCE_SOAP_ENCODING_NAMESPACE, "Array"),
+        }:
             raise _DecodeFailure
 
     _require_no_nil(return_node)
@@ -1847,7 +1928,7 @@ class RadioReferenceSoapDecoder:
             if not xml or len(xml) > self.max_document_bytes:
                 raise _DecodeFailure
 
-            root = _parse_document(
+            root, namespaces = _parse_document(
                 xml,
                 max_elements=self.max_elements,
             )
@@ -1857,10 +1938,11 @@ class RadioReferenceSoapDecoder:
             )
             context = _Context(
                 references=references,
+                namespaces=namespaces,
                 max_reference_depth=self.max_reference_depth,
             )
             _validate_reference_graph(root, context)
-            return_node = _soap_return(root, operation)
+            return_node = _soap_return(root, operation, context)
             return _decode_result(
                 operation,
                 return_node,

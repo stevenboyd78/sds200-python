@@ -847,6 +847,119 @@ def test_decoder_rejects_return_type_mismatch() -> None:
         )
 
 
+def test_decoder_accepts_alias_prefix_for_provider_array_qname() -> None:
+    response = _array_response(
+        RadioReferenceWsdlOperation.GET_TAG,
+        "tag",
+    )
+    response = response.replace(
+        f'xmlns:tns="{RR}"'.encode(),
+        f'xmlns:tns="{RR}" xmlns:rralias="{RR}"'.encode(),
+    ).replace(
+        b'tns:tag[0]',
+        b'rralias:tag[0]',
+    )
+
+    assert (
+        RadioReferenceSoapDecoder().decode(
+            RadioReferenceWsdlOperation.GET_TAG,
+            response,
+        )
+        == ()
+    )
+
+
+def test_decoder_rejects_spoofed_provider_array_qname_namespace() -> None:
+    response = _array_response(
+        RadioReferenceWsdlOperation.GET_TAG,
+        "tag",
+    )
+    response = response.replace(
+        f'xmlns:tns="{RR}"'.encode(),
+        f'xmlns:tns="{RR}" xmlns:evil="urn:evil"'.encode(),
+    ).replace(
+        b'tns:tag[0]',
+        b'evil:tag[0]',
+    )
+
+    with pytest.raises(RadioReferenceError):
+        RadioReferenceSoapDecoder().decode(
+            RadioReferenceWsdlOperation.GET_TAG,
+            response,
+        )
+
+
+def test_decoder_rejects_spoofed_scalar_xsi_type_namespace() -> None:
+    item = _item(
+        '<tagId xsi:type="evil:int">2</tagId>'
+        "<tagDescr>x</tagDescr>",
+        type_name="tag",
+    )
+    response = _array_response(
+        RadioReferenceWsdlOperation.GET_TAG,
+        "tag",
+        item,
+        count=1,
+    ).replace(
+        f'xmlns:tns="{RR}"'.encode(),
+        f'xmlns:tns="{RR}" xmlns:evil="urn:evil"'.encode(),
+    )
+
+    with pytest.raises(RadioReferenceError):
+        RadioReferenceSoapDecoder().decode(
+            RadioReferenceWsdlOperation.GET_TAG,
+            response,
+        )
+
+
+def test_decoder_accepts_alias_prefix_for_complex_return_qname() -> None:
+    response = _soap(
+        RadioReferenceWsdlOperation.GET_COUNTRY_INFO,
+        (
+            "<coid>1</coid>"
+            "<countryName>United States</countryName>"
+            "<countryCode>US</countryCode>"
+            f"{_array_member('agencyList', 'Agency')}"
+            f"{_array_member('stateList', 'State')}"
+        ),
+        return_attributes=' xsi:type="rralias:CountryInfo"',
+    ).replace(
+        f'xmlns:tns="{RR}"'.encode(),
+        f'xmlns:tns="{RR}" xmlns:rralias="{RR}"'.encode(),
+    )
+
+    decoded = RadioReferenceSoapDecoder().decode(
+        RadioReferenceWsdlOperation.GET_COUNTRY_INFO,
+        response,
+    )
+
+    assert isinstance(decoded, RadioReferenceCountryInfo)
+    assert decoded.country_id == 1
+
+
+def test_decoder_rejects_spoofed_complex_return_qname_namespace() -> None:
+    response = _soap(
+        RadioReferenceWsdlOperation.GET_COUNTRY_INFO,
+        (
+            "<coid>1</coid>"
+            "<countryName>United States</countryName>"
+            "<countryCode>US</countryCode>"
+            f"{_array_member('agencyList', 'Agency')}"
+            f"{_array_member('stateList', 'State')}"
+        ),
+        return_attributes=' xsi:type="evil:CountryInfo"',
+    ).replace(
+        f'xmlns:tns="{RR}"'.encode(),
+        f'xmlns:tns="{RR}" xmlns:evil="urn:evil"'.encode(),
+    )
+
+    with pytest.raises(RadioReferenceError):
+        RadioReferenceSoapDecoder().decode(
+            RadioReferenceWsdlOperation.GET_COUNTRY_INFO,
+            response,
+        )
+
+
 @pytest.mark.parametrize(
     "return_attributes",
     (
