@@ -426,6 +426,16 @@ from .favorites_write_plan import (
     FavoritesWritePlan,
     plan_favorites_write,
 )
+from .favorites_write_usb import (
+    FavoritesUsbWriteExecutionError,
+    FavoritesUsbWriteExecutionResult,
+    FavoritesUsbWriteExecutionStatus,
+    FavoritesUsbWritePreflight,
+    FavoritesUsbWritePreflightError,
+    FavoritesUsbWritePreflightReason,
+    execute_favorites_usb_write,
+    preflight_favorites_usb_write,
+)
 from .local_playback import (
     AlsaPlaybackAdapter,
     CommandPlaybackAdapter,
@@ -1173,6 +1183,14 @@ __all__ = [
     "qualify_favorites_usb_storage_path",
     "read_linux_block_device_evidence",
     "read_linux_mountinfo",
+    "FavoritesUsbWriteExecutionError",
+    "FavoritesUsbWriteExecutionResult",
+    "FavoritesUsbWriteExecutionStatus",
+    "execute_favorites_usb_write",
+    "FavoritesUsbWritePreflight",
+    "FavoritesUsbWritePreflightError",
+    "FavoritesUsbWritePreflightReason",
+    "preflight_favorites_usb_write",
 ]
 
 __version__ = "0.20.2"
