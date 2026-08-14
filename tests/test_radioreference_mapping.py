@@ -14,7 +14,9 @@ from sds200 import (
     RadioReferenceFrequency,
     RadioReferenceTag,
     RadioReferenceTalkgroup,
+    RadioReferenceWsdlOperation,
     radioreference_frequency_observation,
+    radioreference_soap_result_observations,
     radioreference_talkgroup_observation,
 )
 
@@ -379,4 +381,192 @@ def test_radioreference_mapping_symbol_is_package_export() -> None:
     assert (
         sds200.radioreference_frequency_observation
         is radioreference_frequency_observation
+    )
+
+@pytest.mark.parametrize(
+    "operation",
+    (
+        RadioReferenceWsdlOperation.GET_SUBCATEGORY_FREQUENCIES,
+        RadioReferenceWsdlOperation.GET_COUNTY_FREQUENCIES_BY_TAG,
+        RadioReferenceWsdlOperation.GET_AGENCY_FREQUENCIES_BY_TAG,
+    ),
+)
+def test_soap_result_adapter_maps_reviewed_frequency_operations(
+    operation: RadioReferenceWsdlOperation,
+) -> None:
+    source = _source(dataset="synthetic-frequency-result")
+    observed_at = datetime(2026, 8, 14, 11, 30, tzinfo=UTC)
+
+    observations = radioreference_soap_result_observations(
+        operation,
+        (
+            replace(_frequency(), frequency_id=202, alpha_tag="Second"),
+            replace(_frequency(), frequency_id=101, alpha_tag="First"),
+        ),
+        source=source,
+        observed_at=observed_at,
+    )
+
+    assert [item.identity.record_id for item in observations] == [
+        "frequency-202",
+        "frequency-101",
+    ]
+    assert all(item.identity.source is source for item in observations)
+    assert all(item.evidence.observed_at is observed_at for item in observations)
+
+
+def test_soap_result_adapter_maps_reviewed_talkgroup_operation() -> None:
+    source = _source(dataset="synthetic-talkgroup-result")
+    observed_at = datetime(2026, 8, 14, 11, 30, tzinfo=UTC)
+
+    observations = radioreference_soap_result_observations(
+        RadioReferenceWsdlOperation.GET_TRUNKED_TALKGROUPS,
+        (
+            replace(_talkgroup(), talkgroup_id=300, alpha_tag="Third"),
+            replace(_talkgroup(), talkgroup_id=200, alpha_tag="Second"),
+        ),
+        source=source,
+        observed_at=observed_at,
+    )
+
+    assert [item.identity.record_id for item in observations] == [
+        "talkgroup-300",
+        "talkgroup-200",
+    ]
+    assert [item.fields[0].value for item in observations] == [
+        "Third",
+        "Second",
+    ]
+
+
+@pytest.mark.parametrize(
+    "operation",
+    (
+        RadioReferenceWsdlOperation.GET_SUBCATEGORY_FREQUENCIES,
+        RadioReferenceWsdlOperation.GET_COUNTY_FREQUENCIES_BY_TAG,
+        RadioReferenceWsdlOperation.GET_AGENCY_FREQUENCIES_BY_TAG,
+        RadioReferenceWsdlOperation.GET_TRUNKED_TALKGROUPS,
+    ),
+)
+def test_soap_result_adapter_preserves_supported_empty_tuple(
+    operation: RadioReferenceWsdlOperation,
+) -> None:
+    observations = radioreference_soap_result_observations(
+        operation,
+        (),
+        source=_source(),
+        observed_at=datetime(2026, 8, 14, tzinfo=UTC),
+    )
+
+    assert observations == ()
+    assert type(observations) is tuple
+
+
+@pytest.mark.parametrize(
+    "operation,result,error_fragment",
+    (
+        (
+            RadioReferenceWsdlOperation.GET_SUBCATEGORY_FREQUENCIES,
+            [_frequency()],
+            "frequency SOAP result",
+        ),
+        (
+            RadioReferenceWsdlOperation.GET_SUBCATEGORY_FREQUENCIES,
+            (_talkgroup(),),
+            "frequency SOAP result",
+        ),
+        (
+            RadioReferenceWsdlOperation.GET_TRUNKED_TALKGROUPS,
+            [_talkgroup()],
+            "talkgroup SOAP result",
+        ),
+        (
+            RadioReferenceWsdlOperation.GET_TRUNKED_TALKGROUPS,
+            (_frequency(),),
+            "talkgroup SOAP result",
+        ),
+    ),
+)
+def test_soap_result_adapter_rejects_mismatched_supported_result_shape(
+    operation: RadioReferenceWsdlOperation,
+    result: object,
+    error_fragment: str,
+) -> None:
+    with pytest.raises(TypeError, match=error_fragment):
+        radioreference_soap_result_observations(
+            operation,
+            result,
+            source=_source(),
+            observed_at=datetime(2026, 8, 14, tzinfo=UTC),
+        )
+
+
+@pytest.mark.parametrize(
+    "operation",
+    (
+        RadioReferenceWsdlOperation.SEARCH_COUNTY_FREQUENCY,
+        RadioReferenceWsdlOperation.SEARCH_STATE_FREQUENCY,
+        RadioReferenceWsdlOperation.SEARCH_METRO_FREQUENCY,
+        RadioReferenceWsdlOperation.GET_COUNTRY_INFO,
+        RadioReferenceWsdlOperation.GET_TRUNKED_SYSTEM_DETAILS,
+    ),
+)
+def test_soap_result_adapter_fails_closed_for_unreviewed_operation(
+    operation: RadioReferenceWsdlOperation,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="no reviewed observation mapping",
+    ):
+        radioreference_soap_result_observations(
+            operation,
+            (),
+            source=_source(),
+            observed_at=datetime(2026, 8, 14, tzinfo=UTC),
+        )
+
+
+def test_soap_result_adapter_rejects_wrong_operation_type() -> None:
+    with pytest.raises(
+        TypeError,
+        match="requires RadioReferenceWsdlOperation",
+    ):
+        radioreference_soap_result_observations(
+            object(),  # type: ignore[arg-type]
+            (),
+            source=_source(),
+            observed_at=datetime(2026, 8, 14, tzinfo=UTC),
+        )
+
+
+def test_soap_result_adapter_requires_radioreference_source() -> None:
+    with pytest.raises(
+        ValueError,
+        match="source provider must be radioreference",
+    ):
+        radioreference_soap_result_observations(
+            RadioReferenceWsdlOperation.GET_SUBCATEGORY_FREQUENCIES,
+            (),
+            source=_source(provider="other-provider"),
+            observed_at=datetime(2026, 8, 14, tzinfo=UTC),
+        )
+
+
+def test_soap_result_adapter_requires_timezone_aware_observation_time() -> None:
+    with pytest.raises(
+        ValueError,
+        match="observation time must be timezone-aware",
+    ):
+        radioreference_soap_result_observations(
+            RadioReferenceWsdlOperation.GET_SUBCATEGORY_FREQUENCIES,
+            (_frequency(),),
+            source=_source(),
+            observed_at=datetime(2026, 8, 14),
+        )
+
+
+def test_soap_result_adapter_symbol_is_package_export() -> None:
+    assert (
+        sds200.radioreference_soap_result_observations
+        is radioreference_soap_result_observations
     )

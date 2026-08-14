@@ -574,6 +574,7 @@ from .radioreference import (
 )
 from .radioreference_mapping import (
     radioreference_frequency_observation,
+    radioreference_soap_result_observations,
     radioreference_talkgroup_observation,
 )
 from .radioreference_records import (
@@ -1160,6 +1161,7 @@ __all__ = [
     "RadioReferenceSoapStyle",
     "RadioReferenceSource",
     "radioreference_frequency_observation",
+    "radioreference_soap_result_observations",
     "radioreference_talkgroup_observation",
     "RADIOREFERENCE_PROGRAMMING_OPERATION_CONTRACTS",
     "RADIOREFERENCE_SOAP_ENCODING_STYLE",
