@@ -340,6 +340,7 @@ from .favorites_editing import (
 )
 from .favorites_external import (
     FavoritesExternalChangeKind,
+    FavoritesExternalFieldBinding,
     FavoritesExternalFieldObservation,
     FavoritesExternalFieldObservationState,
     FavoritesExternalFieldOwnership,
@@ -355,6 +356,7 @@ from .favorites_external import (
     FavoritesExternalRecordState,
     FavoritesExternalSource,
     FavoritesExternalSourceIdentity,
+    bind_favorites_external_record,
     detach_favorites_external_field,
     detach_favorites_external_record,
     preview_favorites_external_import,
@@ -1032,6 +1034,7 @@ __all__ = [
     "FavoritesConventionalDepartment",
     "FavoritesConventionalSystem",
     "FavoritesExternalChangeKind",
+    "FavoritesExternalFieldBinding",
     "FavoritesExternalFieldObservation",
     "FavoritesExternalFieldObservationState",
     "FavoritesExternalFieldOwnership",
@@ -1392,6 +1395,7 @@ __all__ = [
     "theme_roles_for",
     "write_capture",
     "write_recording_metadata",
+    "bind_favorites_external_record",
     "DEFAULT_LINUX_MOUNTINFO_PATH",
     "DEFAULT_LINUX_SYS_DEV_BLOCK_DIRECTORY",
     "FAVORITES_USB_STORAGE_RELATIVE_DIRECTORY",

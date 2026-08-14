@@ -85,6 +85,28 @@ or provider identifier as proof that a scanner mutation is safe.
 No proposal should silently apply last-writer-wins behavior. Acceptance belongs
 to a later explicit editing/planning step using the existing Favorites services.
 
+## Milestone 23.9 provenance binding boundary
+
+Milestone 23.9 begins the assisted-import bridge by making initial local
+provenance binding explicit and pure. One existing exact `FavoritesRecordTarget`
+may be linked to one active external observation only through caller-supplied
+normalized field names, exact local source-field indexes, and explicit ownership.
+
+The binding layer does not infer SDS mappings from provider field names. An
+externally owned field can be established only when the selected provider field
+contains an observed value that exactly matches the current local source value;
+binding therefore records already-accepted provenance without rewriting local
+Favorites bytes. A locally owned binding remains local and carries no field-level
+external provenance, so later provider differences are surfaced by the existing
+conflict preview rules rather than silently accepted.
+
+Initial detached ownership is not a binding mode. Detach remains an explicit
+later transition through the existing source-neutral detach operations.
+
+This slice does not define provider-to-SDS template mapping, scanner record
+creation, hierarchy placement, operator acceptance, persisted provenance
+serialization, or storage writes. Those remain separate acceptance-layer work.
+
 ## Detach semantics
 
 Detaching an externally sourced record or field should preserve its current

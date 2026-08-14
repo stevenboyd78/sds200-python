@@ -226,6 +226,35 @@ class FavoritesExternalRecordObservation:
 
 
 @dataclass(frozen=True, slots=True)
+class FavoritesExternalFieldBinding:
+    """Bind one normalized external field name to one exact local field."""
+
+    name: str
+    field_index: int
+    ownership: FavoritesExternalFieldOwnership
+
+    def __post_init__(self) -> None:
+        _validate_text(self.name, label="External Favorites binding field name")
+        if type(self.field_index) is not int or self.field_index < 0:
+            raise ValueError(
+                "External Favorites binding field index must be "
+                "a non-negative integer."
+            )
+        if not isinstance(
+            self.ownership,
+            FavoritesExternalFieldOwnership,
+        ):
+            raise TypeError(
+                "External Favorites binding ownership must be "
+                "FavoritesExternalFieldOwnership."
+            )
+        if self.ownership is FavoritesExternalFieldOwnership.DETACHED:
+            raise ValueError(
+                "Initial external Favorites field bindings cannot be detached."
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class FavoritesExternalFieldState:
     """Persist source-neutral ownership for one exact local source field."""
 
@@ -824,6 +853,93 @@ def _unmatched_local_preview(
     )
 
 
+def bind_favorites_external_record(
+    target: FavoritesRecordTarget,
+    observation: FavoritesExternalRecordObservation,
+    bindings: tuple[FavoritesExternalFieldBinding, ...],
+) -> FavoritesExternalRecordState:
+    """Bind explicit existing local fields to one active external observation."""
+
+    if not isinstance(target, FavoritesRecordTarget):
+        raise TypeError(
+            "External Favorites binding requires FavoritesRecordTarget."
+        )
+    if not isinstance(observation, FavoritesExternalRecordObservation):
+        raise TypeError(
+            "External Favorites binding requires "
+            "FavoritesExternalRecordObservation."
+        )
+    _validate_tuple(bindings, label="External Favorites field bindings")
+    if any(
+        not isinstance(binding, FavoritesExternalFieldBinding)
+        for binding in bindings
+    ):
+        raise TypeError(
+            "External Favorites field bindings must contain only "
+            "FavoritesExternalFieldBinding values."
+        )
+    if not bindings:
+        raise FavoritesExternalImportError(
+            "External Favorites record binding requires at least one field."
+        )
+    if observation.state is not FavoritesExternalRecordObservationState.ACTIVE:
+        raise FavoritesExternalImportError(
+            "External Favorites record binding requires an active observation."
+        )
+
+    names = tuple(binding.name for binding in bindings)
+    indexes = tuple(binding.field_index for binding in bindings)
+    if len(set(names)) != len(names):
+        raise FavoritesExternalImportError(
+            "External Favorites field bindings contain duplicate field names."
+        )
+    if len(set(indexes)) != len(indexes):
+        raise FavoritesExternalImportError(
+            "External Favorites field bindings contain duplicate source field indexes."
+        )
+    if any(binding.field_index >= len(target.record.fields) for binding in bindings):
+        raise FavoritesExternalImportError(
+            "External Favorites field binding index is outside the exact target source record."
+        )
+
+    observed = {field.name: field for field in observation.fields}
+    states: list[FavoritesExternalFieldState] = []
+    for binding in bindings:
+        external = observed.get(binding.name)
+        last_external: FavoritesExternalFieldObservation | None = None
+
+        if binding.ownership is FavoritesExternalFieldOwnership.EXTERNAL:
+            if (
+                external is None
+                or external.state is not FavoritesExternalFieldObservationState.VALUE
+            ):
+                raise FavoritesExternalImportError(
+                    "Externally owned Favorites field binding requires an observed provider value."
+                )
+            local_value = target.record.fields[binding.field_index]
+            if external.value != local_value:
+                raise FavoritesExternalImportError(
+                    "Externally owned Favorites field binding does not match the exact local value."
+                )
+            last_external = external
+
+        states.append(
+            FavoritesExternalFieldState(
+                name=binding.name,
+                field_index=binding.field_index,
+                ownership=binding.ownership,
+                last_external=last_external,
+            )
+        )
+
+    return FavoritesExternalRecordState(
+        target=target,
+        fields=tuple(states),
+        external_identity=observation.identity,
+        last_observation=observation.evidence,
+    )
+
+
 def preview_favorites_external_import(
     local_records: tuple[FavoritesExternalRecordState, ...],
     observations: tuple[FavoritesExternalRecordObservation, ...],
@@ -1018,6 +1134,7 @@ def detach_favorites_external_record(
 
 __all__ = [
     "FavoritesExternalChangeKind",
+    "FavoritesExternalFieldBinding",
     "FavoritesExternalFieldObservation",
     "FavoritesExternalFieldObservationState",
     "FavoritesExternalFieldOwnership",
@@ -1033,6 +1150,7 @@ __all__ = [
     "FavoritesExternalRecordState",
     "FavoritesExternalSource",
     "FavoritesExternalSourceIdentity",
+    "bind_favorites_external_record",
     "detach_favorites_external_field",
     "detach_favorites_external_record",
     "preview_favorites_external_import",

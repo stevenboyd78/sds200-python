@@ -11,35 +11,32 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 23.8 — RadioReference offline request-plan/session composition foundation
+### Milestone 23.9 — RadioReference assisted-import provenance binding foundation
 
-- Begin from the fully merged Milestone 23.7 foundation at
-  `e3f70c326a7766207f6a59657ccc8041b59860c3`.
-- Treat Milestone 23.7 as complete: the three reviewed conventional-frequency
-  result operations and `GET_TRUNKED_TALKGROUPS` now map decoded SOAP results
-  into immutable normalized observations with exact result-shape and duplicate
-  provider-identity validation.
-- Add an immutable, secret-free observation request plan that binds one
-  `FavoritesExternalSourceIdentity` dataset to one reviewed SOAP operation and
-  its exact non-authentication WSDL parameters.
-- Support only operations already accepted by the Milestone 23.7 observation
-  adapter; fail closed for all other programming operations.
-- Require exact immutable `(name, value)` parameter tuples in reviewed WSDL
-  order and validate the current observation-operation `xsd:int` values without
-  coercion.
-- Keep application keys, passwords, generated request bytes, response bytes,
-  and provider session state out of retained request-plan objects.
-- Compose plans through the existing request serializer, a fakeable
-  operation-aware byte exchange, the bounded response decoder, and the
-  observation adapter with an injectable timezone-aware observation clock.
-- Provide a concrete owned observation session and factory compatible with the
-  existing `RadioReferenceSource` boundary. Keep request/response bytes local to
-  one read, clear owned secret references during close, preserve stable redacted
-  `RadioReferenceError` reasons, and close the fakeable exchange deterministically.
-- Keep HTTP/TLS implementation, live provider calls, deletion inference,
-  hierarchy construction, operator merge acceptance, MyRR, automatic
-  synchronization, and Favorites storage mutation outside this milestone.
-- Use only synthetic values and local SOAP fixtures in automated tests.
+- Begin from the fully merged Milestone 23.8 foundation at
+  `c930de198381c71707f1b05eeccb84d174a9e638`.
+- Treat the existing source-neutral external preview machinery as authoritative
+  for add/replace/remove/unchanged/local-only/conflict classification, detach
+  semantics, deterministic ordering, and redacted fakeable source reads.
+- Add a pure source-neutral binding API for attaching one exact existing
+  `FavoritesRecordTarget` to one active external observation using explicit
+  normalized field-name to source-field-index choices.
+- Require ownership to be explicit for every bound field. Initial bindings may
+  be external or local; detached ownership remains an explicit later transition
+  through the existing detach operations.
+- Permit externally owned provenance only when the selected provider field is an
+  observed value that exactly matches the current local source field. Never
+  rewrite a target while establishing provenance.
+- Preserve local ownership without attaching field-level external provenance,
+  allowing later provider differences to surface through the existing conflict
+  preview semantics.
+- Feed bound state directly into the existing external import/update preview
+  layer without introducing a new RadioReference-specific preview engine.
+- Keep provider-to-SDS field inference, scanner record/template creation,
+  hierarchy construction, operator acceptance, persisted provenance storage,
+  Favorites writes, HTTP/TLS transport, live provider calls, MyRR, and automatic
+  synchronization outside this milestone.
+- Use only synthetic local/provider values in automated tests.
 
 
 ## Deferred hardware validation
