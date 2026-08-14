@@ -11,42 +11,36 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 23.6 — RadioReference offline observation mapping foundation
+### Milestone 23.7 — RadioReference offline SOAP result observation adapter
 
-- Begin from the fully merged Milestone 23.5 foundation at
-  `d6a19f53af6946b85f34473e788fc63d8feb4713`.
-- Treat Milestone 23.5 as complete: the reviewed `authInfo` contract and
-  dependency-free SOAP 1.1 RPC/encoded request serializer now cover all 19
-  reviewed programming operations with exact request ordering and scalar
-  validation while keeping secret-bearing request bytes ephemeral.
-- Add a dependency-free offline provider-to-`FavoritesExternalRecordObservation`
-  mapping layer without opening a provider session or mutating Favorites data.
-- Start with `RadioReferenceFrequency` conventional records and
-  `RadioReferenceTalkgroup` records because they carry explicit provider
-  `frequency_id` and `talkgroup_id` identities. Do not invent identities for
-  provider shapes that lack a reviewed record identifier.
-- Keep `FavoritesExternalSourceIdentity` caller-supplied. Require its provider
-  to be `radioreference`, preserve its opaque dataset value, and namespace the
-  provider frequency identifier as the external record ID.
-- Map the reviewed first conventional slice only: provider `alphaTag` to the
-  normalized `name` field and provider output frequency from exact decimal MHz
-  to the whole-Hz string representation used by HPD conventional records.
-  Reject values that cannot be represented as whole Hz without loss rather than
-  rounding them.
-- Preserve exact provider alpha-tag text, including empty or padded values.
-  Do not fall back to description or infer naming precedence.
-- Keep provider `lastUpdated` as provider evidence only. Use the caller's
-  timezone-aware observation time and set normalized `revision` to `None`.
-- Map the reviewed talkgroup slice only as provider `alphaTag` to normalized
-  `name`. Preserve exact text and namespace the provider talkgroup identifier as
-  the external record ID. Do not map the provider talkgroup decimal value until
-  a stable normalized field contract is supported across observed 17- and
-  18-field TGID records.
-- Keep tone, mode, service/tag translation, encryption, input frequency,
-  hierarchy placement, deletion inference, search-result identity, additional
-  trunked mapping, merge acceptance, HTTP/TLS transport, live provider access,
-  MyRR, background synchronization, and Favorites storage mutation outside this
-  first slice.
+- Begin from the fully merged Milestone 23.6 foundation at
+  `d7f978a86ec5490dab33def014782cb8efbb46dd`.
+- Treat Milestone 23.6 as complete: reviewed conventional-frequency and
+  talkgroup DTOs can now be mapped into immutable
+  `FavoritesExternalRecordObservation` values without transport access,
+  provider revision inference, or Favorites mutation.
+- Add a dependency-free offline operation-aware adapter from decoded
+  RadioReference SOAP result values to immutable normalized observation tuples.
+- Require the reviewed `RadioReferenceWsdlOperation` so empty tuple results are
+  never interpreted by runtime element inspection.
+- Support only the three reviewed conventional-frequency operations and
+  `GET_TRUNKED_TALKGROUPS`, reusing the Milestone 23.6 record mappers and the
+  caller-supplied `FavoritesExternalSourceIdentity` and timezone-aware
+  observation time.
+- Require exact immutable tuple result containers, reject mismatched element
+  types rather than coercing or silently skipping provider values, and fail
+  closed when mapped results contain duplicate provider record identities.
+- Preserve provider result order in the adapter output; the existing
+  RadioReference source boundary remains responsible for deterministic
+  normalized observation ordering.
+- Return an empty immutable observation tuple for an empty result from a
+  supported operation.
+- Fail closed for search-frequency results and every other decoded operation
+  until a stable provider record identity and explicit normalized mapping are
+  reviewed.
+- Keep deletion inference, hierarchy construction, additional trunked mapping,
+  merge acceptance, HTTP/TLS transport, live provider access, MyRR, background
+  synchronization, and Favorites storage mutation outside this slice.
 - Use only synthetic provider DTOs and local fixtures in automated tests.
 
 

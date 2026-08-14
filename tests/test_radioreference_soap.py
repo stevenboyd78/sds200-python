@@ -12,6 +12,7 @@ from sds200 import (
     RADIOREFERENCE_SOAP_DEFAULT_MAX_ELEMENTS,
     RADIOREFERENCE_SOAP_DEFAULT_MAX_REFERENCE_DEPTH,
     RADIOREFERENCE_SOAP_DEFAULT_MAX_REFERENCES,
+    FavoritesExternalSourceIdentity,
     RadioReferenceAgencyInfo,
     RadioReferenceCountryInfo,
     RadioReferenceCountyInfo,
@@ -30,6 +31,7 @@ from sds200 import (
     RadioReferenceTrunkType,
     RadioReferenceTrunkVoice,
     RadioReferenceWsdlOperation,
+    radioreference_soap_result_observations,
 )
 
 SOAP = "http://schemas.xmlsoap.org/soap/envelope/"
@@ -499,6 +501,97 @@ def test_decode_frequency_array_preserves_decimal_and_timestamp() -> None:
         4,
         tzinfo=UTC,
     )
+
+
+def test_decoded_frequency_result_maps_to_normalized_observation() -> None:
+    operation = RadioReferenceWsdlOperation.GET_SUBCATEGORY_FREQUENCIES
+    response = _array_response(
+        operation,
+        "freq",
+        _frequency_item(),
+        count=1,
+    )
+    decoded = RadioReferenceSoapDecoder().decode(operation, response)
+    source = FavoritesExternalSourceIdentity(
+        provider="radioreference",
+        dataset="synthetic-subcategory",
+    )
+    observed_at = datetime(2026, 8, 14, 12, 20, tzinfo=UTC)
+
+    observations = radioreference_soap_result_observations(
+        operation,
+        decoded,
+        source=source,
+        observed_at=observed_at,
+    )
+
+    assert len(observations) == 1
+    observation = observations[0]
+    assert observation.identity.source is source
+    assert observation.identity.record_id == "frequency-101"
+    assert observation.evidence.observed_at is observed_at
+    assert observation.evidence.revision is None
+    assert tuple(
+        (field.name, field.value) for field in observation.fields
+    ) == (
+        ("name", "Dispatch"),
+        ("frequency", "155100000"),
+    )
+
+
+def test_decoded_talkgroup_result_maps_to_normalized_observation() -> None:
+    operation = RadioReferenceWsdlOperation.GET_TRUNKED_TALKGROUPS
+    tags_target = (
+        '<multiRef id="tags0" xsi:type="enc:Array" '
+        'enc:arrayType="tns:tag[1]">'
+        f"{_tag_item()}"
+        "</multiRef>"
+    )
+    talkgroup = _item(
+        "<tgId>20</tgId>"
+        "<tgDec>12345</tgDec>"
+        "<tgSubfleet></tgSubfleet>"
+        "<tgLtr>1</tgLtr>"
+        "<tgSlot></tgSlot>"
+        "<tgDescr>Operations</tgDescr>"
+        "<tgAlpha>Ops</tgAlpha>"
+        "<tgMode>D</tgMode>"
+        "<enc>0</enc>"
+        '<tags href="#tags0" />'
+        "<tgCid>30</tgCid>"
+        "<tgSort>1</tgSort>"
+        "<tgDate>2026-08-13T09:21:04+00:00</tgDate>",
+        type_name="Talkgroup",
+    )
+    response = _soap(
+        operation,
+        talkgroup,
+        return_attributes=_array_attributes("Talkgroup", 1),
+        extra_body=tags_target,
+    )
+    decoded = RadioReferenceSoapDecoder().decode(operation, response)
+    source = FavoritesExternalSourceIdentity(
+        provider="radioreference",
+        dataset="synthetic-trunk-system",
+    )
+    observed_at = datetime(2026, 8, 14, 12, 20, tzinfo=UTC)
+
+    observations = radioreference_soap_result_observations(
+        operation,
+        decoded,
+        source=source,
+        observed_at=observed_at,
+    )
+
+    assert len(observations) == 1
+    observation = observations[0]
+    assert observation.identity.source is source
+    assert observation.identity.record_id == "talkgroup-20"
+    assert observation.evidence.observed_at is observed_at
+    assert observation.evidence.revision is None
+    assert tuple(
+        (field.name, field.value) for field in observation.fields
+    ) == (("name", "Ops"),)
 
 
 def test_decode_country_info_with_nested_arrays() -> None:

@@ -17,6 +17,7 @@ from .radioreference import RADIOREFERENCE_PROVIDER
 from .radioreference_records import (
     RadioReferenceFrequency,
     RadioReferenceTalkgroup,
+    RadioReferenceWsdlOperation,
 )
 
 
@@ -128,7 +129,90 @@ def radioreference_talkgroup_observation(
     )
 
 
+_FREQUENCY_OBSERVATION_OPERATIONS = frozenset(
+    {
+        RadioReferenceWsdlOperation.GET_SUBCATEGORY_FREQUENCIES,
+        RadioReferenceWsdlOperation.GET_COUNTY_FREQUENCIES_BY_TAG,
+        RadioReferenceWsdlOperation.GET_AGENCY_FREQUENCIES_BY_TAG,
+    }
+)
+
+
+def _require_unique_observation_identities(
+    observations: tuple[FavoritesExternalRecordObservation, ...],
+) -> None:
+    identities = tuple(observation.identity for observation in observations)
+    if len(set(identities)) != len(identities):
+        raise ValueError(
+            "RadioReference SOAP result contains duplicate provider "
+            "record identities."
+        )
+
+
+def radioreference_soap_result_observations(
+    operation: RadioReferenceWsdlOperation,
+    result: object,
+    *,
+    source: FavoritesExternalSourceIdentity,
+    observed_at: datetime,
+) -> tuple[FavoritesExternalRecordObservation, ...]:
+    # Map one reviewed decoded SOAP result without inspecting transport state.
+
+    if not isinstance(operation, RadioReferenceWsdlOperation):
+        raise TypeError(
+            "RadioReference SOAP result observation adapter requires "
+            "RadioReferenceWsdlOperation."
+        )
+    _require_radioreference_source(
+        source,
+        label="RadioReference SOAP result observation adapter",
+    )
+
+    if operation in _FREQUENCY_OBSERVATION_OPERATIONS:
+        if type(result) is not tuple or any(
+            not isinstance(item, RadioReferenceFrequency) for item in result
+        ):
+            raise TypeError(
+                "RadioReference frequency SOAP result must be an immutable "
+                "tuple of RadioReferenceFrequency values."
+            )
+        observations = tuple(
+            radioreference_frequency_observation(
+                frequency,
+                source=source,
+                observed_at=observed_at,
+            )
+            for frequency in result
+        )
+        _require_unique_observation_identities(observations)
+        return observations
+
+    if operation is RadioReferenceWsdlOperation.GET_TRUNKED_TALKGROUPS:
+        if type(result) is not tuple or any(
+            not isinstance(item, RadioReferenceTalkgroup) for item in result
+        ):
+            raise TypeError(
+                "RadioReference talkgroup SOAP result must be an immutable "
+                "tuple of RadioReferenceTalkgroup values."
+            )
+        observations = tuple(
+            radioreference_talkgroup_observation(
+                talkgroup,
+                source=source,
+                observed_at=observed_at,
+            )
+            for talkgroup in result
+        )
+        _require_unique_observation_identities(observations)
+        return observations
+
+    raise ValueError(
+        "RadioReference SOAP operation has no reviewed observation mapping."
+    )
+
+
 __all__ = [
     "radioreference_frequency_observation",
+    "radioreference_soap_result_observations",
     "radioreference_talkgroup_observation",
 ]
