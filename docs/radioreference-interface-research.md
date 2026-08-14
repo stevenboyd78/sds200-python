@@ -456,6 +456,39 @@ Secret values must not appear in:
 A sanitized configuration may retain a username and secret-reference names when
 those values are needed to identify which credentials should be resolved.
 
+## Milestone 23.8 offline request-plan/session composition boundary
+
+Milestone 23.7 establishes the reviewed decoded-result-to-observation boundary,
+but it intentionally does not identify which operation and non-secret request
+parameters define one external dataset read. Milestone 23.8 adds that missing
+composition layer without treating a fakeable byte exchange as approved live
+transport.
+
+The first slice defines an immutable `RadioReferenceObservationRequestPlan`.
+Each plan binds one `FavoritesExternalSourceIdentity` to exactly one operation
+already accepted by the Milestone 23.7 observation adapter and to the exact
+non-`authInfo` parameters declared by the reviewed WSDL contract. Parameter
+storage is an immutable tuple of `(name, value)` pairs in WSDL order. The current
+mapped operations use only `xsd:int` request parameters, which are validated
+without coercion and with the XML Schema 32-bit range.
+
+Request plans are deliberately secret-free. They do not retain application
+keys, passwords, serialized SOAP request bytes, response bytes, cookies, tokens,
+or provider session state. A fresh ordinary mapping may be produced only when a
+serializer call needs it.
+
+Later Milestone 23.8 slices may compose a plan through the existing offline SOAP
+request serializer, a fakeable exchange boundary, the bounded response decoder,
+and the Milestone 23.7 observation adapter. Observation time should be supplied
+through an injectable timezone-aware wall clock. That composition must preserve
+the existing redacted public failure boundary and deterministic source
+validation.
+
+This milestone does not establish HTTP method/header behavior, redirect policy,
+certificate handling, retry semantics, or any other production HTTP/TLS
+contract. Live provider access remains blocked on separate approved/documented
+transport validation.
+
 ## Provider transport boundary
 
 RadioReference-specific SOAP/WSDL objects must remain behind a narrow adapter
