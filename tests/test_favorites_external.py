@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
 import sds200
 from sds200 import (
+    FavoritesExternalAcceptanceError,
     FavoritesExternalChangeKind,
     FavoritesExternalFieldBinding,
     FavoritesExternalFieldObservation,
@@ -14,21 +16,43 @@ from sds200 import (
     FavoritesExternalFieldOwnership,
     FavoritesExternalFieldState,
     FavoritesExternalImportError,
+    FavoritesExternalNameAcceptancePlan,
     FavoritesExternalObservationEvidence,
     FavoritesExternalRecordIdentity,
     FavoritesExternalRecordObservation,
     FavoritesExternalRecordObservationState,
     FavoritesExternalRecordState,
     FavoritesExternalSourceIdentity,
+    FavoritesRecordEditError,
     FavoritesRecordSourceKind,
     FavoritesRecordTarget,
     FavoritesSourceRecord,
+    FavoritesStorageDocument,
+    FavoritesStorageSnapshot,
     bind_favorites_external_record,
     detach_favorites_external_field,
     detach_favorites_external_record,
+    plan_favorites_external_name_acceptance,
     preview_favorites_external_import,
     preview_favorites_external_source,
+    select_favorites_record_target,
 )
+
+_FIXTURE_ROOT = Path(__file__).parent / "fixtures" / "favorites"
+
+
+def _real_snapshot() -> FavoritesStorageSnapshot:
+    return FavoritesStorageSnapshot(
+        catalog_bytes=(_FIXTURE_ROOT / "synthetic-f_list.cfg").read_bytes(),
+        documents=(
+            FavoritesStorageDocument(
+                filename="f_000001.hpd",
+                content=(
+                    _FIXTURE_ROOT / "synthetic-favorites.hpd"
+                ).read_bytes(),
+            ),
+        ),
+    )
 
 
 def _target(
@@ -536,6 +560,390 @@ def test_bound_state_flows_through_explicit_record_detach() -> None:
     assert preview.records[0].kind is FavoritesExternalChangeKind.LOCAL_ONLY
     assert preview.has_changes is False
     assert preview.has_conflicts is False
+
+
+def _real_name_acceptance_inputs(
+    *,
+    updated_name: str = "Provider Channel",
+    ownership: FavoritesExternalFieldOwnership = (
+        FavoritesExternalFieldOwnership.EXTERNAL
+    ),
+    field_index: int = 2,
+) -> tuple[
+    FavoritesStorageSnapshot,
+    FavoritesExternalRecordState,
+    FavoritesExternalRecordObservation,
+]:
+    snapshot = _real_snapshot()
+    target = select_favorites_record_target(
+        snapshot,
+        5,
+        document_index=0,
+    )
+    local_value = target.record.fields[field_index]
+    accepted = _observation(
+        name=local_value,
+        frequency="155100000",
+        revision="accepted-r1",
+    )
+    state = bind_favorites_external_record(
+        target,
+        accepted,
+        (
+            FavoritesExternalFieldBinding(
+                name="name",
+                field_index=field_index,
+                ownership=ownership,
+            ),
+        ),
+    )
+    updated = _observation(
+        name=updated_name,
+        frequency="155100000",
+        revision="provider-r2",
+    )
+    return snapshot, state, updated
+
+
+def test_plan_external_name_acceptance_uses_existing_editor_and_write_plan() -> None:
+    snapshot, state, updated = _real_name_acceptance_inputs()
+
+    acceptance = plan_favorites_external_name_acceptance(
+        snapshot,
+        state,
+        updated,
+    )
+
+    assert isinstance(acceptance, FavoritesExternalNameAcceptancePlan)
+    assert acceptance.preview.kind is FavoritesExternalChangeKind.REPLACED
+    fields = {field.name: field for field in acceptance.preview.fields}
+    assert fields["name"].kind is FavoritesExternalChangeKind.REPLACED
+    assert fields["name"].external_value == "Provider Channel"
+    assert fields["frequency"].kind is FavoritesExternalChangeKind.ADDED
+
+    plan = acceptance.write_plan
+    assert plan.baseline_snapshot is snapshot
+    assert plan.has_changes is True
+    assert plan.is_blocked is False
+    assert plan.matches_baseline_snapshot(snapshot) is True
+
+    intended_target = acceptance.intended_state.target
+    assert intended_target.record.fields[2] == "Provider Channel"
+    assert intended_target.record.fields[:2] == state.target.record.fields[:2]
+    assert intended_target.record.fields[3:] == state.target.record.fields[3:]
+    assert intended_target.record.line_ending == state.target.record.line_ending
+
+    assert acceptance.intended_state.external_identity == state.external_identity
+    assert acceptance.intended_state.last_observation == updated.evidence
+    assert acceptance.intended_state.fields[0].last_external == updated.fields[0]
+    assert acceptance.intended_state.fields[0].field_index == 2
+
+    assert snapshot.documents[0].content == (
+        _FIXTURE_ROOT / "synthetic-favorites.hpd"
+    ).read_bytes()
+
+
+def test_plan_external_name_acceptance_rejects_wrong_bound_field_index() -> None:
+    snapshot, state, updated = _real_name_acceptance_inputs(
+        field_index=0,
+    )
+
+    with pytest.raises(
+        FavoritesExternalAcceptanceError,
+        match="does not match the schema-aware editable name field",
+    ):
+        plan_favorites_external_name_acceptance(
+            snapshot,
+            state,
+            updated,
+        )
+
+
+def test_plan_external_name_acceptance_rejects_other_bound_changes() -> None:
+    snapshot = _real_snapshot()
+    target = select_favorites_record_target(
+        snapshot,
+        5,
+        document_index=0,
+    )
+    accepted = _observation(
+        name=target.record.fields[2],
+        frequency=target.record.fields[4],
+        revision="accepted-r1",
+    )
+    state = bind_favorites_external_record(
+        target,
+        accepted,
+        (
+            FavoritesExternalFieldBinding(
+                name="name",
+                field_index=2,
+                ownership=FavoritesExternalFieldOwnership.EXTERNAL,
+            ),
+            FavoritesExternalFieldBinding(
+                name="frequency",
+                field_index=4,
+                ownership=FavoritesExternalFieldOwnership.EXTERNAL,
+            ),
+        ),
+    )
+
+    changed = _observation(
+        name="Provider Channel",
+        frequency="156000000",
+        revision="provider-r2",
+    )
+
+    with pytest.raises(
+        FavoritesExternalAcceptanceError,
+        match="simultaneous changes to another bound field",
+    ):
+        plan_favorites_external_name_acceptance(
+            snapshot,
+            state,
+            changed,
+        )
+
+
+def test_name_acceptance_plan_is_immutable() -> None:
+    snapshot, state, updated = _real_name_acceptance_inputs()
+    acceptance = plan_favorites_external_name_acceptance(
+        snapshot,
+        state,
+        updated,
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        acceptance.intended_state = state  # type: ignore[misc]
+
+
+def test_plan_external_name_acceptance_rejects_other_bound_removal() -> None:
+    snapshot = _real_snapshot()
+    target = select_favorites_record_target(
+        snapshot,
+        5,
+        document_index=0,
+    )
+    accepted = _observation(
+        name=target.record.fields[2],
+        frequency=target.record.fields[4],
+        revision="accepted-r1",
+    )
+    state = bind_favorites_external_record(
+        target,
+        accepted,
+        (
+            FavoritesExternalFieldBinding(
+                name="name",
+                field_index=2,
+                ownership=FavoritesExternalFieldOwnership.EXTERNAL,
+            ),
+            FavoritesExternalFieldBinding(
+                name="frequency",
+                field_index=4,
+                ownership=FavoritesExternalFieldOwnership.EXTERNAL,
+            ),
+        ),
+    )
+    removed = _observation(
+        revision="provider-r2",
+        fields=(
+            _value("name", "Provider Channel"),
+            _absent("frequency"),
+        ),
+    )
+
+    with pytest.raises(
+        FavoritesExternalAcceptanceError,
+        match="simultaneous changes to another bound field",
+    ):
+        plan_favorites_external_name_acceptance(
+            snapshot,
+            state,
+            removed,
+        )
+
+
+def test_name_acceptance_plan_rejects_inconsistent_public_construction() -> None:
+    snapshot, state, updated = _real_name_acceptance_inputs()
+    acceptance = plan_favorites_external_name_acceptance(
+        snapshot,
+        state,
+        updated,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="intended state must match the exact write-plan intended snapshot",
+    ):
+        FavoritesExternalNameAcceptancePlan(
+            preview=acceptance.preview,
+            write_plan=acceptance.write_plan,
+            intended_state=state,
+        )
+
+
+def test_plan_external_name_acceptance_revalidates_stale_exact_target() -> None:
+    snapshot, state, updated = _real_name_acceptance_inputs()
+    stale = FavoritesStorageSnapshot(
+        catalog_bytes=snapshot.catalog_bytes,
+        documents=(
+            FavoritesStorageDocument(
+                filename=snapshot.documents[0].filename,
+                content=snapshot.documents[0].content.replace(
+                    b"Synthetic Channel",
+                    b"Locally Changed",
+                    1,
+                ),
+            ),
+        ),
+    )
+
+    with pytest.raises(
+        FavoritesRecordEditError,
+        match="no longer matches the exact source record",
+    ):
+        plan_favorites_external_name_acceptance(
+            stale,
+            state,
+            updated,
+        )
+
+
+def test_plan_external_name_acceptance_rejects_local_ownership_conflict() -> None:
+    snapshot, state, updated = _real_name_acceptance_inputs(
+        ownership=FavoritesExternalFieldOwnership.LOCAL,
+    )
+
+    with pytest.raises(
+        FavoritesExternalAcceptanceError,
+        match="requires externally owned name provenance",
+    ):
+        plan_favorites_external_name_acceptance(
+            snapshot,
+            state,
+            updated,
+        )
+
+
+def test_plan_external_name_acceptance_rejects_detached_record() -> None:
+    snapshot, state, updated = _real_name_acceptance_inputs()
+    detached = detach_favorites_external_record(state)
+
+    with pytest.raises(
+        FavoritesExternalAcceptanceError,
+        match="linked non-detached record",
+    ):
+        plan_favorites_external_name_acceptance(
+            snapshot,
+            detached,
+            updated,
+        )
+
+
+def test_plan_external_name_acceptance_propagates_unsupported_name() -> None:
+    snapshot, state, updated = _real_name_acceptance_inputs(
+        updated_name="x" * 65,
+    )
+
+    with pytest.raises(
+        FavoritesRecordEditError,
+        match="printable ASCII",
+    ):
+        plan_favorites_external_name_acceptance(
+            snapshot,
+            state,
+            updated,
+        )
+
+
+def test_plan_external_name_acceptance_rejects_unchanged_name() -> None:
+    snapshot, state, _ = _real_name_acceptance_inputs()
+    unchanged = _observation(
+        name=state.target.record.fields[2],
+        frequency="155100000",
+        revision="provider-r2",
+    )
+
+    with pytest.raises(
+        FavoritesExternalAcceptanceError,
+        match="requires one externally owned replaced name value",
+    ):
+        plan_favorites_external_name_acceptance(
+            snapshot,
+            state,
+            unchanged,
+        )
+
+
+def test_plan_external_name_acceptance_rejects_removed_observation() -> None:
+    snapshot, state, _ = _real_name_acceptance_inputs()
+    assert state.external_identity is not None
+    removed = FavoritesExternalRecordObservation(
+        identity=state.external_identity,
+        evidence=_evidence("provider-r2"),
+        state=FavoritesExternalRecordObservationState.REMOVED,
+    )
+
+    with pytest.raises(
+        FavoritesExternalAcceptanceError,
+        match="requires an active observation",
+    ):
+        plan_favorites_external_name_acceptance(
+            snapshot,
+            state,
+            removed,
+        )
+
+
+def test_plan_external_name_acceptance_rejects_identity_mismatch() -> None:
+    snapshot, state, _ = _real_name_acceptance_inputs()
+    updated = _observation(
+        name="Provider Channel",
+        frequency="155100000",
+        revision="provider-r2",
+        identity=_record_identity("channel-2"),
+    )
+
+    with pytest.raises(
+        FavoritesExternalAcceptanceError,
+        match="identity does not match",
+    ):
+        plan_favorites_external_name_acceptance(
+            snapshot,
+            state,
+            updated,
+        )
+
+
+@pytest.mark.parametrize(
+    "argument",
+    ("snapshot", "record", "observation"),
+)
+def test_plan_external_name_acceptance_requires_exact_model_types(
+    argument: str,
+) -> None:
+    snapshot, state, updated = _real_name_acceptance_inputs()
+
+    with pytest.raises(TypeError):
+        if argument == "snapshot":
+            plan_favorites_external_name_acceptance(  # type: ignore[arg-type]
+                object(),
+                state,
+                updated,
+            )
+        elif argument == "record":
+            plan_favorites_external_name_acceptance(  # type: ignore[arg-type]
+                snapshot,
+                object(),
+                updated,
+            )
+        else:
+            plan_favorites_external_name_acceptance(  # type: ignore[arg-type]
+                snapshot,
+                state,
+                object(),
+            )
 
 
 def test_external_identity_and_evidence_are_immutable() -> None:
@@ -1080,6 +1488,7 @@ def test_source_rejects_mutable_observation_collection() -> None:
 
 def test_external_favorites_public_symbols_are_package_exports() -> None:
     expected = (
+        "FavoritesExternalAcceptanceError",
         "FavoritesExternalChangeKind",
         "FavoritesExternalFieldBinding",
         "FavoritesExternalFieldObservation",
@@ -1089,6 +1498,7 @@ def test_external_favorites_public_symbols_are_package_exports() -> None:
         "FavoritesExternalFieldState",
         "FavoritesExternalImportError",
         "FavoritesExternalImportPreview",
+        "FavoritesExternalNameAcceptancePlan",
         "FavoritesExternalObservationEvidence",
         "FavoritesExternalRecordIdentity",
         "FavoritesExternalRecordObservation",
@@ -1100,6 +1510,7 @@ def test_external_favorites_public_symbols_are_package_exports() -> None:
         "bind_favorites_external_record",
         "detach_favorites_external_field",
         "detach_favorites_external_record",
+        "plan_favorites_external_name_acceptance",
         "preview_favorites_external_import",
         "preview_favorites_external_source",
     )

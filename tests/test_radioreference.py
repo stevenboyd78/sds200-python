@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -20,6 +21,8 @@ from sds200 import (
     FavoritesRecordSourceKind,
     FavoritesRecordTarget,
     FavoritesSourceRecord,
+    FavoritesStorageDocument,
+    FavoritesStorageSnapshot,
     RadioReferenceConfiguration,
     RadioReferenceCredential,
     RadioReferenceError,
@@ -29,9 +32,13 @@ from sds200 import (
     RadioReferenceSource,
     RadioReferenceTag,
     bind_favorites_external_record,
+    plan_favorites_external_name_acceptance,
     preview_favorites_external_source,
     radioreference_frequency_observation,
+    select_favorites_record_target,
 )
+
+_FIXTURE_ROOT = Path(__file__).parent / "fixtures" / "favorites"
 
 APP_KEY_REFERENCE = "SDS200_RADIOREFERENCE_APP_KEY"
 PASSWORD_REFERENCE = "SDS200_RADIOREFERENCE_PASSWORD"
@@ -684,6 +691,61 @@ def test_radioreference_bound_provenance_flows_into_source_update_preview() -> N
     assert frequency.kind is FavoritesExternalChangeKind.ADDED
     assert frequency.local_value is None
     assert frequency.external_value == "155100000"
+
+
+
+
+def test_radioreference_mapped_name_flows_into_real_favorites_acceptance_plan() -> None:
+    snapshot = FavoritesStorageSnapshot(
+        catalog_bytes=(_FIXTURE_ROOT / "synthetic-f_list.cfg").read_bytes(),
+        documents=(
+            FavoritesStorageDocument(
+                filename="f_000001.hpd",
+                content=(
+                    _FIXTURE_ROOT / "synthetic-favorites.hpd"
+                ).read_bytes(),
+            ),
+        ),
+    )
+    target = select_favorites_record_target(
+        snapshot,
+        5,
+        document_index=0,
+    )
+    accepted = _mapped_frequency_observation(
+        alpha_tag=target.record.fields[2],
+    )
+    state = bind_favorites_external_record(
+        target,
+        accepted,
+        (
+            FavoritesExternalFieldBinding(
+                name="name",
+                field_index=2,
+                ownership=FavoritesExternalFieldOwnership.EXTERNAL,
+            ),
+        ),
+    )
+    updated = _mapped_frequency_observation(alpha_tag="Fire Dispatch")
+
+    acceptance = plan_favorites_external_name_acceptance(
+        snapshot,
+        state,
+        updated,
+    )
+
+    fields = {field.name: field for field in acceptance.preview.fields}
+    assert fields["name"].kind is FavoritesExternalChangeKind.REPLACED
+    assert fields["name"].external_value == "Fire Dispatch"
+    assert fields["frequency"].kind is FavoritesExternalChangeKind.ADDED
+    assert fields["frequency"].local_value is None
+    assert fields["frequency"].external_value == "155100000"
+
+    assert acceptance.write_plan.has_changes is True
+    assert acceptance.write_plan.is_blocked is False
+    assert acceptance.intended_state.target.record.fields[2] == "Fire Dispatch"
+    assert acceptance.intended_state.fields[0].field_index == 2
+    assert acceptance.intended_state.fields[0].last_external == updated.fields[0]
 
 
 def test_radioreference_error_messages_are_stable_and_message_free() -> None:
