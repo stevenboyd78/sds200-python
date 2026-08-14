@@ -354,6 +354,53 @@ transport, live authenticated calls, production endpoint validation, automatic
 synchronization, MyRR integration, operator merge acceptance, and Favorites
 storage mutation remain separate follow-on work.
 
+## Milestone 23.7 offline SOAP result observation adapter boundary
+
+Milestone 23.7 connects the reviewed offline SOAP decoder to the Milestone 23.6
+provider-record mappers without adding network access or changing the
+source-neutral Favorites boundary. The adapter consumes both the reviewed
+`RadioReferenceWsdlOperation` and its decoded result so operation semantics remain
+explicit even when a valid provider response decodes to an empty tuple.
+
+The reviewed adapter supports only operations whose decoded records already have
+stable provider identities and Milestone 23.6 mappings:
+
+- `GET_SUBCATEGORY_FREQUENCIES`;
+- `GET_COUNTY_FREQUENCIES_BY_TAG`;
+- `GET_AGENCY_FREQUENCIES_BY_TAG`; and
+- `GET_TRUNKED_TALKGROUPS`.
+
+The three conventional-frequency operations require an exact immutable tuple of
+`RadioReferenceFrequency` values. The talkgroup operation requires an exact
+immutable tuple of `RadioReferenceTalkgroup` values. Supported empty tuples
+produce empty immutable observation tuples. Result-container or item-type
+mismatches fail closed instead of being coerced or partially mapped.
+
+The adapter reuses the caller-supplied `FavoritesExternalSourceIdentity` and
+timezone-aware observation time and delegates each record to the reviewed
+Milestone 23.6 mapper. It preserves decoded provider result order. Deterministic
+cross-record ordering remains the responsibility of the existing
+`RadioReferenceSource` normalized-observation validation boundary.
+
+Search-frequency operations remain unsupported because their reviewed decoded
+records do not contain a stable provider frequency record identifier. Country,
+state, county, agency, trunk-system, site, talkgroup-category, tag, mode, trunk
+type, trunk flavor, and trunk voice results likewise remain outside the
+observation mapping boundary until explicit identities and normalized mappings
+are reviewed. The adapter does not infer deletion from omission or construct
+Favorites hierarchy.
+
+Offline integration tests compose synthetic SOAP response bytes through
+`RadioReferenceSoapDecoder` and then through the observation adapter for one
+conventional-frequency result and one talkgroup result. These tests establish the
+local decoder-to-normalization contract only; they are not evidence of live
+provider acceptance or transport behavior.
+
+HTTP/TLS transport, credential use, live authenticated calls, provider session
+implementation, production endpoint behavior, automatic synchronization, MyRR,
+operator merge acceptance, and Favorites storage mutation remain separate
+follow-on work.
+
 ## Intended product use
 
 The project use case is radio/scanner programming assistance: obtain documented
