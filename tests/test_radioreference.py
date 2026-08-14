@@ -2,25 +2,35 @@ from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime
+from decimal import Decimal
 
 import pytest
 
 import sds200
 from sds200 import (
     FavoritesExternalChangeKind,
+    FavoritesExternalFieldBinding,
     FavoritesExternalFieldObservation,
     FavoritesExternalFieldObservationState,
+    FavoritesExternalFieldOwnership,
     FavoritesExternalObservationEvidence,
     FavoritesExternalRecordIdentity,
     FavoritesExternalRecordObservation,
     FavoritesExternalSourceIdentity,
+    FavoritesRecordSourceKind,
+    FavoritesRecordTarget,
+    FavoritesSourceRecord,
     RadioReferenceConfiguration,
     RadioReferenceCredential,
     RadioReferenceError,
     RadioReferenceErrorReason,
+    RadioReferenceFrequency,
     RadioReferenceSoapStyle,
     RadioReferenceSource,
+    RadioReferenceTag,
+    bind_favorites_external_record,
     preview_favorites_external_source,
+    radioreference_frequency_observation,
 )
 
 APP_KEY_REFERENCE = "SDS200_RADIOREFERENCE_APP_KEY"
@@ -73,6 +83,38 @@ def _observation(
                 value="155.1000",
             ),
         ),
+    )
+
+
+def _mapped_frequency_observation(
+    *,
+    alpha_tag: str = "Dispatch",
+) -> FavoritesExternalRecordObservation:
+    return radioreference_frequency_observation(
+        RadioReferenceFrequency(
+            frequency_id=101,
+            output_frequency=Decimal("155.1000"),
+            input_frequency=Decimal("0"),
+            callsign="WXYZ123",
+            description="Dispatch description",
+            alpha_tag=alpha_tag,
+            tone="123.0 PL",
+            color_code="",
+            talkgroup="",
+            slot="",
+            mode="FMN",
+            encryption=0,
+            class_code="PW",
+            tags=(RadioReferenceTag(tag_id=2, description="Fire Dispatch"),),
+            subcategory_id=7,
+            sort=10,
+            last_updated=datetime(2026, 8, 13, 9, 21, 4),
+        ),
+        source=FavoritesExternalSourceIdentity(
+            provider="radioreference",
+            dataset="synthetic-county",
+        ),
+        observed_at=datetime(2026, 8, 13, tzinfo=UTC),
     )
 
 
@@ -580,6 +622,68 @@ def test_radioreference_source_integrates_with_external_preview() -> None:
         preview.records[0].external_identity.source.provider
         == sds200.RADIOREFERENCE_PROVIDER
     )
+
+
+def test_radioreference_bound_provenance_flows_into_source_update_preview() -> None:
+    accepted = _mapped_frequency_observation(alpha_tag="Dispatch")
+    target = FavoritesRecordTarget(
+        source_kind=FavoritesRecordSourceKind.HPD,
+        document_index=0,
+        filename="f_000001.hpd",
+        source_index=3,
+        record=FavoritesSourceRecord(
+            content=b"C-Freq\tDispatch\t155.1000",
+            line_ending=b"\r\n",
+        ),
+    )
+    state = bind_favorites_external_record(
+        target,
+        accepted,
+        (
+            FavoritesExternalFieldBinding(
+                name="name",
+                field_index=0,
+                ownership=FavoritesExternalFieldOwnership.EXTERNAL,
+            ),
+        ),
+    )
+    source = RadioReferenceSource(
+        configuration=_configuration(),
+        session_factory=_RecordingFactory(
+            _FakeSession(
+                observations=(
+                    _mapped_frequency_observation(alpha_tag="Fire Dispatch"),
+                ),
+            )
+        ),
+        secret_resolver=_resolver,
+    )
+
+    preview = preview_favorites_external_source((state,), source)
+
+    assert accepted.fields[0].name == "name"
+    assert accepted.fields[0].value == "Dispatch"
+    assert accepted.fields[1].name == "frequency"
+    assert accepted.fields[1].value == "155100000"
+    assert len(preview.records) == 1
+    assert preview.records[0].kind is FavoritesExternalChangeKind.REPLACED
+    assert preview.records[0].external_identity == accepted.identity
+    assert preview.records[0].target is target
+    assert len(preview.records[0].fields) == 2
+    fields = {
+        field.name: field
+        for field in preview.records[0].fields
+    }
+
+    name = fields["name"]
+    assert name.kind is FavoritesExternalChangeKind.REPLACED
+    assert name.local_value == "Dispatch"
+    assert name.external_value == "Fire Dispatch"
+
+    frequency = fields["frequency"]
+    assert frequency.kind is FavoritesExternalChangeKind.ADDED
+    assert frequency.local_value is None
+    assert frequency.external_value == "155100000"
 
 
 def test_radioreference_error_messages_are_stable_and_message_free() -> None:

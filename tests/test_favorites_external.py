@@ -8,6 +8,7 @@ import pytest
 import sds200
 from sds200 import (
     FavoritesExternalChangeKind,
+    FavoritesExternalFieldBinding,
     FavoritesExternalFieldObservation,
     FavoritesExternalFieldObservationState,
     FavoritesExternalFieldOwnership,
@@ -22,6 +23,7 @@ from sds200 import (
     FavoritesRecordSourceKind,
     FavoritesRecordTarget,
     FavoritesSourceRecord,
+    bind_favorites_external_record,
     detach_favorites_external_field,
     detach_favorites_external_record,
     preview_favorites_external_import,
@@ -165,6 +167,375 @@ def _observation(
             else fields
         ),
     )
+
+
+def test_bind_external_record_captures_explicit_matching_provenance() -> None:
+    target = _target()
+    observation = _observation(revision="accepted-r1")
+
+    state = bind_favorites_external_record(
+        target,
+        observation,
+        (
+            FavoritesExternalFieldBinding(
+                name="name",
+                field_index=0,
+                ownership=FavoritesExternalFieldOwnership.EXTERNAL,
+            ),
+            FavoritesExternalFieldBinding(
+                name="frequency",
+                field_index=1,
+                ownership=FavoritesExternalFieldOwnership.EXTERNAL,
+            ),
+        ),
+    )
+
+    assert state.target is target
+    assert state.external_identity is observation.identity
+    assert state.last_observation is observation.evidence
+    assert state.fields[0].last_external is observation.fields[0]
+    assert state.fields[1].last_external is observation.fields[1]
+
+
+def test_bind_external_record_preserves_explicit_local_ownership() -> None:
+    target = _target()
+    observation = _observation(name="Provider Dispatch")
+
+    state = bind_favorites_external_record(
+        target,
+        observation,
+        (
+            FavoritesExternalFieldBinding(
+                name="name",
+                field_index=0,
+                ownership=FavoritesExternalFieldOwnership.LOCAL,
+            ),
+            FavoritesExternalFieldBinding(
+                name="frequency",
+                field_index=1,
+                ownership=FavoritesExternalFieldOwnership.EXTERNAL,
+            ),
+        ),
+    )
+
+    assert state.local_value(state.fields[0]) == "Dispatch"
+    assert state.fields[0].ownership is FavoritesExternalFieldOwnership.LOCAL
+    assert state.fields[0].last_external is None
+    assert state.fields[1].last_external is observation.fields[1]
+
+
+def test_bind_external_record_rejects_unmatched_external_value() -> None:
+    with pytest.raises(
+        FavoritesExternalImportError,
+        match="does not match the exact local value",
+    ):
+        bind_favorites_external_record(
+            _target(),
+            _observation(name="Provider Dispatch"),
+            (
+                FavoritesExternalFieldBinding(
+                    name="name",
+                    field_index=0,
+                    ownership=FavoritesExternalFieldOwnership.EXTERNAL,
+                ),
+            ),
+        )
+
+
+@pytest.mark.parametrize(
+    "fields",
+    (
+        (_absent("name"),),
+        (_value("frequency", "155.1000"),),
+    ),
+)
+def test_bind_external_record_requires_observed_value_for_external_ownership(
+    fields: tuple[FavoritesExternalFieldObservation, ...],
+) -> None:
+    with pytest.raises(
+        FavoritesExternalImportError,
+        match="requires an observed provider value",
+    ):
+        bind_favorites_external_record(
+            _target(),
+            _observation(fields=fields),
+            (
+                FavoritesExternalFieldBinding(
+                    name="name",
+                    field_index=0,
+                    ownership=FavoritesExternalFieldOwnership.EXTERNAL,
+                ),
+            ),
+        )
+
+
+def test_bind_external_record_rejects_removed_observation() -> None:
+    observation = FavoritesExternalRecordObservation(
+        identity=_record_identity(),
+        evidence=_evidence(),
+        state=FavoritesExternalRecordObservationState.REMOVED,
+    )
+
+    with pytest.raises(FavoritesExternalImportError, match="requires an active observation"):
+        bind_favorites_external_record(
+            _target(),
+            observation,
+            (
+                FavoritesExternalFieldBinding(
+                    name="name",
+                    field_index=0,
+                    ownership=FavoritesExternalFieldOwnership.LOCAL,
+                ),
+            ),
+        )
+
+
+def test_bind_external_record_rejects_detached_initial_ownership() -> None:
+    with pytest.raises(ValueError, match="cannot be detached"):
+        FavoritesExternalFieldBinding(
+            name="name",
+            field_index=0,
+            ownership=FavoritesExternalFieldOwnership.DETACHED,
+        )
+
+
+def test_external_field_binding_is_immutable() -> None:
+    binding = FavoritesExternalFieldBinding(
+        name="name",
+        field_index=0,
+        ownership=FavoritesExternalFieldOwnership.EXTERNAL,
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        binding.field_index = 1  # type: ignore[misc]
+
+
+def test_bind_external_record_requires_immutable_nonempty_bindings() -> None:
+    with pytest.raises(TypeError):
+        bind_favorites_external_record(
+            _target(),
+            _observation(),
+            [  # type: ignore[arg-type]
+                FavoritesExternalFieldBinding(
+                    name="name",
+                    field_index=0,
+                    ownership=FavoritesExternalFieldOwnership.EXTERNAL,
+                ),
+            ],
+        )
+
+    with pytest.raises(
+        FavoritesExternalImportError,
+        match="requires at least one field",
+    ):
+        bind_favorites_external_record(
+            _target(),
+            _observation(),
+            (),
+        )
+
+
+def test_bind_external_record_rejects_wrong_binding_item_type() -> None:
+    with pytest.raises(TypeError, match="FavoritesExternalFieldBinding"):
+        bind_favorites_external_record(
+            _target(),
+            _observation(),
+            (object(),),  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize(
+    "bindings,error_fragment",
+    (
+        (
+            (
+                FavoritesExternalFieldBinding(
+                    name="name",
+                    field_index=0,
+                    ownership=FavoritesExternalFieldOwnership.LOCAL,
+                ),
+                FavoritesExternalFieldBinding(
+                    name="name",
+                    field_index=1,
+                    ownership=FavoritesExternalFieldOwnership.LOCAL,
+                ),
+            ),
+            "duplicate field names",
+        ),
+        (
+            (
+                FavoritesExternalFieldBinding(
+                    name="name",
+                    field_index=0,
+                    ownership=FavoritesExternalFieldOwnership.LOCAL,
+                ),
+                FavoritesExternalFieldBinding(
+                    name="frequency",
+                    field_index=0,
+                    ownership=FavoritesExternalFieldOwnership.LOCAL,
+                ),
+            ),
+            "duplicate source field indexes",
+        ),
+    ),
+)
+def test_bind_external_record_rejects_duplicate_binding_axes(
+    bindings: tuple[FavoritesExternalFieldBinding, ...],
+    error_fragment: str,
+) -> None:
+    with pytest.raises(FavoritesExternalImportError, match=error_fragment):
+        bind_favorites_external_record(
+            _target(),
+            _observation(),
+            bindings,
+        )
+
+
+def test_bind_external_record_rejects_out_of_range_field_index() -> None:
+    with pytest.raises(
+        FavoritesExternalImportError,
+        match="outside the exact target source record",
+    ):
+        bind_favorites_external_record(
+            _target(),
+            _observation(),
+            (
+                FavoritesExternalFieldBinding(
+                    name="name",
+                    field_index=99,
+                    ownership=FavoritesExternalFieldOwnership.LOCAL,
+                ),
+            ),
+        )
+
+
+def test_bound_external_record_flows_into_update_preview() -> None:
+    target = _target()
+    accepted = _observation(revision="accepted-r1")
+    state = bind_favorites_external_record(
+        target,
+        accepted,
+        (
+            FavoritesExternalFieldBinding(
+                name="name",
+                field_index=0,
+                ownership=FavoritesExternalFieldOwnership.EXTERNAL,
+            ),
+            FavoritesExternalFieldBinding(
+                name="frequency",
+                field_index=1,
+                ownership=FavoritesExternalFieldOwnership.EXTERNAL,
+            ),
+        ),
+    )
+
+    preview = preview_favorites_external_import(
+        (state,),
+        (_observation(name="Fire Dispatch", revision="provider-r2"),),
+    )
+
+    assert preview.records[0].kind is FavoritesExternalChangeKind.REPLACED
+    fields = {field.name: field for field in preview.records[0].fields}
+    assert fields["name"].kind is FavoritesExternalChangeKind.REPLACED
+    assert fields["name"].local_value == "Dispatch"
+    assert fields["name"].external_value == "Fire Dispatch"
+    assert fields["frequency"].kind is FavoritesExternalChangeKind.UNCHANGED
+
+
+def test_bound_local_ownership_flows_into_conflict_preview() -> None:
+    target = _target()
+    state = bind_favorites_external_record(
+        target,
+        _observation(revision="accepted-r1"),
+        (
+            FavoritesExternalFieldBinding(
+                name="name",
+                field_index=0,
+                ownership=FavoritesExternalFieldOwnership.LOCAL,
+            ),
+            FavoritesExternalFieldBinding(
+                name="frequency",
+                field_index=1,
+                ownership=FavoritesExternalFieldOwnership.EXTERNAL,
+            ),
+        ),
+    )
+
+    preview = preview_favorites_external_import(
+        (state,),
+        (_observation(name="Provider Dispatch", revision="provider-r2"),),
+    )
+
+    assert preview.has_conflicts is True
+    assert preview.records[0].kind is FavoritesExternalChangeKind.CONFLICT
+    fields = {field.name: field for field in preview.records[0].fields}
+    assert fields["name"].kind is FavoritesExternalChangeKind.CONFLICT
+    assert fields["name"].ownership is FavoritesExternalFieldOwnership.LOCAL
+    assert fields["name"].local_value == "Dispatch"
+    assert fields["name"].external_value == "Provider Dispatch"
+
+
+def test_bound_state_flows_through_explicit_field_detach() -> None:
+    accepted = _observation(revision="accepted-r1")
+    state = bind_favorites_external_record(
+        _target(),
+        accepted,
+        (
+            FavoritesExternalFieldBinding(
+                name="name",
+                field_index=0,
+                ownership=FavoritesExternalFieldOwnership.EXTERNAL,
+            ),
+        ),
+    )
+
+    detached = detach_favorites_external_field(state, "name")
+
+    assert detached.fields[0].ownership is FavoritesExternalFieldOwnership.DETACHED
+    assert detached.fields[0].last_external is accepted.fields[0]
+    assert detached.local_value(detached.fields[0]) == "Dispatch"
+
+    preview = preview_favorites_external_import(
+        (detached,),
+        (_observation(name="Provider Dispatch", revision="provider-r2"),),
+    )
+    assert preview.records[0].kind is FavoritesExternalChangeKind.CONFLICT
+
+
+def test_bound_state_flows_through_explicit_record_detach() -> None:
+    accepted = _observation(revision="accepted-r1")
+    state = bind_favorites_external_record(
+        _target(),
+        accepted,
+        (
+            FavoritesExternalFieldBinding(
+                name="name",
+                field_index=0,
+                ownership=FavoritesExternalFieldOwnership.EXTERNAL,
+            ),
+            FavoritesExternalFieldBinding(
+                name="frequency",
+                field_index=1,
+                ownership=FavoritesExternalFieldOwnership.EXTERNAL,
+            ),
+        ),
+    )
+
+    detached = detach_favorites_external_record(state)
+
+    assert detached.detached is True
+    assert {
+        field.ownership
+        for field in detached.fields
+    } == {FavoritesExternalFieldOwnership.DETACHED}
+
+    preview = preview_favorites_external_import(
+        (detached,),
+        (_observation(name="Provider Dispatch", revision="provider-r2"),),
+    )
+    assert preview.records[0].kind is FavoritesExternalChangeKind.LOCAL_ONLY
+    assert preview.has_changes is False
+    assert preview.has_conflicts is False
 
 
 def test_external_identity_and_evidence_are_immutable() -> None:
@@ -710,6 +1081,7 @@ def test_source_rejects_mutable_observation_collection() -> None:
 def test_external_favorites_public_symbols_are_package_exports() -> None:
     expected = (
         "FavoritesExternalChangeKind",
+        "FavoritesExternalFieldBinding",
         "FavoritesExternalFieldObservation",
         "FavoritesExternalFieldObservationState",
         "FavoritesExternalFieldOwnership",
@@ -725,6 +1097,7 @@ def test_external_favorites_public_symbols_are_package_exports() -> None:
         "FavoritesExternalRecordState",
         "FavoritesExternalSource",
         "FavoritesExternalSourceIdentity",
+        "bind_favorites_external_record",
         "detach_favorites_external_field",
         "detach_favorites_external_record",
         "preview_favorites_external_import",
