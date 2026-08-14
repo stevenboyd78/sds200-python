@@ -7,11 +7,21 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Protocol
 
-from .favorites_editing import FavoritesRecordTarget
+from .favorites_editing import (
+    FavoritesRecordTarget,
+    rename_favorites_record,
+    select_favorites_record_target,
+)
+from .favorites_storage import FavoritesStorageSnapshot
+from .favorites_write_plan import FavoritesWritePlan, plan_favorites_write
 
 
 class FavoritesExternalImportError(ValueError):
     """Report invalid or ambiguous external Favorites evidence."""
+
+
+class FavoritesExternalAcceptanceError(ValueError):
+    """Report unsupported or inconsistent external acceptance evidence."""
 
 
 class FavoritesExternalFieldOwnership(StrEnum):
@@ -583,6 +593,73 @@ class FavoritesExternalImportPreview:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class FavoritesExternalNameAcceptancePlan:
+    """Pure name-acceptance plan retaining preview, write, and provenance evidence."""
+
+    preview: FavoritesExternalRecordPreview
+    write_plan: FavoritesWritePlan
+    intended_state: FavoritesExternalRecordState
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.preview, FavoritesExternalRecordPreview):
+            raise TypeError(
+                "External Favorites name acceptance preview must be "
+                "FavoritesExternalRecordPreview."
+            )
+        if not isinstance(self.write_plan, FavoritesWritePlan):
+            raise TypeError(
+                "External Favorites name acceptance write plan must be "
+                "FavoritesWritePlan."
+            )
+        if not isinstance(self.intended_state, FavoritesExternalRecordState):
+            raise TypeError(
+                "External Favorites name acceptance intended state must be "
+                "FavoritesExternalRecordState."
+            )
+
+        if self.preview.target is None:
+            raise ValueError(
+                "External Favorites name acceptance preview must retain "
+                "the exact baseline target."
+            )
+        baseline_target = select_favorites_record_target(
+            self.write_plan.baseline_snapshot,
+            self.preview.target.source_index,
+            document_index=self.preview.target.document_index,
+        )
+        if baseline_target != self.preview.target:
+            raise ValueError(
+                "External Favorites name acceptance preview target must "
+                "match the exact write-plan baseline."
+            )
+
+        intended_target = select_favorites_record_target(
+            self.write_plan.intended_snapshot,
+            self.intended_state.target.source_index,
+            document_index=self.intended_state.target.document_index,
+        )
+        if intended_target != self.intended_state.target:
+            raise ValueError(
+                "External Favorites name acceptance intended state must "
+                "match the exact write-plan intended snapshot."
+            )
+
+        if (
+            self.preview.external_identity
+            != self.intended_state.external_identity
+        ):
+            raise ValueError(
+                "External Favorites name acceptance identity must remain "
+                "consistent across preview and intended provenance."
+            )
+        if self.preview.evidence != self.intended_state.last_observation:
+            raise ValueError(
+                "External Favorites name acceptance evidence must remain "
+                "consistent across preview and intended provenance."
+            )
+
+
 class FavoritesExternalSource(Protocol):
     """Narrow fakeable source of normalized external Favorites observations."""
 
@@ -1058,6 +1135,178 @@ def preview_favorites_external_source(
     )
 
 
+def plan_favorites_external_name_acceptance(
+    snapshot: FavoritesStorageSnapshot,
+    record: FavoritesExternalRecordState,
+    observation: FavoritesExternalRecordObservation,
+) -> FavoritesExternalNameAcceptancePlan:
+    """Plan one explicit externally owned name replacement without writing."""
+
+    if not isinstance(snapshot, FavoritesStorageSnapshot):
+        raise TypeError(
+            "External Favorites name acceptance requires "
+            "FavoritesStorageSnapshot."
+        )
+    if not isinstance(record, FavoritesExternalRecordState):
+        raise TypeError(
+            "External Favorites name acceptance requires "
+            "FavoritesExternalRecordState."
+        )
+    if not isinstance(observation, FavoritesExternalRecordObservation):
+        raise TypeError(
+            "External Favorites name acceptance requires "
+            "FavoritesExternalRecordObservation."
+        )
+
+    if record.external_identity is None or record.detached:
+        raise FavoritesExternalAcceptanceError(
+            "External Favorites name acceptance requires one linked "
+            "non-detached record."
+        )
+    if observation.identity != record.external_identity:
+        raise FavoritesExternalAcceptanceError(
+            "External Favorites name acceptance observation identity "
+            "does not match the linked record."
+        )
+    if observation.state is not FavoritesExternalRecordObservationState.ACTIVE:
+        raise FavoritesExternalAcceptanceError(
+            "External Favorites name acceptance requires an active observation."
+        )
+
+    name_state = next(
+        (field for field in record.fields if field.name == "name"),
+        None,
+    )
+    if name_state is None:
+        raise FavoritesExternalAcceptanceError(
+            "External Favorites name acceptance requires a bound name field."
+        )
+    if name_state.ownership is not FavoritesExternalFieldOwnership.EXTERNAL:
+        raise FavoritesExternalAcceptanceError(
+            "External Favorites name acceptance requires externally owned "
+            "name provenance."
+        )
+
+    preview = preview_favorites_external_import(
+        (record,),
+        (observation,),
+    ).records[0]
+    if preview.kind is FavoritesExternalChangeKind.CONFLICT:
+        raise FavoritesExternalAcceptanceError(
+            "External Favorites name acceptance does not accept a record "
+            "with unresolved conflicts."
+        )
+
+    name_preview = next(
+        (field for field in preview.fields if field.name == "name"),
+        None,
+    )
+    if (
+        name_preview is None
+        or name_preview.kind is not FavoritesExternalChangeKind.REPLACED
+        or name_preview.ownership is not FavoritesExternalFieldOwnership.EXTERNAL
+        or name_preview.external_state
+        is not FavoritesExternalFieldObservationState.VALUE
+        or name_preview.external_value is None
+    ):
+        raise FavoritesExternalAcceptanceError(
+            "External Favorites name acceptance requires one externally "
+            "owned replaced name value."
+        )
+
+    bound_names = {field.name for field in record.fields}
+    other_bound_changes = tuple(
+        field
+        for field in preview.fields
+        if (
+            field.name in bound_names
+            and field.name != "name"
+            and field.kind
+            in {
+                FavoritesExternalChangeKind.REPLACED,
+                FavoritesExternalChangeKind.REMOVED,
+            }
+        )
+    )
+    if other_bound_changes:
+        raise FavoritesExternalAcceptanceError(
+            "External Favorites name acceptance does not accept simultaneous "
+            "changes to another bound field."
+        )
+
+    local_name = record.local_value(name_state)
+    if name_preview.local_value != local_name:
+        raise FavoritesExternalAcceptanceError(
+            "External Favorites name acceptance preview local value "
+            "does not match captured provenance."
+        )
+
+    intended_snapshot = rename_favorites_record(
+        snapshot,
+        record.target,
+        name_preview.external_value,
+    )
+    intended_target = select_favorites_record_target(
+        intended_snapshot,
+        record.target.source_index,
+        document_index=record.target.document_index,
+    )
+
+    if len(intended_target.record.fields) != len(record.target.record.fields):
+        raise FavoritesExternalAcceptanceError(
+            "External Favorites name acceptance changed the source field shape."
+        )
+
+    changed_indexes = tuple(
+        index
+        for index, (before, after) in enumerate(
+            zip(
+                record.target.record.fields,
+                intended_target.record.fields,
+                strict=True,
+            )
+        )
+        if before != after
+    )
+    if changed_indexes != (name_state.field_index,):
+        raise FavoritesExternalAcceptanceError(
+            "External Favorites bound name field index does not match "
+            "the schema-aware editable name field."
+        )
+
+    observed_name = next(
+        field
+        for field in observation.fields
+        if field.name == "name"
+    )
+    intended_fields = tuple(
+        (
+            replace(
+                field,
+                last_external=observed_name,
+            )
+            if field is name_state
+            else field
+        )
+        for field in record.fields
+    )
+    intended_state = replace(
+        record,
+        target=intended_target,
+        fields=intended_fields,
+        last_observation=observation.evidence,
+    )
+
+    return FavoritesExternalNameAcceptancePlan(
+        preview=preview,
+        write_plan=plan_favorites_write(
+            snapshot,
+            intended_snapshot,
+        ),
+        intended_state=intended_state,
+    )
+
+
 def detach_favorites_external_field(
     record: FavoritesExternalRecordState,
     field_name: str,
@@ -1133,6 +1382,7 @@ def detach_favorites_external_record(
 
 
 __all__ = [
+    "FavoritesExternalAcceptanceError",
     "FavoritesExternalChangeKind",
     "FavoritesExternalFieldBinding",
     "FavoritesExternalFieldObservation",
@@ -1142,6 +1392,7 @@ __all__ = [
     "FavoritesExternalFieldState",
     "FavoritesExternalImportError",
     "FavoritesExternalImportPreview",
+    "FavoritesExternalNameAcceptancePlan",
     "FavoritesExternalObservationEvidence",
     "FavoritesExternalRecordIdentity",
     "FavoritesExternalRecordObservation",
@@ -1153,6 +1404,7 @@ __all__ = [
     "bind_favorites_external_record",
     "detach_favorites_external_field",
     "detach_favorites_external_record",
+    "plan_favorites_external_name_acceptance",
     "preview_favorites_external_import",
     "preview_favorites_external_source",
 ]

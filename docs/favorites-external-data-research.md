@@ -107,6 +107,37 @@ This slice does not define provider-to-SDS template mapping, scanner record
 creation, hierarchy placement, operator acceptance, persisted provenance
 serialization, or storage writes. Those remain separate acceptance-layer work.
 
+## Milestone 23.10 name acceptance planning boundary
+
+Milestone 23.10 adds the first explicit operator-acceptance planning seam, but
+only for a normalized `name` field that is already bound to an exact existing
+Favorites source field with external ownership. The planner recomputes preview
+classification from the linked record state and supplied observation, then
+requires an active externally owned `REPLACED` name value.
+
+Acceptance does not introduce a generic source-field editor. The existing
+schema-aware `rename_favorites_record()` operation remains authoritative for
+scanner representation and stale/ambiguous-target revalidation. After deriving
+the intended snapshot, the acceptance planner verifies that the exact bound
+provenance index is the only source field changed by that editor. A caller cannot
+therefore use a provider field name or a mistaken provenance index to authorize
+an unrelated SDS mutation.
+
+The resulting intended snapshot flows through ordinary `plan_favorites_write()`
+validation and blockers. The planner also returns refreshed in-memory provenance
+for the intended renamed record so a later layer can preserve accepted external
+evidence without treating persistence as already implemented.
+
+Unbound provider fields remain preview evidence only. In particular, a
+RadioReference whole-Hz `frequency` observation that has no reviewed SDS binding
+is not accepted merely because another field on the same provider record is
+accepted. A simultaneous replacement or removal of any other already-bound
+field also fails closed rather than being silently folded into a name-only
+acceptance. Local or detached fields, provider removals, unresolved conflicts,
+record creation, arbitrary-field replacement, template/hierarchy inference,
+persisted provenance serialization, storage execution, live transport, MyRR, and
+automatic synchronization remain deferred.
+
 ## Detach semantics
 
 Detaching an externally sourced record or field should preserve its current

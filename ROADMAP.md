@@ -11,32 +11,35 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 23.9 — RadioReference assisted-import provenance binding foundation
+### Milestone 23.10 — RadioReference assisted-update name acceptance planning foundation
 
-- Begin from the fully merged Milestone 23.8 foundation at
-  `c930de198381c71707f1b05eeccb84d174a9e638`.
-- Treat the existing source-neutral external preview machinery as authoritative
-  for add/replace/remove/unchanged/local-only/conflict classification, detach
-  semantics, deterministic ordering, and redacted fakeable source reads.
-- Add a pure source-neutral binding API for attaching one exact existing
-  `FavoritesRecordTarget` to one active external observation using explicit
-  normalized field-name to source-field-index choices.
-- Require ownership to be explicit for every bound field. Initial bindings may
-  be external or local; detached ownership remains an explicit later transition
-  through the existing detach operations.
-- Permit externally owned provenance only when the selected provider field is an
-  observed value that exactly matches the current local source field. Never
-  rewrite a target while establishing provenance.
-- Preserve local ownership without attaching field-level external provenance,
-  allowing later provider differences to surface through the existing conflict
-  preview semantics.
-- Feed bound state directly into the existing external import/update preview
-  layer without introducing a new RadioReference-specific preview engine.
-- Keep provider-to-SDS field inference, scanner record/template creation,
-  hierarchy construction, operator acceptance, persisted provenance storage,
-  Favorites writes, HTTP/TLS transport, live provider calls, MyRR, and automatic
-  synchronization outside this milestone.
-- Use only synthetic local/provider values in automated tests.
+- Begin from the fully merged Milestone 23.9 foundation at
+  `8d654c2a249ccd2850e2731765661f4bf7e491b3`.
+- Add one pure source-neutral acceptance planner for an already-linked,
+  non-detached record whose normalized `name` field is externally owned and
+  previewed as an exact replacement.
+- Recompute preview classification from the supplied external observation rather
+  than trusting caller-constructed change labels.
+- Reuse `rename_favorites_record()` as the schema-aware mutation authority and
+  require the exact bound provenance index to be the only source field changed
+  by that editor.
+- Reuse `plan_favorites_write()` for the ordinary immutable baseline/intended
+  snapshot comparison, validation, blockers, and later stale-snapshot check.
+- Return refreshed in-memory provenance for the intended renamed record while
+  leaving persistence and write execution outside the acceptance planner.
+- Permit unbound provider fields to remain preview evidence only; in particular,
+  RadioReference whole-Hz frequency observations must not become implicit SDS
+  frequency mappings during name acceptance.
+- Reject local/detached ownership, removed observations, unchanged names,
+  identity mismatches, stale/ambiguous exact targets, conflicts, unsupported
+  name values, provenance indexes that do not match the schema-aware name
+  field, and simultaneous replacement/removal of any other already-bound field.
+- Keep arbitrary-field acceptance, provider-to-SDS mapping, record creation,
+  record removal acceptance, conflict resolution choices, hierarchy/template
+  inference, persisted provenance storage, write execution, live transport,
+  MyRR, and automatic synchronization outside this milestone.
+- Use only synthetic local/provider values and existing repository Favorites
+  fixtures in automated tests.
 
 
 ## Deferred hardware validation
@@ -282,6 +285,12 @@ begins.
   timezone-aware observation evidence, stable redacted failures, deterministic
   cleanup, and integration through `RadioReferenceSource` without production
   HTTP/TLS transport or retained request/response bytes.
+- Milestone 23.9 completed the assisted-import provenance binding foundation:
+  explicit normalized field-name to exact local source-field-index bindings,
+  external/local ownership, exact-value proof before external ownership,
+  source-neutral preview integration, explicit detach continuity, and a real
+  RadioReference mapper regression that leaves unbound whole-Hz frequency data
+  as provider-only evidence without inferring scanner representation.
 - Add RadioReference-assisted import with update previews.
 - Preserve provenance and field ownership for externally sourced data.
 - Support merge decisions and detaching local records from an external source.
