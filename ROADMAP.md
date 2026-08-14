@@ -11,37 +11,35 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 23.7 — RadioReference offline SOAP result observation adapter
+### Milestone 23.8 — RadioReference offline request-plan/session composition foundation
 
-- Begin from the fully merged Milestone 23.6 foundation at
-  `d7f978a86ec5490dab33def014782cb8efbb46dd`.
-- Treat Milestone 23.6 as complete: reviewed conventional-frequency and
-  talkgroup DTOs can now be mapped into immutable
-  `FavoritesExternalRecordObservation` values without transport access,
-  provider revision inference, or Favorites mutation.
-- Add a dependency-free offline operation-aware adapter from decoded
-  RadioReference SOAP result values to immutable normalized observation tuples.
-- Require the reviewed `RadioReferenceWsdlOperation` so empty tuple results are
-  never interpreted by runtime element inspection.
-- Support only the three reviewed conventional-frequency operations and
-  `GET_TRUNKED_TALKGROUPS`, reusing the Milestone 23.6 record mappers and the
-  caller-supplied `FavoritesExternalSourceIdentity` and timezone-aware
-  observation time.
-- Require exact immutable tuple result containers, reject mismatched element
-  types rather than coercing or silently skipping provider values, and fail
-  closed when mapped results contain duplicate provider record identities.
-- Preserve provider result order in the adapter output; the existing
-  RadioReference source boundary remains responsible for deterministic
-  normalized observation ordering.
-- Return an empty immutable observation tuple for an empty result from a
-  supported operation.
-- Fail closed for search-frequency results and every other decoded operation
-  until a stable provider record identity and explicit normalized mapping are
-  reviewed.
-- Keep deletion inference, hierarchy construction, additional trunked mapping,
-  merge acceptance, HTTP/TLS transport, live provider access, MyRR, background
-  synchronization, and Favorites storage mutation outside this slice.
-- Use only synthetic provider DTOs and local fixtures in automated tests.
+- Begin from the fully merged Milestone 23.7 foundation at
+  `e3f70c326a7766207f6a59657ccc8041b59860c3`.
+- Treat Milestone 23.7 as complete: the three reviewed conventional-frequency
+  result operations and `GET_TRUNKED_TALKGROUPS` now map decoded SOAP results
+  into immutable normalized observations with exact result-shape and duplicate
+  provider-identity validation.
+- Add an immutable, secret-free observation request plan that binds one
+  `FavoritesExternalSourceIdentity` dataset to one reviewed SOAP operation and
+  its exact non-authentication WSDL parameters.
+- Support only operations already accepted by the Milestone 23.7 observation
+  adapter; fail closed for all other programming operations.
+- Require exact immutable `(name, value)` parameter tuples in reviewed WSDL
+  order and validate the current observation-operation `xsd:int` values without
+  coercion.
+- Keep application keys, passwords, generated request bytes, response bytes,
+  and provider session state out of retained request-plan objects.
+- Compose plans through the existing request serializer, a fakeable
+  operation-aware byte exchange, the bounded response decoder, and the
+  observation adapter with an injectable timezone-aware observation clock.
+- Provide a concrete owned observation session and factory compatible with the
+  existing `RadioReferenceSource` boundary. Keep request/response bytes local to
+  one read, clear owned secret references during close, preserve stable redacted
+  `RadioReferenceError` reasons, and close the fakeable exchange deterministically.
+- Keep HTTP/TLS implementation, live provider calls, deletion inference,
+  hierarchy construction, operator merge acceptance, MyRR, automatic
+  synchronization, and Favorites storage mutation outside this milestone.
+- Use only synthetic values and local SOAP fixtures in automated tests.
 
 
 ## Deferred hardware validation
@@ -271,6 +269,16 @@ begins.
   serialization for all 19 reviewed programming operations, exact request-side scalar
   validation, ephemeral secret-bearing request bytes, and fully offline coverage without
   HTTP/TLS transport or live provider access.
+- Milestone 23.6 completed the offline observation mapping foundation:
+  reviewed conventional-frequency and talkgroup DTOs map into immutable
+  source-neutral observations with stable provider record identities, exact
+  alpha-tag preservation, whole-Hz frequency conversion, and no provider
+  revision, hierarchy, deletion, or scanner-record inference.
+- Milestone 23.7 completed the offline SOAP result observation adapter:
+  operation-aware mapping for three reviewed conventional-frequency operations
+  and `GET_TRUNKED_TALKGROUPS`, exact immutable result validation, supported
+  empty-result semantics, duplicate provider-identity rejection, provider-order
+  preservation, and decoder-to-observation integration without transport access.
 - Add RadioReference-assisted import with update previews.
 - Preserve provenance and field ownership for externally sourced data.
 - Support merge decisions and detaching local records from an external source.
