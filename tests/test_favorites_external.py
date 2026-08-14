@@ -16,6 +16,8 @@ from sds200 import (
     FavoritesExternalFieldOwnership,
     FavoritesExternalFieldState,
     FavoritesExternalImportError,
+    FavoritesExternalNameAcceptanceExecutionResult,
+    FavoritesExternalNameAcceptanceExecutor,
     FavoritesExternalNameAcceptancePlan,
     FavoritesExternalObservationEvidence,
     FavoritesExternalRecordIdentity,
@@ -32,6 +34,7 @@ from sds200 import (
     bind_favorites_external_record,
     detach_favorites_external_field,
     detach_favorites_external_record,
+    execute_favorites_external_name_acceptance,
     plan_favorites_external_name_acceptance,
     preview_favorites_external_import,
     preview_favorites_external_source,
@@ -562,6 +565,32 @@ def test_bound_state_flows_through_explicit_record_detach() -> None:
     assert preview.has_conflicts is False
 
 
+class _StaticStorageSource:
+    def __init__(
+        self,
+        snapshot: FavoritesStorageSnapshot,
+    ) -> None:
+        self.snapshot = snapshot
+        self.read_count = 0
+
+    def read_snapshot(
+        self,
+    ) -> FavoritesStorageSnapshot:
+        self.read_count += 1
+        return self.snapshot
+
+
+class _FailingStorageSource:
+    def __init__(self) -> None:
+        self.read_count = 0
+
+    def read_snapshot(
+        self,
+    ) -> FavoritesStorageSnapshot:
+        self.read_count += 1
+        raise RuntimeError("synthetic readback failure")
+
+
 def _real_name_acceptance_inputs(
     *,
     updated_name: str = "Provider Channel",
@@ -944,6 +973,234 @@ def test_plan_external_name_acceptance_requires_exact_model_types(
                 state,
                 object(),
             )
+
+
+def test_execute_external_name_acceptance_promotes_only_after_exact_readback() -> None:
+    snapshot, state, updated = _real_name_acceptance_inputs()
+    acceptance = plan_favorites_external_name_acceptance(
+        snapshot,
+        state,
+        updated,
+    )
+    source = _StaticStorageSource(
+        acceptance.write_plan.intended_snapshot
+    )
+    calls: list[object] = []
+    backend_result = object()
+
+    def executor(plan: object) -> object:
+        calls.append(plan)
+        return backend_result
+
+    result = execute_favorites_external_name_acceptance(
+        acceptance,
+        executor,
+        source,
+    )
+
+    assert isinstance(
+        result,
+        FavoritesExternalNameAcceptanceExecutionResult,
+    )
+    assert result.plan is acceptance
+    assert result.execution_result is backend_result
+    assert result.observed_snapshot is acceptance.write_plan.intended_snapshot
+    assert result.accepted_state is acceptance.intended_state
+    assert calls == [acceptance.write_plan]
+    assert source.read_count == 1
+
+
+def test_execute_external_name_acceptance_propagates_executor_failure_without_readback() -> None:
+    snapshot, state, updated = _real_name_acceptance_inputs()
+    acceptance = plan_favorites_external_name_acceptance(
+        snapshot,
+        state,
+        updated,
+    )
+    source = _StaticStorageSource(
+        acceptance.write_plan.intended_snapshot
+    )
+
+    class ExecutorFailure(RuntimeError):
+        pass
+
+    def executor(_: object) -> object:
+        raise ExecutorFailure("synthetic executor failure")
+
+    with pytest.raises(
+        ExecutorFailure,
+        match="synthetic executor failure",
+    ):
+        execute_favorites_external_name_acceptance(
+            acceptance,
+            executor,
+            source,
+        )
+
+    assert source.read_count == 0
+
+
+def test_execute_external_name_acceptance_rejects_unavailable_post_write_readback() -> None:
+    snapshot, state, updated = _real_name_acceptance_inputs()
+    acceptance = plan_favorites_external_name_acceptance(
+        snapshot,
+        state,
+        updated,
+    )
+    source = _FailingStorageSource()
+
+    with pytest.raises(
+        FavoritesExternalAcceptanceError,
+        match="could not verify the post-write storage snapshot",
+    ):
+        execute_favorites_external_name_acceptance(
+            acceptance,
+            lambda _: object(),
+            source,
+        )
+
+    assert source.read_count == 1
+
+
+def test_execute_external_name_acceptance_rejects_mismatched_post_write_snapshot() -> None:
+    snapshot, state, updated = _real_name_acceptance_inputs()
+    acceptance = plan_favorites_external_name_acceptance(
+        snapshot,
+        state,
+        updated,
+    )
+    source = _StaticStorageSource(snapshot)
+
+    with pytest.raises(
+        FavoritesExternalAcceptanceError,
+        match="does not exactly match the intended snapshot",
+    ):
+        execute_favorites_external_name_acceptance(
+            acceptance,
+            lambda _: object(),
+            source,
+        )
+
+    assert source.read_count == 1
+
+
+def test_execute_external_name_acceptance_rejects_invalid_post_write_evidence() -> None:
+    snapshot, state, updated = _real_name_acceptance_inputs()
+    acceptance = plan_favorites_external_name_acceptance(
+        snapshot,
+        state,
+        updated,
+    )
+
+    class InvalidStorageSource:
+        def read_snapshot(self) -> object:
+            return object()
+
+    with pytest.raises(
+        FavoritesExternalAcceptanceError,
+        match="returned invalid post-write storage evidence",
+    ):
+        execute_favorites_external_name_acceptance(
+            acceptance,
+            lambda _: object(),
+            InvalidStorageSource(),  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize(
+    "argument",
+    ("plan", "executor", "storage_source"),
+)
+def test_execute_external_name_acceptance_requires_execution_contracts(
+    argument: str,
+) -> None:
+    snapshot, state, updated = _real_name_acceptance_inputs()
+    acceptance = plan_favorites_external_name_acceptance(
+        snapshot,
+        state,
+        updated,
+    )
+    source = _StaticStorageSource(
+        acceptance.write_plan.intended_snapshot
+    )
+
+    with pytest.raises(TypeError):
+        if argument == "plan":
+            execute_favorites_external_name_acceptance(  # type: ignore[arg-type]
+                object(),
+                lambda _: object(),
+                source,
+            )
+        elif argument == "executor":
+            execute_favorites_external_name_acceptance(  # type: ignore[arg-type]
+                acceptance,
+                object(),
+                source,
+            )
+        else:
+            execute_favorites_external_name_acceptance(  # type: ignore[arg-type]
+                acceptance,
+                lambda _: object(),
+                object(),
+            )
+
+
+def test_name_acceptance_execution_result_is_immutable() -> None:
+    snapshot, state, updated = _real_name_acceptance_inputs()
+    acceptance = plan_favorites_external_name_acceptance(
+        snapshot,
+        state,
+        updated,
+    )
+    result = execute_favorites_external_name_acceptance(
+        acceptance,
+        lambda _: object(),
+        _StaticStorageSource(
+            acceptance.write_plan.intended_snapshot
+        ),
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        result.accepted_state = state  # type: ignore[misc]
+
+
+def test_name_acceptance_execution_result_rejects_inconsistent_public_construction() -> None:
+    snapshot, state, updated = _real_name_acceptance_inputs()
+    acceptance = plan_favorites_external_name_acceptance(
+        snapshot,
+        state,
+        updated,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="observed snapshot must match the exact intended snapshot",
+    ):
+        FavoritesExternalNameAcceptanceExecutionResult(
+            plan=acceptance,
+            execution_result=object(),
+            observed_snapshot=snapshot,
+            accepted_state=acceptance.intended_state,
+        )
+
+    with pytest.raises(
+        ValueError,
+        match="accepted state must match the planned intended provenance",
+    ):
+        FavoritesExternalNameAcceptanceExecutionResult(
+            plan=acceptance,
+            execution_result=object(),
+            observed_snapshot=acceptance.write_plan.intended_snapshot,
+            accepted_state=state,
+        )
+
+
+def test_name_acceptance_executor_protocol_is_public_typing_contract() -> None:
+    def executor(_: object) -> object:
+        return object()
+
+    typed_executor: FavoritesExternalNameAcceptanceExecutor = executor
+    assert callable(typed_executor)
 
 
 def test_external_identity_and_evidence_are_immutable() -> None:
@@ -1498,6 +1755,8 @@ def test_external_favorites_public_symbols_are_package_exports() -> None:
         "FavoritesExternalFieldState",
         "FavoritesExternalImportError",
         "FavoritesExternalImportPreview",
+        "FavoritesExternalNameAcceptanceExecutionResult",
+        "FavoritesExternalNameAcceptanceExecutor",
         "FavoritesExternalNameAcceptancePlan",
         "FavoritesExternalObservationEvidence",
         "FavoritesExternalRecordIdentity",
@@ -1510,6 +1769,7 @@ def test_external_favorites_public_symbols_are_package_exports() -> None:
         "bind_favorites_external_record",
         "detach_favorites_external_field",
         "detach_favorites_external_record",
+        "execute_favorites_external_name_acceptance",
         "plan_favorites_external_name_acceptance",
         "preview_favorites_external_import",
         "preview_favorites_external_source",

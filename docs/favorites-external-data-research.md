@@ -138,6 +138,39 @@ record creation, arbitrary-field replacement, template/hierarchy inference,
 persisted provenance serialization, storage execution, live transport, MyRR, and
 automatic synchronization remain deferred.
 
+## Milestone 23.11 name acceptance execution completion boundary
+
+Milestone 23.11 composes the already-pure Milestone 23.10 name-acceptance plan
+with existing write execution without making the external-data layer a new
+storage backend. The completion seam accepts an immutable
+`FavoritesExternalNameAcceptancePlan`, passes only its ordinary
+`FavoritesWritePlan` to an injected executor, and treats the executor's return
+value as opaque backend-specific success evidence.
+
+A successful executor return is necessary but not sufficient to advance
+external provenance. The completion layer must read the target again through an
+injected `FavoritesStorageSource` and require exact equality with the write
+plan's `intended_snapshot`. Only after that exact readback succeeds may the
+existing planned `intended_state` be returned as accepted in-memory provenance.
+The completion layer does not independently rewrite, normalize, or infer any
+field.
+
+Executor failures propagate without a post-write provenance claim. Readback
+failure, malformed storage evidence, or any exact snapshot mismatch fails closed
+even if the underlying executor returned successfully. This rule prevents
+backend-specific success signaling from being mistaken for proof that the
+planned scanner-compatible bytes are currently active.
+
+The copied-tree and USB executors retain their existing target qualification,
+stale-baseline checks, locking, backup/staging, activation, verification,
+recovery, and durable operation evidence. Milestone 23.11 does not wrap those
+details in a new generic storage abstraction and does not add a production
+executor call site. Provenance remains in memory: serialization, durable
+provenance storage, restart recovery of external links, arbitrary-field
+acceptance, provider-to-SDS mapping, record creation/removal acceptance,
+renderer workflows, live RadioReference transport, MyRR, and automatic
+synchronization remain deferred.
+
 ## Detach semantics
 
 Detaching an externally sourced record or field should preserve its current

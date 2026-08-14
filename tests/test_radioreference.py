@@ -32,6 +32,7 @@ from sds200 import (
     RadioReferenceSource,
     RadioReferenceTag,
     bind_favorites_external_record,
+    execute_favorites_external_name_acceptance,
     plan_favorites_external_name_acceptance,
     preview_favorites_external_source,
     radioreference_frequency_observation,
@@ -746,6 +747,24 @@ def test_radioreference_mapped_name_flows_into_real_favorites_acceptance_plan() 
     assert acceptance.intended_state.target.record.fields[2] == "Fire Dispatch"
     assert acceptance.intended_state.fields[0].field_index == 2
     assert acceptance.intended_state.fields[0].last_external == updated.fields[0]
+
+    class ReadbackSource:
+        def read_snapshot(self) -> FavoritesStorageSnapshot:
+            return acceptance.write_plan.intended_snapshot
+
+    execution = execute_favorites_external_name_acceptance(
+        acceptance,
+        lambda _: "synthetic-backend-result",
+        ReadbackSource(),
+    )
+
+    assert execution.execution_result == "synthetic-backend-result"
+    assert execution.accepted_state is acceptance.intended_state
+    assert execution.accepted_state.target.record.fields[2] == "Fire Dispatch"
+    assert all(
+        field.name != "frequency"
+        for field in execution.accepted_state.fields
+    )
 
 
 def test_radioreference_error_messages_are_stable_and_message_free() -> None:

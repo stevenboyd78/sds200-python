@@ -12,7 +12,7 @@ from .favorites_editing import (
     rename_favorites_record,
     select_favorites_record_target,
 )
-from .favorites_storage import FavoritesStorageSnapshot
+from .favorites_storage import FavoritesStorageSnapshot, FavoritesStorageSource
 from .favorites_write_plan import FavoritesWritePlan, plan_favorites_write
 
 
@@ -657,6 +657,55 @@ class FavoritesExternalNameAcceptancePlan:
             raise ValueError(
                 "External Favorites name acceptance evidence must remain "
                 "consistent across preview and intended provenance."
+            )
+
+
+class FavoritesExternalNameAcceptanceExecutor(Protocol):
+    """Execute one already-validated external name-acceptance write plan."""
+
+    def __call__(
+        self,
+        plan: FavoritesWritePlan,
+        /,
+    ) -> object:
+        """Execute the exact plan and return backend-specific evidence."""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class FavoritesExternalNameAcceptanceExecutionResult:
+    """Verified completion of one external name-acceptance execution."""
+
+    plan: FavoritesExternalNameAcceptancePlan
+    execution_result: object
+    observed_snapshot: FavoritesStorageSnapshot
+    accepted_state: FavoritesExternalRecordState
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.plan, FavoritesExternalNameAcceptancePlan):
+            raise TypeError(
+                "External Favorites name acceptance execution plan must be "
+                "FavoritesExternalNameAcceptancePlan."
+            )
+        if not isinstance(self.observed_snapshot, FavoritesStorageSnapshot):
+            raise TypeError(
+                "External Favorites name acceptance observed snapshot must be "
+                "FavoritesStorageSnapshot."
+            )
+        if not isinstance(self.accepted_state, FavoritesExternalRecordState):
+            raise TypeError(
+                "External Favorites name acceptance accepted state must be "
+                "FavoritesExternalRecordState."
+            )
+        if self.observed_snapshot != self.plan.write_plan.intended_snapshot:
+            raise ValueError(
+                "External Favorites name acceptance observed snapshot must "
+                "match the exact intended snapshot."
+            )
+        if self.accepted_state != self.plan.intended_state:
+            raise ValueError(
+                "External Favorites name acceptance accepted state must "
+                "match the planned intended provenance."
             )
 
 
@@ -1307,6 +1356,59 @@ def plan_favorites_external_name_acceptance(
     )
 
 
+def execute_favorites_external_name_acceptance(
+    plan: FavoritesExternalNameAcceptancePlan,
+    executor: FavoritesExternalNameAcceptanceExecutor,
+    storage_source: FavoritesStorageSource,
+) -> FavoritesExternalNameAcceptanceExecutionResult:
+    """Execute and verify one planned external name acceptance."""
+
+    if not isinstance(plan, FavoritesExternalNameAcceptancePlan):
+        raise TypeError(
+            "External Favorites name acceptance execution requires "
+            "FavoritesExternalNameAcceptancePlan."
+        )
+    if not callable(executor):
+        raise TypeError(
+            "External Favorites name acceptance executor must be callable."
+        )
+
+    reader = getattr(storage_source, "read_snapshot", None)
+    if not callable(reader):
+        raise TypeError(
+            "External Favorites name acceptance storage source must provide "
+            "read_snapshot()."
+        )
+
+    execution_result = executor(plan.write_plan)
+
+    try:
+        observed_snapshot = reader()
+    except Exception:
+        raise FavoritesExternalAcceptanceError(
+            "External Favorites name acceptance execution could not verify "
+            "the post-write storage snapshot."
+        ) from None
+
+    if not isinstance(observed_snapshot, FavoritesStorageSnapshot):
+        raise FavoritesExternalAcceptanceError(
+            "External Favorites name acceptance execution returned invalid "
+            "post-write storage evidence."
+        )
+    if observed_snapshot != plan.write_plan.intended_snapshot:
+        raise FavoritesExternalAcceptanceError(
+            "External Favorites name acceptance post-write storage does not "
+            "exactly match the intended snapshot."
+        )
+
+    return FavoritesExternalNameAcceptanceExecutionResult(
+        plan=plan,
+        execution_result=execution_result,
+        observed_snapshot=observed_snapshot,
+        accepted_state=plan.intended_state,
+    )
+
+
 def detach_favorites_external_field(
     record: FavoritesExternalRecordState,
     field_name: str,
@@ -1392,6 +1494,8 @@ __all__ = [
     "FavoritesExternalFieldState",
     "FavoritesExternalImportError",
     "FavoritesExternalImportPreview",
+    "FavoritesExternalNameAcceptanceExecutionResult",
+    "FavoritesExternalNameAcceptanceExecutor",
     "FavoritesExternalNameAcceptancePlan",
     "FavoritesExternalObservationEvidence",
     "FavoritesExternalRecordIdentity",
@@ -1404,6 +1508,7 @@ __all__ = [
     "bind_favorites_external_record",
     "detach_favorites_external_field",
     "detach_favorites_external_record",
+    "execute_favorites_external_name_acceptance",
     "plan_favorites_external_name_acceptance",
     "preview_favorites_external_import",
     "preview_favorites_external_source",
