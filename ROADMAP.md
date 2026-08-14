@@ -29,9 +29,13 @@ and ideas that are not ready for scheduling are recorded in
   coercion.
 - Keep application keys, passwords, generated request bytes, response bytes,
   and provider session state out of retained request-plan objects.
-- Build subsequent slices on the plan with a fakeable offline exchange/session
-  composition through the existing request serializer, response decoder, and
-  observation adapter, with an injectable timezone-aware observation clock.
+- Compose plans through the existing request serializer, a fakeable
+  operation-aware byte exchange, the bounded response decoder, and the
+  observation adapter with an injectable timezone-aware observation clock.
+- Provide a concrete owned observation session and factory compatible with the
+  existing `RadioReferenceSource` boundary. Keep request/response bytes local to
+  one read, clear owned secret references during close, preserve stable redacted
+  `RadioReferenceError` reasons, and close the fakeable exchange deterministically.
 - Keep HTTP/TLS implementation, live provider calls, deletion inference,
   hierarchy construction, operator merge acceptance, MyRR, automatic
   synchronization, and Favorites storage mutation outside this milestone.

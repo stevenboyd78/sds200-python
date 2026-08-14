@@ -477,15 +477,29 @@ keys, passwords, serialized SOAP request bytes, response bytes, cookies, tokens,
 or provider session state. A fresh ordinary mapping may be produced only when a
 serializer call needs it.
 
-Later Milestone 23.8 slices may compose a plan through the existing offline SOAP
-request serializer, a fakeable exchange boundary, the bounded response decoder,
-and the Milestone 23.7 observation adapter. Observation time should be supplied
-through an injectable timezone-aware wall clock. That composition must preserve
-the existing redacted public failure boundary and deterministic source
-validation.
+The second slice composes a plan through the existing offline SOAP request
+serializer, a fakeable operation-aware byte exchange, the bounded response
+decoder, and the Milestone 23.7 observation adapter. The exchange receives only
+the reviewed operation, its reviewed SOAPAction, and ephemeral request bytes and
+returns exact response bytes. This protocol deliberately does not define HTTP
+method/header behavior, endpoint selection, redirects, certificates, retries, or
+any other production transport semantics.
 
-This milestone does not establish HTTP method/header behavior, redirect policy,
-certificate handling, retry semantics, or any other production HTTP/TLS
+`RadioReferenceObservationSession` implements the existing normalized session
+shape. It obtains one timezone-aware observation time from an injectable wall
+clock before producing request bytes, keeps request and response bytes local to a
+single read, preserves stable `RadioReferenceError` reasons, redacts arbitrary
+exchange and malformed-response failures, and clears its owned application-key
+and password references before closing the exchange. Its companion
+`RadioReferenceObservationSessionFactory` is compatible with the existing
+`RadioReferenceSource` secret-resolution and deterministic cleanup boundary.
+
+Automated composition tests use only synthetic credentials and local SOAP
+fixtures. They prove serializer/exchange/decoder/observation wiring and failure
+normalization, not provider acceptance or HTTP/TLS behavior.
+
+This milestone still does not establish HTTP method/header behavior, redirect
+policy, certificate handling, retry semantics, or any other production HTTP/TLS
 contract. Live provider access remains blocked on separate approved/documented
 transport validation.
 

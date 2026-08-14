@@ -617,7 +617,14 @@ from .radioreference_records import (
     RadioReferenceWsdlParameter,
     radioreference_operation_contract,
 )
-from .radioreference_session import RadioReferenceObservationRequestPlan
+from .radioreference_session import (
+    RadioReferenceObservationClock,
+    RadioReferenceObservationRequestPlan,
+    RadioReferenceObservationSession,
+    RadioReferenceObservationSessionFactory,
+    RadioReferenceSoapExchange,
+    RadioReferenceSoapExchangeFactory,
+)
 from .radioreference_soap import (
     RADIOREFERENCE_SOAP_DEFAULT_MAX_DOCUMENT_BYTES,
     RADIOREFERENCE_SOAP_DEFAULT_MAX_ELEMENTS,
@@ -1161,7 +1168,12 @@ __all__ = [
     "RadioReferenceSessionFactory",
     "RadioReferenceSoapStyle",
     "RadioReferenceSource",
+    "RadioReferenceObservationClock",
     "RadioReferenceObservationRequestPlan",
+    "RadioReferenceObservationSession",
+    "RadioReferenceObservationSessionFactory",
+    "RadioReferenceSoapExchange",
+    "RadioReferenceSoapExchangeFactory",
     "radioreference_frequency_observation",
     "radioreference_soap_result_observations",
     "radioreference_talkgroup_observation",
