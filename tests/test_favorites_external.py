@@ -705,6 +705,65 @@ def test_plan_external_name_acceptance_rejects_other_bound_changes() -> None:
         )
 
 
+def test_name_acceptance_plan_is_immutable() -> None:
+    snapshot, state, updated = _real_name_acceptance_inputs()
+    acceptance = plan_favorites_external_name_acceptance(
+        snapshot,
+        state,
+        updated,
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        acceptance.intended_state = state  # type: ignore[misc]
+
+
+def test_plan_external_name_acceptance_rejects_other_bound_removal() -> None:
+    snapshot = _real_snapshot()
+    target = select_favorites_record_target(
+        snapshot,
+        5,
+        document_index=0,
+    )
+    accepted = _observation(
+        name=target.record.fields[2],
+        frequency=target.record.fields[4],
+        revision="accepted-r1",
+    )
+    state = bind_favorites_external_record(
+        target,
+        accepted,
+        (
+            FavoritesExternalFieldBinding(
+                name="name",
+                field_index=2,
+                ownership=FavoritesExternalFieldOwnership.EXTERNAL,
+            ),
+            FavoritesExternalFieldBinding(
+                name="frequency",
+                field_index=4,
+                ownership=FavoritesExternalFieldOwnership.EXTERNAL,
+            ),
+        ),
+    )
+    removed = _observation(
+        revision="provider-r2",
+        fields=(
+            _value("name", "Provider Channel"),
+            _absent("frequency"),
+        ),
+    )
+
+    with pytest.raises(
+        FavoritesExternalAcceptanceError,
+        match="simultaneous changes to another bound field",
+    ):
+        plan_favorites_external_name_acceptance(
+            snapshot,
+            state,
+            removed,
+        )
+
+
 def test_name_acceptance_plan_rejects_inconsistent_public_construction() -> None:
     snapshot, state, updated = _real_name_acceptance_inputs()
     acceptance = plan_favorites_external_name_acceptance(
@@ -778,6 +837,22 @@ def test_plan_external_name_acceptance_rejects_detached_record() -> None:
         plan_favorites_external_name_acceptance(
             snapshot,
             detached,
+            updated,
+        )
+
+
+def test_plan_external_name_acceptance_propagates_unsupported_name() -> None:
+    snapshot, state, updated = _real_name_acceptance_inputs(
+        updated_name="x" * 65,
+    )
+
+    with pytest.raises(
+        FavoritesRecordEditError,
+        match="printable ASCII",
+    ):
+        plan_favorites_external_name_acceptance(
+            snapshot,
+            state,
             updated,
         )
 
@@ -1413,6 +1488,7 @@ def test_source_rejects_mutable_observation_collection() -> None:
 
 def test_external_favorites_public_symbols_are_package_exports() -> None:
     expected = (
+        "FavoritesExternalAcceptanceError",
         "FavoritesExternalChangeKind",
         "FavoritesExternalFieldBinding",
         "FavoritesExternalFieldObservation",
@@ -1422,6 +1498,7 @@ def test_external_favorites_public_symbols_are_package_exports() -> None:
         "FavoritesExternalFieldState",
         "FavoritesExternalImportError",
         "FavoritesExternalImportPreview",
+        "FavoritesExternalNameAcceptancePlan",
         "FavoritesExternalObservationEvidence",
         "FavoritesExternalRecordIdentity",
         "FavoritesExternalRecordObservation",
@@ -1433,6 +1510,7 @@ def test_external_favorites_public_symbols_are_package_exports() -> None:
         "bind_favorites_external_record",
         "detach_favorites_external_field",
         "detach_favorites_external_record",
+        "plan_favorites_external_name_acceptance",
         "preview_favorites_external_import",
         "preview_favorites_external_source",
     )
