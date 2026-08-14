@@ -442,6 +442,102 @@ def test_bound_external_record_flows_into_update_preview() -> None:
     assert fields["frequency"].kind is FavoritesExternalChangeKind.UNCHANGED
 
 
+def test_bound_local_ownership_flows_into_conflict_preview() -> None:
+    target = _target()
+    state = bind_favorites_external_record(
+        target,
+        _observation(revision="accepted-r1"),
+        (
+            FavoritesExternalFieldBinding(
+                name="name",
+                field_index=0,
+                ownership=FavoritesExternalFieldOwnership.LOCAL,
+            ),
+            FavoritesExternalFieldBinding(
+                name="frequency",
+                field_index=1,
+                ownership=FavoritesExternalFieldOwnership.EXTERNAL,
+            ),
+        ),
+    )
+
+    preview = preview_favorites_external_import(
+        (state,),
+        (_observation(name="Provider Dispatch", revision="provider-r2"),),
+    )
+
+    assert preview.has_conflicts is True
+    assert preview.records[0].kind is FavoritesExternalChangeKind.CONFLICT
+    fields = {field.name: field for field in preview.records[0].fields}
+    assert fields["name"].kind is FavoritesExternalChangeKind.CONFLICT
+    assert fields["name"].ownership is FavoritesExternalFieldOwnership.LOCAL
+    assert fields["name"].local_value == "Dispatch"
+    assert fields["name"].external_value == "Provider Dispatch"
+
+
+def test_bound_state_flows_through_explicit_field_detach() -> None:
+    accepted = _observation(revision="accepted-r1")
+    state = bind_favorites_external_record(
+        _target(),
+        accepted,
+        (
+            FavoritesExternalFieldBinding(
+                name="name",
+                field_index=0,
+                ownership=FavoritesExternalFieldOwnership.EXTERNAL,
+            ),
+        ),
+    )
+
+    detached = detach_favorites_external_field(state, "name")
+
+    assert detached.fields[0].ownership is FavoritesExternalFieldOwnership.DETACHED
+    assert detached.fields[0].last_external is accepted.fields[0]
+    assert detached.local_value(detached.fields[0]) == "Dispatch"
+
+    preview = preview_favorites_external_import(
+        (detached,),
+        (_observation(name="Provider Dispatch", revision="provider-r2"),),
+    )
+    assert preview.records[0].kind is FavoritesExternalChangeKind.CONFLICT
+
+
+def test_bound_state_flows_through_explicit_record_detach() -> None:
+    accepted = _observation(revision="accepted-r1")
+    state = bind_favorites_external_record(
+        _target(),
+        accepted,
+        (
+            FavoritesExternalFieldBinding(
+                name="name",
+                field_index=0,
+                ownership=FavoritesExternalFieldOwnership.EXTERNAL,
+            ),
+            FavoritesExternalFieldBinding(
+                name="frequency",
+                field_index=1,
+                ownership=FavoritesExternalFieldOwnership.EXTERNAL,
+            ),
+        ),
+    )
+
+    detached = detach_favorites_external_record(state)
+
+    assert detached.detached is True
+    assert {
+        field.ownership
+        for field in detached.fields
+    } == {FavoritesExternalFieldOwnership.DETACHED}
+
+    preview = preview_favorites_external_import(
+        (detached,),
+        (_observation(name="Provider Dispatch", revision="provider-r2"),),
+    )
+    assert preview.records[0].kind is FavoritesExternalChangeKind.LOCAL_ONLY
+    assert preview.has_changes is False
+    assert preview.has_conflicts is False
+
+
 def test_external_identity_and_evidence_are_immutable() -> None:
     source = _source_identity()
     identity = _record_identity()

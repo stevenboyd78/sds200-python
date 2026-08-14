@@ -276,6 +276,12 @@ begins.
   and `GET_TRUNKED_TALKGROUPS`, exact immutable result validation, supported
   empty-result semantics, duplicate provider-identity rejection, provider-order
   preservation, and decoder-to-observation integration without transport access.
+- Milestone 23.8 completed the offline request-plan/session composition
+  foundation: immutable secret-free reviewed request plans, fakeable
+  operation-aware byte exchange, serializer/decoder/observation composition,
+  timezone-aware observation evidence, stable redacted failures, deterministic
+  cleanup, and integration through `RadioReferenceSource` without production
+  HTTP/TLS transport or retained request/response bytes.
 - Add RadioReference-assisted import with update previews.
 - Preserve provenance and field ownership for externally sourced data.
 - Support merge decisions and detaching local records from an external source.
