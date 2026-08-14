@@ -374,7 +374,9 @@ The three conventional-frequency operations require an exact immutable tuple of
 `RadioReferenceFrequency` values. The talkgroup operation requires an exact
 immutable tuple of `RadioReferenceTalkgroup` values. Supported empty tuples
 produce empty immutable observation tuples. Result-container or item-type
-mismatches fail closed instead of being coerced or partially mapped.
+mismatches fail closed instead of being coerced or partially mapped. Duplicate
+provider record identities in a mapped result also fail closed rather than being
+deduplicated or deferred to preview behavior.
 
 The adapter reuses the caller-supplied `FavoritesExternalSourceIdentity` and
 timezone-aware observation time and delegates each record to the reviewed

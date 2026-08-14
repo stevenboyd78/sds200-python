@@ -138,6 +138,17 @@ _FREQUENCY_OBSERVATION_OPERATIONS = frozenset(
 )
 
 
+def _require_unique_observation_identities(
+    observations: tuple[FavoritesExternalRecordObservation, ...],
+) -> None:
+    identities = tuple(observation.identity for observation in observations)
+    if len(set(identities)) != len(identities):
+        raise ValueError(
+            "RadioReference SOAP result contains duplicate provider "
+            "record identities."
+        )
+
+
 def radioreference_soap_result_observations(
     operation: RadioReferenceWsdlOperation,
     result: object,
@@ -165,7 +176,7 @@ def radioreference_soap_result_observations(
                 "RadioReference frequency SOAP result must be an immutable "
                 "tuple of RadioReferenceFrequency values."
             )
-        return tuple(
+        observations = tuple(
             radioreference_frequency_observation(
                 frequency,
                 source=source,
@@ -173,6 +184,8 @@ def radioreference_soap_result_observations(
             )
             for frequency in result
         )
+        _require_unique_observation_identities(observations)
+        return observations
 
     if operation is RadioReferenceWsdlOperation.GET_TRUNKED_TALKGROUPS:
         if type(result) is not tuple or any(
@@ -182,7 +195,7 @@ def radioreference_soap_result_observations(
                 "RadioReference talkgroup SOAP result must be an immutable "
                 "tuple of RadioReferenceTalkgroup values."
             )
-        return tuple(
+        observations = tuple(
             radioreference_talkgroup_observation(
                 talkgroup,
                 source=source,
@@ -190,6 +203,8 @@ def radioreference_soap_result_observations(
             )
             for talkgroup in result
         )
+        _require_unique_observation_identities(observations)
+        return observations
 
     raise ValueError(
         "RadioReference SOAP operation has no reviewed observation mapping."

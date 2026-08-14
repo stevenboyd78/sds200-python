@@ -27,8 +27,9 @@ and ideas that are not ready for scheduling are recorded in
   `GET_TRUNKED_TALKGROUPS`, reusing the Milestone 23.6 record mappers and the
   caller-supplied `FavoritesExternalSourceIdentity` and timezone-aware
   observation time.
-- Require exact immutable tuple result containers and reject mismatched element
-  types rather than coercing or silently skipping provider values.
+- Require exact immutable tuple result containers, reject mismatched element
+  types rather than coercing or silently skipping provider values, and fail
+  closed when mapped results contain duplicate provider record identities.
 - Preserve provider result order in the adapter output; the existing
   RadioReference source boundary remains responsible for deterministic
   normalized observation ordering.

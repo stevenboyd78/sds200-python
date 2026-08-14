@@ -526,6 +526,41 @@ def test_soap_result_adapter_fails_closed_for_unreviewed_operation(
         )
 
 
+@pytest.mark.parametrize(
+    ("operation", "result"),
+    (
+        (
+            RadioReferenceWsdlOperation.GET_SUBCATEGORY_FREQUENCIES,
+            (
+                _frequency(),
+                replace(_frequency(), alpha_tag="Duplicate ID"),
+            ),
+        ),
+        (
+            RadioReferenceWsdlOperation.GET_TRUNKED_TALKGROUPS,
+            (
+                _talkgroup(),
+                replace(_talkgroup(), alpha_tag="Duplicate ID"),
+            ),
+        ),
+    ),
+)
+def test_soap_result_adapter_rejects_duplicate_provider_identity(
+    operation: RadioReferenceWsdlOperation,
+    result: object,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="duplicate provider record identities",
+    ):
+        radioreference_soap_result_observations(
+            operation,
+            result,
+            source=_source(),
+            observed_at=datetime(2026, 8, 14, tzinfo=UTC),
+        )
+
+
 def test_soap_result_adapter_rejects_wrong_operation_type() -> None:
     with pytest.raises(
         TypeError,
