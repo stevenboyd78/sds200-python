@@ -171,6 +171,45 @@ acceptance, provider-to-SDS mapping, record creation/removal acceptance,
 renderer workflows, live RadioReference transport, MyRR, and automatic
 synchronization remain deferred.
 
+## Milestone 23.12 provenance serialization and rebinding boundary
+
+Milestone 23.12 introduces a durable *representation* without yet introducing a
+durable filesystem owner. The source-neutral format serializes already-linked or
+detached `FavoritesExternalRecordState` values as bounded, canonical UTF-8 JSON.
+The document has an explicit schema/version and retains only normalized external
+identity/evidence, field ownership/index provenance, detach state, and a compact
+local target locator.
+
+The serialized local locator is intentionally not a copied
+`FavoritesRecordTarget`. Raw Favorites record bytes and complete storage
+snapshots remain outside the provenance document. Instead, the locator records
+the source kind, exact source index, HPD document index/filename when applicable,
+and a lowercase SHA-256 digest of the exact source record bytes that were bound.
+This is stale-target evidence, not a provider identity and not permission to
+mutate storage.
+
+Restoration requires a fresh caller-supplied `FavoritesStorageSnapshot`. The
+decoder reselects the target through the existing editing boundary and requires
+the selected source kind, indexes, filename provenance, and exact record digest
+to match before rebuilding `FavoritesExternalRecordState`. Missing, ambiguous,
+moved, renamed, or changed records fail closed. No heuristic search by provider
+ID, local name, frequency, or neighboring record is permitted during rebinding.
+
+The codec follows the repository's established durable-record discipline:
+bounded encoded bytes, record count, and per-record field count; strict UTF-8 and
+JSON; duplicate-key rejection; exact key/type and schema-version checks;
+canonical JSON reserialization; timezone-aware observation evidence; and
+deterministic errors that do not echo malformed provider-controlled payloads.
+Provider credentials and session data have no fields in this format; the existing
+rule that secrets never enter exportable provenance remains unchanged.
+
+This milestone deliberately stops before choosing or writing a host-state file.
+XDG state-path integration, atomic/durable publication, permissions, locking,
+cleanup/migration policy, automatic restart loading, and lifecycle ownership are
+separate persistence-layer work. Arbitrary-field acceptance, provider-to-SDS
+mapping, record creation/removal, renderer workflows, live RadioReference
+transport, MyRR, and automatic synchronization also remain deferred.
+
 ## Detach semantics
 
 Detaching an externally sourced record or field should preserve its current

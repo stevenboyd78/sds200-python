@@ -11,34 +11,37 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 23.11 — RadioReference assisted-update name acceptance execution completion foundation
+### Milestone 23.12 — External Favorites provenance serialization and snapshot-rebinding foundation
 
-- Begin from the fully merged Milestone 23.10 foundation at
-  `507e9f7faa8c8ca7c89f8bc75fa2b8943a796e1c`.
-- Add one source-neutral completion seam around an existing
-  `FavoritesExternalNameAcceptancePlan`; do not add another name editor or
-  another write planner.
-- Inject the write executor so copied-tree, USB, and future storage-specific
-  safety/recovery machinery remains authoritative in its existing layer.
-- Pass only the existing ordinary `FavoritesWritePlan` to the executor and
-  preserve the executor's backend-specific success evidence without interpreting
-  it as external provenance.
-- After the executor returns successfully, require an injected
-  `FavoritesStorageSource` to read the target again and require that exact
-  snapshot to equal the acceptance plan's `intended_snapshot`.
-- Promote/return the plan's already-derived `intended_state` only after that
-  exact post-execution readback succeeds.
-- Propagate executor failures without attempting post-write provenance
-  completion, and fail closed on unavailable, malformed, or mismatched
-  post-write storage evidence.
-- Keep copied-tree/USB execution internals, arbitrary-field acceptance,
-  provider-to-SDS mapping, record creation/removal acceptance, hierarchy/template
-  inference, persisted provenance serialization/storage, renderer workflows,
-  live RadioReference transport, MyRR, and automatic synchronization outside
-  this milestone.
-- Use only synthetic executor/readback doubles and existing local/provider
-  fixtures in automated tests; no physical scanner, USB device, FTP target, or
-  network provider access is required.
+- Begin from the fully merged Milestone 23.11 foundation at
+  `9425078c5f851abfcfdbecc912de9b80b9a8cfc9`.
+- Add one source-neutral, versioned canonical JSON representation for already
+  linked or detached `FavoritesExternalRecordState` values; do not add host-state
+  paths, file publication, automatic loading, or renderer workflow.
+- Persist only the external provider/dataset/record identity, last observation
+  time/revision, field ownership/indexes and last external observations, detached
+  state, and an exact local target locator plus SHA-256 record identity.
+- Do not serialize raw Favorites record bytes, full storage snapshots, write
+  execution results, credential references, application keys, passwords, tokens,
+  cookies, or provider session objects.
+- Make encoding and decoding bounded and strict: enforce byte, record-count,
+  and per-record field-count limits; require UTF-8; reject duplicate JSON object
+  keys and non-finite constants; require exact supported keys/types/schema
+  version; and require byte-for-byte canonical reserialization.
+- Rebind decoded provenance only against a caller-supplied fresh
+  `FavoritesStorageSnapshot` through the existing exact target selector. Require
+  the same source kind, source/document indexes, filename provenance, and raw
+  source-record SHA-256 before reconstructing in-memory provenance.
+- Fail closed when a target is missing, ambiguous, moved, renamed, changed, or
+  otherwise unable to reproduce the recorded exact local identity.
+- Keep filesystem durability, XDG state-path selection, persistence cleanup,
+  automatic restart restoration, arbitrary-field acceptance, provider-to-SDS
+  mapping, record creation/removal acceptance, renderer workflows, live
+  RadioReference transport, MyRR, and automatic synchronization outside this
+  milestone.
+- Use only synthetic provider values and existing local Favorites fixtures in
+  automated tests; no physical scanner, USB device, FTP target, provider account,
+  or network access is required.
 
 
 ## Deferred hardware validation
@@ -290,6 +293,16 @@ begins.
   source-neutral preview integration, explicit detach continuity, and a real
   RadioReference mapper regression that leaves unbound whole-Hz frequency data
   as provider-only evidence without inferring scanner representation.
+- Milestone 23.10 completed the assisted-update name acceptance planning
+  foundation: one pure name-only acceptance planner over existing linked
+  provenance, schema-aware rename authority, ordinary write planning,
+  simultaneous bound-field change rejection, refreshed intended in-memory
+  provenance, and no implicit provider-frequency mapping.
+- Milestone 23.11 completed name acceptance execution composition: injected
+  storage-specific write execution, exact independent post-write snapshot
+  readback, provenance promotion only after intended-snapshot equality, opaque
+  backend success evidence, and fail-closed completion without duplicating
+  copied-tree or USB safety/recovery machinery.
 - Add RadioReference-assisted import with update previews.
 - Preserve provenance and field ownership for externally sourced data.
 - Support merge decisions and detaching local records from an external source.
