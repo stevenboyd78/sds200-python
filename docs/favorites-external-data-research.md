@@ -370,6 +370,40 @@ acceptance, mapping expansion, live provider transport, credentials, MyRR,
 scheduled or background synchronization, daemon/renderer wiring, and cleanup or
 migration policy remain deferred.
 
+## Milestone 23.17 assisted-refresh name-acceptance planning composition boundary
+
+Milestone 23.17 adds one explicit, pure selection seam between the immutable
+Milestone 23.16 refresh result and the existing Milestone 23.10 name-acceptance
+planner. A caller selects one exact record preview already retained by the
+refresh result. The new composition resolves only evidence in that same result:
+one exact linked lifecycle provenance state by external identity and exact local
+target, and one exact observation by external identity and observation evidence.
+It performs no second source read and no lifecycle snapshot call.
+
+The immutable composition result retains the exact refresh result, selected
+preview, matched observation, matched baseline state, and resulting
+`FavoritesExternalNameAcceptancePlan`. Its public construction independently
+rederives the same pure chain and rejects any substituted relationship. Missing
+persisted provenance (`None`) and a present-empty document (`()`) cannot support
+acceptance because neither contains a linked baseline record. Added/unbound,
+removed, conflicting, local-only or detached, unchanged, and otherwise
+unsupported selections also fail closed.
+
+The existing name planner remains authoritative for externally owned name
+replacement classification, simultaneous bound-field change rejection,
+schema-aware rename construction, ordinary Favorites write planning, and the
+intended provenance transformation. Provider-only fields without a reviewed SDS
+binding remain visible preview evidence: they are neither promoted into scanner
+changes nor rejected merely for being present when the authoritative name
+planner accepts the selected record.
+
+This milestone stops at the existing pure name-acceptance plan. Favorites writes
+and provenance publication, lifecycle invalidation or advancement after a future
+durable acceptance, arbitrary-field acceptance, provider-to-SDS mapping
+expansion, record creation/removal acceptance, live RadioReference transport and
+credentials, renderer/daemon/CLI/TUI/web/Home Assistant wiring, MyRR, and
+automatic, scheduled, polling, or background synchronization remain deferred.
+
 ## Detach semantics
 
 Detaching an externally sourced record or field should preserve its current

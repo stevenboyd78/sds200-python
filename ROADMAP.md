@@ -11,26 +11,31 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 23.16 — External Favorites assisted-refresh preview session composition foundation
+### Milestone 23.17 — External Favorites assisted-refresh name-acceptance planning composition foundation
 
-- Begin from the fully merged Milestone 23.15 foundation at
-  `18c76a7fc0128d9af16334e5f8c349ec8d965987`.
-- Add one renderer-neutral, single-owner refresh session that composes an injected
-  `FavoritesExternalProvenanceLifecycle` and `FavoritesExternalSource` without
-  introducing global ownership or cleanup responsibility.
-- Each explicit refresh captures exactly one lifecycle snapshot, rejects a
-  non-active snapshot before source access, reads exactly one immutable provider
-  observation tuple, and uses the existing external-import preview boundary.
-- Return immutable successful-attempt evidence retaining the exact lifecycle
-  snapshot, observation tuple, and preview. Preserve missing provenance as
-  `None` and present-empty provenance as `()` in the retained lifecycle evidence,
-  while supplying either as an empty local tuple only to the preview function.
-- Keep failures per-attempt and retryable while the lifecycle remains active;
-  retain no partial or last-successful result, do not cache repeated refreshes,
-  and do not mutate Favorites or provenance.
-- Keep acceptance, publication, provider mapping expansion, live RadioReference
-  transport and credentials, MyRR, automatic synchronization, background work,
-  daemon/renderer wiring, and cleanup or migration policy deferred.
+- Begin from the exact fully merged Milestone 23.16 foundation at
+  `a724ad5404f10a2e8a1efff0eefe4bd9c12483c1`.
+- Add one pure renderer-neutral composition boundary from an explicitly selected
+  record in an exact `FavoritesExternalRefreshResult` to the existing
+  `FavoritesExternalNameAcceptancePlan`.
+- Retain and prove the complete selection-to-plan chain: the exact refresh
+  result, selected preview, matched refresh observation, matched lifecycle
+  baseline provenance state, and delegated name-acceptance plan.
+- Match only through retained external identity, exact local target, and exact
+  observation/preview evidence. Require the selected preview exactly once and an
+  exact linked baseline record; reject missing and present-empty provenance and
+  every selection outside the already-supported externally owned name
+  replacement.
+- Delegate schema-aware editing, write planning, bound-field safety, and intended
+  provenance transformation to the existing name planner. Unbound provider-only
+  fields remain preview evidence and never become accepted scanner changes.
+- Perform no source read, lifecycle snapshot call, Favorites write, provenance
+  publication, or lifecycle advancement.
+- Keep writes/publication, post-acceptance lifecycle invalidation or advancement,
+  arbitrary-field acceptance, provider-to-SDS mapping expansion, record creation
+  and removal acceptance, live RadioReference transport and credentials,
+  renderer/daemon/CLI/TUI/web/Home Assistant wiring, MyRR, and automatic,
+  scheduled, polling, or background synchronization deferred.
 - Use only synthetic provider values, temporary host directories, and existing
   local Favorites fixtures in automated tests; no physical scanner, USB device,
   FTP target, provider account, or network access is required.
@@ -305,6 +310,21 @@ begins.
   publication, advisory coordination, exclusive no-follow temporary files,
   exact readback and synchronization, guarded atomic replacement, and explicit
   fresh-snapshot loading with absent-versus-empty semantics.
+- Milestone 23.14 completed durable name-acceptance provenance: exact retained
+  baseline, observation, and intended-state proof, complete persisted-provenance
+  preflight, expected-current conditional publication, exact post-write
+  verification, and a distinct failure when verified Favorites mutation is not
+  followed by completed provenance publication.
+- Milestone 23.15 completed startup provenance restoration lifecycle ownership:
+  exactly one fresh Favorites snapshot, exact durable provenance loading and
+  rebinding with absent `None` versus present-empty `()` preserved, idempotent
+  active start, terminal failed/closed behavior, and redacted failures without
+  partial restoration evidence.
+- Milestone 23.16 completed assisted-refresh preview session composition:
+  exactly one lifecycle snapshot and one source read per explicit refresh,
+  immutable exact lifecycle, observation, and preview evidence, preserved
+  absent-versus-empty provenance, fresh retryable uncached attempts, and no
+  Favorites or provenance mutation.
 - Add RadioReference-assisted import with update previews.
 - Preserve provenance and field ownership for externally sourced data.
 - Support merge decisions and detaching local records from an external source.
