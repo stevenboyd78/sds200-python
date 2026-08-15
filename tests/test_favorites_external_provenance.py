@@ -445,16 +445,36 @@ def test_serialization_and_deserialization_share_exact_size_bound() -> None:
         )
 
 
-def test_deserialization_rejects_deep_non_object_json_root() -> None:
+def test_deserialization_redacts_json_recursion_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     snapshot = _snapshot()
-    content = b"[" * 2000 + b"]" * 2000
+
+    def raise_recursion_error(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise RecursionError
+
+    monkeypatch.setattr(json, "loads", raise_recursion_error)
+
+    with pytest.raises(
+        FavoritesExternalProvenanceError,
+        match="strict JSON",
+    ):
+        deserialize_favorites_external_provenance(
+            b"{}\n",
+            snapshot,
+        )
+
+
+def test_deserialization_rejects_non_object_json_root() -> None:
+    snapshot = _snapshot()
 
     with pytest.raises(
         FavoritesExternalProvenanceError,
         match="document must be an object",
     ):
         deserialize_favorites_external_provenance(
-            content,
+            b"[]\n",
             snapshot,
         )
 
