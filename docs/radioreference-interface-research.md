@@ -591,6 +591,9 @@ The current RadioReference foundation still does not include:
 - renderer-specific CLI/TUI/web/Home Assistant assisted-import or acceptance UI;
 - automatic application/daemon/renderer construction or startup wiring of the
   renderer-neutral external-provenance lifecycle owner;
+- application/daemon/renderer wiring of the renderer-neutral assisted-refresh
+  preview session; Milestone 23.16 only composes an injected normalized source
+  with one active lifecycle snapshot and retains immutable per-attempt evidence;
 - automatic or scheduled synchronization;
 - MyRR synchronization; or
 - bypassing the existing Favorites editing, validation, planning, backup,

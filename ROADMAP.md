@@ -11,30 +11,26 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 23.15 — External Favorites provenance startup restoration and lifecycle ownership foundation
+### Milestone 23.16 — External Favorites assisted-refresh preview session composition foundation
 
-- Begin from the fully merged Milestone 23.14 foundation at
-  `2d7b5b4027f9ad792ee28b8e93a2ed57d1cdaac0`.
-- Add one renderer-neutral, single-owner External Favorites provenance lifecycle
-  that accepts an injected `FavoritesStorageSource` and explicit durable
-  provenance path instead of making the scanner daemon or a renderer the
-  Favorites owner.
-- On `start()`, read exactly one fresh `FavoritesStorageSnapshot` and restore the
-  persisted provenance document against that exact snapshot through the existing
-  Milestone 23.13 loading/rebinding boundary. Preserve missing persisted state as
-  `None` and a present canonical empty document as `()`.
-- Expose immutable lifecycle evidence with explicit idle, active, failed, and
-  closed states. Successful startup retains the exact fresh Favorites snapshot
-  and restored complete provenance tuple; failed startup retains only a redacted
-  failure class and no partial restoration evidence.
-- Make repeated `start()` calls idempotent while active without rereading
-  Favorites or provenance. Failed or closed lifecycle owners cannot be restarted;
-  `close()` is idempotent and does not mutate Favorites or persisted provenance.
-- Keep application/daemon/CLI/TUI/web/Home Assistant construction of this owner
-  explicit and deferred. Do not add global singleton state, cleanup/migration
-  policy, provider refresh, arbitrary-field acceptance, provider-to-SDS mapping,
-  record creation/removal acceptance, live RadioReference transport, MyRR, or
-  automatic synchronization.
+- Begin from the fully merged Milestone 23.15 foundation at
+  `18c76a7fc0128d9af16334e5f8c349ec8d965987`.
+- Add one renderer-neutral, single-owner refresh session that composes an injected
+  `FavoritesExternalProvenanceLifecycle` and `FavoritesExternalSource` without
+  introducing global ownership or cleanup responsibility.
+- Each explicit refresh captures exactly one lifecycle snapshot, rejects a
+  non-active snapshot before source access, reads exactly one immutable provider
+  observation tuple, and uses the existing external-import preview boundary.
+- Return immutable successful-attempt evidence retaining the exact lifecycle
+  snapshot, observation tuple, and preview. Preserve missing provenance as
+  `None` and present-empty provenance as `()` in the retained lifecycle evidence,
+  while supplying either as an empty local tuple only to the preview function.
+- Keep failures per-attempt and retryable while the lifecycle remains active;
+  retain no partial or last-successful result, do not cache repeated refreshes,
+  and do not mutate Favorites or provenance.
+- Keep acceptance, publication, provider mapping expansion, live RadioReference
+  transport and credentials, MyRR, automatic synchronization, background work,
+  daemon/renderer wiring, and cleanup or migration policy deferred.
 - Use only synthetic provider values, temporary host directories, and existing
   local Favorites fixtures in automated tests; no physical scanner, USB device,
   FTP target, provider account, or network access is required.
