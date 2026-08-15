@@ -11,31 +11,29 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 23.17 — External Favorites assisted-refresh name-acceptance planning composition foundation
+### Milestone 23.18 — External Favorites post-acceptance lifecycle advancement foundation
 
-- Begin from the exact fully merged Milestone 23.16 foundation at
-  `a724ad5404f10a2e8a1efff0eefe4bd9c12483c1`.
-- Add one pure renderer-neutral composition boundary from an explicitly selected
-  record in an exact `FavoritesExternalRefreshResult` to the existing
-  `FavoritesExternalNameAcceptancePlan`.
-- Retain and prove the complete selection-to-plan chain: the exact refresh
-  result, selected preview, matched refresh observation, matched lifecycle
-  baseline provenance state, and delegated name-acceptance plan.
-- Match only through retained external identity, exact local target, and exact
-  observation/preview evidence. Require the selected preview exactly once and an
-  exact linked baseline record; reject missing and present-empty provenance and
-  every selection outside the already-supported externally owned name
-  replacement.
-- Delegate schema-aware editing, write planning, bound-field safety, and intended
-  provenance transformation to the existing name planner. Unbound provider-only
-  fields remain preview evidence and never become accepted scanner changes.
-- Perform no source read, lifecycle snapshot call, Favorites write, provenance
-  publication, or lifecycle advancement.
-- Keep writes/publication, post-acceptance lifecycle invalidation or advancement,
-  arbitrary-field acceptance, provider-to-SDS mapping expansion, record creation
-  and removal acceptance, live RadioReference transport and credentials,
-  renderer/daemon/CLI/TUI/web/Home Assistant wiring, MyRR, and automatic,
-  scheduled, polling, or background synchronization deferred.
+- Begin from the exact fully merged Milestone 23.17 foundation at
+  `062e2fa8b020696311004461fa2e42ec0fb78565`.
+- Add one explicit lifecycle operation that adopts an already-successful
+  `FavoritesExternalNameAcceptanceDurableResult` under the existing lifecycle
+  lock.
+- Require an active lifecycle plus exact provenance path, baseline Favorites
+  snapshot, and complete baseline provenance collection evidence. Preserve
+  absent `None` versus present-empty `()` semantics and fail closed without
+  changing retained evidence.
+- Atomically replace only the active lifecycle's in-memory Favorites snapshot
+  and provenance records with the durable result's verified observed snapshot
+  and published records. Permit exact same-result reapplication only when all
+  resulting evidence is already retained.
+- Perform no Favorites or provenance storage read, provider read, file write,
+  Favorites write, or provenance publication during advancement.
+- Defer composition of the Milestone 23.17 selection through durable execution
+  and lifecycle advancement to the next slice.
+- Keep arbitrary-field acceptance, provider-to-SDS mapping expansion, record
+  creation/removal, live provider transport and credentials, renderer/daemon/
+  CLI/TUI/web/Home Assistant wiring, MyRR, and automatic, scheduled, polling, or
+  background synchronization deferred.
 - Use only synthetic provider values, temporary host directories, and existing
   local Favorites fixtures in automated tests; no physical scanner, USB device,
   FTP target, provider account, or network access is required.
@@ -325,6 +323,10 @@ begins.
   immutable exact lifecycle, observation, and preview evidence, preserved
   absent-versus-empty provenance, fresh retryable uncached attempts, and no
   Favorites or provenance mutation.
+- Milestone 23.17 completed assisted-refresh name-acceptance planning
+  composition: exact selected preview, matched observation and linked lifecycle
+  provenance evidence, delegated name-only acceptance planning, strict
+  relationship validation, and no execution, publication, or lifecycle mutation.
 - Add RadioReference-assisted import with update previews.
 - Preserve provenance and field ownership for externally sourced data.
 - Support merge decisions and detaching local records from an external source.

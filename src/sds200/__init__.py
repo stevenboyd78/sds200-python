@@ -387,6 +387,7 @@ from .favorites_external_provenance_acceptance import (
 )
 from .favorites_external_provenance_lifecycle import (
     FavoritesExternalProvenanceLifecycle,
+    FavoritesExternalProvenanceLifecycleAdvanceError,
     FavoritesExternalProvenanceLifecycleSnapshot,
     FavoritesExternalProvenanceLifecycleState,
 )
@@ -1110,6 +1111,7 @@ __all__ = [
     "FAVORITES_EXTERNAL_PROVENANCE_FILENAME",
     "FavoritesExternalProvenanceError",
     "FavoritesExternalProvenanceLifecycle",
+    "FavoritesExternalProvenanceLifecycleAdvanceError",
     "FavoritesExternalProvenanceLifecycleSnapshot",
     "FavoritesExternalProvenanceLifecycleState",
     "FavoritesExternalProvenanceStorageError",

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -13,9 +13,11 @@ from sds200 import (
     FavoritesExternalFieldObservation,
     FavoritesExternalFieldObservationState,
     FavoritesExternalFieldOwnership,
+    FavoritesExternalNameAcceptanceDurableResult,
     FavoritesExternalObservationEvidence,
     FavoritesExternalProvenanceError,
     FavoritesExternalProvenanceLifecycle,
+    FavoritesExternalProvenanceLifecycleAdvanceError,
     FavoritesExternalProvenanceLifecycleSnapshot,
     FavoritesExternalProvenanceLifecycleState,
     FavoritesExternalRecordIdentity,
@@ -25,6 +27,8 @@ from sds200 import (
     FavoritesStorageDocument,
     FavoritesStorageSnapshot,
     bind_favorites_external_record,
+    execute_favorites_external_name_acceptance_durably,
+    plan_favorites_external_name_acceptance,
     save_favorites_external_provenance,
     select_favorites_record_target,
 )
@@ -99,6 +103,48 @@ class FakeStorageSource:
         if self.error is not None:
             raise self.error
         return self.value
+
+
+def _durable_result(
+    tmp_path: Path,
+    *,
+    baseline_records: tuple[FavoritesExternalRecordState, ...] | None = None,
+    baseline_state: FavoritesExternalRecordState | None = None,
+    path: Path | None = None,
+) -> tuple[
+    FavoritesExternalNameAcceptanceDurableResult,
+    FakeStorageSource,
+]:
+    baseline = _snapshot()
+    state = baseline_state or _linked_state(baseline)
+    updated = FavoritesExternalRecordObservation(
+        identity=state.external_identity,
+        evidence=FavoritesExternalObservationEvidence(
+            observed_at=datetime(2026, 8, 15, 4, 0, tzinfo=UTC),
+            revision="provider-r2",
+        ),
+        fields=(
+            FavoritesExternalFieldObservation(
+                name="name",
+                state=FavoritesExternalFieldObservationState.VALUE,
+                value="Provider Channel",
+            ),
+        ),
+    )
+    plan = plan_favorites_external_name_acceptance(baseline, state, updated)
+    provenance_path = path or _state_path(tmp_path)
+    save_favorites_external_provenance(
+        baseline_records if baseline_records is not None else (state,),
+        provenance_path,
+    )
+    source = FakeStorageSource(plan.write_plan.intended_snapshot)
+    result = execute_favorites_external_name_acceptance_durably(
+        plan,
+        lambda write_plan: write_plan,
+        source,
+        provenance_path,
+    )
+    return result, source
 
 
 def test_lifecycle_starts_idle_with_no_restoration_evidence(tmp_path: Path) -> None:
@@ -484,6 +530,283 @@ def test_lifecycle_snapshot_is_immutable(tmp_path: Path) -> None:
         snapshot.last_error = "changed"  # type: ignore[misc]
 
 
+def test_advance_after_real_durable_name_acceptance_uses_retained_evidence_only(
+    tmp_path: Path,
+) -> None:
+    baseline = _snapshot()
+    state = _linked_state(baseline)
+    path = _state_path(tmp_path)
+    save_favorites_external_provenance((state,), path)
+    lifecycle_source = FakeStorageSource(baseline)
+    lifecycle = FavoritesExternalProvenanceLifecycle(lifecycle_source, path)
+    before = lifecycle.start()
+    result, execution_source = _durable_result(tmp_path, path=path)
+    path.unlink()
+
+    advanced = lifecycle.advance_after_name_acceptance(result)
+    reapplied = lifecycle.advance_after_name_acceptance(result)
+
+    assert before.state is FavoritesExternalProvenanceLifecycleState.ACTIVE
+    assert before.favorites_snapshot is baseline
+    assert before.provenance_records == (state,)
+    assert advanced.state is FavoritesExternalProvenanceLifecycleState.ACTIVE
+    assert advanced.favorites_snapshot == result.execution.observed_snapshot
+    assert advanced.favorites_snapshot is result.execution.observed_snapshot
+    assert advanced.provenance_records == result.provenance_records
+    assert advanced.provenance_records is result.provenance_records
+    assert advanced.last_error is None
+    assert reapplied == advanced
+    assert lifecycle_source.read_calls == 1
+    assert execution_source.read_calls == 1
+    assert not path.exists()
+    assert before.favorites_snapshot is baseline
+    assert before.provenance_records == (state,)
+
+    lifecycle.close()
+    closed = lifecycle.snapshot()
+    assert closed.state is FavoritesExternalProvenanceLifecycleState.CLOSED
+    assert closed.favorites_snapshot is result.execution.observed_snapshot
+    assert closed.provenance_records is result.provenance_records
+
+
+def test_advance_idempotence_requires_same_adopted_durable_result(
+    tmp_path: Path,
+) -> None:
+    baseline = _snapshot()
+    state_a = _linked_state(baseline)
+    state_b = replace(
+        state_a,
+        last_observation=FavoritesExternalObservationEvidence(
+            observed_at=datetime(2026, 8, 15, 3, 30, tzinfo=UTC),
+            revision="provider-historical-r0",
+        ),
+    )
+    path = _state_path(tmp_path)
+    save_favorites_external_provenance((state_a,), path)
+    lifecycle = FavoritesExternalProvenanceLifecycle(
+        FakeStorageSource(baseline),
+        path,
+    )
+    lifecycle.start()
+    result_a, source_a = _durable_result(
+        tmp_path,
+        baseline_records=(state_a,),
+        baseline_state=state_a,
+        path=path,
+    )
+    result_b, source_b = _durable_result(
+        tmp_path,
+        baseline_records=(state_b,),
+        baseline_state=state_b,
+        path=path,
+    )
+
+    advanced = lifecycle.advance_after_name_acceptance(result_a)
+    reapplied = lifecycle.advance_after_name_acceptance(result_a)
+    before_rejected_result = lifecycle.snapshot()
+
+    assert result_a is not result_b
+    assert result_a.baseline_provenance_records != result_b.baseline_provenance_records
+    assert result_a.execution.observed_snapshot == result_b.execution.observed_snapshot
+    assert result_a.provenance_records == result_b.provenance_records
+    assert reapplied == advanced
+    with pytest.raises(
+        FavoritesExternalProvenanceLifecycleAdvanceError,
+        match="Favorites evidence",
+    ):
+        lifecycle.advance_after_name_acceptance(result_b)
+    assert lifecycle.snapshot() == before_rejected_result
+    assert source_a.read_calls == 1
+    assert source_b.read_calls == 1
+
+
+def test_advance_accepts_genuinely_sequential_durable_result(tmp_path: Path) -> None:
+    baseline = _snapshot()
+    state = _linked_state(baseline)
+    path = _state_path(tmp_path)
+    save_favorites_external_provenance((state,), path)
+    lifecycle = FavoritesExternalProvenanceLifecycle(
+        FakeStorageSource(baseline),
+        path,
+    )
+    lifecycle.start()
+    first, _ = _durable_result(tmp_path, path=path)
+    first_advanced = lifecycle.advance_after_name_acceptance(first)
+    next_observation = FavoritesExternalRecordObservation(
+        identity=first.execution.accepted_state.external_identity,
+        evidence=FavoritesExternalObservationEvidence(
+            observed_at=datetime(2026, 8, 15, 5, 0, tzinfo=UTC),
+            revision="provider-r3",
+        ),
+        fields=(
+            FavoritesExternalFieldObservation(
+                name="name",
+                state=FavoritesExternalFieldObservationState.VALUE,
+                value="Provider Channel Next",
+            ),
+        ),
+    )
+    next_plan = plan_favorites_external_name_acceptance(
+        first.execution.observed_snapshot,
+        first.execution.accepted_state,
+        next_observation,
+    )
+    next_source = FakeStorageSource(next_plan.write_plan.intended_snapshot)
+    second = execute_favorites_external_name_acceptance_durably(
+        next_plan,
+        lambda write_plan: write_plan,
+        next_source,
+        path,
+    )
+
+    second_advanced = lifecycle.advance_after_name_acceptance(second)
+    second_reapplied = lifecycle.advance_after_name_acceptance(second)
+
+    assert first_advanced.favorites_snapshot is first.execution.observed_snapshot
+    assert second.baseline_provenance_records == first.provenance_records
+    assert second_advanced.favorites_snapshot is second.execution.observed_snapshot
+    assert second_advanced.provenance_records is second.provenance_records
+    assert second_reapplied == second_advanced
+    assert next_source.read_calls == 1
+
+
+def test_advance_requires_exact_durable_result_type(tmp_path: Path) -> None:
+    lifecycle = FavoritesExternalProvenanceLifecycle(
+        FakeStorageSource(_snapshot()),
+        _state_path(tmp_path),
+    )
+    before = lifecycle.snapshot()
+
+    with pytest.raises(TypeError, match="DurableResult"):
+        lifecycle.advance_after_name_acceptance(object())  # type: ignore[arg-type]
+
+    assert lifecycle.snapshot() == before
+
+
+@pytest.mark.parametrize("lifecycle_state", ["idle", "failed", "closed"])
+def test_advance_rejects_non_active_lifecycle_without_changing_evidence(
+    tmp_path: Path,
+    lifecycle_state: str,
+) -> None:
+    result, _ = _durable_result(tmp_path)
+    source = FakeStorageSource(_snapshot())
+    lifecycle = FavoritesExternalProvenanceLifecycle(source, result.provenance_path)
+    if lifecycle_state == "failed":
+        source.error = RuntimeError("synthetic failure")
+        with pytest.raises(RuntimeError, match="synthetic failure"):
+            lifecycle.start()
+    elif lifecycle_state == "closed":
+        lifecycle.close()
+    before = lifecycle.snapshot()
+
+    with pytest.raises(RuntimeError, match="must be active"):
+        lifecycle.advance_after_name_acceptance(result)
+
+    assert lifecycle.snapshot() == before
+
+
+def test_advance_rejects_mismatched_path_without_changing_evidence(
+    tmp_path: Path,
+) -> None:
+    result, _ = _durable_result(tmp_path, path=_state_path(tmp_path))
+    other_path = tmp_path / "other" / FAVORITES_EXTERNAL_PROVENANCE_FILENAME
+    state = _linked_state(_snapshot())
+    save_favorites_external_provenance((state,), other_path)
+    lifecycle = FavoritesExternalProvenanceLifecycle(
+        FakeStorageSource(_snapshot()),
+        other_path,
+    )
+    before = lifecycle.start()
+
+    with pytest.raises(FavoritesExternalProvenanceLifecycleAdvanceError, match="path"):
+        lifecycle.advance_after_name_acceptance(result)
+
+    assert lifecycle.snapshot() == before
+
+
+def test_advance_rejects_stale_favorites_without_changing_evidence(
+    tmp_path: Path,
+) -> None:
+    result, _ = _durable_result(tmp_path)
+    result.provenance_path.unlink()
+    stale = replace(
+        _snapshot(),
+        catalog_bytes=_snapshot().catalog_bytes + b"\r\n",
+    )
+    lifecycle = FavoritesExternalProvenanceLifecycle(
+        FakeStorageSource(stale),
+        result.provenance_path,
+    )
+    before = lifecycle.start()
+
+    with pytest.raises(
+        FavoritesExternalProvenanceLifecycleAdvanceError,
+        match="Favorites evidence",
+    ):
+        lifecycle.advance_after_name_acceptance(result)
+
+    assert lifecycle.snapshot() == before
+
+
+@pytest.mark.parametrize("records", [None, ()])
+def test_advance_rejects_missing_or_empty_provenance_without_changing_evidence(
+    tmp_path: Path,
+    records: tuple[()] | None,
+) -> None:
+    result, _ = _durable_result(tmp_path)
+    if records is None:
+        result.provenance_path.unlink()
+    else:
+        save_favorites_external_provenance(records, result.provenance_path)
+    lifecycle = FavoritesExternalProvenanceLifecycle(
+        FakeStorageSource(_snapshot()),
+        result.provenance_path,
+    )
+    before = lifecycle.start()
+
+    with pytest.raises(
+        FavoritesExternalProvenanceLifecycleAdvanceError,
+        match="records",
+    ):
+        lifecycle.advance_after_name_acceptance(result)
+
+    assert lifecycle.snapshot() == before
+
+
+def test_advance_rejects_foreign_valid_durable_provenance_collection(
+    tmp_path: Path,
+) -> None:
+    baseline = _snapshot()
+    state = _linked_state(baseline)
+    other = FavoritesExternalRecordState(
+        target=select_favorites_record_target(baseline, 6, document_index=0),
+        fields=(),
+        external_identity=FavoritesExternalRecordIdentity(
+            source=state.external_identity.source,
+            record_id="channel-foreign",
+        ),
+        last_observation=FavoritesExternalObservationEvidence(
+            observed_at=datetime(2026, 8, 15, 3, 30, tzinfo=UTC),
+            revision="foreign-r1",
+        ),
+    )
+    result, _ = _durable_result(tmp_path, baseline_records=(other, state))
+    save_favorites_external_provenance((state,), result.provenance_path)
+    lifecycle = FavoritesExternalProvenanceLifecycle(
+        FakeStorageSource(baseline),
+        result.provenance_path,
+    )
+    before = lifecycle.start()
+
+    with pytest.raises(
+        FavoritesExternalProvenanceLifecycleAdvanceError,
+        match="records",
+    ):
+        lifecycle.advance_after_name_acceptance(result)
+
+    assert lifecycle.snapshot() == before
+
+
 @pytest.mark.parametrize(
     ("favorites_snapshot", "provenance_records", "last_error"),
     [
@@ -522,6 +845,7 @@ def test_snapshot_rejects_empty_failure_evidence(tmp_path: Path) -> None:
 def test_lifecycle_public_api_is_exported() -> None:
     expected = {
         "FavoritesExternalProvenanceLifecycle",
+        "FavoritesExternalProvenanceLifecycleAdvanceError",
         "FavoritesExternalProvenanceLifecycleSnapshot",
         "FavoritesExternalProvenanceLifecycleState",
     }

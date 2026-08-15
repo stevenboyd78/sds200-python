@@ -13,6 +13,9 @@ from .favorites_external_provenance import (
     FAVORITES_EXTERNAL_PROVENANCE_DEFAULT_MAX_FIELDS_PER_RECORD,
     FAVORITES_EXTERNAL_PROVENANCE_DEFAULT_MAX_RECORDS,
 )
+from .favorites_external_provenance_acceptance import (
+    FavoritesExternalNameAcceptanceDurableResult,
+)
 from .favorites_external_provenance_storage import (
     load_favorites_external_provenance,
 )
@@ -26,6 +29,10 @@ class FavoritesExternalProvenanceLifecycleState(StrEnum):
     ACTIVE = "active"
     FAILED = "failed"
     CLOSED = "closed"
+
+
+class FavoritesExternalProvenanceLifecycleAdvanceError(ValueError):
+    """Report stale or mismatched evidence during lifecycle advancement."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,6 +214,9 @@ class FavoritesExternalProvenanceLifecycle:
         self._favorites_snapshot: FavoritesStorageSnapshot | None = None
         self._provenance_records: tuple[FavoritesExternalRecordState, ...] | None = None
         self._last_error: str | None = None
+        self._last_adopted_name_acceptance_result: (
+            FavoritesExternalNameAcceptanceDurableResult | None
+        ) = None
 
     def snapshot(self) -> FavoritesExternalProvenanceLifecycleSnapshot:
         "Return immutable lifecycle and restoration evidence."
@@ -266,6 +276,52 @@ class FavoritesExternalProvenanceLifecycle:
                 return
             self._state = FavoritesExternalProvenanceLifecycleState.CLOSED
 
+    def advance_after_name_acceptance(
+        self,
+        result: FavoritesExternalNameAcceptanceDurableResult,
+    ) -> FavoritesExternalProvenanceLifecycleSnapshot:
+        """Adopt one already-verified durable name acceptance in memory."""
+
+        if type(result) is not FavoritesExternalNameAcceptanceDurableResult:
+            raise TypeError(
+                "External Favorites provenance lifecycle advancement requires "
+                "FavoritesExternalNameAcceptanceDurableResult."
+            )
+
+        with self._lifecycle_lock:
+            if self._state is not FavoritesExternalProvenanceLifecycleState.ACTIVE:
+                raise RuntimeError(
+                    "External Favorites provenance lifecycle must be active "
+                    "to advance after name acceptance."
+                )
+            if self.provenance_path != result.provenance_path:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "External Favorites provenance lifecycle path does not match "
+                    "the durable name acceptance."
+                )
+
+            if self._last_adopted_name_acceptance_result is result:
+                return self._snapshot_locked()
+
+            if (
+                self._favorites_snapshot
+                != result.execution.plan.write_plan.baseline_snapshot
+            ):
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "External Favorites provenance lifecycle Favorites evidence "
+                    "does not match the durable name acceptance baseline."
+                )
+            if self._provenance_records != result.baseline_provenance_records:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "External Favorites provenance lifecycle records do not match "
+                    "the durable name acceptance baseline."
+                )
+
+            self._favorites_snapshot = result.execution.observed_snapshot
+            self._provenance_records = result.provenance_records
+            self._last_adopted_name_acceptance_result = result
+            return self._snapshot_locked()
+
     def _snapshot_locked(self) -> FavoritesExternalProvenanceLifecycleSnapshot:
         return FavoritesExternalProvenanceLifecycleSnapshot(
             state=self._state,
@@ -283,6 +339,7 @@ def _require_positive_limit(value: int, *, label: str) -> None:
 
 __all__ = [
     "FavoritesExternalProvenanceLifecycle",
+    "FavoritesExternalProvenanceLifecycleAdvanceError",
     "FavoritesExternalProvenanceLifecycleSnapshot",
     "FavoritesExternalProvenanceLifecycleState",
 ]

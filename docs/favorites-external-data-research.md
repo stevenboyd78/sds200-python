@@ -404,6 +404,40 @@ expansion, record creation/removal acceptance, live RadioReference transport and
 credentials, renderer/daemon/CLI/TUI/web/Home Assistant wiring, MyRR, and
 automatic, scheduled, polling, or background synchronization remain deferred.
 
+## Milestone 23.18 post-acceptance lifecycle advancement boundary
+
+A successfully completed durable name acceptance makes the active lifecycle's
+restored evidence stale: the lifecycle still retains the pre-write Favorites
+snapshot and provenance collection even though Milestone 23.14 has independently
+verified the intended Favorites bytes and durably published the accepted
+provenance. Milestone 23.18 adds only the explicit in-memory transition needed to
+adopt that already-proven result.
+
+Advancement runs under the lifecycle lock and requires an active owner, the exact
+durable-result type, an exact provenance-path match, exact equality between the
+retained Favorites snapshot and the result's write-plan baseline, and exact
+equality between the retained provenance collection and the result's complete
+baseline collection. Missing provenance `None`, present-empty provenance `()`,
+stale snapshots, foreign collections, and substituted paths therefore fail
+closed unless they genuinely equal the durable result's baseline evidence. A
+failed guard leaves every lifecycle field unchanged.
+
+On success, one atomic in-memory update adopts the durable execution's already
+verified observed snapshot and the durable result's exact published provenance
+tuple. State remains active and no failure evidence is introduced. Reapplying
+the same durable result is idempotent only when the lifecycle already retains
+that result's exact resulting snapshot, provenance collection, and path; this
+does not make older or mixed results generally idempotent.
+
+The operation performs no Favorites storage read, provenance load or save,
+provider read, file write, Favorites write, or provenance publication. It trusts
+the validated `FavoritesExternalNameAcceptanceDurableResult` as the proof that
+those external actions already completed. Composition of the Milestone 23.17
+selection through durable execution and this lifecycle advancement remains a
+later orchestration slice. Live provider transport and credentials, renderer or
+daemon wiring, arbitrary-field acceptance, mapping expansion, creation/removal,
+MyRR, and automatic or background synchronization remain deferred.
+
 ## Detach semantics
 
 Detaching an externally sourced record or field should preserve its current
