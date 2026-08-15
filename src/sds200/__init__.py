@@ -400,6 +400,10 @@ from .favorites_external_refresh import (
     FavoritesExternalRefreshResult,
     FavoritesExternalRefreshSession,
 )
+from .favorites_external_refresh_acceptance import (
+    FavoritesExternalRefreshNameAcceptancePlan,
+    plan_favorites_external_refresh_name_acceptance,
+)
 from .favorites_file import (
     FavoritesFileParseError,
     FavoritesSourceFile,
@@ -1094,6 +1098,7 @@ __all__ = [
     "FavoritesExternalRecordPreview",
     "FavoritesExternalRecordState",
     "FavoritesExternalRefreshResult",
+    "FavoritesExternalRefreshNameAcceptancePlan",
     "FavoritesExternalRefreshSession",
     "FavoritesExternalSource",
     "FavoritesExternalSourceIdentity",
@@ -1422,6 +1427,7 @@ __all__ = [
     "execute_favorites_external_name_acceptance",
     "execute_favorites_external_name_acceptance_durably",
     "plan_favorites_external_name_acceptance",
+    "plan_favorites_external_refresh_name_acceptance",
     "plan_favorites_write",
     "execute_favorites_copied_tree_write",
     "preflight_favorites_copied_tree_write",
