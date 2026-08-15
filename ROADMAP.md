@@ -11,37 +11,39 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 23.12 — External Favorites provenance serialization and snapshot-rebinding foundation
+### Milestone 23.13 — External Favorites provenance filesystem durability and explicit loading foundation
 
-- Begin from the fully merged Milestone 23.11 foundation at
-  `9425078c5f851abfcfdbecc912de9b80b9a8cfc9`.
-- Add one source-neutral, versioned canonical JSON representation for already
-  linked or detached `FavoritesExternalRecordState` values; do not add host-state
-  paths, file publication, automatic loading, or renderer workflow.
-- Persist only the external provider/dataset/record identity, last observation
-  time/revision, field ownership/indexes and last external observations, detached
-  state, and an exact local target locator plus SHA-256 record identity.
-- Do not serialize raw Favorites record bytes, full storage snapshots, write
-  execution results, credential references, application keys, passwords, tokens,
-  cookies, or provider session objects.
-- Make encoding and decoding bounded and strict: enforce byte, record-count,
-  and per-record field-count limits; require UTF-8; reject duplicate JSON object
-  keys and non-finite constants; require exact supported keys/types/schema
-  version; and require byte-for-byte canonical reserialization.
-- Rebind decoded provenance only against a caller-supplied fresh
-  `FavoritesStorageSnapshot` through the existing exact target selector. Require
-  the same source kind, source/document indexes, filename provenance, and raw
-  source-record SHA-256 before reconstructing in-memory provenance.
-- Fail closed when a target is missing, ambiguous, moved, renamed, changed, or
-  otherwise unable to reproduce the recorded exact local identity.
-- Keep filesystem durability, XDG state-path selection, persistence cleanup,
-  automatic restart restoration, arbitrary-field acceptance, provider-to-SDS
-  mapping, record creation/removal acceptance, renderer workflows, live
-  RadioReference transport, MyRR, and automatic synchronization outside this
-  milestone.
-- Use only synthetic provider values and existing local Favorites fixtures in
-  automated tests; no physical scanner, USB device, FTP target, provider account,
-  or network access is required.
+- Begin from the fully merged Milestone 23.12 foundation at
+  `7775b26e019e03e5c9df0a08f34472140a19b824`.
+- Add one deterministic external-provenance state-file path below the existing
+  XDG-backed `ConfigurationPaths.user_state_dir`; path resolution itself remains
+  side-effect free.
+- Add explicit save/load composition around the existing Milestone 23.12
+  serializer/deserializer rather than introducing a second provenance format or
+  parser.
+- Publish provenance through a private host-state boundary with canonical
+  current-user-owned directories, a process-safe publication lock, exclusive
+  no-follow `0600` temporary files, exact temporary readback, file `fsync`,
+  guarded atomic replacement, parent-directory `fsync`, and exact published
+  readback.
+- Read only bounded stable current-user-owned regular files through no-follow
+  descriptors and pass the exact bytes to the existing canonical codec for fresh
+  snapshot rebinding.
+- Preserve the semantic distinction between an absent state file and a present
+  canonical document containing zero external provenance records.
+- Fail closed on unsafe paths, symbolic links, non-private ownership or modes,
+  conflicting cooperating publication, unstable files, publication targets
+  observed stale before replacement, partial writes, failed synchronization,
+  or codec/rebinding rejection. Filesystem
+  failures must use stable diagnostics that do not echo persisted payloads or
+  secret-bearing operating-system details.
+- Keep cleanup/migration policy, automatic application or daemon startup restore,
+  lifecycle ownership, arbitrary-field acceptance, provider-to-SDS mapping,
+  record creation/removal acceptance, renderer workflows, live RadioReference
+  transport, MyRR, and automatic synchronization outside this milestone.
+- Use only synthetic provider values, temporary host directories, and existing
+  local Favorites fixtures in automated tests; no physical scanner, USB device,
+  FTP target, provider account, or network access is required.
 
 
 ## Deferred hardware validation
@@ -303,6 +305,11 @@ begins.
   readback, provenance promotion only after intended-snapshot equality, opaque
   backend success evidence, and fail-closed completion without duplicating
   copied-tree or USB safety/recovery machinery.
+- Milestone 23.12 completed canonical external-provenance serialization and
+  fresh-snapshot rebinding: source-neutral linked/detached state, exact local
+  target locators with source-record SHA-256 evidence, strict bounded JSON,
+  stable redacted errors, and fail-closed moved/changed/ambiguous target
+  rejection without choosing a filesystem owner.
 - Add RadioReference-assisted import with update previews.
 - Preserve provenance and field ownership for externally sourced data.
 - Support merge decisions and detaching local records from an external source.
