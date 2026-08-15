@@ -396,6 +396,10 @@ from .favorites_external_provenance_storage import (
     save_favorites_external_provenance,
     save_favorites_external_provenance_if_current,
 )
+from .favorites_external_refresh import (
+    FavoritesExternalRefreshResult,
+    FavoritesExternalRefreshSession,
+)
 from .favorites_file import (
     FavoritesFileParseError,
     FavoritesSourceFile,
@@ -1089,6 +1093,8 @@ __all__ = [
     "FavoritesExternalRecordObservationState",
     "FavoritesExternalRecordPreview",
     "FavoritesExternalRecordState",
+    "FavoritesExternalRefreshResult",
+    "FavoritesExternalRefreshSession",
     "FavoritesExternalSource",
     "FavoritesExternalSourceIdentity",
     "FAVORITES_EXTERNAL_PROVENANCE_DEFAULT_MAX_BYTES",

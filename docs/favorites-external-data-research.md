@@ -344,6 +344,32 @@ refresh, arbitrary-field acceptance, provider-to-SDS mapping, record
 creation/removal acceptance, live RadioReference transport, MyRR, and automatic
 synchronization remain separate follow-on work.
 
+## Milestone 23.16 assisted-refresh preview composition boundary
+
+Milestone 23.16 composes the active Milestone 23.15 lifecycle evidence with one
+injected `FavoritesExternalSource`. Each explicit session refresh captures one
+lifecycle snapshot and requires it to be active before performing exactly one
+source observation read. The one immutable observation tuple and the lifecycle's
+restored provenance are passed to the existing source-neutral import preview
+function; no preview decision, editing, acceptance, or durability rule is
+duplicated.
+
+A successful refresh returns immutable evidence containing the exact lifecycle
+snapshot, exact observations, and exact preview. Missing durable provenance and
+a present canonical empty document are both empty inputs only at the preview
+function boundary; the retained lifecycle snapshot continues to expose `None`
+versus `()`. Every refresh is a new observation attempt rather than a cached
+result.
+
+Source or preview failures propagate without changing or closing the lifecycle
+and without retaining partial or last-successful session state, so an explicit
+later refresh may retry while the lifecycle remains active. The session owns no
+cleanup of its injected dependencies and performs no Favorites or provenance
+mutation. Acceptance/publication, record creation or removal, arbitrary-field
+acceptance, mapping expansion, live provider transport, credentials, MyRR,
+scheduled or background synchronization, daemon/renderer wiring, and cleanup or
+migration policy remain deferred.
+
 ## Detach semantics
 
 Detaching an externally sourced record or field should preserve its current
