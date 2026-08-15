@@ -10,6 +10,7 @@ from sds200 import (
     CONNECTION_PROFILE_FILENAME,
     DAEMON_MQTT_CONFIG_FILENAME,
     DEFAULT_SYSTEM_CONFIG_DIR,
+    FAVORITES_EXTERNAL_PROVENANCE_FILENAME,
     LEGACY_CONFIG_DIRECTORY_NAME,
     REMOTE_AUDIO_PROFILE_FILENAME,
     ConfigurationPaths,
@@ -48,6 +49,9 @@ def test_configuration_paths_use_documented_defaults(tmp_path: Path) -> None:
     assert paths.daemon_recording_dir == (
         paths.user_state_dir / DAEMON_RECORDING_DIRECTORY_NAME
     )
+    assert paths.favorites_external_provenance_file == (
+        paths.user_state_dir / FAVORITES_EXTERNAL_PROVENANCE_FILENAME
+    )
     assert paths.legacy_connection_profiles_file.name == (
         CONNECTION_PROFILE_FILENAME
     )
@@ -75,6 +79,11 @@ def test_configuration_paths_honor_xdg_overrides(tmp_path: Path) -> None:
     assert paths.system_config_dir == system_dir
     assert paths.user_config_dir == config_home / CONFIG_DIRECTORY_NAME
     assert paths.user_state_dir == state_home / CONFIG_DIRECTORY_NAME
+    assert paths.favorites_external_provenance_file == (
+        state_home
+        / CONFIG_DIRECTORY_NAME
+        / FAVORITES_EXTERNAL_PROVENANCE_FILENAME
+    )
     assert paths.user_cache_dir == cache_home / CONFIG_DIRECTORY_NAME
     assert paths.legacy_user_config_dir == (
         config_home / LEGACY_CONFIG_DIRECTORY_NAME

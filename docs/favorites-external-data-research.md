@@ -210,6 +210,41 @@ separate persistence-layer work. Arbitrary-field acceptance, provider-to-SDS
 mapping, record creation/removal, renderer workflows, live RadioReference
 transport, MyRR, and automatic synchronization also remain deferred.
 
+## Milestone 23.13 filesystem durability and explicit loading boundary
+
+Milestone 23.13 gives the existing canonical provenance document one explicit
+host-side owner without changing its schema. `ConfigurationPaths` exposes a
+deterministic file below the existing XDG state directory, while path resolution
+remains read-only. Save/load functions accept explicit paths so tests and future
+runtime owners do not need hidden global state.
+
+Publication follows the stronger durable host-record discipline already used by
+the verified USB writer rather than the lighter profile-store replacement path.
+The application state directory is private and current-user owned; publication
+uses a nonblocking in-process guard plus a process-safe sibling advisory lock,
+an exclusively created no-follow `0600` temporary file, complete write plus
+file `fsync`, exact temporary readback, revalidation of the previously
+published target, atomic same-directory `os.replace()`, directory `fsync`, and
+exact post-publication readback. Save calls using this API therefore cannot
+silently become last-writer-wins, and target changes observed before replacement
+are rejected. As with ordinary POSIX atomic replacement, an uncooperative
+external writer that changes the target after final revalidation is outside
+this advisory coordination boundary.
+
+Loading is explicit rather than automatic. A missing state file returns no
+persisted state, while a present canonical document with an empty record array
+restores the distinct empty tuple. Present files must be private, stable,
+current-user-owned regular files opened with no-follow semantics and bounded
+before their exact bytes are passed unchanged to the Milestone 23.12 decoder for
+fresh-snapshot rebinding. Filesystem failures use stable redacted diagnostics;
+codec and rebinding failures retain the existing provenance error boundary.
+
+This milestone does not choose cleanup or migration behavior and does not wire
+loading into application or daemon startup. Runtime lifecycle ownership,
+arbitrary-field acceptance, provider-to-SDS mapping, record creation/removal,
+renderer workflows, live RadioReference transport, MyRR, and automatic
+synchronization remain deferred.
+
 ## Detach semantics
 
 Detaching an externally sourced record or field should preserve its current

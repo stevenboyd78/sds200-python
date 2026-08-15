@@ -20,6 +20,7 @@ CONNECTION_PROFILE_FILENAME = "profiles.toml"
 DAEMON_DESTINATION_CONFIG_FILENAME = "daemon-destinations.toml"
 DAEMON_MQTT_CONFIG_FILENAME = "daemon-mqtt.toml"
 DAEMON_RECORDING_DIRECTORY_NAME = "recordings"
+FAVORITES_EXTERNAL_PROVENANCE_FILENAME = "favorites-external-provenance.json"
 DEFAULT_SYSTEM_CONFIG_DIR = Path("/etc/sdsctl")
 LEGACY_CONFIG_DIRECTORY_NAME = "sds200"
 REMOTE_AUDIO_PROFILE_FILENAME = "remote-audio-profiles.toml"
@@ -99,6 +100,12 @@ class ConfigurationPaths:
     @property
     def daemon_recording_dir(self) -> Path:
         return self.user_state_dir / DAEMON_RECORDING_DIRECTORY_NAME
+
+    @property
+    def favorites_external_provenance_file(self) -> Path:
+        """Return the deterministic external Favorites provenance state file."""
+
+        return self.user_state_dir / FAVORITES_EXTERNAL_PROVENANCE_FILENAME
 
     @property
     def legacy_connection_profiles_file(self) -> Path:

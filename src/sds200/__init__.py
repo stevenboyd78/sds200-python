@@ -81,6 +81,7 @@ from .configuration import (
     DAEMON_MQTT_CONFIG_FILENAME,
     DEFAULT_SYSTEM_CONFIG_DIR,
     ENVIRONMENT_CONFIGURATION_VARIABLES,
+    FAVORITES_EXTERNAL_PROVENANCE_FILENAME,
     LEGACY_CONFIG_DIRECTORY_NAME,
     REMOTE_AUDIO_PROFILE_FILENAME,
     ApplicationConfiguration,
@@ -377,6 +378,11 @@ from .favorites_external_provenance import (
     FavoritesExternalProvenanceError,
     deserialize_favorites_external_provenance,
     serialize_favorites_external_provenance,
+)
+from .favorites_external_provenance_storage import (
+    FavoritesExternalProvenanceStorageError,
+    load_favorites_external_provenance,
+    save_favorites_external_provenance,
 )
 from .favorites_file import (
     FavoritesFileParseError,
@@ -1075,7 +1081,9 @@ __all__ = [
     "FAVORITES_EXTERNAL_PROVENANCE_DEFAULT_MAX_RECORDS",
     "FAVORITES_EXTERNAL_PROVENANCE_SCHEMA",
     "FAVORITES_EXTERNAL_PROVENANCE_VERSION",
+    "FAVORITES_EXTERNAL_PROVENANCE_FILENAME",
     "FavoritesExternalProvenanceError",
+    "FavoritesExternalProvenanceStorageError",
     "FavoritesFileParseError",
     "FavoritesHierarchy",
     "FavoritesHierarchyDocument",
@@ -1381,6 +1389,7 @@ __all__ = [
     "load_daemon_destination_configuration",
     "load_daemon_mqtt_configuration",
     "load_environment_configuration",
+    "load_favorites_external_provenance",
     "local_ipv4_networks",
     "normalize_model_name",
     "parse_favorites_file",
@@ -1396,6 +1405,7 @@ __all__ = [
     "present_radio_state",
     "present_scanner_info",
     "preview_daemon_destination_replacement",
+    "save_favorites_external_provenance",
     "serialize_favorites_external_provenance",
     "start_audio_encoder_process",
     "profile_from_discovery",
