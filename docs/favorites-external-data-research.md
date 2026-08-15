@@ -307,6 +307,43 @@ ownership, cleanup/migration policy, arbitrary-field acceptance, provider-to-SDS
 mapping, record creation/removal acceptance, renderer workflows, live
 RadioReference transport, MyRR, or automatic synchronization.
 
+## Milestone 23.15 startup restoration lifecycle ownership boundary
+
+Milestone 23.15 adds one renderer-neutral owner for the startup restoration step
+without making the scanner daemon, CLI, TUI, web dashboard, or Home Assistant
+adapter the Favorites owner. `FavoritesExternalProvenanceLifecycle` accepts an
+injected `FavoritesStorageSource` plus an explicit durable provenance path; the
+normal host path remains `ConfigurationPaths.favorites_external_provenance_file`.
+
+One `start()` attempt reads exactly one fresh `FavoritesStorageSnapshot`, then
+passes that same immutable snapshot to the existing Milestone 23.13 durable
+loader. The lifecycle does not perform a second Favorites read, heuristic target
+search, or partial provenance recovery. Successful restoration therefore keeps
+the Milestone 23.12 exact locator/digest rebinding rule authoritative: moved,
+renamed, changed, missing, or ambiguous local records still fail closed.
+
+The active lifecycle snapshot retains the exact fresh Favorites snapshot and the
+complete rebound provenance collection. Missing durable state remains `None`,
+while a present canonical document containing zero records remains `()`, so
+startup ownership does not collapse the Milestone 23.13 absent-versus-empty
+distinction. Repeated `start()` calls while active are idempotent and return the
+already-restored evidence without rereading either resource.
+
+Startup failures are terminal for that lifecycle instance. The original exception
+still propagates through the existing storage or provenance error boundary, but
+the lifecycle's public failed state retains only the exception class name and no
+partial Favorites/provenance restoration evidence. Callers that intentionally
+want a new attempt must construct a new owner, which forces a new explicit fresh
+snapshot boundary. `close()` is idempotent, terminal, and does not mutate either
+Favorites storage or the durable provenance document.
+
+This milestone establishes lifecycle ownership but deliberately stops before
+wiring that owner into application or daemon startup. Renderer-specific
+construction, global singleton ownership, cleanup/migration policy, provider
+refresh, arbitrary-field acceptance, provider-to-SDS mapping, record
+creation/removal acceptance, live RadioReference transport, MyRR, and automatic
+synchronization remain separate follow-on work.
+
 ## Detach semantics
 
 Detaching an externally sourced record or field should preserve its current

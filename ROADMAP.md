@@ -11,42 +11,30 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 23.14 — External Favorites durable name-acceptance provenance completion foundation
+### Milestone 23.15 — External Favorites provenance startup restoration and lifecycle ownership foundation
 
-- Begin from the fully merged Milestone 23.13 foundation at
-  `3b38b72129cfda65961b584f1103ec715e6ef401`.
-- Retain the exact baseline provenance state and exact provider observation in
-  each explicit name-acceptance plan, require that they reproduce the stored
-  source-neutral preview, and require the intended provenance to equal the exact
-  name-acceptance transformation before execution.
-- Add expected-current provenance publication over the existing Milestone 23.13
-  durable filesystem boundary. Conditional saves compare the caller's canonical
-  expected complete document with the exact current file while holding the
-  existing publication lock, while preserving the distinct absent-versus-empty
-  state semantics.
-- Add one source-neutral durable-completion composition layer that explicitly
-  loads and rebinds the complete persisted provenance tuple against the exact
-  write-plan baseline snapshot, requires the retained baseline state exactly
-  once, preserves tuple order, and prevalidates the one-record intended
-  replacement against the exact intended Favorites snapshot before mutation.
-- Reuse the existing Milestone 23.11 name-acceptance executor and exact
-  post-write snapshot verification. Advance persisted provenance only after the
-  Favorites write is independently verified, and publish only if the previously
-  loaded complete provenance document is still current.
-- Return immutable durable-completion evidence only after both verified Favorites
-  mutation and conditional provenance publication succeed. If publication fails
-  after verified storage mutation, report that partial completion distinctly and
-  do not claim durable success or overwrite concurrently changed provenance.
-- Treat Favorites mutation and provenance publication as two independently
-  durable resources rather than pretending they form one atomic transaction.
-  Cooperative concurrent provenance changes must fail closed instead of becoming
-  lost updates; no generic speculative rollback of a verified Favorites write is
-  introduced.
-- Keep loading and durable completion explicit and caller-driven. Automatic
-  application/daemon startup restoration, global lifecycle ownership,
-  cleanup/migration policy, arbitrary-field acceptance, provider-to-SDS mapping,
-  record creation/removal acceptance, renderer workflows, live RadioReference
-  transport, MyRR, and automatic synchronization remain outside this milestone.
+- Begin from the fully merged Milestone 23.14 foundation at
+  `2d7b5b4027f9ad792ee28b8e93a2ed57d1cdaac0`.
+- Add one renderer-neutral, single-owner External Favorites provenance lifecycle
+  that accepts an injected `FavoritesStorageSource` and explicit durable
+  provenance path instead of making the scanner daemon or a renderer the
+  Favorites owner.
+- On `start()`, read exactly one fresh `FavoritesStorageSnapshot` and restore the
+  persisted provenance document against that exact snapshot through the existing
+  Milestone 23.13 loading/rebinding boundary. Preserve missing persisted state as
+  `None` and a present canonical empty document as `()`.
+- Expose immutable lifecycle evidence with explicit idle, active, failed, and
+  closed states. Successful startup retains the exact fresh Favorites snapshot
+  and restored complete provenance tuple; failed startup retains only a redacted
+  failure class and no partial restoration evidence.
+- Make repeated `start()` calls idempotent while active without rereading
+  Favorites or provenance. Failed or closed lifecycle owners cannot be restarted;
+  `close()` is idempotent and does not mutate Favorites or persisted provenance.
+- Keep application/daemon/CLI/TUI/web/Home Assistant construction of this owner
+  explicit and deferred. Do not add global singleton state, cleanup/migration
+  policy, provider refresh, arbitrary-field acceptance, provider-to-SDS mapping,
+  record creation/removal acceptance, live RadioReference transport, MyRR, or
+  automatic synchronization.
 - Use only synthetic provider values, temporary host directories, and existing
   local Favorites fixtures in automated tests; no physical scanner, USB device,
   FTP target, provider account, or network access is required.
