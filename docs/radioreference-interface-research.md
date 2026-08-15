@@ -586,10 +586,13 @@ The current RadioReference foundation still does not include:
 - provider-to-SDS template or hierarchy construction beyond the reviewed
   normalized frequency/name observations documented for Milestone 23.6;
 - implicit scanner record creation from provider objects;
-- operator merge/acceptance workflows;
-- renderer-specific CLI/TUI/web/Home Assistant import UI;
+- arbitrary-field, record-creation/removal, or automatic merge acceptance beyond
+  the explicit source-neutral linked-record name-acceptance boundary;
+- renderer-specific CLI/TUI/web/Home Assistant assisted-import or acceptance UI;
+- automatic application/daemon ownership or startup restoration of persisted
+  external provenance;
 - automatic or scheduled synchronization;
-- MyRR synchronization;
-- Favorites storage writes; or
-- bypassing the existing Favorites editing, validation, planning, backup, and
-  write-execution safety boundaries.
+- MyRR synchronization; or
+- bypassing the existing Favorites editing, validation, planning, backup,
+  write-execution, post-write verification, and provenance durability safety
+  boundaries.

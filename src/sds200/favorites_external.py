@@ -599,6 +599,8 @@ class FavoritesExternalNameAcceptancePlan:
 
     preview: FavoritesExternalRecordPreview
     write_plan: FavoritesWritePlan
+    baseline_state: FavoritesExternalRecordState
+    observation: FavoritesExternalRecordObservation
     intended_state: FavoritesExternalRecordState
 
     def __post_init__(self) -> None:
@@ -611,6 +613,16 @@ class FavoritesExternalNameAcceptancePlan:
             raise TypeError(
                 "External Favorites name acceptance write plan must be "
                 "FavoritesWritePlan."
+            )
+        if not isinstance(self.baseline_state, FavoritesExternalRecordState):
+            raise TypeError(
+                "External Favorites name acceptance baseline state must be "
+                "FavoritesExternalRecordState."
+            )
+        if not isinstance(self.observation, FavoritesExternalRecordObservation):
+            raise TypeError(
+                "External Favorites name acceptance observation must be "
+                "FavoritesExternalRecordObservation."
             )
         if not isinstance(self.intended_state, FavoritesExternalRecordState):
             raise TypeError(
@@ -632,6 +644,25 @@ class FavoritesExternalNameAcceptancePlan:
             raise ValueError(
                 "External Favorites name acceptance preview target must "
                 "match the exact write-plan baseline."
+            )
+        if self.baseline_state.target != baseline_target:
+            raise ValueError(
+                "External Favorites name acceptance baseline state must "
+                "match the exact write-plan baseline."
+            )
+        if self.baseline_state.external_identity != self.preview.external_identity:
+            raise ValueError(
+                "External Favorites name acceptance baseline identity must "
+                "match the preview identity."
+            )
+        expected_preview = preview_favorites_external_import(
+            (self.baseline_state,),
+            (self.observation,),
+        ).records[0]
+        if expected_preview != self.preview:
+            raise ValueError(
+                "External Favorites name acceptance baseline state and observation "
+                "must reproduce the exact preview."
             )
 
         intended_target = select_favorites_record_target(
@@ -657,6 +688,50 @@ class FavoritesExternalNameAcceptancePlan:
             raise ValueError(
                 "External Favorites name acceptance evidence must remain "
                 "consistent across preview and intended provenance."
+            )
+
+        baseline_name = next(
+            (
+                field
+                for field in self.baseline_state.fields
+                if field.name == "name"
+            ),
+            None,
+        )
+        observed_name = next(
+            (
+                field
+                for field in self.observation.fields
+                if field.name == "name"
+            ),
+            None,
+        )
+        if baseline_name is None or observed_name is None:
+            raise ValueError(
+                "External Favorites name acceptance provenance must retain "
+                "the exact bound and observed name fields."
+            )
+        expected_fields = tuple(
+            (
+                replace(
+                    field,
+                    last_external=observed_name,
+                )
+                if field is baseline_name
+                else field
+            )
+            for field in self.baseline_state.fields
+        )
+        expected_intended_state = replace(
+            self.baseline_state,
+            target=intended_target,
+            fields=expected_fields,
+            last_observation=self.observation.evidence,
+        )
+        if self.intended_state != expected_intended_state:
+            raise ValueError(
+                "External Favorites name acceptance intended provenance must "
+                "equal the exact name-acceptance transformation."
             )
 
 
@@ -1352,6 +1427,8 @@ def plan_favorites_external_name_acceptance(
             snapshot,
             intended_snapshot,
         ),
+        baseline_state=record,
+        observation=observation,
         intended_state=intended_state,
     )
 

@@ -645,6 +645,8 @@ def test_plan_external_name_acceptance_uses_existing_editor_and_write_plan() -> 
 
     assert isinstance(acceptance, FavoritesExternalNameAcceptancePlan)
     assert acceptance.preview.kind is FavoritesExternalChangeKind.REPLACED
+    assert acceptance.baseline_state is state
+    assert acceptance.observation is updated
     fields = {field.name: field for field in acceptance.preview.fields}
     assert fields["name"].kind is FavoritesExternalChangeKind.REPLACED
     assert fields["name"].external_value == "Provider Channel"
@@ -808,7 +810,123 @@ def test_name_acceptance_plan_rejects_inconsistent_public_construction() -> None
         FavoritesExternalNameAcceptancePlan(
             preview=acceptance.preview,
             write_plan=acceptance.write_plan,
+            baseline_state=acceptance.baseline_state,
+            observation=acceptance.observation,
             intended_state=state,
+        )
+
+
+def test_name_acceptance_plan_rejects_inconsistent_baseline_state() -> None:
+    snapshot, state, updated = _real_name_acceptance_inputs()
+    acceptance = plan_favorites_external_name_acceptance(
+        snapshot,
+        state,
+        updated,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="baseline state must match the exact write-plan baseline",
+    ):
+        FavoritesExternalNameAcceptancePlan(
+            preview=acceptance.preview,
+            write_plan=acceptance.write_plan,
+            baseline_state=acceptance.intended_state,
+            observation=acceptance.observation,
+            intended_state=acceptance.intended_state,
+        )
+
+
+def test_name_acceptance_plan_rejects_baseline_ownership_that_changes_preview() -> None:
+    snapshot, state, updated = _real_name_acceptance_inputs()
+    acceptance = plan_favorites_external_name_acceptance(
+        snapshot,
+        state,
+        updated,
+    )
+    changed_name = FavoritesExternalFieldState(
+        name=state.fields[0].name,
+        field_index=state.fields[0].field_index,
+        ownership=FavoritesExternalFieldOwnership.LOCAL,
+    )
+    changed_baseline = FavoritesExternalRecordState(
+        target=state.target,
+        fields=(changed_name, *state.fields[1:]),
+        external_identity=state.external_identity,
+        last_observation=state.last_observation,
+        detached=state.detached,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="must reproduce the exact preview",
+    ):
+        FavoritesExternalNameAcceptancePlan(
+            preview=acceptance.preview,
+            write_plan=acceptance.write_plan,
+            baseline_state=changed_baseline,
+            observation=acceptance.observation,
+            intended_state=acceptance.intended_state,
+        )
+
+
+def test_name_acceptance_plan_rejects_mismatched_observation() -> None:
+    snapshot, state, updated = _real_name_acceptance_inputs()
+    acceptance = plan_favorites_external_name_acceptance(
+        snapshot,
+        state,
+        updated,
+    )
+    different = _observation(
+        name="Different Provider Channel",
+        frequency="155100000",
+        revision="provider-r3",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="must reproduce the exact preview",
+    ):
+        FavoritesExternalNameAcceptancePlan(
+            preview=acceptance.preview,
+            write_plan=acceptance.write_plan,
+            baseline_state=acceptance.baseline_state,
+            observation=different,
+            intended_state=acceptance.intended_state,
+        )
+
+
+def test_name_acceptance_plan_rejects_substituted_intended_provenance() -> None:
+    snapshot, state, updated = _real_name_acceptance_inputs()
+    acceptance = plan_favorites_external_name_acceptance(
+        snapshot,
+        state,
+        updated,
+    )
+    intended_name = acceptance.intended_state.fields[0]
+    substituted_name = FavoritesExternalFieldState(
+        name=intended_name.name,
+        field_index=intended_name.field_index,
+        ownership=FavoritesExternalFieldOwnership.LOCAL,
+    )
+    substituted = FavoritesExternalRecordState(
+        target=acceptance.intended_state.target,
+        fields=(substituted_name, *acceptance.intended_state.fields[1:]),
+        external_identity=acceptance.intended_state.external_identity,
+        last_observation=acceptance.intended_state.last_observation,
+        detached=acceptance.intended_state.detached,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="must equal the exact name-acceptance transformation",
+    ):
+        FavoritesExternalNameAcceptancePlan(
+            preview=acceptance.preview,
+            write_plan=acceptance.write_plan,
+            baseline_state=acceptance.baseline_state,
+            observation=acceptance.observation,
+            intended_state=substituted,
         )
 
 
@@ -1003,6 +1121,7 @@ def test_execute_external_name_acceptance_promotes_only_after_exact_readback() -
         FavoritesExternalNameAcceptanceExecutionResult,
     )
     assert result.plan is acceptance
+    assert acceptance.baseline_state is state
     assert result.execution_result is backend_result
     assert result.observed_snapshot is acceptance.write_plan.intended_snapshot
     assert result.accepted_state is acceptance.intended_state
