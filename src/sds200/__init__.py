@@ -385,6 +385,11 @@ from .favorites_external_provenance_acceptance import (
     FavoritesExternalNameAcceptanceProvenanceError,
     execute_favorites_external_name_acceptance_durably,
 )
+from .favorites_external_provenance_lifecycle import (
+    FavoritesExternalProvenanceLifecycle,
+    FavoritesExternalProvenanceLifecycleSnapshot,
+    FavoritesExternalProvenanceLifecycleState,
+)
 from .favorites_external_provenance_storage import (
     FavoritesExternalProvenanceStorageError,
     load_favorites_external_provenance,
@@ -1093,6 +1098,9 @@ __all__ = [
     "FAVORITES_EXTERNAL_PROVENANCE_VERSION",
     "FAVORITES_EXTERNAL_PROVENANCE_FILENAME",
     "FavoritesExternalProvenanceError",
+    "FavoritesExternalProvenanceLifecycle",
+    "FavoritesExternalProvenanceLifecycleSnapshot",
+    "FavoritesExternalProvenanceLifecycleState",
     "FavoritesExternalProvenanceStorageError",
     "FavoritesFileParseError",
     "FavoritesHierarchy",

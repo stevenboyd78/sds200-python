@@ -589,8 +589,8 @@ The current RadioReference foundation still does not include:
 - arbitrary-field, record-creation/removal, or automatic merge acceptance beyond
   the explicit source-neutral linked-record name-acceptance boundary;
 - renderer-specific CLI/TUI/web/Home Assistant assisted-import or acceptance UI;
-- automatic application/daemon ownership or startup restoration of persisted
-  external provenance;
+- automatic application/daemon/renderer construction or startup wiring of the
+  renderer-neutral external-provenance lifecycle owner;
 - automatic or scheduled synchronization;
 - MyRR synchronization; or
 - bypassing the existing Favorites editing, validation, planning, backup,
