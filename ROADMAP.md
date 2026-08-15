@@ -11,35 +11,34 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 23.10 — RadioReference assisted-update name acceptance planning foundation
+### Milestone 23.11 — RadioReference assisted-update name acceptance execution completion foundation
 
-- Begin from the fully merged Milestone 23.9 foundation at
-  `8d654c2a249ccd2850e2731765661f4bf7e491b3`.
-- Add one pure source-neutral acceptance planner for an already-linked,
-  non-detached record whose normalized `name` field is externally owned and
-  previewed as an exact replacement.
-- Recompute preview classification from the supplied external observation rather
-  than trusting caller-constructed change labels.
-- Reuse `rename_favorites_record()` as the schema-aware mutation authority and
-  require the exact bound provenance index to be the only source field changed
-  by that editor.
-- Reuse `plan_favorites_write()` for the ordinary immutable baseline/intended
-  snapshot comparison, validation, blockers, and later stale-snapshot check.
-- Return refreshed in-memory provenance for the intended renamed record while
-  leaving persistence and write execution outside the acceptance planner.
-- Permit unbound provider fields to remain preview evidence only; in particular,
-  RadioReference whole-Hz frequency observations must not become implicit SDS
-  frequency mappings during name acceptance.
-- Reject local/detached ownership, removed observations, unchanged names,
-  identity mismatches, stale/ambiguous exact targets, conflicts, unsupported
-  name values, provenance indexes that do not match the schema-aware name
-  field, and simultaneous replacement/removal of any other already-bound field.
-- Keep arbitrary-field acceptance, provider-to-SDS mapping, record creation,
-  record removal acceptance, conflict resolution choices, hierarchy/template
-  inference, persisted provenance storage, write execution, live transport,
-  MyRR, and automatic synchronization outside this milestone.
-- Use only synthetic local/provider values and existing repository Favorites
-  fixtures in automated tests.
+- Begin from the fully merged Milestone 23.10 foundation at
+  `507e9f7faa8c8ca7c89f8bc75fa2b8943a796e1c`.
+- Add one source-neutral completion seam around an existing
+  `FavoritesExternalNameAcceptancePlan`; do not add another name editor or
+  another write planner.
+- Inject the write executor so copied-tree, USB, and future storage-specific
+  safety/recovery machinery remains authoritative in its existing layer.
+- Pass only the existing ordinary `FavoritesWritePlan` to the executor and
+  preserve the executor's backend-specific success evidence without interpreting
+  it as external provenance.
+- After the executor returns successfully, require an injected
+  `FavoritesStorageSource` to read the target again and require that exact
+  snapshot to equal the acceptance plan's `intended_snapshot`.
+- Promote/return the plan's already-derived `intended_state` only after that
+  exact post-execution readback succeeds.
+- Propagate executor failures without attempting post-write provenance
+  completion, and fail closed on unavailable, malformed, or mismatched
+  post-write storage evidence.
+- Keep copied-tree/USB execution internals, arbitrary-field acceptance,
+  provider-to-SDS mapping, record creation/removal acceptance, hierarchy/template
+  inference, persisted provenance serialization/storage, renderer workflows,
+  live RadioReference transport, MyRR, and automatic synchronization outside
+  this milestone.
+- Use only synthetic executor/readback doubles and existing local/provider
+  fixtures in automated tests; no physical scanner, USB device, FTP target, or
+  network provider access is required.
 
 
 ## Deferred hardware validation
