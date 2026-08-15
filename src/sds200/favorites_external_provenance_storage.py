@@ -487,8 +487,24 @@ def _require_target_unchanged(
         )
 
 
-def _publish_content(target: Path, content: bytes, *, max_bytes: int) -> None:
+_EXPECTED_CURRENT_CONTENT_UNSET = object()
+
+
+def _publish_content(
+    target: Path,
+    content: bytes,
+    *,
+    max_bytes: int,
+    expected_current_content: bytes | None | object = _EXPECTED_CURRENT_CONTENT_UNSET,
+) -> None:
     initial = _read_optional_durable_regular_file(target, max_bytes=max_bytes)
+    if expected_current_content is not _EXPECTED_CURRENT_CONTENT_UNSET:
+        observed_content = None if initial is None else initial.content
+        if observed_content != expected_current_content:
+            raise _storage_error(
+                "External Favorites provenance state does not match "
+                "the expected current state."
+            )
     descriptor, temporary, temporary_identity = _open_temporary_file(target)
     published = False
     try:
@@ -560,6 +576,45 @@ def save_favorites_external_provenance(
     return target
 
 
+def save_favorites_external_provenance_if_current(
+    records: tuple[FavoritesExternalRecordState, ...],
+    path: str | Path,
+    *,
+    expected_current_records: tuple[FavoritesExternalRecordState, ...] | None,
+    max_bytes: int = FAVORITES_EXTERNAL_PROVENANCE_DEFAULT_MAX_BYTES,
+    max_records: int = FAVORITES_EXTERNAL_PROVENANCE_DEFAULT_MAX_RECORDS,
+    max_fields_per_record: int = FAVORITES_EXTERNAL_PROVENANCE_DEFAULT_MAX_FIELDS_PER_RECORD,
+) -> Path:
+    """Durably publish provenance only when exact current canonical state matches."""
+
+    target = _require_state_path(path)
+    content = serialize_favorites_external_provenance(
+        records,
+        max_bytes=max_bytes,
+        max_records=max_records,
+        max_fields_per_record=max_fields_per_record,
+    )
+    expected_content = (
+        None
+        if expected_current_records is None
+        else serialize_favorites_external_provenance(
+            expected_current_records,
+            max_bytes=max_bytes,
+            max_records=max_records,
+            max_fields_per_record=max_fields_per_record,
+        )
+    )
+    _require_private_directory(target.parent, create=True)
+    with _publication_lock(target.parent):
+        _publish_content(
+            target,
+            content,
+            max_bytes=max_bytes,
+            expected_current_content=expected_content,
+        )
+    return target
+
+
 def load_favorites_external_provenance(
     path: str | Path,
     snapshot: FavoritesStorageSnapshot,
@@ -612,4 +667,5 @@ __all__ = [
     "FavoritesExternalProvenanceStorageError",
     "load_favorites_external_provenance",
     "save_favorites_external_provenance",
+    "save_favorites_external_provenance_if_current",
 ]

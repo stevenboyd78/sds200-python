@@ -31,6 +31,7 @@ from sds200 import (
     load_favorites_external_provenance,
     resolve_configuration_paths,
     save_favorites_external_provenance,
+    save_favorites_external_provenance_if_current,
     select_favorites_record_target,
     serialize_favorites_external_provenance,
 )
@@ -147,6 +148,94 @@ def test_save_replaces_exact_existing_state_under_publication_lock(tmp_path: Pat
 
     assert load_favorites_external_provenance(path, snapshot) == (second,)
     assert path.read_bytes() == serialize_favorites_external_provenance((second,))
+
+
+def test_conditional_save_distinguishes_absent_and_exact_state(
+    tmp_path: Path,
+) -> None:
+    snapshot = _snapshot()
+    path = _state_path(tmp_path)
+    first = _linked_state(snapshot, revision="accepted-r1")
+    second = _linked_state(snapshot, revision="accepted-r2")
+
+    save_favorites_external_provenance_if_current(
+        (first,),
+        path,
+        expected_current_records=None,
+    )
+    assert load_favorites_external_provenance(path, snapshot) == (first,)
+
+    save_favorites_external_provenance_if_current(
+        (second,),
+        path,
+        expected_current_records=(first,),
+    )
+    assert load_favorites_external_provenance(path, snapshot) == (second,)
+
+    with pytest.raises(
+        FavoritesExternalProvenanceStorageError,
+        match="does not match the expected current state",
+    ):
+        save_favorites_external_provenance_if_current(
+            (),
+            path,
+            expected_current_records=None,
+        )
+
+    assert load_favorites_external_provenance(path, snapshot) == (second,)
+
+
+def test_conditional_save_rejects_stale_expected_state_without_replacement(
+    tmp_path: Path,
+) -> None:
+    snapshot = _snapshot()
+    path = _state_path(tmp_path)
+    first = _linked_state(snapshot, revision="accepted-r1")
+    current = _linked_state(snapshot, revision="accepted-r2")
+    proposed = _linked_state(snapshot, revision="accepted-r3")
+
+    save_favorites_external_provenance((current,), path)
+    before = path.read_bytes()
+
+    with pytest.raises(
+        FavoritesExternalProvenanceStorageError,
+        match="does not match the expected current state",
+    ):
+        save_favorites_external_provenance_if_current(
+            (proposed,),
+            path,
+            expected_current_records=(first,),
+        )
+
+    assert path.read_bytes() == before
+    assert load_favorites_external_provenance(path, snapshot) == (current,)
+
+
+def test_conditional_save_treats_present_empty_as_distinct_from_absent(
+    tmp_path: Path,
+) -> None:
+    snapshot = _snapshot()
+    path = _state_path(tmp_path)
+    state = _linked_state(snapshot)
+
+    save_favorites_external_provenance((), path)
+
+    with pytest.raises(
+        FavoritesExternalProvenanceStorageError,
+        match="does not match the expected current state",
+    ):
+        save_favorites_external_provenance_if_current(
+            (state,),
+            path,
+            expected_current_records=None,
+        )
+
+    save_favorites_external_provenance_if_current(
+        (state,),
+        path,
+        expected_current_records=(),
+    )
+    assert load_favorites_external_provenance(path, snapshot) == (state,)
 
 
 @pytest.mark.parametrize("path", ["relative.json", ""])
@@ -385,6 +474,7 @@ def test_storage_public_api_is_exported() -> None:
         "FavoritesExternalProvenanceStorageError",
         "load_favorites_external_provenance",
         "save_favorites_external_provenance",
+        "save_favorites_external_provenance_if_current",
     }
     assert expected <= set(sds200.__all__)
     for name in expected:

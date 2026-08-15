@@ -379,10 +379,17 @@ from .favorites_external_provenance import (
     deserialize_favorites_external_provenance,
     serialize_favorites_external_provenance,
 )
+from .favorites_external_provenance_acceptance import (
+    FavoritesExternalNameAcceptanceDurableResult,
+    FavoritesExternalNameAcceptancePersistenceError,
+    FavoritesExternalNameAcceptanceProvenanceError,
+    execute_favorites_external_name_acceptance_durably,
+)
 from .favorites_external_provenance_storage import (
     FavoritesExternalProvenanceStorageError,
     load_favorites_external_provenance,
     save_favorites_external_provenance,
+    save_favorites_external_provenance_if_current,
 )
 from .favorites_file import (
     FavoritesFileParseError,
@@ -1065,9 +1072,12 @@ __all__ = [
     "FavoritesExternalFieldState",
     "FavoritesExternalImportError",
     "FavoritesExternalImportPreview",
+    "FavoritesExternalNameAcceptanceDurableResult",
     "FavoritesExternalNameAcceptanceExecutionResult",
     "FavoritesExternalNameAcceptanceExecutor",
+    "FavoritesExternalNameAcceptancePersistenceError",
     "FavoritesExternalNameAcceptancePlan",
+    "FavoritesExternalNameAcceptanceProvenanceError",
     "FavoritesExternalObservationEvidence",
     "FavoritesExternalRecordIdentity",
     "FavoritesExternalRecordObservation",
@@ -1396,6 +1406,7 @@ __all__ = [
     "parse_rtp_transport",
     "parse_sdp_audio",
     "execute_favorites_external_name_acceptance",
+    "execute_favorites_external_name_acceptance_durably",
     "plan_favorites_external_name_acceptance",
     "plan_favorites_write",
     "execute_favorites_copied_tree_write",
@@ -1406,6 +1417,7 @@ __all__ = [
     "present_scanner_info",
     "preview_daemon_destination_replacement",
     "save_favorites_external_provenance",
+    "save_favorites_external_provenance_if_current",
     "serialize_favorites_external_provenance",
     "start_audio_encoder_process",
     "profile_from_discovery",

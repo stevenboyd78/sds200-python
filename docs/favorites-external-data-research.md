@@ -245,6 +245,68 @@ arbitrary-field acceptance, provider-to-SDS mapping, record creation/removal,
 renderer workflows, live RadioReference transport, MyRR, and automatic
 synchronization remain deferred.
 
+## Milestone 23.14 durable name-acceptance provenance completion boundary
+
+Milestone 23.14 closes the durability gap left after Milestone 23.11 verified a
+name-acceptance write and Milestone 23.13 made provenance itself explicitly
+durable. The existing storage-neutral name-acceptance executor remains the
+authority for mutation and exact post-write `FavoritesStorageSnapshot`
+verification; the new composition layer does not duplicate copied-tree, USB,
+backup, recovery, or activation behavior.
+
+Each name-acceptance plan now retains both the exact baseline
+`FavoritesExternalRecordState` and the exact provider observation used to derive
+its preview. Public plan construction must reproduce that exact preview from the
+retained baseline state and observation and must also reproduce the exact
+name-acceptance provenance transformation: only the bound name field advances to
+the retained observed value, the local target advances to the write plan's exact
+intended target, and record observation evidence advances to the retained
+observation. Historical provenance that does not affect preview classification
+is still protected separately by the durable completion preflight, which
+requires the complete persisted tuple to contain the exact retained baseline
+state exactly once before any Favorites mutation occurs.
+
+Durable completion explicitly loads and rebinds the whole persisted provenance
+document against the write plan's exact baseline snapshot. It preserves tuple
+ordering, replaces only the exact matched baseline record in place with the
+planned intended state, canonicalizes the complete intended document, and
+rebinds that document against the exact intended Favorites snapshot before
+calling the existing executor. Missing persisted provenance, stale historical
+provenance, duplicate/missing exact baseline matches, serialization failures, or
+intended-snapshot rebinding failures therefore refuse execution before storage
+mutation.
+
+Milestone 23.14 also adds expected-current publication to the Milestone 23.13
+filesystem boundary. The conditional save API distinguishes an expected absent
+file from an expected present empty document and compares the caller's canonical
+expected complete document with the exact current file while holding the
+existing publication lock. The ordinary target revalidation later in publication
+still detects changes during the replace window. This prevents cooperating
+writers from silently overwriting a provenance document that changed after the
+durable-completion preflight.
+
+After the Favorites executor returns, durable completion independently rereads
+storage through the existing Milestone 23.11 boundary and requires exact equality
+with the intended snapshot. Only then may it conditionally publish the complete
+updated provenance tuple. The immutable durable result retains both the complete
+baseline tuple and complete published tuple and proves that the latter is exactly
+the former with one in-place accepted-state replacement.
+
+Favorites storage mutation and provenance publication are intentionally not
+presented as one cross-resource atomic transaction. A concurrent provenance
+change or filesystem failure can still occur after the Favorites mutation has
+been independently verified. In that case the composition raises a distinct
+post-write persistence error, does not overwrite the changed provenance, does
+not claim durable completion, and does not attempt a generic speculative rollback
+of the verified Favorites write. The older provenance will normally fail closed
+against the changed Favorites bytes on a later fresh-snapshot rebind.
+
+Loading and completion remain explicit caller-driven operations. This milestone
+does not add application or daemon startup restoration, global lifecycle
+ownership, cleanup/migration policy, arbitrary-field acceptance, provider-to-SDS
+mapping, record creation/removal acceptance, renderer workflows, live
+RadioReference transport, MyRR, or automatic synchronization.
+
 ## Detach semantics
 
 Detaching an externally sourced record or field should preserve its current

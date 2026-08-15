@@ -11,36 +11,42 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 23.13 — External Favorites provenance filesystem durability and explicit loading foundation
+### Milestone 23.14 — External Favorites durable name-acceptance provenance completion foundation
 
-- Begin from the fully merged Milestone 23.12 foundation at
-  `7775b26e019e03e5c9df0a08f34472140a19b824`.
-- Add one deterministic external-provenance state-file path below the existing
-  XDG-backed `ConfigurationPaths.user_state_dir`; path resolution itself remains
-  side-effect free.
-- Add explicit save/load composition around the existing Milestone 23.12
-  serializer/deserializer rather than introducing a second provenance format or
-  parser.
-- Publish provenance through a private host-state boundary with canonical
-  current-user-owned directories, a process-safe publication lock, exclusive
-  no-follow `0600` temporary files, exact temporary readback, file `fsync`,
-  guarded atomic replacement, parent-directory `fsync`, and exact published
-  readback.
-- Read only bounded stable current-user-owned regular files through no-follow
-  descriptors and pass the exact bytes to the existing canonical codec for fresh
-  snapshot rebinding.
-- Preserve the semantic distinction between an absent state file and a present
-  canonical document containing zero external provenance records.
-- Fail closed on unsafe paths, symbolic links, non-private ownership or modes,
-  conflicting cooperating publication, unstable files, publication targets
-  observed stale before replacement, partial writes, failed synchronization,
-  or codec/rebinding rejection. Filesystem
-  failures must use stable diagnostics that do not echo persisted payloads or
-  secret-bearing operating-system details.
-- Keep cleanup/migration policy, automatic application or daemon startup restore,
-  lifecycle ownership, arbitrary-field acceptance, provider-to-SDS mapping,
+- Begin from the fully merged Milestone 23.13 foundation at
+  `3b38b72129cfda65961b584f1103ec715e6ef401`.
+- Retain the exact baseline provenance state and exact provider observation in
+  each explicit name-acceptance plan, require that they reproduce the stored
+  source-neutral preview, and require the intended provenance to equal the exact
+  name-acceptance transformation before execution.
+- Add expected-current provenance publication over the existing Milestone 23.13
+  durable filesystem boundary. Conditional saves compare the caller's canonical
+  expected complete document with the exact current file while holding the
+  existing publication lock, while preserving the distinct absent-versus-empty
+  state semantics.
+- Add one source-neutral durable-completion composition layer that explicitly
+  loads and rebinds the complete persisted provenance tuple against the exact
+  write-plan baseline snapshot, requires the retained baseline state exactly
+  once, preserves tuple order, and prevalidates the one-record intended
+  replacement against the exact intended Favorites snapshot before mutation.
+- Reuse the existing Milestone 23.11 name-acceptance executor and exact
+  post-write snapshot verification. Advance persisted provenance only after the
+  Favorites write is independently verified, and publish only if the previously
+  loaded complete provenance document is still current.
+- Return immutable durable-completion evidence only after both verified Favorites
+  mutation and conditional provenance publication succeed. If publication fails
+  after verified storage mutation, report that partial completion distinctly and
+  do not claim durable success or overwrite concurrently changed provenance.
+- Treat Favorites mutation and provenance publication as two independently
+  durable resources rather than pretending they form one atomic transaction.
+  Cooperative concurrent provenance changes must fail closed instead of becoming
+  lost updates; no generic speculative rollback of a verified Favorites write is
+  introduced.
+- Keep loading and durable completion explicit and caller-driven. Automatic
+  application/daemon startup restoration, global lifecycle ownership,
+  cleanup/migration policy, arbitrary-field acceptance, provider-to-SDS mapping,
   record creation/removal acceptance, renderer workflows, live RadioReference
-  transport, MyRR, and automatic synchronization outside this milestone.
+  transport, MyRR, and automatic synchronization remain outside this milestone.
 - Use only synthetic provider values, temporary host directories, and existing
   local Favorites fixtures in automated tests; no physical scanner, USB device,
   FTP target, provider account, or network access is required.
@@ -310,6 +316,11 @@ begins.
   target locators with source-record SHA-256 evidence, strict bounded JSON,
   stable redacted errors, and fail-closed moved/changed/ambiguous target
   rejection without choosing a filesystem owner.
+- Milestone 23.13 completed provenance filesystem durability and explicit
+  loading: one deterministic XDG-backed state path, private current-user-owned
+  publication, advisory coordination, exclusive no-follow temporary files,
+  exact readback and synchronization, guarded atomic replacement, and explicit
+  fresh-snapshot loading with absent-versus-empty semantics.
 - Add RadioReference-assisted import with update previews.
 - Preserve provenance and field ownership for externally sourced data.
 - Support merge decisions and detaching local records from an external source.
