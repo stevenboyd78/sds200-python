@@ -522,6 +522,7 @@ def test_failed_reconnect_preserves_active_psi_interval(
 
     assert radio.psi_interval_ms == 500
     assert transport.writes == ["PSI,500", "PSI,0"]
+    monkeypatch.setattr(radio, "start_scanner_info_push", start_scanner_info_push)
 
     def respond() -> None:
         while transport.writes.count("PSI,500") < 2:
