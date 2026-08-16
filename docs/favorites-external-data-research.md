@@ -484,6 +484,46 @@ credentials, arbitrary-field acceptance, mapping expansion, record
 creation/removal, MyRR, and automatic or background synchronization remain
 deferred.
 
+## Milestone 23.20 assisted-refresh detach planning boundary
+
+Milestone 23.20 adds the pure planning half of the detach semantics already
+modeled by `detach_favorites_external_field()` and
+`detach_favorites_external_record()`. A detach is an ownership decision about
+provenance, not a scanner-value edit: the exact local Favorites target and all
+source bytes remain unchanged, so no `FavoritesWritePlan` belongs in this
+boundary.
+
+The planner consumes one exact preview already retained by a Milestone 23.16
+refresh result and resolves exactly one lifecycle provenance record by both local
+target and external identity. It performs no second provider read and no
+lifecycle snapshot call. Unbound provider additions, foreign selections,
+ambiguous provenance, and substituted construction evidence fail closed.
+
+Field detach requires one explicitly named bound field that is still externally
+owned. The existing field detach helper remains authoritative for changing only
+that field to detached ownership while preserving its last external observation.
+Locally owned and already detached fields are rejected as non-actions rather than
+being reported as successful plans. Record detach requires one linked record that
+is not already record-detached and delegates to the existing record helper,
+which preserves local fields and historical external identity/evidence while
+marking all remaining externally owned fields detached.
+
+Detachment does not require a current provider value change. A caller may
+explicitly detach an unchanged externally owned field, or detach a still-linked
+record that is absent from the current observation set, because the decision is
+about future ownership rather than acceptance of provider bytes. The immutable
+plan retains the exact refresh result, selected preview, baseline provenance,
+detach scope, optional field name, and exact intended detached state so later
+durable composition can revalidate the same evidence.
+
+This slice stops before durable provenance publication or lifecycle adoption.
+Conditional publication should reuse the existing canonical expected-current
+filesystem boundary rather than introduce a second provenance writer. Favorites
+storage mutation, provider rereads, arbitrary-field acceptance, mapping
+expansion, creation/removal, renderer or daemon wiring, live RadioReference
+transport and credentials, MyRR, and automatic/background synchronization remain
+deferred.
+
 ## Detach semantics
 
 Detaching an externally sourced record or field should preserve its current

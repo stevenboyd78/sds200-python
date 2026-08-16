@@ -405,6 +405,11 @@ from .favorites_external_refresh_acceptance import (
     FavoritesExternalRefreshNameAcceptancePlan,
     plan_favorites_external_refresh_name_acceptance,
 )
+from .favorites_external_refresh_detach import (
+    FavoritesExternalRefreshDetachPlan,
+    FavoritesExternalRefreshDetachScope,
+    plan_favorites_external_refresh_detach,
+)
 from .favorites_external_refresh_orchestration import (
     FavoritesExternalRefreshNameAcceptanceResult,
     execute_favorites_external_refresh_name_acceptance,
@@ -1102,6 +1107,8 @@ __all__ = [
     "FavoritesExternalRecordObservationState",
     "FavoritesExternalRecordPreview",
     "FavoritesExternalRecordState",
+    "FavoritesExternalRefreshDetachPlan",
+    "FavoritesExternalRefreshDetachScope",
     "FavoritesExternalRefreshResult",
     "FavoritesExternalRefreshNameAcceptancePlan",
     "FavoritesExternalRefreshNameAcceptanceResult",
@@ -1435,6 +1442,7 @@ __all__ = [
     "execute_favorites_external_name_acceptance_durably",
     "execute_favorites_external_refresh_name_acceptance",
     "plan_favorites_external_name_acceptance",
+    "plan_favorites_external_refresh_detach",
     "plan_favorites_external_refresh_name_acceptance",
     "plan_favorites_write",
     "execute_favorites_copied_tree_write",
