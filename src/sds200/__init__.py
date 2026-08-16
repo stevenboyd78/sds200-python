@@ -370,7 +370,10 @@ from .favorites_external import (
     preview_favorites_external_source,
 )
 from .favorites_external_field_acceptance import (
+    FavoritesExternalFieldAcceptanceExecutionResult,
+    FavoritesExternalFieldAcceptanceExecutor,
     FavoritesExternalFieldAcceptancePlan,
+    execute_favorites_external_field_acceptance,
     plan_favorites_external_field_acceptance,
 )
 from .favorites_external_mapping import (
@@ -1105,6 +1108,8 @@ __all__ = [
     "FavoritesConventionalDepartment",
     "FavoritesConventionalSystem",
     "FavoritesExternalChangeKind",
+    "FavoritesExternalFieldAcceptanceExecutionResult",
+    "FavoritesExternalFieldAcceptanceExecutor",
     "FavoritesExternalFieldAcceptancePlan",
     "FavoritesExternalFieldBinding",
     "FavoritesExternalFieldMapping",
@@ -1465,6 +1470,7 @@ __all__ = [
     "parse_favorites_file",
     "parse_rtp_transport",
     "parse_sdp_audio",
+    "execute_favorites_external_field_acceptance",
     "execute_favorites_external_name_acceptance",
     "execute_favorites_external_name_acceptance_durably",
     "execute_favorites_external_refresh_detach",

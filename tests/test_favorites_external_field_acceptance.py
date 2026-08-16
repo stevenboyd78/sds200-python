@@ -10,6 +10,8 @@ import sds200
 from sds200 import (
     FavoritesExternalAcceptanceError,
     FavoritesExternalChangeKind,
+    FavoritesExternalFieldAcceptanceExecutionResult,
+    FavoritesExternalFieldAcceptanceExecutor,
     FavoritesExternalFieldAcceptancePlan,
     FavoritesExternalFieldMapping,
     FavoritesExternalFieldObservation,
@@ -23,6 +25,8 @@ from sds200 import (
     FavoritesExternalSourceIdentity,
     FavoritesStorageDocument,
     FavoritesStorageSnapshot,
+    FavoritesWritePlan,
+    execute_favorites_external_field_acceptance,
     plan_favorites_external_field_acceptance,
     radioreference_favorites_frequency_mapping,
     select_favorites_record_target,
@@ -158,6 +162,24 @@ def _bound_frequency_state(
             else None
         ),
     )
+
+
+class _StorageSource:
+    def __init__(
+        self,
+        result: object,
+        *,
+        error: Exception | None = None,
+    ) -> None:
+        self.result = result
+        self.error = error
+        self.calls = 0
+
+    def read_snapshot(self) -> object:
+        self.calls += 1
+        if self.error is not None:
+            raise self.error
+        return self.result
 
 
 def test_plan_accepts_unbound_mapped_frequency_and_changes_only_field_four() -> None:
@@ -740,15 +762,310 @@ def test_radioreference_frequency_mapping_composes_into_field_acceptance() -> No
     )
 
 
+def test_execute_field_acceptance_uses_exact_write_plan_and_verifies_readback() -> None:
+    snapshot = _snapshot()
+    record = _record(snapshot=snapshot)
+    mapping = _mapping(target=record.target)
+    plan = plan_favorites_external_field_acceptance(
+        snapshot,
+        record,
+        mapping,
+    )
+    backend_evidence = object()
+    executed: list[FavoritesWritePlan] = []
+
+    def executor(write_plan: FavoritesWritePlan) -> object:
+        executed.append(write_plan)
+        return backend_evidence
+
+    source = _StorageSource(plan.write_plan.intended_snapshot)
+
+    result = execute_favorites_external_field_acceptance(
+        plan,
+        executor,
+        source,  # type: ignore[arg-type]
+    )
+
+    assert executed == [plan.write_plan]
+    assert source.calls == 1
+    assert result.plan is plan
+    assert result.execution_result is backend_evidence
+    assert result.observed_snapshot is plan.write_plan.intended_snapshot
+    assert result.accepted_state is plan.intended_state
+
+
+def test_execute_field_acceptance_preserves_noop_provenance_acceptance() -> None:
+    snapshot = _snapshot()
+    record = _record(snapshot=snapshot)
+    observation = _observation(frequency="155000000")
+    mapping = _mapping(
+        target=record.target,
+        observation=observation,
+    )
+    plan = plan_favorites_external_field_acceptance(
+        snapshot,
+        record,
+        mapping,
+    )
+    executed: list[FavoritesWritePlan] = []
+
+    def executor(write_plan: FavoritesWritePlan) -> str:
+        executed.append(write_plan)
+        return "noop"
+
+    source = _StorageSource(snapshot)
+
+    result = execute_favorites_external_field_acceptance(
+        plan,
+        executor,
+        source,  # type: ignore[arg-type]
+    )
+
+    assert plan.write_plan.is_noop
+    assert executed == [plan.write_plan]
+    assert source.calls == 1
+    assert result.observed_snapshot is snapshot
+    assert result.accepted_state is plan.intended_state
+    assert result.accepted_state.fields[-1].last_external is mapping.field
+    assert result.accepted_state.last_observation is observation.evidence
+
+
+def test_execute_field_acceptance_propagates_executor_failure_without_readback() -> None:
+    snapshot = _snapshot()
+    record = _record(snapshot=snapshot)
+    plan = plan_favorites_external_field_acceptance(
+        snapshot,
+        record,
+        _mapping(target=record.target),
+    )
+    source = _StorageSource(plan.write_plan.intended_snapshot)
+
+    class BackendError(RuntimeError):
+        pass
+
+    def executor(write_plan: FavoritesWritePlan) -> object:
+        assert write_plan is plan.write_plan
+        raise BackendError("backend failed")
+
+    with pytest.raises(BackendError, match="backend failed"):
+        execute_favorites_external_field_acceptance(
+            plan,
+            executor,
+            source,  # type: ignore[arg-type]
+        )
+
+    assert source.calls == 0
+
+
+def test_execute_field_acceptance_redacts_storage_read_failure() -> None:
+    snapshot = _snapshot()
+    record = _record(snapshot=snapshot)
+    plan = plan_favorites_external_field_acceptance(
+        snapshot,
+        record,
+        _mapping(target=record.target),
+    )
+    secret = "provider-secret-value"
+    source = _StorageSource(
+        plan.write_plan.intended_snapshot,
+        error=RuntimeError(secret),
+    )
+
+    with pytest.raises(
+        FavoritesExternalAcceptanceError,
+        match="could not verify the post-write storage snapshot",
+    ) as captured:
+        execute_favorites_external_field_acceptance(
+            plan,
+            lambda _: object(),
+            source,  # type: ignore[arg-type]
+        )
+
+    assert secret not in str(captured.value)
+    assert source.calls == 1
+
+
+def test_execute_field_acceptance_rejects_invalid_storage_evidence() -> None:
+    snapshot = _snapshot()
+    record = _record(snapshot=snapshot)
+    plan = plan_favorites_external_field_acceptance(
+        snapshot,
+        record,
+        _mapping(target=record.target),
+    )
+    source = _StorageSource(object())
+
+    with pytest.raises(
+        FavoritesExternalAcceptanceError,
+        match="invalid post-write storage evidence",
+    ):
+        execute_favorites_external_field_acceptance(
+            plan,
+            lambda _: object(),
+            source,  # type: ignore[arg-type]
+        )
+
+    assert source.calls == 1
+
+
+def test_execute_field_acceptance_rejects_post_write_snapshot_mismatch() -> None:
+    snapshot = _snapshot()
+    record = _record(snapshot=snapshot)
+    plan = plan_favorites_external_field_acceptance(
+        snapshot,
+        record,
+        _mapping(target=record.target),
+    )
+    assert plan.write_plan.intended_snapshot != snapshot
+    source = _StorageSource(snapshot)
+
+    with pytest.raises(
+        FavoritesExternalAcceptanceError,
+        match="does not exactly match the intended snapshot",
+    ):
+        execute_favorites_external_field_acceptance(
+            plan,
+            lambda _: object(),
+            source,  # type: ignore[arg-type]
+        )
+
+    assert source.calls == 1
+
+
+def test_execute_field_acceptance_validates_public_argument_boundaries() -> None:
+    snapshot = _snapshot()
+    record = _record(snapshot=snapshot)
+    plan = plan_favorites_external_field_acceptance(
+        snapshot,
+        record,
+        _mapping(target=record.target),
+    )
+    source = _StorageSource(plan.write_plan.intended_snapshot)
+
+    with pytest.raises(TypeError, match="FavoritesExternalFieldAcceptancePlan"):
+        execute_favorites_external_field_acceptance(
+            object(),  # type: ignore[arg-type]
+            lambda _: object(),
+            source,  # type: ignore[arg-type]
+        )
+
+    with pytest.raises(TypeError, match="executor must be callable"):
+        execute_favorites_external_field_acceptance(
+            plan,
+            object(),  # type: ignore[arg-type]
+            source,  # type: ignore[arg-type]
+        )
+
+    with pytest.raises(TypeError, match="read_snapshot"):
+        execute_favorites_external_field_acceptance(
+            plan,
+            lambda _: object(),
+            object(),  # type: ignore[arg-type]
+        )
+
+
+def test_execution_result_is_frozen_slot_backed_and_validates_evidence() -> None:
+    snapshot = _snapshot()
+    record = _record(snapshot=snapshot)
+    plan = plan_favorites_external_field_acceptance(
+        snapshot,
+        record,
+        _mapping(target=record.target),
+    )
+    result = FavoritesExternalFieldAcceptanceExecutionResult(
+        plan=plan,
+        execution_result=object(),
+        observed_snapshot=plan.write_plan.intended_snapshot,
+        accepted_state=plan.intended_state,
+    )
+
+    assert not hasattr(result, "__dict__")
+    with pytest.raises(FrozenInstanceError):
+        result.accepted_state = record  # type: ignore[misc]
+
+    with pytest.raises(ValueError, match="observed snapshot"):
+        replace(
+            result,
+            observed_snapshot=snapshot,
+        )
+    with pytest.raises(ValueError, match="accepted state"):
+        replace(
+            result,
+            accepted_state=record,
+        )
+
+
+def test_radioreference_frequency_mapping_composes_through_execution() -> None:
+    snapshot = _snapshot()
+    target = _target(snapshot)
+    source_identity = FavoritesExternalSourceIdentity(
+        provider="radioreference",
+        dataset="synthetic-county",
+    )
+    observation = FavoritesExternalRecordObservation(
+        identity=FavoritesExternalRecordIdentity(
+            source=source_identity,
+            record_id="frequency-101",
+        ),
+        evidence=_evidence(16),
+        fields=(
+            _field("name", "Dispatch"),
+            _field("frequency", "155100000"),
+        ),
+    )
+    record = FavoritesExternalRecordState(
+        target=target,
+        fields=(),
+        external_identity=observation.identity,
+        last_observation=_evidence(15),
+    )
+    mapping = radioreference_favorites_frequency_mapping(
+        target,
+        observation,
+    )
+    plan = plan_favorites_external_field_acceptance(
+        snapshot,
+        record,
+        mapping,
+    )
+    source = _StorageSource(plan.write_plan.intended_snapshot)
+
+    result = execute_favorites_external_field_acceptance(
+        plan,
+        lambda write_plan: write_plan,
+        source,  # type: ignore[arg-type]
+    )
+
+    assert result.plan.mapping is mapping
+    assert result.execution_result is plan.write_plan
+    assert result.accepted_state.target.record.fields[4] == "155100000"
+    assert result.accepted_state.fields[-1].last_external is mapping.field
+
+
 def test_field_acceptance_symbols_are_package_exports() -> None:
+    assert (
+        sds200.FavoritesExternalFieldAcceptanceExecutionResult
+        is FavoritesExternalFieldAcceptanceExecutionResult
+    )
+    assert (
+        sds200.FavoritesExternalFieldAcceptanceExecutor
+        is FavoritesExternalFieldAcceptanceExecutor
+    )
     assert (
         sds200.FavoritesExternalFieldAcceptancePlan
         is FavoritesExternalFieldAcceptancePlan
     )
     assert (
+        sds200.execute_favorites_external_field_acceptance
+        is execute_favorites_external_field_acceptance
+    )
+    assert (
         sds200.plan_favorites_external_field_acceptance
         is plan_favorites_external_field_acceptance
     )
+    assert "FavoritesExternalFieldAcceptanceExecutionResult" in sds200.__all__
+    assert "FavoritesExternalFieldAcceptanceExecutor" in sds200.__all__
     assert "FavoritesExternalFieldAcceptancePlan" in sds200.__all__
+    assert "execute_favorites_external_field_acceptance" in sds200.__all__
     assert "plan_favorites_external_field_acceptance" in sds200.__all__
     assert not hasattr(sds200, "_replace_favorites_record_field")

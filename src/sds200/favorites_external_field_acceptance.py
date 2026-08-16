@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from typing import Protocol
 
 from .favorites_editing import (
     FavoritesRecordEditError,
@@ -21,7 +22,7 @@ from .favorites_external import (
     preview_favorites_external_import,
 )
 from .favorites_external_mapping import FavoritesExternalFieldMapping
-from .favorites_storage import FavoritesStorageSnapshot
+from .favorites_storage import FavoritesStorageSnapshot, FavoritesStorageSource
 from .favorites_write_plan import FavoritesWritePlan, plan_favorites_write
 
 
@@ -86,6 +87,55 @@ class FavoritesExternalFieldAcceptancePlan:
             raise ValueError(
                 "External Favorites field acceptance intended provenance does "
                 "not match the exact mapped-field transformation."
+            )
+
+
+class FavoritesExternalFieldAcceptanceExecutor(Protocol):
+    """Execute one already-validated mapped-field acceptance write plan."""
+
+    def __call__(
+        self,
+        plan: FavoritesWritePlan,
+        /,
+    ) -> object:
+        """Execute the exact plan and return backend-specific evidence."""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class FavoritesExternalFieldAcceptanceExecutionResult:
+    """Verified completion of one mapped-field acceptance execution."""
+
+    plan: FavoritesExternalFieldAcceptancePlan
+    execution_result: object
+    observed_snapshot: FavoritesStorageSnapshot
+    accepted_state: FavoritesExternalRecordState
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.plan, FavoritesExternalFieldAcceptancePlan):
+            raise TypeError(
+                "External Favorites field acceptance execution plan must be "
+                "FavoritesExternalFieldAcceptancePlan."
+            )
+        if not isinstance(self.observed_snapshot, FavoritesStorageSnapshot):
+            raise TypeError(
+                "External Favorites field acceptance observed snapshot must be "
+                "FavoritesStorageSnapshot."
+            )
+        if not isinstance(self.accepted_state, FavoritesExternalRecordState):
+            raise TypeError(
+                "External Favorites field acceptance accepted state must be "
+                "FavoritesExternalRecordState."
+            )
+        if self.observed_snapshot != self.plan.write_plan.intended_snapshot:
+            raise ValueError(
+                "External Favorites field acceptance observed snapshot must "
+                "match the exact intended snapshot."
+            )
+        if self.accepted_state != self.plan.intended_state:
+            raise ValueError(
+                "External Favorites field acceptance accepted state must "
+                "match the planned intended provenance."
             )
 
 
@@ -387,7 +437,63 @@ def plan_favorites_external_field_acceptance(
     )
 
 
+def execute_favorites_external_field_acceptance(
+    plan: FavoritesExternalFieldAcceptancePlan,
+    executor: FavoritesExternalFieldAcceptanceExecutor,
+    storage_source: FavoritesStorageSource,
+) -> FavoritesExternalFieldAcceptanceExecutionResult:
+    """Execute and independently verify one planned mapped-field acceptance."""
+
+    if not isinstance(plan, FavoritesExternalFieldAcceptancePlan):
+        raise TypeError(
+            "External Favorites field acceptance execution requires "
+            "FavoritesExternalFieldAcceptancePlan."
+        )
+    if not callable(executor):
+        raise TypeError(
+            "External Favorites field acceptance executor must be callable."
+        )
+
+    reader = getattr(storage_source, "read_snapshot", None)
+    if not callable(reader):
+        raise TypeError(
+            "External Favorites field acceptance storage source must provide "
+            "read_snapshot()."
+        )
+
+    execution_result = executor(plan.write_plan)
+
+    try:
+        observed_snapshot = reader()
+    except Exception:
+        raise FavoritesExternalAcceptanceError(
+            "External Favorites field acceptance execution could not verify "
+            "the post-write storage snapshot."
+        ) from None
+
+    if not isinstance(observed_snapshot, FavoritesStorageSnapshot):
+        raise FavoritesExternalAcceptanceError(
+            "External Favorites field acceptance execution returned invalid "
+            "post-write storage evidence."
+        )
+    if observed_snapshot != plan.write_plan.intended_snapshot:
+        raise FavoritesExternalAcceptanceError(
+            "External Favorites field acceptance post-write storage does not "
+            "exactly match the intended snapshot."
+        )
+
+    return FavoritesExternalFieldAcceptanceExecutionResult(
+        plan=plan,
+        execution_result=execution_result,
+        observed_snapshot=observed_snapshot,
+        accepted_state=plan.intended_state,
+    )
+
+
 __all__ = [
+    "FavoritesExternalFieldAcceptanceExecutionResult",
+    "FavoritesExternalFieldAcceptanceExecutor",
     "FavoritesExternalFieldAcceptancePlan",
+    "execute_favorites_external_field_acceptance",
     "plan_favorites_external_field_acceptance",
 ]
