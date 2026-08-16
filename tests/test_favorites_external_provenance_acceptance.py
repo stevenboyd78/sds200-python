@@ -332,6 +332,63 @@ def test_durable_name_acceptance_reports_post_write_provenance_race_without_over
     assert path.read_bytes() == serialize_favorites_external_provenance((raced,))
 
 
+def test_durable_name_acceptance_exact_complete_baseline_guard_precedes_execution(
+    tmp_path: Path,
+) -> None:
+    snapshot, state, updated = _inputs()
+    plan = plan_favorites_external_name_acceptance(snapshot, state, updated)
+    other = _other_state(snapshot)
+    path = _path(tmp_path)
+    save_favorites_external_provenance((other, state), path)
+    source = _StaticStorageSource(plan.write_plan.intended_snapshot)
+    calls: list[object] = []
+
+    with pytest.raises(
+        FavoritesExternalNameAcceptanceProvenanceError,
+        match="exact expected baseline collection",
+    ):
+        execute_favorites_external_name_acceptance_durably(
+            plan,
+            lambda write_plan: calls.append(write_plan),
+            source,
+            path,
+            expected_baseline_provenance_records=(state,),
+        )
+
+    assert calls == []
+    assert source.read_count == 0
+    assert load_favorites_external_provenance(path, snapshot) == (other, state)
+
+
+@pytest.mark.parametrize(
+    "expected",
+    [
+        [],
+        (object(),),
+    ],
+)
+def test_durable_name_acceptance_exact_complete_baseline_guard_requires_types(
+    tmp_path: Path,
+    expected: object,
+) -> None:
+    snapshot, state, updated = _inputs()
+    plan = plan_favorites_external_name_acceptance(snapshot, state, updated)
+    path = _path(tmp_path)
+    save_favorites_external_provenance((state,), path)
+    source = _StaticStorageSource(plan.write_plan.intended_snapshot)
+
+    with pytest.raises(TypeError, match="expected baseline provenance"):
+        execute_favorites_external_name_acceptance_durably(
+            plan,
+            lambda _: object(),
+            source,
+            path,
+            expected_baseline_provenance_records=expected,  # type: ignore[arg-type]
+        )
+
+    assert source.read_count == 0
+
+
 def test_durable_name_acceptance_result_rejects_inconsistent_collection_transition(
     tmp_path: Path,
 ) -> None:

@@ -405,6 +405,10 @@ from .favorites_external_refresh_acceptance import (
     FavoritesExternalRefreshNameAcceptancePlan,
     plan_favorites_external_refresh_name_acceptance,
 )
+from .favorites_external_refresh_orchestration import (
+    FavoritesExternalRefreshNameAcceptanceResult,
+    execute_favorites_external_refresh_name_acceptance,
+)
 from .favorites_file import (
     FavoritesFileParseError,
     FavoritesSourceFile,
@@ -1100,6 +1104,7 @@ __all__ = [
     "FavoritesExternalRecordState",
     "FavoritesExternalRefreshResult",
     "FavoritesExternalRefreshNameAcceptancePlan",
+    "FavoritesExternalRefreshNameAcceptanceResult",
     "FavoritesExternalRefreshSession",
     "FavoritesExternalSource",
     "FavoritesExternalSourceIdentity",
@@ -1428,6 +1433,7 @@ __all__ = [
     "parse_sdp_audio",
     "execute_favorites_external_name_acceptance",
     "execute_favorites_external_name_acceptance_durably",
+    "execute_favorites_external_refresh_name_acceptance",
     "plan_favorites_external_name_acceptance",
     "plan_favorites_external_refresh_name_acceptance",
     "plan_favorites_write",

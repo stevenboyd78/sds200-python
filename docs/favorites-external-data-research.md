@@ -438,6 +438,52 @@ later orchestration slice. Live provider transport and credentials, renderer or
 daemon wiring, arbitrary-field acceptance, mapping expansion, creation/removal,
 MyRR, and automatic or background synchronization remain deferred.
 
+## Milestone 23.19 assisted-refresh name-acceptance orchestration boundary
+
+Milestone 23.19 composes the exact Milestone 23.17 selection evidence through
+the existing durable acceptance and lifecycle-advancement owners. The public
+orchestration accepts one `FavoritesExternalRefreshNameAcceptancePlan`, the
+active `FavoritesExternalProvenanceLifecycle` that owns the selected refresh
+baseline, and one existing name-acceptance executor. It does not perform another
+provider read and does not re-plan the selected preview.
+
+The selected refresh can become stale after planning but before execution. A
+plain caller-side `snapshot()` check followed by durable execution is therefore
+insufficient: another lifecycle transition could occur between those operations.
+The lifecycle owns the orchestration critical section and holds its existing
+reentrant lock across baseline validation, durable execution and publication,
+and Milestone 23.18 advancement. Before any durable work begins, the current
+complete lifecycle snapshot must exactly equal the snapshot retained by the
+selected refresh, and the selected name plan must use that same Favorites
+baseline snapshot.
+
+Durable completion also accepts an optional exact complete baseline-provenance
+expectation. The ordinary Milestone 23.14 API remains backward compatible when
+that expectation is omitted. Assisted-refresh orchestration supplies the
+lifecycle's retained tuple; after fresh persisted provenance is loaded and
+rebound against the plan baseline, the whole tuple must equal that expectation
+before the Favorites executor is invoked. This closes the gap where the
+selected record could still exist exactly once while unrelated persisted
+provenance had already diverged from the lifecycle collection.
+
+Once those pre-write guards pass, scanner mutation, exact post-write readback,
+intended complete-provenance construction, expected-current conditional
+publication, and post-write persistence-race behavior remain owned by the
+existing durable acceptance layer. The lifecycle then adopts that exact durable
+result using the Milestone 23.18 advancement checks while the same reentrant
+lifecycle lock is still held. A successful orchestration result retains the
+exact selection/plan evidence, durable result, and advanced active lifecycle
+snapshot.
+
+If durable completion fails before verified mutation, lifecycle evidence remains
+unchanged. If verified Favorites mutation is followed by a provenance
+publication race or filesystem failure, the existing distinct persistence error
+still propagates and orchestration does not claim lifecycle advancement or
+speculative rollback. Renderer/daemon construction, live provider transport and
+credentials, arbitrary-field acceptance, mapping expansion, record
+creation/removal, MyRR, and automatic or background synchronization remain
+deferred.
+
 ## Detach semantics
 
 Detaching an externally sourced record or field should preserve its current
