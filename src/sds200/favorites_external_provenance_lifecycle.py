@@ -6,6 +6,7 @@ import threading
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .favorites_external import (
     FavoritesExternalNameAcceptanceExecutor,
@@ -25,6 +26,12 @@ from .favorites_external_provenance_storage import (
     load_favorites_external_provenance,
 )
 from .favorites_storage import FavoritesStorageSnapshot, FavoritesStorageSource
+
+if TYPE_CHECKING:
+    from .favorites_external_provenance_detach import (
+        FavoritesExternalRefreshDetachDurableResult,
+    )
+    from .favorites_external_refresh_detach import FavoritesExternalRefreshDetachPlan
 
 
 class FavoritesExternalProvenanceLifecycleState(StrEnum):
@@ -222,6 +229,9 @@ class FavoritesExternalProvenanceLifecycle:
         self._last_adopted_name_acceptance_result: (
             FavoritesExternalNameAcceptanceDurableResult | None
         ) = None
+        self._last_adopted_refresh_detach_result: (
+            FavoritesExternalRefreshDetachDurableResult | None
+        ) = None
 
     def snapshot(self) -> FavoritesExternalProvenanceLifecycleSnapshot:
         "Return immutable lifecycle and restoration evidence."
@@ -397,6 +407,128 @@ class FavoritesExternalProvenanceLifecycle:
             self._favorites_snapshot = result.execution.observed_snapshot
             self._provenance_records = result.provenance_records
             self._last_adopted_name_acceptance_result = result
+            return self._snapshot_locked()
+
+    def _execute_refresh_detach_durably_from_snapshot(
+        self,
+        expected_snapshot: FavoritesExternalProvenanceLifecycleSnapshot,
+        plan: FavoritesExternalRefreshDetachPlan,
+    ) -> tuple[
+        FavoritesExternalRefreshDetachDurableResult,
+        FavoritesExternalProvenanceLifecycleSnapshot,
+    ]:
+        """Publish one refresh detach and advance under one lifecycle lock."""
+
+        from .favorites_external_provenance_detach import (
+            execute_favorites_external_refresh_detach_durably,
+        )
+        from .favorites_external_refresh_detach import FavoritesExternalRefreshDetachPlan
+
+        if type(expected_snapshot) is not FavoritesExternalProvenanceLifecycleSnapshot:
+            raise TypeError(
+                "External Favorites lifecycle refresh detach requires an exact "
+                "FavoritesExternalProvenanceLifecycleSnapshot."
+            )
+        if type(plan) is not FavoritesExternalRefreshDetachPlan:
+            raise TypeError(
+                "External Favorites lifecycle refresh detach requires an exact "
+                "FavoritesExternalRefreshDetachPlan."
+            )
+
+        with self._lifecycle_lock:
+            if self._state is not FavoritesExternalProvenanceLifecycleState.ACTIVE:
+                raise RuntimeError(
+                    "External Favorites provenance lifecycle must be active "
+                    "to execute refresh detach."
+                )
+            current_snapshot = self._snapshot_locked()
+            if current_snapshot != expected_snapshot:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "External Favorites provenance lifecycle evidence does not match "
+                    "the selected refresh baseline."
+                )
+            if plan.refresh_result.lifecycle_snapshot != expected_snapshot:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "External Favorites refresh detach plan does not match "
+                    "the selected refresh baseline."
+                )
+            if expected_snapshot.provenance_path != self.provenance_path:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "External Favorites provenance lifecycle path does not match "
+                    "the selected refresh baseline."
+                )
+            if expected_snapshot.provenance_records is None:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "External Favorites provenance lifecycle requires persisted "
+                    "baseline records for refresh detach."
+                )
+
+            durable_result = execute_favorites_external_refresh_detach_durably(
+                plan,
+                self.provenance_path,
+                max_bytes=self.max_bytes,
+                max_records=self.max_records,
+                max_fields_per_record=self.max_fields_per_record,
+                expected_baseline_provenance_records=(
+                    expected_snapshot.provenance_records
+                ),
+            )
+            advanced_snapshot = self.advance_after_refresh_detach(durable_result)
+            return durable_result, advanced_snapshot
+
+    def advance_after_refresh_detach(
+        self,
+        result: FavoritesExternalRefreshDetachDurableResult,
+    ) -> FavoritesExternalProvenanceLifecycleSnapshot:
+        """Adopt one already-published provenance-only refresh detach."""
+
+        from .favorites_external_provenance_detach import (
+            FavoritesExternalRefreshDetachDurableResult,
+        )
+
+        if type(result) is not FavoritesExternalRefreshDetachDurableResult:
+            raise TypeError(
+                "External Favorites provenance lifecycle refresh detach "
+                "advancement requires FavoritesExternalRefreshDetachDurableResult."
+            )
+
+        with self._lifecycle_lock:
+            if self._state is not FavoritesExternalProvenanceLifecycleState.ACTIVE:
+                raise RuntimeError(
+                    "External Favorites provenance lifecycle must be active "
+                    "to advance after refresh detach."
+                )
+            if self.provenance_path != result.provenance_path:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "External Favorites provenance lifecycle path does not match "
+                    "the durable refresh detach."
+                )
+
+            refresh_snapshot = result.plan.refresh_result.lifecycle_snapshot
+            if self._last_adopted_refresh_detach_result is result:
+                if (
+                    self._favorites_snapshot == refresh_snapshot.favorites_snapshot
+                    and self._provenance_records == result.provenance_records
+                ):
+                    return self._snapshot_locked()
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "External Favorites provenance lifecycle no longer matches "
+                    "the durable refresh detach result."
+                )
+
+            if self._favorites_snapshot != refresh_snapshot.favorites_snapshot:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "External Favorites provenance lifecycle Favorites evidence "
+                    "does not match the refresh detach baseline."
+                )
+            if self._provenance_records != result.baseline_provenance_records:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "External Favorites provenance lifecycle records do not match "
+                    "the refresh detach baseline."
+                )
+
+            self._provenance_records = result.provenance_records
+            self._last_adopted_refresh_detach_result = result
             return self._snapshot_locked()
 
     def _snapshot_locked(self) -> FavoritesExternalProvenanceLifecycleSnapshot:
