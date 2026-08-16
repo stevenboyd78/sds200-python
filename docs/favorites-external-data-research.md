@@ -667,6 +667,48 @@ Home Assistant surfaces, implement MyRR, batch decisions, or add automatic,
 scheduled, polling, or background synchronization.
 
 
+## Milestone 23.24 arbitrary-field acceptance execution composition boundary
+
+Milestone 23.24 moves one already-validated mapped-field acceptance across the
+existing verified storage-execution seam without changing the mapping or planning
+contracts. The executor accepts an immutable `FavoritesExternalFieldAcceptancePlan`
+and passes only its ordinary `FavoritesWritePlan` to one injected backend
+executor. The mapped provider observation, selected source-field index,
+scanner-compatible representation, exact positional edit, preview classification,
+and intended provenance remain authoritative evidence from Milestone 23.23 and
+are not recomputed during execution.
+
+Backend success evidence is deliberately opaque. A successful executor return is
+necessary but not sufficient to claim that the mapped field is accepted. The
+composition performs exactly one independent read through an injected
+`FavoritesStorageSource` and requires the returned `FavoritesStorageSnapshot` to
+equal the plan's exact `intended_snapshot`. Only after that equality proof may
+the result expose the plan's `intended_state` as accepted in-memory provenance.
+
+The same rule applies to no-op acceptance. When Milestone 23.23 produced a no-op
+write plan because the scanner bytes already equal the represented provider
+value, execution still delegates that exact plan to the existing backend
+boundary and independently rereads storage. Exact equality then permits the
+planned external provenance binding or observation-evidence refresh without
+pretending that storage bytes were rewritten.
+
+Executor exceptions propagate without an acceptance result. A storage read
+failure is converted to the stable external-acceptance error boundary without
+echoing backend diagnostics, and a non-snapshot or mismatched snapshot fails
+closed even after an executor returned success. The composition does not attempt
+provider rereads, storage repair, speculative rollback, or backend-specific
+interpretation.
+
+Copied-tree and USB executors continue to own qualification, stale-baseline
+checks, operation locking, backup/staging, activation, exact backend verification,
+recovery, and durable operation evidence. This milestone adds no storage backend,
+public arbitrary-index editor, durable provenance publication, lifecycle
+advancement, assisted-refresh selection/orchestration, mapping expansion,
+transformed scanner representations, record creation/removal, live
+RadioReference transport or credentials, renderer/daemon/CLI/TUI/web/Home
+Assistant wiring, MyRR, batching, or automatic/background synchronization.
+
+
 ## Detach semantics
 
 Detaching an externally sourced record or field should preserve its current

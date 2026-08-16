@@ -11,41 +11,36 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 23.23 — External Favorites arbitrary-field acceptance planning foundation
+### Milestone 23.24 — External Favorites arbitrary-field acceptance execution composition
 
-- Begin from the exact fully merged Milestone 23.22 foundation at
-  `fa5d4c052b2c56527706bfac01b92fed7913810d`.
-- Add one source-neutral immutable mapped-field acceptance plan that consumes an
-  exact `FavoritesExternalFieldMapping` and retains the complete preview,
-  baseline provenance, intended provenance, and immutable `FavoritesWritePlan`.
-- Accept either one already externally owned mapped field or one previously
-  unbound mapped field, while requiring an exact linked non-detached baseline,
-  matching provider identity, exact snapshot target, collision-free source-field
-  index, and the mapping's exact observed field/value evidence.
-- Keep the first concrete path at the reviewed RadioReference conventional
-  `C-Freq` frequency mapping from Milestone 23.22. The planner must not redo
-  provider mapping, infer another field/index/value, or expose a public
-  arbitrary-index Favorites editor.
-- Change exactly the mapped source field when scanner bytes differ; preserve all
-  unrelated source bytes, positional fields, line endings, records, and
-  documents. When the mapped scanner value already equals the local source
-  field, retain a no-op `FavoritesWritePlan` while still planning the explicit
-  external provenance binding/evidence update.
-- Require the mapped scanner representation to equal the normalized observed
-  value for this foundation. More general provider-to-scanner representations
-  remain deferred until provenance and refresh comparison semantics can model
-  them without false changes.
-- Fail closed on unresolved conflicts or simultaneous changes/removals to another
-  already-bound field. Unbound provider fields may remain pending and must not
-  be accepted implicitly.
-- Keep execution, durable provenance publication, lifecycle advancement,
-  assisted-refresh selection/orchestration, mapping expansion, record
-  creation/removal, live RadioReference transport and credentials,
-  renderer/daemon/CLI/TUI/web/Home Assistant wiring, MyRR, batching, and
-  automatic/background synchronization deferred.
-- Use only synthetic observations and existing local Favorites fixtures in
-  automated tests; no physical scanner, USB device, FTP target, provider
-  account, or network access is required.
+- Begin from the exact fully merged Milestone 23.23 foundation at
+  `e1fcaf7158f8397bb757f92c9c3b315e810eb4df`.
+- Compose one already-validated `FavoritesExternalFieldAcceptancePlan` with an
+  injected storage-specific executor without redoing provider mapping, preview
+  classification, source-field selection, positional editing, or write planning.
+- Pass only the plan's ordinary immutable `FavoritesWritePlan` to the executor
+  and retain its return value as opaque backend-specific execution evidence.
+- Independently reread storage through one injected `FavoritesStorageSource`
+  after executor return and require exact equality with the write plan's
+  `intended_snapshot` before returning accepted in-memory provenance.
+- Preserve no-op acceptance semantics: an exact no-op write plan still flows
+  through the injected executor and independent readback so an already-equal
+  scanner value can gain or refresh external provenance without manufacturing a
+  storage-byte change.
+- Propagate executor failures without claiming acceptance. Redact storage
+  readback failures and fail closed on malformed or mismatched post-write
+  snapshots even when the backend returned success.
+- Keep copied-tree and USB qualification, locking, backup/staging, activation,
+  recovery, and durable operation evidence owned by their existing executors;
+  do not add another storage backend or a public arbitrary-index writer.
+- Keep durable provenance publication, lifecycle advancement, assisted-refresh
+  selection/orchestration, mapping expansion, transformed scanner
+  representations, record creation/removal, live RadioReference transport and
+  credentials, renderer/daemon/CLI/TUI/web/Home Assistant wiring, MyRR,
+  batching, and automatic/background synchronization deferred.
+- Use synthetic observations, existing local Favorites fixtures, and fake
+  executor/storage-source boundaries in automated tests; no physical scanner,
+  USB device, FTP target, provider account, or network access is required.
 
 ## Deferred hardware validation
 
@@ -351,6 +346,14 @@ begins.
   plans flow through complete persisted-provenance validation, conditional
   provenance publication, and lifecycle adoption under one critical section
   without changing Favorites bytes or rereading the provider.
+- Milestone 23.22 completed the first RadioReference-to-Favorites representability
+  seam: immutable source-neutral field mapping evidence plus one reviewed
+  conventional `C-Freq` whole-Hz frequency mapping with exact target, provider
+  identity, source-field index, and scanner-compatible value validation.
+- Milestone 23.23 completed source-neutral arbitrary-field acceptance planning:
+  exact mapping consumption, externally owned or previously unbound selected
+  fields, collision/conflict rejection, exact positional replacement or no-op
+  write planning, and intended in-memory provenance without execution.
 - Add RadioReference-assisted import with update previews.
 - Preserve provenance and field ownership for externally sourced data.
 - Support merge decisions and detaching local records from an external source.
