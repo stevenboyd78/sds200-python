@@ -478,6 +478,61 @@ def _record_with_name(
     )
 
 
+def _replace_favorites_record_field(
+    snapshot: FavoritesStorageSnapshot,
+    target: FavoritesRecordTarget,
+    field_index: int,
+    value: str,
+) -> FavoritesStorageSnapshot:
+    """Replace one exact positional field without exposing a public index editor."""
+
+    source = _require_current_target(
+        snapshot,
+        target,
+    )
+
+    if type(field_index) is not int or field_index < 0:
+        raise ValueError(
+            "Favorites record field index must be a non-negative integer."
+        )
+    if field_index >= len(target.record.fields):
+        raise FavoritesRecordEditError(
+            "Favorites record field index is outside the exact target record."
+        )
+    if type(value) is not str:
+        raise TypeError("Favorites record field value must be a string.")
+
+    try:
+        encoded_value = value.encode("ascii")
+    except UnicodeEncodeError:
+        raise FavoritesRecordEditError(
+            "Favorites record field value must contain only ASCII characters."
+        ) from None
+
+    if any(separator in encoded_value for separator in (b"\t", b"\r", b"\n")):
+        raise FavoritesRecordEditError(
+            "Favorites record field value must not contain a field or line separator."
+        )
+
+    parts = target.record.content.split(b"\t")
+    parts[field_index + 1] = encoded_value
+    replacement = FavoritesSourceRecord(
+        content=b"\t".join(parts),
+        line_ending=target.record.line_ending,
+    )
+
+    records = list(source.records)
+    records[target.source_index] = replacement
+
+    intended = _snapshot_with_source(
+        snapshot,
+        target,
+        FavoritesSourceFile(records=tuple(records)),
+    )
+    project_favorites_storage_snapshot(intended)
+    return intended
+
+
 def rename_favorites_record(
     snapshot: FavoritesStorageSnapshot,
     target: FavoritesRecordTarget,

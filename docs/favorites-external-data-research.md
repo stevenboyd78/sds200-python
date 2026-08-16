@@ -613,6 +613,60 @@ credentials, renderer/daemon/CLI/TUI/web/Home Assistant wiring, MyRR, and
 automatic/background synchronization remain deferred.
 
 
+## Milestone 23.23 arbitrary-field acceptance planning boundary
+
+Milestone 23.23 composes one exact source-neutral field mapping into an immutable
+acceptance plan. The mapping remains the represented provider-to-scanner field
+decision: acceptance does not reinterpret provider DTOs, choose another source
+field, normalize a second value, or infer a record relationship. The baseline
+must be one linked, non-detached provenance record whose exact target still
+exists in the supplied Favorites snapshot and equals the mapping target.
+
+The selected mapped field may already be externally owned at the same exact
+source-field index, or it may be absent from the baseline provenance. A
+previously unbound field must not collide with another normalized field already
+claiming that index. Local or detached ownership of the selected normalized
+field fails closed rather than silently changing ownership.
+
+The foundation accepts only mappings whose scanner-compatible representation is
+textually identical to the normalized observed provider value. This preserves
+the current provenance and refresh-preview invariant that an externally owned
+field's `last_external` value can be compared directly with its exact local
+source value. Provider mappings that require a different scanner representation
+remain deferred until that evidence model can distinguish normalized provider
+values from accepted scanner representations without reporting false refresh
+changes.
+
+Planning uses a package-private exact positional replacement primitive beneath
+the public acceptance seam. That primitive preserves the command, all unrelated
+positional fields, source-line ending, neighboring records, documents, and
+catalog bytes, and it is not exported as a general arbitrary-index editing API.
+The resulting snapshot is projected through the existing Favorites workspace
+boundary and then passed to the existing immutable `FavoritesWritePlan`
+planner.
+
+When the represented value differs, exactly the mapped source-field index may
+change. When the local source field already equals the represented value, the
+storage plan is deliberately a no-op while the acceptance plan still records
+the explicit provenance binding or evidence update. This permits an existing
+scanner-compatible value to become externally owned without manufacturing a
+byte rewrite.
+
+As with the existing name-acceptance foundation, unresolved record conflicts and
+simultaneous replacements/removals of another already-bound field block the
+one-field plan. Unbound provider fields may remain pending; they are not
+implicitly accepted. Intended provenance changes only the selected field's
+external evidence (or appends its new external binding) and the record's latest
+accepted observation evidence, while preserving unrelated field provenance.
+
+This milestone is planning-only. It does not execute a `FavoritesWritePlan`,
+publish provenance, advance lifecycle state, compose assisted-refresh selection,
+add another RadioReference-to-SDS field mapping, create or remove records, read
+live RadioReference transport or credentials, wire renderer/daemon/CLI/TUI/web/
+Home Assistant surfaces, implement MyRR, batch decisions, or add automatic,
+scheduled, polling, or background synchronization.
+
+
 ## Detach semantics
 
 Detaching an externally sourced record or field should preserve its current
