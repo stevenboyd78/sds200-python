@@ -3,22 +3,58 @@ from __future__ import annotations
 from dataclasses import FrozenInstanceError, replace
 from datetime import UTC, datetime
 from decimal import Decimal, localcontext
+from pathlib import Path
 
 import pytest
 
 import sds200
 from sds200 import (
+    FavoritesExternalFieldMapping,
+    FavoritesExternalFieldMappingError,
+    FavoritesExternalFieldObservation,
     FavoritesExternalFieldObservationState,
+    FavoritesExternalObservationEvidence,
+    FavoritesExternalRecordIdentity,
+    FavoritesExternalRecordObservation,
     FavoritesExternalRecordObservationState,
     FavoritesExternalSourceIdentity,
+    FavoritesStorageDocument,
+    FavoritesStorageSnapshot,
     RadioReferenceFrequency,
     RadioReferenceTag,
     RadioReferenceTalkgroup,
     RadioReferenceWsdlOperation,
+    radioreference_favorites_frequency_mapping,
     radioreference_frequency_observation,
     radioreference_soap_result_observations,
     radioreference_talkgroup_observation,
+    select_favorites_record_target,
 )
+
+_FIXTURE_ROOT = Path(__file__).parent / "fixtures" / "favorites"
+
+
+def _favorites_snapshot() -> FavoritesStorageSnapshot:
+    return FavoritesStorageSnapshot(
+        catalog_bytes=(_FIXTURE_ROOT / "synthetic-f_list.cfg").read_bytes(),
+        documents=(
+            FavoritesStorageDocument(
+                filename="f_000001.hpd",
+                content=(
+                    _FIXTURE_ROOT / "synthetic-favorites.hpd"
+                ).read_bytes(),
+            ),
+        ),
+    )
+
+
+def _conventional_channel_target():
+    return select_favorites_record_target(
+        _favorites_snapshot(),
+        5,
+        document_index=0,
+    )
+
 
 
 def _frequency(
@@ -265,6 +301,360 @@ def test_frequency_observation_is_immutable() -> None:
 
     with pytest.raises(FrozenInstanceError):
         observation.fields = ()  # type: ignore[misc]
+
+
+
+
+def test_rr_frequency_maps_to_exact_c_freq_frequency_field() -> None:
+    target = _conventional_channel_target()
+    observation = radioreference_frequency_observation(
+        _frequency(output_frequency=Decimal("155.1000")),
+        source=_source(),
+        observed_at=datetime(2026, 8, 16, tzinfo=UTC),
+    )
+
+    mapping = radioreference_favorites_frequency_mapping(
+        target,
+        observation,
+    )
+
+    assert isinstance(mapping, FavoritesExternalFieldMapping)
+    assert mapping.target is target
+    assert mapping.observation is observation
+    assert mapping.field is observation.fields[1]
+    assert mapping.field.name == "frequency"
+    assert mapping.field_index == 4
+    assert mapping.scanner_value == "155100000"
+    assert target.record.command == "C-Freq"
+    assert target.record.fields[4] == "155000000"
+
+
+def test_rr_frequency_mapping_accepts_already_equal_local_value() -> None:
+    target = _conventional_channel_target()
+    observation = radioreference_frequency_observation(
+        _frequency(output_frequency=Decimal("155.0000")),
+        source=_source(),
+        observed_at=datetime(2026, 8, 16, tzinfo=UTC),
+    )
+
+    mapping = radioreference_favorites_frequency_mapping(
+        target,
+        observation,
+    )
+
+    assert mapping.scanner_value == target.record.fields[4]
+
+
+def test_rr_frequency_mapping_requires_hpd_c_freq_target() -> None:
+    snapshot = _favorites_snapshot()
+    observation = radioreference_frequency_observation(
+        _frequency(),
+        source=_source(),
+        observed_at=datetime(2026, 8, 16, tzinfo=UTC),
+    )
+    catalog_target = select_favorites_record_target(snapshot, 2)
+    group_target = select_favorites_record_target(
+        snapshot,
+        4,
+        document_index=0,
+    )
+
+    with pytest.raises(
+        FavoritesExternalFieldMappingError,
+        match="requires an HPD target",
+    ):
+        radioreference_favorites_frequency_mapping(
+            catalog_target,
+            observation,
+        )
+
+    with pytest.raises(
+        FavoritesExternalFieldMappingError,
+        match="requires a C-Freq target",
+    ):
+        radioreference_favorites_frequency_mapping(
+            group_target,
+            observation,
+        )
+
+
+def test_rr_frequency_mapping_requires_radioreference_source() -> None:
+    observation = radioreference_frequency_observation(
+        _frequency(),
+        source=_source(),
+        observed_at=datetime(2026, 8, 16, tzinfo=UTC),
+    )
+    other_source = FavoritesExternalSourceIdentity(
+        provider="other-provider",
+        dataset=observation.identity.source.dataset,
+    )
+    substituted = replace(
+        observation,
+        identity=replace(
+            observation.identity,
+            source=other_source,
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="source provider must be radioreference",
+    ):
+        radioreference_favorites_frequency_mapping(
+            _conventional_channel_target(),
+            substituted,
+        )
+
+
+def test_rr_frequency_mapping_requires_conventional_frequency_identity() -> None:
+    observation = FavoritesExternalRecordObservation(
+        identity=FavoritesExternalRecordIdentity(
+            source=_source(),
+            record_id="talkgroup-200",
+        ),
+        evidence=FavoritesExternalObservationEvidence(
+            observed_at=datetime(2026, 8, 16, tzinfo=UTC),
+        ),
+        fields=(
+            FavoritesExternalFieldObservation(
+                name="frequency",
+                state=FavoritesExternalFieldObservationState.VALUE,
+                value="155100000",
+            ),
+        ),
+    )
+
+    with pytest.raises(
+        FavoritesExternalFieldMappingError,
+        match="requires a reviewed conventional frequency observation",
+    ):
+        radioreference_favorites_frequency_mapping(
+            _conventional_channel_target(),
+            observation,
+        )
+
+
+@pytest.mark.parametrize(
+    "record_id",
+    (
+        "frequency-0",
+        "frequency-101",
+        "frequency--1",
+        "frequency--2147483648",
+        "frequency-2147483647",
+    ),
+)
+def test_rr_frequency_mapping_accepts_reviewed_frequency_identity_shape(
+    record_id: str,
+) -> None:
+    observation = FavoritesExternalRecordObservation(
+        identity=FavoritesExternalRecordIdentity(
+            source=_source(),
+            record_id=record_id,
+        ),
+        evidence=FavoritesExternalObservationEvidence(
+            observed_at=datetime(2026, 8, 16, tzinfo=UTC),
+        ),
+        fields=(
+            FavoritesExternalFieldObservation(
+                name="frequency",
+                state=FavoritesExternalFieldObservationState.VALUE,
+                value="155100000",
+            ),
+        ),
+    )
+
+    mapping = radioreference_favorites_frequency_mapping(
+        _conventional_channel_target(),
+        observation,
+    )
+
+    assert mapping.observation is observation
+
+
+@pytest.mark.parametrize(
+    "record_id",
+    (
+        "frequency--0",
+        "frequency-01",
+        "frequency--01",
+        "frequency-2147483648",
+        "frequency--2147483649",
+        "frequency-999999999999",
+        "frequency--999999999999",
+    ),
+)
+def test_rr_frequency_mapping_rejects_impossible_frequency_identity(
+    record_id: str,
+) -> None:
+    observation = FavoritesExternalRecordObservation(
+        identity=FavoritesExternalRecordIdentity(
+            source=_source(),
+            record_id=record_id,
+        ),
+        evidence=FavoritesExternalObservationEvidence(
+            observed_at=datetime(2026, 8, 16, tzinfo=UTC),
+        ),
+        fields=(
+            FavoritesExternalFieldObservation(
+                name="frequency",
+                state=FavoritesExternalFieldObservationState.VALUE,
+                value="155100000",
+            ),
+        ),
+    )
+
+    with pytest.raises(
+        FavoritesExternalFieldMappingError,
+        match="requires a reviewed conventional frequency observation",
+    ):
+        radioreference_favorites_frequency_mapping(
+            _conventional_channel_target(),
+            observation,
+        )
+
+
+def test_rr_frequency_mapping_requires_active_observation() -> None:
+    active = radioreference_frequency_observation(
+        _frequency(),
+        source=_source(),
+        observed_at=datetime(2026, 8, 16, tzinfo=UTC),
+    )
+    removed = FavoritesExternalRecordObservation(
+        identity=active.identity,
+        evidence=active.evidence,
+        state=FavoritesExternalRecordObservationState.REMOVED,
+    )
+
+    with pytest.raises(
+        FavoritesExternalFieldMappingError,
+        match="requires an active observation",
+    ):
+        radioreference_favorites_frequency_mapping(
+            _conventional_channel_target(),
+            removed,
+        )
+
+
+def test_rr_frequency_mapping_requires_normalized_frequency_value() -> None:
+    missing = FavoritesExternalRecordObservation(
+        identity=FavoritesExternalRecordIdentity(
+            source=_source(),
+            record_id="frequency-101",
+        ),
+        evidence=FavoritesExternalObservationEvidence(
+            observed_at=datetime(2026, 8, 16, tzinfo=UTC),
+        ),
+        fields=(
+            FavoritesExternalFieldObservation(
+                name="name",
+                state=FavoritesExternalFieldObservationState.VALUE,
+                value="Dispatch",
+            ),
+        ),
+    )
+
+    with pytest.raises(
+        FavoritesExternalFieldMappingError,
+        match="requires the normalized frequency field",
+    ):
+        radioreference_favorites_frequency_mapping(
+            _conventional_channel_target(),
+            missing,
+        )
+
+    absent = FavoritesExternalRecordObservation(
+        identity=FavoritesExternalRecordIdentity(
+            source=_source(),
+            record_id="frequency-101",
+        ),
+        evidence=FavoritesExternalObservationEvidence(
+            observed_at=datetime(2026, 8, 16, tzinfo=UTC),
+        ),
+        fields=(
+            FavoritesExternalFieldObservation(
+                name="frequency",
+                state=FavoritesExternalFieldObservationState.ABSENT,
+            ),
+        ),
+    )
+    with pytest.raises(
+        FavoritesExternalFieldMappingError,
+        match="requires an observed frequency value",
+    ):
+        radioreference_favorites_frequency_mapping(
+            _conventional_channel_target(),
+            absent,
+        )
+
+
+@pytest.mark.parametrize(
+    "value",
+    (
+        "",
+        "0155100000",
+        "+155100000",
+        "155.1000",
+        "155100000 ",
+        " 155100000",
+    ),
+)
+def test_rr_frequency_mapping_rejects_noncanonical_whole_hz_text(
+    value: str,
+) -> None:
+    observation = FavoritesExternalRecordObservation(
+        identity=FavoritesExternalRecordIdentity(
+            source=_source(),
+            record_id="frequency-101",
+        ),
+        evidence=FavoritesExternalObservationEvidence(
+            observed_at=datetime(2026, 8, 16, tzinfo=UTC),
+        ),
+        fields=(
+            FavoritesExternalFieldObservation(
+                name="frequency",
+                state=FavoritesExternalFieldObservationState.VALUE,
+                value=value,
+            ),
+        ),
+    )
+
+    with pytest.raises(
+        FavoritesExternalFieldMappingError,
+        match="canonical whole-Hz decimal text",
+    ):
+        radioreference_favorites_frequency_mapping(
+            _conventional_channel_target(),
+            observation,
+        )
+
+
+def test_rr_frequency_mapping_rejects_wrong_argument_types() -> None:
+    observation = radioreference_frequency_observation(
+        _frequency(),
+        source=_source(),
+        observed_at=datetime(2026, 8, 16, tzinfo=UTC),
+    )
+
+    with pytest.raises(TypeError, match="FavoritesRecordTarget"):
+        radioreference_favorites_frequency_mapping(  # type: ignore[arg-type]
+            object(),
+            observation,
+        )
+
+    with pytest.raises(TypeError, match="FavoritesExternalRecordObservation"):
+        radioreference_favorites_frequency_mapping(  # type: ignore[arg-type]
+            _conventional_channel_target(),
+            object(),
+        )
+
+
+def test_rr_frequency_mapping_symbol_is_package_export() -> None:
+    assert (
+        sds200.radioreference_favorites_frequency_mapping
+        is radioreference_favorites_frequency_mapping
+    )
+    assert "radioreference_favorites_frequency_mapping" in sds200.__all__
 
 
 
