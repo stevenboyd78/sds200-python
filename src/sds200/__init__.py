@@ -369,6 +369,10 @@ from .favorites_external import (
     preview_favorites_external_import,
     preview_favorites_external_source,
 )
+from .favorites_external_field_acceptance import (
+    FavoritesExternalFieldAcceptancePlan,
+    plan_favorites_external_field_acceptance,
+)
 from .favorites_external_mapping import (
     FavoritesExternalFieldMapping,
     FavoritesExternalFieldMappingError,
@@ -1101,6 +1105,7 @@ __all__ = [
     "FavoritesConventionalDepartment",
     "FavoritesConventionalSystem",
     "FavoritesExternalChangeKind",
+    "FavoritesExternalFieldAcceptancePlan",
     "FavoritesExternalFieldBinding",
     "FavoritesExternalFieldMapping",
     "FavoritesExternalFieldMappingError",
@@ -1465,6 +1470,7 @@ __all__ = [
     "execute_favorites_external_refresh_detach",
     "execute_favorites_external_refresh_detach_durably",
     "execute_favorites_external_refresh_name_acceptance",
+    "plan_favorites_external_field_acceptance",
     "plan_favorites_external_name_acceptance",
     "plan_favorites_external_refresh_detach",
     "plan_favorites_external_refresh_name_acceptance",
