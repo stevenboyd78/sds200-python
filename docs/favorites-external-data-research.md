@@ -524,6 +524,57 @@ expansion, creation/removal, renderer or daemon wiring, live RadioReference
 transport and credentials, MyRR, and automatic/background synchronization remain
 deferred.
 
+## Milestone 23.21 assisted-refresh detach orchestration boundary
+
+Milestone 23.21 composes one exact Milestone 23.20 detach plan through durable
+provenance publication and lifecycle adoption. Detach remains provenance-only:
+the local Favorites target and source bytes are already proven unchanged by the
+planner, so orchestration does not create or execute a `FavoritesWritePlan` and
+does not reread Favorites storage or the provider.
+
+The selected refresh may become stale after planning. The lifecycle therefore
+owns the complete orchestration critical section under its existing reentrant
+lock. Before persistence, the current lifecycle snapshot must exactly equal the
+snapshot retained by the selected refresh, the plan must retain that same
+snapshot, the provenance path must match, and the lifecycle must contain a
+persisted baseline collection. A stale or foreign lifecycle fails before any
+publication attempt.
+
+Durable detach loading rebinds the complete current provenance document against
+the exact retained Favorites snapshot. Assisted-refresh orchestration supplies
+the lifecycle's complete retained provenance tuple as an exact expectation; the
+freshly loaded tuple must equal it before the planned record can be replaced.
+The exact baseline state must occur once, tuple order and unrelated records are
+preserved, and only that record is replaced by the plan's exact detached state.
+
+Before publication, the complete intended tuple is canonically serialized and
+rebound against the same unchanged Favorites snapshot. This makes same-snapshot
+rebinding an explicit proof that the detach altered ownership evidence rather
+than scanner-compatible bytes. Publication then reuses the existing
+expected-current conditional provenance writer, including its advisory locking,
+target revalidation, atomic replacement, synchronization, and exact readback.
+
+On successful publication, lifecycle advancement changes only the retained
+provenance tuple; the retained Favorites snapshot stays exactly the selected
+refresh baseline. Re-adopting the same durable result is idempotent, while stale
+baseline collections, foreign paths, and substituted result relationships fail
+closed. The immutable orchestration result retains the exact plan, durable
+baseline/result collections, publication path, and advanced active lifecycle
+snapshot.
+
+A conditional-publication race or filesystem error does not advance lifecycle
+evidence and does not trigger speculative rollback. As with the existing durable
+publication boundary, a low-level failure after an atomic replacement may leave
+the filesystem as the durable source of truth; a later explicit lifecycle
+restoration can re-establish in-memory evidence. Orchestration does not claim
+success unless publication returned successfully and lifecycle adoption
+completed.
+
+Batch merge decisions, arbitrary-field acceptance, provider-to-SDS mapping
+expansion, record creation/removal, live RadioReference transport and
+credentials, renderer/daemon/CLI/TUI/web/Home Assistant wiring, MyRR, and
+automatic, scheduled, polling, or background synchronization remain deferred.
+
 ## Detach semantics
 
 Detaching an externally sourced record or field should preserve its current

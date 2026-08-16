@@ -385,6 +385,12 @@ from .favorites_external_provenance_acceptance import (
     FavoritesExternalNameAcceptanceProvenanceError,
     execute_favorites_external_name_acceptance_durably,
 )
+from .favorites_external_provenance_detach import (
+    FavoritesExternalRefreshDetachDurableResult,
+    FavoritesExternalRefreshDetachPersistenceError,
+    FavoritesExternalRefreshDetachProvenanceError,
+    execute_favorites_external_refresh_detach_durably,
+)
 from .favorites_external_provenance_lifecycle import (
     FavoritesExternalProvenanceLifecycle,
     FavoritesExternalProvenanceLifecycleAdvanceError,
@@ -409,6 +415,10 @@ from .favorites_external_refresh_detach import (
     FavoritesExternalRefreshDetachPlan,
     FavoritesExternalRefreshDetachScope,
     plan_favorites_external_refresh_detach,
+)
+from .favorites_external_refresh_detach_orchestration import (
+    FavoritesExternalRefreshDetachResult,
+    execute_favorites_external_refresh_detach,
 )
 from .favorites_external_refresh_orchestration import (
     FavoritesExternalRefreshNameAcceptanceResult,
@@ -1107,7 +1117,11 @@ __all__ = [
     "FavoritesExternalRecordObservationState",
     "FavoritesExternalRecordPreview",
     "FavoritesExternalRecordState",
+    "FavoritesExternalRefreshDetachDurableResult",
+    "FavoritesExternalRefreshDetachPersistenceError",
     "FavoritesExternalRefreshDetachPlan",
+    "FavoritesExternalRefreshDetachProvenanceError",
+    "FavoritesExternalRefreshDetachResult",
     "FavoritesExternalRefreshDetachScope",
     "FavoritesExternalRefreshResult",
     "FavoritesExternalRefreshNameAcceptancePlan",
@@ -1440,6 +1454,8 @@ __all__ = [
     "parse_sdp_audio",
     "execute_favorites_external_name_acceptance",
     "execute_favorites_external_name_acceptance_durably",
+    "execute_favorites_external_refresh_detach",
+    "execute_favorites_external_refresh_detach_durably",
     "execute_favorites_external_refresh_name_acceptance",
     "plan_favorites_external_name_acceptance",
     "plan_favorites_external_refresh_detach",
