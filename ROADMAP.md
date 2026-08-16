@@ -11,40 +11,33 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 23.21 — External Favorites assisted-refresh detach orchestration foundation
+### Milestone 23.22 — RadioReference-to-Favorites field mapping foundation
 
-- Begin from the exact fully merged Milestone 23.20 foundation at
-  `7d275991510097990892b124bab19fbdfc671583`.
-- Compose one exact Milestone 23.20 detach plan through durable provenance
-  publication and lifecycle adoption without rereading the provider, replanning
-  the selection, mutating Favorites storage, or creating a `FavoritesWritePlan`.
-- Hold the existing lifecycle lock across exact selected-refresh baseline
-  validation, persisted complete-provenance validation, conditional publication,
-  and in-memory adoption so another lifecycle transition cannot split the
-  orchestration critical section.
-- Require the freshly loaded persisted provenance tuple to equal the lifecycle's
-  exact retained baseline collection and contain the plan's exact baseline state
-  once. Preserve tuple ordering and replace only that state with the exact
-  planned detached state.
-- Canonically serialize the complete intended provenance and rebind it against
-  the same retained Favorites snapshot before publication. Detach must therefore
-  prove that ownership changes require no scanner-compatible byte change and no
-  second Favorites storage read.
-- Reuse the existing expected-current provenance publication boundary. A
-  persistence race or filesystem failure must not advance lifecycle evidence or
-  trigger speculative rollback; successful publication is adopted by changing
-  only lifecycle provenance while keeping the exact Favorites snapshot active.
-- Return immutable evidence retaining the exact detach plan, durable complete
-  baseline/result tuples, provenance path, and advanced lifecycle snapshot.
-  Re-adoption of the same durable result is idempotent; stale, foreign, or mixed
-  evidence fails closed.
-- Keep batch merge decisions, arbitrary-field acceptance, provider-to-SDS mapping
-  expansion, record creation/removal, live RadioReference transport and
-  credentials, renderer/daemon/CLI/TUI/web/Home Assistant wiring, MyRR, and
-  automatic, scheduled, polling, or background synchronization deferred.
-- Use only synthetic provider values, temporary host directories, and existing
-  local Favorites fixtures in automated tests; no physical scanner, USB device,
-  FTP target, provider account, or network access is required.
+- Begin from the exact fully merged Milestone 23.21 foundation at
+  `d80fe80030a8b114040708a2c3ebd0220392e41e`.
+- Add one source-neutral immutable field-mapping evidence type that retains the
+  exact local target, complete external observation, selected observed field,
+  exact local source-field index, and scanner-compatible represented value.
+- Add the first reviewed RadioReference-to-SDS field mapping for conventional
+  `C-Freq` frequency only: normalized `frequency` maps to exact source field
+  index 4 and retains the observation's canonical whole-Hz decimal text without
+  conversion, rounding, padding, or inference.
+- Require an active RadioReference observation, an HPD `C-Freq` target, an
+  observed `frequency` value, canonical whole-Hz decimal text, and an in-range
+  exact target field. Unsupported, absent, noncanonical, foreign-provider, or
+  wrong-record evidence fails closed.
+- Keep representability separate from acceptance. Mapping may describe a value
+  different from the current local field and must not call
+  `bind_favorites_external_record`, create a `FavoritesWritePlan`, edit Favorites
+  bytes, publish provenance, or advance lifecycle state.
+- Keep RadioReference mode, tone, tags, description, encryption, color code,
+  talkgroup IDs, record creation/removal, arbitrary-field acceptance, batch
+  decisions, live RadioReference transport and credentials,
+  renderer/daemon/CLI/TUI/web/Home Assistant wiring, MyRR, and automatic,
+  scheduled, polling, or background synchronization deferred.
+- Use only synthetic provider values and existing local Favorites fixtures in
+  automated tests; no physical scanner, USB device, FTP target, provider account,
+  or network access is required.
 
 ## Deferred hardware validation
 
@@ -346,6 +339,10 @@ begins.
   whole-record detach decisions reuse existing ownership transformations, retain
   exact refresh/baseline evidence, preserve local Favorites bytes, and reject
   unbound, ambiguous, local, already-detached, or no-op selections.
+- Milestone 23.21 completed assisted-refresh detach orchestration: exact detach
+  plans flow through complete persisted-provenance validation, conditional
+  provenance publication, and lifecycle adoption under one critical section
+  without changing Favorites bytes or rereading the provider.
 - Add RadioReference-assisted import with update previews.
 - Preserve provenance and field ownership for externally sourced data.
 - Support merge decisions and detaching local records from an external source.

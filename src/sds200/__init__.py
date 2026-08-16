@@ -369,6 +369,10 @@ from .favorites_external import (
     preview_favorites_external_import,
     preview_favorites_external_source,
 )
+from .favorites_external_mapping import (
+    FavoritesExternalFieldMapping,
+    FavoritesExternalFieldMappingError,
+)
 from .favorites_external_provenance import (
     FAVORITES_EXTERNAL_PROVENANCE_DEFAULT_MAX_BYTES,
     FAVORITES_EXTERNAL_PROVENANCE_DEFAULT_MAX_FIELDS_PER_RECORD,
@@ -637,6 +641,7 @@ from .radioreference import (
     RadioReferenceSource,
 )
 from .radioreference_mapping import (
+    radioreference_favorites_frequency_mapping,
     radioreference_frequency_observation,
     radioreference_soap_result_observations,
     radioreference_talkgroup_observation,
@@ -1097,6 +1102,8 @@ __all__ = [
     "FavoritesConventionalSystem",
     "FavoritesExternalChangeKind",
     "FavoritesExternalFieldBinding",
+    "FavoritesExternalFieldMapping",
+    "FavoritesExternalFieldMappingError",
     "FavoritesExternalFieldObservation",
     "FavoritesExternalFieldObservationState",
     "FavoritesExternalAcceptanceError",
@@ -1268,6 +1275,7 @@ __all__ = [
     "RadioReferenceObservationSessionFactory",
     "RadioReferenceSoapExchange",
     "RadioReferenceSoapExchangeFactory",
+    "radioreference_favorites_frequency_mapping",
     "radioreference_frequency_observation",
     "radioreference_soap_result_observations",
     "radioreference_talkgroup_observation",

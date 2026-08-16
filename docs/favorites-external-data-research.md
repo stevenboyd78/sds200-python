@@ -575,6 +575,44 @@ expansion, record creation/removal, live RadioReference transport and
 credentials, renderer/daemon/CLI/TUI/web/Home Assistant wiring, MyRR, and
 automatic, scheduled, polling, or background synchronization remain deferred.
 
+## Milestone 23.22 RadioReference-to-Favorites field mapping boundary
+
+Milestone 23.22 introduces the first explicit representability seam between a
+normalized external observation and one exact scanner source field. The
+source-neutral immutable mapping evidence retains the exact local
+`FavoritesRecordTarget`, complete external record observation, one selected
+observed field, exact source-field index, and the scanner-compatible represented
+string. Construction validates only those structural relationships; it does not
+claim that a provider-specific conversion is authoritative.
+
+The first provider-specific mapping is deliberately narrow. A RadioReference
+conventional observation's normalized `frequency` field maps only to field index
+4 of an HPD `C-Freq` record. Milestones 23.6 and 23.7 already normalize reviewed
+RadioReference output frequencies to exact whole-Hz decimal text, rejecting
+fractional-Hz values rather than rounding. This mapping also requires the
+reviewed `frequency-<xsd:int>` external record-identity family produced by that
+observation mapper. It consumes the normalized frequency text unchanged and
+additionally requires canonical decimal spelling (`0` or a non-zero digit
+followed by digits). It does not reinterpret MHz, inspect an unreviewed
+RadioReference DTO field, or derive scanner bytes from neighboring Favorites
+records.
+
+Representability is intentionally not acceptance. The represented provider value
+may differ from the current local `C-Freq` frequency. This slice therefore does
+not call `bind_favorites_external_record`, whose external-ownership contract
+requires exact equality with an already-accepted local value, and it does not
+edit a source record or produce a `FavoritesWritePlan`. Existing source bytes,
+unknown fields, positional extensions, line endings, provenance, and lifecycle
+state remain untouched.
+
+RadioReference mode, tone, tags, description, encryption, color code, talkgroup
+IDs, and other scanner fields remain unreviewed for provider-to-SDS mapping.
+Arbitrary-field acceptance, record creation/removal, batch merge decisions,
+durable publication, lifecycle mutation, live RadioReference transport and
+credentials, renderer/daemon/CLI/TUI/web/Home Assistant wiring, MyRR, and
+automatic/background synchronization remain deferred.
+
+
 ## Detach semantics
 
 Detaching an externally sourced record or field should preserve its current
