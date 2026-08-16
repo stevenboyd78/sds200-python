@@ -11,32 +11,33 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 23.19 — External Favorites assisted-refresh name-acceptance orchestration foundation
+### Milestone 23.20 — External Favorites assisted-refresh detach planning foundation
 
-- Begin from the exact fully merged Milestone 23.18 foundation at
-  `851da2fb7d0849d0f3886ae45443eca0c6128fe7`.
-- Compose one exact Milestone 23.17 assisted-refresh name-acceptance plan through
-  the existing Milestone 23.14 durable execution/publication boundary and the
-  Milestone 23.18 lifecycle advancement boundary.
-- Keep the lifecycle lock across exact refresh-baseline preflight, durable
-  execution/publication, and in-memory advancement so another lifecycle
-  transition cannot make a selected refresh stale between validation and write.
-- Require the current active lifecycle snapshot to equal the exact snapshot
-  retained by the selected refresh before any durable work begins. Require the
-  complete persisted provenance tuple loaded by durable completion to equal the
-  lifecycle's retained baseline tuple before invoking the Favorites executor.
-- Continue delegating scanner mutation, exact post-write readback, conditional
-  provenance publication, and lifecycle advancement to their existing owners;
-  do not duplicate storage, editing, provenance, or recovery logic.
-- Return immutable evidence retaining the exact refresh acceptance plan, exact
-  durable result, and exact advanced lifecycle snapshot.
-- Preserve the existing post-write persistence-race boundary: if Favorites
-  mutation is verified but provenance publication fails, report that existing
-  durable-completion error and do not claim lifecycle advancement.
-- Keep arbitrary-field acceptance, provider-to-SDS mapping expansion, record
-  creation/removal, live provider transport and credentials, renderer/daemon/
-  CLI/TUI/web/Home Assistant wiring, MyRR, and automatic, scheduled, polling, or
-  background synchronization deferred.
+- Begin from the exact fully merged Milestone 23.19 foundation at
+  `78cffeb90c9aae7ba057d315d91da1ed4dd5a696`.
+- Compose one exact Milestone 23.16 assisted-refresh selection into an explicit
+  provenance-only detach plan without rereading the provider or lifecycle.
+- Support two explicit detach scopes: one bound externally owned field, or one
+  whole linked non-detached record. Delegate the ownership transformation to the
+  existing field and record detach helpers rather than duplicating detach
+  semantics.
+- Resolve the exact linked baseline provenance record from the selected refresh
+  evidence. Reject unbound selections, ambiguous or substituted relationships,
+  locally owned or already detached field no-ops, and already detached records.
+- Preserve the exact local Favorites target and source bytes. Detach changes
+  provenance ownership only, so this milestone must not create a
+  `FavoritesWritePlan`, scanner mutation, storage write, or post-write readback.
+- Return immutable evidence retaining the exact refresh result, selected preview,
+  baseline state, detach scope, optional field name, and exact intended detached
+  provenance state. Permit an explicit detach decision even when a linked
+  provider selection is currently unchanged or absent from the current provider
+  observation set.
+- Keep durable conditional provenance publication, lifecycle adoption after a
+  persisted detach, batch merge decisions, arbitrary-field acceptance,
+  provider-to-SDS mapping expansion, record creation/removal, live provider
+  transport and credentials, renderer/daemon/CLI/TUI/web/Home Assistant wiring,
+  MyRR, and automatic, scheduled, polling, or background synchronization
+  deferred.
 - Use only synthetic provider values, temporary host directories, and existing
   local Favorites fixtures in automated tests; no physical scanner, USB device,
   FTP target, provider account, or network access is required.
