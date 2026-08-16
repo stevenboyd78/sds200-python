@@ -129,6 +129,9 @@ def execute_favorites_external_name_acceptance_durably(
     max_fields_per_record: int = (
         FAVORITES_EXTERNAL_PROVENANCE_DEFAULT_MAX_FIELDS_PER_RECORD
     ),
+    expected_baseline_provenance_records: (
+        tuple[FavoritesExternalRecordState, ...] | None
+    ) = None,
 ) -> FavoritesExternalNameAcceptanceDurableResult:
     """Execute, verify, and durably complete one planned name acceptance."""
 
@@ -136,6 +139,22 @@ def execute_favorites_external_name_acceptance_durably(
         raise TypeError(
             "Durable external Favorites name acceptance requires "
             "FavoritesExternalNameAcceptancePlan."
+        )
+    if (
+        expected_baseline_provenance_records is not None
+        and type(expected_baseline_provenance_records) is not tuple
+    ):
+        raise TypeError(
+            "Durable external Favorites expected baseline provenance records "
+            "must be an immutable tuple or None."
+        )
+    if expected_baseline_provenance_records is not None and any(
+        not isinstance(record, FavoritesExternalRecordState)
+        for record in expected_baseline_provenance_records
+    ):
+        raise TypeError(
+            "Durable external Favorites expected baseline provenance must contain "
+            "only FavoritesExternalRecordState values."
         )
 
     current_records = load_favorites_external_provenance(
@@ -148,6 +167,14 @@ def execute_favorites_external_name_acceptance_durably(
     if current_records is None:
         raise FavoritesExternalNameAcceptanceProvenanceError(
             "External Favorites name acceptance requires existing persisted provenance."
+        )
+    if (
+        expected_baseline_provenance_records is not None
+        and current_records != expected_baseline_provenance_records
+    ):
+        raise FavoritesExternalNameAcceptanceProvenanceError(
+            "External Favorites name acceptance persisted provenance does not "
+            "match the exact expected baseline collection."
         )
 
     intended_records = _replace_exact_baseline(current_records, plan)

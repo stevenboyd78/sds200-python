@@ -11,25 +11,28 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 23.18 — External Favorites post-acceptance lifecycle advancement foundation
+### Milestone 23.19 — External Favorites assisted-refresh name-acceptance orchestration foundation
 
-- Begin from the exact fully merged Milestone 23.17 foundation at
-  `062e2fa8b020696311004461fa2e42ec0fb78565`.
-- Add one explicit lifecycle operation that adopts an already-successful
-  `FavoritesExternalNameAcceptanceDurableResult` under the existing lifecycle
-  lock.
-- Require an active lifecycle plus exact provenance path, baseline Favorites
-  snapshot, and complete baseline provenance collection evidence. Preserve
-  absent `None` versus present-empty `()` semantics and fail closed without
-  changing retained evidence.
-- Atomically replace only the active lifecycle's in-memory Favorites snapshot
-  and provenance records with the durable result's verified observed snapshot
-  and published records. Permit exact same-result reapplication only when all
-  resulting evidence is already retained.
-- Perform no Favorites or provenance storage read, provider read, file write,
-  Favorites write, or provenance publication during advancement.
-- Defer composition of the Milestone 23.17 selection through durable execution
-  and lifecycle advancement to the next slice.
+- Begin from the exact fully merged Milestone 23.18 foundation at
+  `851da2fb7d0849d0f3886ae45443eca0c6128fe7`.
+- Compose one exact Milestone 23.17 assisted-refresh name-acceptance plan through
+  the existing Milestone 23.14 durable execution/publication boundary and the
+  Milestone 23.18 lifecycle advancement boundary.
+- Keep the lifecycle lock across exact refresh-baseline preflight, durable
+  execution/publication, and in-memory advancement so another lifecycle
+  transition cannot make a selected refresh stale between validation and write.
+- Require the current active lifecycle snapshot to equal the exact snapshot
+  retained by the selected refresh before any durable work begins. Require the
+  complete persisted provenance tuple loaded by durable completion to equal the
+  lifecycle's retained baseline tuple before invoking the Favorites executor.
+- Continue delegating scanner mutation, exact post-write readback, conditional
+  provenance publication, and lifecycle advancement to their existing owners;
+  do not duplicate storage, editing, provenance, or recovery logic.
+- Return immutable evidence retaining the exact refresh acceptance plan, exact
+  durable result, and exact advanced lifecycle snapshot.
+- Preserve the existing post-write persistence-race boundary: if Favorites
+  mutation is verified but provenance publication fails, report that existing
+  durable-completion error and do not claim lifecycle advancement.
 - Keep arbitrary-field acceptance, provider-to-SDS mapping expansion, record
   creation/removal, live provider transport and credentials, renderer/daemon/
   CLI/TUI/web/Home Assistant wiring, MyRR, and automatic, scheduled, polling, or
@@ -37,7 +40,6 @@ and ideas that are not ready for scheduling are recorded in
 - Use only synthetic provider values, temporary host directories, and existing
   local Favorites fixtures in automated tests; no physical scanner, USB device,
   FTP target, provider account, or network access is required.
-
 
 ## Deferred hardware validation
 

@@ -7,7 +7,11 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from .favorites_external import FavoritesExternalRecordState
+from .favorites_external import (
+    FavoritesExternalNameAcceptanceExecutor,
+    FavoritesExternalNameAcceptancePlan,
+    FavoritesExternalRecordState,
+)
 from .favorites_external_provenance import (
     FAVORITES_EXTERNAL_PROVENANCE_DEFAULT_MAX_BYTES,
     FAVORITES_EXTERNAL_PROVENANCE_DEFAULT_MAX_FIELDS_PER_RECORD,
@@ -15,6 +19,7 @@ from .favorites_external_provenance import (
 )
 from .favorites_external_provenance_acceptance import (
     FavoritesExternalNameAcceptanceDurableResult,
+    execute_favorites_external_name_acceptance_durably,
 )
 from .favorites_external_provenance_storage import (
     load_favorites_external_provenance,
@@ -275,6 +280,78 @@ class FavoritesExternalProvenanceLifecycle:
             if self._state is FavoritesExternalProvenanceLifecycleState.CLOSED:
                 return
             self._state = FavoritesExternalProvenanceLifecycleState.CLOSED
+
+    def _execute_name_acceptance_durably_from_snapshot(
+        self,
+        expected_snapshot: FavoritesExternalProvenanceLifecycleSnapshot,
+        plan: FavoritesExternalNameAcceptancePlan,
+        executor: FavoritesExternalNameAcceptanceExecutor,
+    ) -> tuple[
+        FavoritesExternalNameAcceptanceDurableResult,
+        FavoritesExternalProvenanceLifecycleSnapshot,
+    ]:
+        """Execute durable acceptance and advance under one lifecycle lock."""
+
+        if type(expected_snapshot) is not FavoritesExternalProvenanceLifecycleSnapshot:
+            raise TypeError(
+                "External Favorites lifecycle name acceptance requires an exact "
+                "FavoritesExternalProvenanceLifecycleSnapshot."
+            )
+        if type(plan) is not FavoritesExternalNameAcceptancePlan:
+            raise TypeError(
+                "External Favorites lifecycle name acceptance requires an exact "
+                "FavoritesExternalNameAcceptancePlan."
+            )
+        if not callable(executor):
+            raise TypeError(
+                "External Favorites lifecycle name acceptance executor must be callable."
+            )
+
+        with self._lifecycle_lock:
+            if self._state is not FavoritesExternalProvenanceLifecycleState.ACTIVE:
+                raise RuntimeError(
+                    "External Favorites provenance lifecycle must be active "
+                    "to execute name acceptance."
+                )
+            current_snapshot = self._snapshot_locked()
+            if current_snapshot != expected_snapshot:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "External Favorites provenance lifecycle evidence does not match "
+                    "the selected refresh baseline."
+                )
+            if expected_snapshot.provenance_path != self.provenance_path:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "External Favorites provenance lifecycle path does not match "
+                    "the selected refresh baseline."
+                )
+            if (
+                expected_snapshot.favorites_snapshot
+                != plan.write_plan.baseline_snapshot
+            ):
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "External Favorites provenance lifecycle Favorites evidence "
+                    "does not match the selected name-acceptance plan."
+                )
+            if expected_snapshot.provenance_records is None:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "External Favorites provenance lifecycle requires persisted "
+                    "baseline records for name acceptance."
+                )
+
+            durable_result = execute_favorites_external_name_acceptance_durably(
+                plan,
+                executor,
+                self.storage_source,
+                self.provenance_path,
+                max_bytes=self.max_bytes,
+                max_records=self.max_records,
+                max_fields_per_record=self.max_fields_per_record,
+                expected_baseline_provenance_records=(
+                    expected_snapshot.provenance_records
+                ),
+            )
+            advanced_snapshot = self.advance_after_name_acceptance(durable_result)
+            return durable_result, advanced_snapshot
 
     def advance_after_name_acceptance(
         self,
