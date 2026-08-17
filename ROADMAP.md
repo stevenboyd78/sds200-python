@@ -11,10 +11,11 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 24 — Advanced protocol and analysis modes
+### Milestone 24.1 — Advanced protocol research and fixture foundation
 
-Detailed slicing is pending. Research and fixture work must precede public
-support, preserving the existing Milestone 24 scope below.
+This slice is research, evidence-ledger, and fixture/provenance foundation work
+only. It does not implement or expose new scanner behavior; the preserved
+Milestone 24 scope remains scheduled below.
 
 ## Deferred hardware validation
 
@@ -379,6 +380,29 @@ Research and fixture work must precede public support for:
 
 Each feature must preserve unknown fields and include captured or synthetic
 fixtures before renderer-specific implementation.
+
+Tentative evidence-led slicing is:
+
+- Milestone 24.1: protocol inventory, evidence ledger, and fixture/provenance
+  foundation;
+- Milestone 24.2: `GLT` retrieval and generalized bounded-XML framing;
+- Milestone 24.3: conservative `FQK` read/control and `QSH` control support;
+- Milestone 24.4: richer NAC, RAN, color-code, area, activity, and quality
+  preservation and modeling;
+- Milestone 24.5: `URC` scanner recording control;
+- Milestone 24.6: `AST`/`APR` analysis-session foundation;
+- Milestone 24.7: `PWF`/`GWF`/`GW2` waterfall session and data work;
+- Milestone 24.8: `MNU`/`MSI`/`MSV`/`MSB` menu operations; and
+- later discovery, system-status, and RF-power work built on the analysis
+  substrate.
+
+`GLT` is the leading first implementation candidate, subject to fixture and
+later physical evidence, because it is bounded retrieval that complements the
+Favorites foundation and requires generalized bounded-XML framing before more
+stateful work. The reported `MSM,1` reboot behavior remains separately gated
+pending stronger independent protocol and firmware evidence; the officially
+documented disruptive `POF` operation is adjacent evidence, not a substitute.
+Later slice numbering may move as physical evidence is collected.
 
 ### Milestone 25 — Portability, containers, and additional interfaces
 

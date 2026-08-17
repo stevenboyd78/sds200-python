@@ -1,0 +1,7 @@
+{"endpoint":"fixture://advanced-protocol/glt","schema":"sds200.capture","version":1}
+{"data":"GLT,FL","delay_ms":0.0,"direction":"tx"}
+{"data":"GLT,<XML>,","delay_ms":0.0,"direction":"rx"}
+{"data":"<GLT>","delay_ms":0.0,"direction":"rx"}
+{"data":"  <FL Index=\"0\" Name=\"Example Favorites A\" Monitor=\"On\" Q_Key=\"1\" N_Tag=\"None\" FutureAttr=\"preserve-me\" />","delay_ms":0.0,"direction":"rx"}
+{"data":"  <FL Index=\"1\" Name=\"Example Favorites B\" Monitor=\"On\" Q_Key=\"1\" N_Tag=\"None\" />","delay_ms":0.0,"direction":"rx"}
+{"data":"</GLT>","delay_ms":0.0,"direction":"rx"}
