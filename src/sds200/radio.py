@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import queue
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -15,6 +15,7 @@ from typing import Self, TypeVar
 from .commands import (
     Command,
     GetChargeStatus,
+    GetFavoritesQuickKeys,
     GetFirmware,
     GetGltFavorites,
     GetModel,
@@ -27,6 +28,7 @@ from .commands import (
     NextSelection,
     PressKey,
     PreviousSelection,
+    SetFavoritesQuickKeys,
     SetSquelch,
     SetVolume,
     StartScannerInfoPush,
@@ -44,6 +46,8 @@ from .exceptions import (
 from .fallback import FallbackTransport, TransportCandidate
 from .models import (
     ChargeStatus,
+    FavoritesQuickKeys,
+    FavoritesQuickKeyState,
     FirmwareResponse,
     GltResponse,
     HealthSummary,
@@ -765,6 +769,19 @@ class SDSScanner:
 
     def get_glt_favorites(self, *, timeout: float = 3.0) -> GltResponse:
         return self.execute(GetGltFavorites(), timeout=timeout)
+
+    def get_favorites_quick_keys(
+        self, *, timeout: float = 2.0
+    ) -> FavoritesQuickKeys:
+        return self.execute(GetFavoritesQuickKeys(), timeout=timeout)
+
+    def set_favorites_quick_keys(
+        self,
+        states: Sequence[int | FavoritesQuickKeyState],
+        *,
+        timeout: float = 2.0,
+    ) -> None:
+        self.execute(SetFavoritesQuickKeys(states), timeout=timeout)
 
     def _create_health(
         self,

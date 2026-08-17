@@ -1,17 +1,24 @@
 import pytest
 
 from sds200.commands import (
+    GetFavoritesQuickKeys,
     GetGltFavorites,
     HoldSelection,
     NextSelection,
     PressKey,
     PreviousSelection,
+    SetFavoritesQuickKeys,
     SetSquelch,
     SetVolume,
     StartScannerInfoPush,
 )
 from sds200.exceptions import CommandRejectedError, ProtocolError
-from sds200.models import GltResponse, Packet
+from sds200.models import (
+    FavoritesQuickKeys,
+    FavoritesQuickKeyState,
+    GltResponse,
+    Packet,
+)
 
 
 def test_set_volume_wire() -> None:
@@ -45,6 +52,108 @@ def test_get_glt_favorites_contract() -> None:
     assert command.parse_response(response) is response
     with pytest.raises(TypeError, match="GLT did not return GltResponse"):
         command.parse_response(Packet(command="GLT", fields=(), raw="GLT"))
+
+
+def test_get_favorites_quick_keys_exact_contract_and_values() -> None:
+    fields = tuple(str(index % 3) for index in range(100))
+    packet = Packet(command="FQK", fields=fields, raw="FQK," + ",".join(fields))
+    command = GetFavoritesQuickKeys()
+
+    response = command.parse_response(packet)
+
+    assert command.wire == "FQK"
+    assert command.response_command == "FQK"
+    assert isinstance(response, FavoritesQuickKeys)
+    assert response.packet is packet
+    assert response.states[:3] == (
+        FavoritesQuickKeyState.NONEXISTENT,
+        FavoritesQuickKeyState.DISABLED,
+        FavoritesQuickKeyState.ENABLED,
+    )
+    assert len(response.states) == 100
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        ("0",) * 99,
+        ("0",) * 101,
+        ("0",) * 99 + ("",),
+        ("0",) * 99 + (" 0",),
+        ("0",) * 99 + ("0 ",),
+        ("0",) * 99 + ("3",),
+    ],
+)
+def test_get_favorites_quick_keys_rejects_malformed_fields(
+    fields: tuple[str, ...],
+) -> None:
+    with pytest.raises(ProtocolError, match="FQK read"):
+        GetFavoritesQuickKeys().parse_response(
+            Packet(command="FQK", fields=fields, raw="FQK," + ",".join(fields))
+        )
+
+
+@pytest.mark.parametrize(
+    "response",
+    [object(), Packet(command="OTHER", fields=("0",) * 100, raw="OTHER")],
+)
+def test_get_favorites_quick_keys_rejects_wrong_response(response: object) -> None:
+    with pytest.raises(ProtocolError, match="unexpected response"):
+        GetFavoritesQuickKeys().parse_response(response)
+
+
+def test_set_favorites_quick_keys_exact_contract() -> None:
+    states = [0, 1, FavoritesQuickKeyState.ENABLED] * 33 + [0]
+    command = SetFavoritesQuickKeys(states)
+
+    assert command.states[:3] == (
+        FavoritesQuickKeyState.NONEXISTENT,
+        FavoritesQuickKeyState.DISABLED,
+        FavoritesQuickKeyState.ENABLED,
+    )
+    assert isinstance(command.states, tuple)
+    assert command.wire == "FQK," + ",".join(str(index % 3) for index in range(100))
+    assert command.response_command == "FQK"
+    assert command.parse_response(
+        Packet(command="FQK", fields=("OK",), raw="FQK,OK")
+    ) is None
+
+
+@pytest.mark.parametrize("count", [99, 101])
+def test_set_favorites_quick_keys_rejects_wrong_count(count: int) -> None:
+    with pytest.raises(ValueError, match="exactly 100"):
+        SetFavoritesQuickKeys([0] * count)
+
+
+@pytest.mark.parametrize("value", [True, -1, 3, "1", None, object()])
+def test_set_favorites_quick_keys_rejects_invalid_state(value: object) -> None:
+    states: list[object] = [0] * 100
+    states[42] = value
+    with pytest.raises(ValueError, match="integers 0, 1, or 2"):
+        SetFavoritesQuickKeys(states)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("status", ["NG", "ERR", "ERROR"])
+def test_set_favorites_quick_keys_rejects_negative_ack(status: str) -> None:
+    with pytest.raises(CommandRejectedError, match="rejected FQK"):
+        SetFavoritesQuickKeys([0] * 100).parse_response(
+            Packet(command="FQK", fields=(status,), raw=f"FQK,{status}")
+        )
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        object(),
+        Packet(command="OTHER", fields=("OK",), raw="OTHER,OK"),
+        Packet(command="FQK", fields=(), raw="FQK"),
+        Packet(command="FQK", fields=("OK", "EXTRA"), raw="FQK,OK,EXTRA"),
+        Packet(command="FQK", fields=(" OK",), raw="FQK, OK"),
+    ],
+)
+def test_set_favorites_quick_keys_rejects_malformed_ack(response: object) -> None:
+    with pytest.raises(ProtocolError, match="FQK"):
+        SetFavoritesQuickKeys([0] * 100).parse_response(response)
 
 
 def test_psi_command_accepts_acknowledgement() -> None:
