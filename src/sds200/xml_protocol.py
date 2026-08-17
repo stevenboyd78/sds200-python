@@ -5,10 +5,17 @@ from collections.abc import Mapping
 from types import MappingProxyType
 
 from .exceptions import ProtocolError
-from .models import GltRecord, GltResponse, ScannerInfo, ScannerNode
+from .models import (
+    AnalysisRecord,
+    AnalysisResponse,
+    GltRecord,
+    GltResponse,
+    ScannerInfo,
+    ScannerNode,
+)
 
 XML_COMMAND_ROOTS: Mapping[str, str] = MappingProxyType(
-    {"GSI": "ScannerInfo", "PSI": "ScannerInfo", "GLT": "GLT"}
+    {"GSI": "ScannerInfo", "PSI": "ScannerInfo", "GLT": "GLT", "AST": "AST"}
 )
 
 
@@ -109,6 +116,28 @@ class GltParser:
             root_attributes=root.attrib,
             records=tuple(
                 GltRecord.create(element.tag, element.attrib) for element in root
+            ),
+            raw_xml=xml,
+        )
+
+
+class AnalysisParser:
+    def parse(self, command: str, xml: str) -> AnalysisResponse:
+        try:
+            root = ET.fromstring(xml)
+        except ET.ParseError as exc:
+            raise ProtocolError("Invalid AST XML response") from exc
+
+        if root.tag != "AST":
+            raise ProtocolError(f"Expected AST root, received {root.tag!r}")
+
+        return AnalysisResponse.create(
+            command=command,
+            root_attributes=root.attrib,
+            records=tuple(
+                AnalysisRecord.create(element.tag, element.attrib)
+                for element in root.iter()
+                if element is not root
             ),
             raw_xml=xml,
         )

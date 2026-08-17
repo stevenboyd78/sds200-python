@@ -98,6 +98,50 @@ def test_synthetic_urc_fixture_contract() -> None:
     }
 
 
+def test_synthetic_ast_apr_fixture_contract() -> None:
+    capture = load_capture(FIXTURES / "synthetic-ast-apr.jsonl")
+    assert capture.endpoint == "fixture://advanced-protocol/ast-apr"
+    assert all(event.delay_ms == 0.0 for event in capture.events)
+    assert [event.data for event in capture.events if event.direction == "tx"] == [
+        "AST,CURRENT_ACTIVITY,7",
+        "APR,CURRENT_ACTIVITY",
+        "AST,LCN_MONITOR,9",
+        "APR,LCN_MONITOR",
+    ]
+    assert [event.data for event in capture.events if event.data == "APR,OK"] == [
+        "APR,OK",
+        "APR,OK",
+    ]
+
+    headers = [
+        index
+        for index, event in enumerate(capture.events)
+        if event.data == "AST,<XML>,"
+    ]
+    roots = []
+    for index in headers:
+        lines = []
+        for event in capture.events[index + 1 :]:
+            lines.append(event.data or "")
+            if event.data == "</AST>":
+                break
+        roots.append(ElementTree.fromstring("\n".join(lines)))
+    assert [child.tag for child in roots[0]] == [
+        "CurrentActivity",
+        "CurrentActivity",
+    ]
+    assert roots[0].attrib["FutureRoot"] == "preserve-root"
+    assert [child.tag for child in roots[1]] == [
+        "LcnMonitor",
+        "FutureRecord",
+        "LcnMonitor",
+    ]
+    assert [child.attrib["ReceiveStaus"] for child in roots[1] if child.tag == "LcnMonitor"] == [
+        "Active",
+        "Idle",
+    ]
+
+
 def test_advanced_protocol_fixture_provenance_is_explicit() -> None:
     provenance = (FIXTURES / "README.md").read_text(encoding="utf-8")
     normalized_provenance = " ".join(provenance.split())
@@ -107,3 +151,7 @@ def test_advanced_protocol_fixture_provenance_is_explicit() -> None:
     assert "Uniden SDS Series Remote Command Specification V2.00" in normalized_provenance
     assert "2025-07-07" in normalized_provenance
     assert "no event was captured from scanner hardware" in normalized_provenance
+    assert (
+        "not physical timing, model, firmware, transport, or termination validation"
+        in normalized_provenance
+    )

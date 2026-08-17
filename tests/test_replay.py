@@ -14,6 +14,7 @@ from sds200.exceptions import (
     ScannerConnectionError,
     ScannerRecordingControlError,
 )
+from sds200.models import AnalysisMode
 from sds200.radio import SDSScanner
 from sds200.replay import (
     CaptureEvent,
@@ -173,6 +174,27 @@ def test_replay_executes_lossless_glt_favorites_retrieval() -> None:
         "Example Favorites B",
     ]
     assert favorites[0].attributes["FutureAttr"] == "preserve-me"
+
+
+def test_replay_executes_current_activity_apr_lcn_monitor_apr() -> None:
+    with SDSScanner.replay(
+        ADVANCED_PROTOCOL_FIXTURES / "synthetic-ast-apr.jsonl"
+    ) as radio:
+        current = radio.start_current_activity_analysis(7, timeout=1.0)
+        radio.pause_resume_analysis(AnalysisMode.CURRENT_ACTIVITY, timeout=1.0)
+        lcn = radio.start_lcn_monitor_analysis(9, timeout=1.0)
+        radio.pause_resume_analysis(AnalysisMode.LCN_MONITOR, timeout=1.0)
+
+    assert [record.attributes["TGID"] for record in current.records_by_tag(
+        "CurrentActivity"
+    )] == ["1001", "1002"]
+    assert current.root_attributes["FutureRoot"] == "preserve-root"
+    assert [record.attributes["ReceiveStaus"] for record in lcn.records_by_tag(
+        "LcnMonitor"
+    )] == ["Active", "Idle"]
+    assert lcn.records_by_tag("FutureRecord")[0].attributes["FutureValue"] == (
+        "preserve-record"
+    )
 
 
 def test_replay_executes_exact_favorites_quick_key_read_and_write() -> None:

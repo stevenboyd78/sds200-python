@@ -6,12 +6,15 @@ from sds200.commands import (
     GetScannerRecordingStatus,
     HoldSelection,
     NextSelection,
+    PauseResumeAnalysis,
     PressKey,
     PreviousSelection,
     SetFavoritesQuickKeys,
     SetScannerRecordingStatus,
     SetSquelch,
     SetVolume,
+    StartCurrentActivityAnalysis,
+    StartLcnMonitorAnalysis,
     StartScannerInfoPush,
 )
 from sds200.exceptions import (
@@ -20,6 +23,8 @@ from sds200.exceptions import (
     ScannerRecordingControlError,
 )
 from sds200.models import (
+    AnalysisMode,
+    AnalysisResponse,
     FavoritesQuickKeys,
     FavoritesQuickKeyState,
     GltResponse,
@@ -27,6 +32,86 @@ from sds200.models import (
     ScannerRecordingStatus,
     ScannerRecordingStatusResponse,
 )
+
+
+def test_analysis_modes_are_the_six_exact_apr_tokens() -> None:
+    assert [(mode.name, mode.value) for mode in AnalysisMode] == [
+        ("SYSTEM_STATUS", "SYSTEM_STATUS"),
+        ("RF_POWER_PLOT", "RF_POWER_PLOT"),
+        ("CURRENT_ACTIVITY", "CURRENT_ACTIVITY"),
+        ("LCN_MONITOR", "LCN_MONITOR"),
+        ("ACTIVITY_LOG", "ACTIVITY_LOG"),
+        ("RAW_DATA_OUTPUT", "RAW_DATA_OUTPUT"),
+    ]
+    assert len(AnalysisMode.__members__) == 6
+
+
+@pytest.mark.parametrize(
+    ("command_type", "mode"),
+    [
+        (StartCurrentActivityAnalysis, "CURRENT_ACTIVITY"),
+        (StartLcnMonitorAnalysis, "LCN_MONITOR"),
+    ],
+)
+def test_analysis_start_commands_exact_contract(command_type: type, mode: str) -> None:
+    command = command_type(123456789)
+    response = AnalysisResponse.create(
+        command="AST", root_attributes={}, records=(), raw_xml="<AST />"
+    )
+    assert command.wire == f"AST,{mode},123456789"
+    assert command.response_command == "AST"
+    assert command.parse_response(response) is response
+    with pytest.raises(TypeError, match="AST did not return AnalysisResponse"):
+        command.parse_response(Packet(command="AST", fields=(), raw="AST"))
+
+
+@pytest.mark.parametrize("site_index", [True, "1", -1])
+@pytest.mark.parametrize(
+    "command_type", [StartCurrentActivityAnalysis, StartLcnMonitorAnalysis]
+)
+def test_analysis_start_rejects_invalid_site_index(
+    command_type: type, site_index: object
+) -> None:
+    with pytest.raises(ValueError, match="non-negative integer"):
+        command_type(site_index)
+
+
+@pytest.mark.parametrize("mode", list(AnalysisMode))
+def test_pause_resume_analysis_exact_wire_and_ack(mode: AnalysisMode) -> None:
+    command = PauseResumeAnalysis(mode)
+    assert command.wire == f"APR,{mode.value}"
+    assert command.response_command == "APR"
+    assert command.parse_response(
+        Packet(command="APR", fields=("OK",), raw="APR,OK")
+    ) is None
+
+
+def test_pause_resume_analysis_requires_enum() -> None:
+    with pytest.raises(ValueError, match="AnalysisMode"):
+        PauseResumeAnalysis("CURRENT_ACTIVITY")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        object(),
+        Packet(command="OTHER", fields=("OK",), raw="OTHER,OK"),
+        Packet(command="APR", fields=(), raw="APR"),
+        Packet(command="APR", fields=("OK", "EXTRA"), raw="APR,OK,EXTRA"),
+        Packet(command="APR", fields=(" OK",), raw="APR, OK"),
+    ],
+)
+def test_pause_resume_analysis_rejects_malformed_ack(response: object) -> None:
+    with pytest.raises(ProtocolError, match="APR"):
+        PauseResumeAnalysis(AnalysisMode.CURRENT_ACTIVITY).parse_response(response)
+
+
+@pytest.mark.parametrize("status", ["NG", "ERR", "ERROR"])
+def test_pause_resume_analysis_rejects_negative_ack(status: str) -> None:
+    with pytest.raises(CommandRejectedError, match="rejected APR"):
+        PauseResumeAnalysis(AnalysisMode.CURRENT_ACTIVITY).parse_response(
+            Packet(command="APR", fields=(status,), raw=f"APR,{status}")
+        )
 
 
 def test_set_volume_wire() -> None:
