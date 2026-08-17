@@ -3,21 +3,29 @@ import pytest
 from sds200.commands import (
     GetFavoritesQuickKeys,
     GetGltFavorites,
+    GetScannerRecordingStatus,
     HoldSelection,
     NextSelection,
     PressKey,
     PreviousSelection,
     SetFavoritesQuickKeys,
+    SetScannerRecordingStatus,
     SetSquelch,
     SetVolume,
     StartScannerInfoPush,
 )
-from sds200.exceptions import CommandRejectedError, ProtocolError
+from sds200.exceptions import (
+    CommandRejectedError,
+    ProtocolError,
+    ScannerRecordingControlError,
+)
 from sds200.models import (
     FavoritesQuickKeys,
     FavoritesQuickKeyState,
     GltResponse,
     Packet,
+    ScannerRecordingStatus,
+    ScannerRecordingStatusResponse,
 )
 
 
@@ -154,6 +162,146 @@ def test_set_favorites_quick_keys_rejects_negative_ack(status: str) -> None:
 def test_set_favorites_quick_keys_rejects_malformed_ack(response: object) -> None:
     with pytest.raises(ProtocolError, match="FQK"):
         SetFavoritesQuickKeys([0] * 100).parse_response(response)
+
+
+@pytest.mark.parametrize(
+    ("field", "expected"),
+    [
+        ("0", ScannerRecordingStatus.STOPPED),
+        ("1", ScannerRecordingStatus.RECORDING),
+    ],
+)
+def test_get_scanner_recording_status_exact_contract(
+    field: str, expected: ScannerRecordingStatus
+) -> None:
+    packet = Packet(command="URC", fields=(field,), raw=f"URC,{field}")
+    command = GetScannerRecordingStatus()
+
+    response = command.parse_response(packet)
+
+    assert command.wire == "URC"
+    assert command.response_command == "URC"
+    assert isinstance(response, ScannerRecordingStatusResponse)
+    assert response.status is expected
+    assert response.packet is packet
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        object(),
+        Packet(command="OTHER", fields=("0",), raw="OTHER,0"),
+        Packet(command="URC", fields=(), raw="URC"),
+        Packet(command="URC", fields=("",), raw="URC,"),
+        Packet(command="URC", fields=(" 0",), raw="URC, 0"),
+        Packet(command="URC", fields=("0 ",), raw="URC,0 "),
+        Packet(command="URC", fields=("2",), raw="URC,2"),
+        Packet(command="URC", fields=("0", "EXTRA"), raw="URC,0,EXTRA"),
+    ],
+)
+def test_get_scanner_recording_status_rejects_malformed_response(
+    response: object,
+) -> None:
+    with pytest.raises(ProtocolError, match="URC read"):
+        GetScannerRecordingStatus().parse_response(response)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected", "wire"),
+    [
+        (0, ScannerRecordingStatus.STOPPED, "URC,0"),
+        (ScannerRecordingStatus.RECORDING, ScannerRecordingStatus.RECORDING, "URC,1"),
+    ],
+)
+def test_set_scanner_recording_status_exact_contract(
+    value: int | ScannerRecordingStatus,
+    expected: ScannerRecordingStatus,
+    wire: str,
+) -> None:
+    command = SetScannerRecordingStatus(value)
+
+    assert command.status is expected
+    assert command.wire == wire
+    assert command.response_command == "URC"
+    assert command.parse_response(
+        Packet(command="URC", fields=("OK",), raw="URC,OK")
+    ) is None
+
+
+@pytest.mark.parametrize("value", [True, False, -1, 2, "1", None, object()])
+def test_set_scanner_recording_status_rejects_invalid_value(value: object) -> None:
+    with pytest.raises(ValueError, match="integer 0 or 1"):
+        SetScannerRecordingStatus(value)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("code", "reason"),
+    [
+        ("0001", "FILE ACCESS"),
+        ("0002", "LOW BATTERY"),
+        ("0003", "SESSION OVER LIMIT"),
+        ("0004", "RTC LOST"),
+        ("9999", None),
+    ],
+)
+@pytest.mark.parametrize("command", [GetScannerRecordingStatus(), SetScannerRecordingStatus(1)])
+def test_scanner_recording_control_preserves_operation_error(
+    command: GetScannerRecordingStatus | SetScannerRecordingStatus,
+    code: str,
+    reason: str | None,
+) -> None:
+    with pytest.raises(ScannerRecordingControlError) as caught:
+        command.parse_response(
+            Packet(command="URC", fields=("ERR", code), raw=f"URC,ERR,{code}")
+        )
+
+    assert caught.value.code == code
+    assert caught.value.reason == reason
+    assert str(caught.value) == (
+        f"Scanner recording control failed with error code {code}"
+        + (f": {reason}" if reason is not None else "")
+        + "."
+    )
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        ("ERR",),
+        ("ERR", ""),
+        ("ERR", "001"),
+        ("ERR", "00001"),
+        ("ERR", "ABCD"),
+        ("ERR", " 0001"),
+        ("ERR", "0001 "),
+        (" ERR", "0001"),
+        ("ERR", "0001", "EXTRA"),
+    ],
+)
+def test_scanner_recording_control_rejects_malformed_operation_error(
+    fields: tuple[str, ...],
+) -> None:
+    with pytest.raises(ProtocolError, match="URC"):
+        SetScannerRecordingStatus(1).parse_response(
+            Packet(command="URC", fields=fields, raw="URC," + ",".join(fields))
+        )
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        object(),
+        Packet(command="OTHER", fields=("OK",), raw="OTHER,OK"),
+        Packet(command="URC", fields=(), raw="URC"),
+        Packet(command="URC", fields=(" OK",), raw="URC, OK"),
+        Packet(command="URC", fields=("OK ",), raw="URC,OK "),
+        Packet(command="URC", fields=(" NG",), raw="URC, NG"),
+        Packet(command="URC", fields=("OK", "EXTRA"), raw="URC,OK,EXTRA"),
+    ],
+)
+def test_set_scanner_recording_status_rejects_malformed_ack(response: object) -> None:
+    with pytest.raises(ProtocolError, match="URC"):
+        SetScannerRecordingStatus(1).parse_response(response)
 
 
 def test_psi_command_accepts_acknowledgement() -> None:

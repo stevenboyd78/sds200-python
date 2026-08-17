@@ -68,6 +68,36 @@ def test_synthetic_fqk_fixture_contract() -> None:
     assert capture.events[3].data == "FQK,OK"
 
 
+def test_synthetic_urc_fixture_contract() -> None:
+    capture = load_capture(FIXTURES / "synthetic-urc.jsonl")
+
+    assert capture.endpoint == "fixture://advanced-protocol/urc"
+    transactions = [
+        (capture.events[index].data, capture.events[index + 1].data)
+        for index in range(0, len(capture.events), 2)
+    ]
+    assert transactions[:4] == [
+        ("URC", "URC,0"),
+        ("URC,1", "URC,OK"),
+        ("URC", "URC,1"),
+        ("URC,0", "URC,OK"),
+    ]
+    assert transactions[4:] == [
+        ("URC,1", "URC,ERR,0001"),
+        ("URC,1", "URC,ERR,0002"),
+        ("URC,1", "URC,ERR,0003"),
+        ("URC,1", "URC,ERR,0004"),
+        ("URC,1", "URC,ERR,9999"),
+    ]
+    assert {response.rsplit(",", 1)[-1] for _, response in transactions[4:]} == {
+        "0001",
+        "0002",
+        "0003",
+        "0004",
+        "9999",
+    }
+
+
 def test_advanced_protocol_fixture_provenance_is_explicit() -> None:
     provenance = (FIXTURES / "README.md").read_text(encoding="utf-8")
     normalized_provenance = " ".join(provenance.split())
@@ -76,3 +106,4 @@ def test_advanced_protocol_fixture_provenance_is_explicit() -> None:
     assert "not derived from scanner hardware" in normalized_provenance
     assert "Uniden SDS Series Remote Command Specification V2.00" in normalized_provenance
     assert "2025-07-07" in normalized_provenance
+    assert "no event was captured from scanner hardware" in normalized_provenance

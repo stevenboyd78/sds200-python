@@ -31,6 +31,17 @@ class FavoritesQuickKeys:
     packet: Packet
 
 
+class ScannerRecordingStatus(IntEnum):
+    STOPPED = 0
+    RECORDING = 1
+
+
+@dataclass(frozen=True, slots=True)
+class ScannerRecordingStatusResponse:
+    status: ScannerRecordingStatus
+    packet: Packet
+
+
 @dataclass(frozen=True, slots=True)
 class ModelResponse:
     model: str

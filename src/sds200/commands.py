@@ -4,7 +4,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal, Protocol, TypeVar
 
-from .exceptions import CommandRejectedError, ProtocolError
+from .exceptions import (
+    CommandRejectedError,
+    ProtocolError,
+    ScannerRecordingControlError,
+)
 from .models import (
     ChargeStatus,
     FavoritesQuickKeys,
@@ -14,6 +18,8 @@ from .models import (
     ModelResponse,
     Packet,
     ScannerInfo,
+    ScannerRecordingStatus,
+    ScannerRecordingStatusResponse,
     StatusResponse,
     ValueResponse,
 )
@@ -272,6 +278,73 @@ class SetFavoritesQuickKeys:
             return
         _parse_acknowledgement(response, "FQK")
         raise ProtocolError("FQK write acknowledgement must be exactly FQK,OK.")
+
+
+def _raise_scanner_recording_error(response: Packet) -> None:
+    if not response.fields or response.fields[0] != "ERR":
+        return
+    if (
+        len(response.fields) != 2
+        or len(response.fields[1]) != 4
+        or not response.fields[1].isascii()
+        or not response.fields[1].isdigit()
+    ):
+        raise ProtocolError("URC returned a malformed operation error.")
+    raise ScannerRecordingControlError(response.fields[1])
+
+
+@dataclass(frozen=True, slots=True)
+class GetScannerRecordingStatus:
+    @property
+    def wire(self) -> str:
+        return "URC"
+
+    @property
+    def response_command(self) -> str:
+        return "URC"
+
+    def parse_response(self, response: object) -> ScannerRecordingStatusResponse:
+        if not isinstance(response, Packet) or response.command != "URC":
+            raise ProtocolError("URC read returned an unexpected response.")
+        _raise_scanner_recording_error(response)
+        if len(response.fields) != 1 or response.fields[0] not in {"0", "1"}:
+            raise ProtocolError("URC read must return exactly one valid status field.")
+        return ScannerRecordingStatusResponse(
+            status=ScannerRecordingStatus(int(response.fields[0])),
+            packet=response,
+        )
+
+
+@dataclass(frozen=True, slots=True, init=False)
+class SetScannerRecordingStatus:
+    status: ScannerRecordingStatus
+
+    def __init__(self, status: int | ScannerRecordingStatus) -> None:
+        if isinstance(status, bool) or not isinstance(status, int):
+            raise ValueError("URC status must be integer 0 or 1.")
+        try:
+            normalized = ScannerRecordingStatus(status)
+        except ValueError as exc:
+            raise ValueError("URC status must be integer 0 or 1.") from exc
+        object.__setattr__(self, "status", normalized)
+
+    @property
+    def wire(self) -> str:
+        return f"URC,{int(self.status)}"
+
+    @property
+    def response_command(self) -> str:
+        return "URC"
+
+    def parse_response(self, response: object) -> None:
+        if not isinstance(response, Packet) or response.command != "URC":
+            raise ProtocolError("URC write returned an unexpected response.")
+        _raise_scanner_recording_error(response)
+        if response.fields == ("OK",):
+            return
+        if response.fields in {("NG",), ("ERROR",)}:
+            _parse_acknowledgement(response, "URC")
+        raise ProtocolError("URC write acknowledgement must be exactly URC,OK.")
 
 
 @dataclass(frozen=True, slots=True)

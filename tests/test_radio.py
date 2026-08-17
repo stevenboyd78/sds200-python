@@ -7,11 +7,17 @@ from sds200.exceptions import (
     CommandRejectedError,
     CommandTimeoutError,
     ProtocolError,
+    ScannerRecordingControlError,
     UnsupportedScannerFeatureError,
     UnsupportedScannerModelError,
 )
 from sds200.fallback import FallbackTransport
-from sds200.models import FavoritesQuickKeyState, RadioEvent, ScannerInfo
+from sds200.models import (
+    FavoritesQuickKeyState,
+    RadioEvent,
+    ScannerInfo,
+    ScannerRecordingStatus,
+)
 from sds200.profiles import ConnectionProfile
 from sds200.radio import SDS200
 from sds200.transport import TransportDiagnostic
@@ -99,6 +105,75 @@ def test_favorites_quick_keys_rejection_is_correlated_to_fqk() -> None:
         with pytest.raises(CommandRejectedError, match="rejected FQK"):
             radio.set_favorites_quick_keys([1] * 100, timeout=1.0)
         thread.join(timeout=1.0)
+
+
+def test_scanner_recording_status_high_level_read_is_typed_and_exact() -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport)
+
+    with radio:
+        def respond() -> None:
+            while transport.writes != ["URC"]:
+                time.sleep(0.005)
+            transport.feed_line("URC,1")
+
+        thread = threading.Thread(target=respond)
+        thread.start()
+        response = radio.get_scanner_recording_status(timeout=1.0)
+        thread.join(timeout=1.0)
+
+    assert transport.writes == ["URC"]
+    assert response.status is ScannerRecordingStatus.RECORDING
+    assert response.packet.raw == "URC,1"
+
+
+@pytest.mark.parametrize(
+    ("status", "wire"),
+    [
+        (ScannerRecordingStatus.RECORDING, "URC,1"),
+        (ScannerRecordingStatus.STOPPED, "URC,0"),
+    ],
+)
+def test_scanner_recording_status_high_level_write_is_exact(
+    status: ScannerRecordingStatus, wire: str
+) -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport)
+
+    with radio:
+        def respond() -> None:
+            while transport.writes != [wire]:
+                time.sleep(0.005)
+            transport.feed_line("URC,OK")
+
+        thread = threading.Thread(target=respond)
+        thread.start()
+        radio.set_scanner_recording_status(status, timeout=1.0)
+        thread.join(timeout=1.0)
+
+    assert transport.writes == [wire]
+
+
+def test_scanner_recording_error_is_correlated_and_preserved() -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport)
+
+    with radio:
+        def respond() -> None:
+            while not transport.writes:
+                time.sleep(0.005)
+            transport.feed_line("OTHER,ERR,0002")
+            transport.feed_line("URC,ERR,0002")
+
+        thread = threading.Thread(target=respond)
+        thread.start()
+        with pytest.raises(ScannerRecordingControlError) as caught:
+            radio.set_scanner_recording_status(1, timeout=1.0)
+        thread.join(timeout=1.0)
+
+    assert transport.writes == ["URC,1"]
+    assert caught.value.code == "0002"
+    assert caught.value.reason == "LOW BATTERY"
 
 
 def test_set_volume_range() -> None:
