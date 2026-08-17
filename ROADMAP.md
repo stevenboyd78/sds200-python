@@ -11,28 +11,30 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 24.6 — AST/APR analysis-session foundation
+### Milestone 24.7 — PWF/GWF/GW2 waterfall session and data work
 
-Milestone 24.5 completed and merged the specification-backed `URC` scanner
-recording-status and control slice. Quick Search (`QSH`) remains blocked because
-its exact `FRQ` representation lacks sufficient evidence.
+Milestone 24.6 completed and merged the evidence-backed AST/APR foundation:
+exact Current Activity and LCN Monitor starts, lossless AST XML modeling, the
+documented combined APR pause/resume wire, and bounded local AST publication.
+Broader analysis-session ownership and the deferred AST modes remain separate
+future work. Quick Search (`QSH`) remains blocked because its exact `FRQ`
+representation lacks sufficient evidence.
 
-The first narrow Milestone 24.6 slice added only the exact Current Activity and
-LCN Monitor `AST` start wires, lossless `AST` XML framing and modeling, and the
-exact combined `APR` pause/resume control. This second narrow slice adds only
-local bounded AST publication/subscription ownership: globally ordered
-publications, isolated bounded consumer queues, explicit local close and
-overflow accounting, and radio-close wakeup of local subscribers. It does not
-add an analysis-session state machine or authoritative scanner-session state.
+The first narrow Milestone 24.7 slice adds receive-only PWF/GWF line-data
+modeling and bounded local publication. PWF values remain variable-length raw
+strings, including empty and unknown fields. GWF retains the reviewed exact
+240-value data shape as uninterpreted strings. Other GWF line shapes remain
+lossless generic packets rather than being assigned undocumented semantics.
+The complete source `Packet`, including its raw line, remains available; no FFT
+numeric meaning, range, scale, cadence, or screen semantics are inferred.
 
-The reviewed V2.00 AST/APR section documents no `AST,STOP` or `APR,STOP`, and no
-distinct pause and resume wire forms. Local subscription or publisher close is
-not a claim that scanner analysis has terminated; no running, paused, or stopped
-state is inferred. There is no reconnect restoration, transport/model/firmware
-applicability claim, new mode runtime, or physical scanner validation claim.
-Activity Log, LCN Finder, Band Scope, Raw Data Output, System Status, RF Power
-Plot, and broader session ownership remain deferred. This work does not
-automate Scan Mode changes, and `QSH` remains blocked.
+This slice adds no PWF/GWF start or stop command API and does not infer ON/OFF
+token semantics beyond the reviewed placeholder notation. It adds no scanner
+waterfall running/stopped state, reconnect restoration, transport/model/firmware
+applicability claim, renderer integration, or physical validation. `GW2` remains
+deferred because the reviewed form is binary/no-separator while the current
+control transports decode received bytes to text before radio dispatch; exact
+GW2 binary framing requires a separate transport contract.
 
 ## Deferred hardware validation
 

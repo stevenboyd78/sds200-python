@@ -155,3 +155,33 @@ def test_advanced_protocol_fixture_provenance_is_explicit() -> None:
         "not physical timing, model, firmware, transport, or termination validation"
         in normalized_provenance
     )
+
+
+
+def test_synthetic_pwf_gwf_fixture_contract() -> None:
+    capture = load_capture(FIXTURES / "synthetic-pwf-gwf.jsonl")
+
+    assert capture.endpoint == "fixture://advanced-protocol/pwf-gwf"
+    assert [event.direction for event in capture.events] == ["rx", "rx", "rx"]
+    assert all(event.delay_ms == 0.0 for event in capture.events)
+
+    first_pwf = (capture.events[0].data or "").split(",")
+    second_pwf = (capture.events[1].data or "").split(",")
+    gwf = (capture.events[2].data or "").split(",")
+
+    assert first_pwf == ["PWF", "17", "", "23", "FUTURE"]
+    assert second_pwf == ["PWF", "1", "2", "3"]
+    assert gwf[0] == "GWF"
+    assert len(gwf[1:]) == 240
+    assert gwf[1:] == [str(index) for index in range(240)]
+
+
+def test_pwf_gwf_fixture_documents_receive_only_scope() -> None:
+    provenance = (FIXTURES / "README.md").read_text(encoding="utf-8")
+    normalized = " ".join(provenance.split())
+
+    assert "synthetic-pwf-gwf.jsonl" in normalized
+    assert "receive-only synthetic framing evidence" in normalized
+    assert "contains no start/stop transmission" in normalized
+    assert "does not establish ON/OFF token semantics" in normalized
+    assert "GW2 binary framing" in normalized

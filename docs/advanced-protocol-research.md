@@ -223,6 +223,44 @@ broader session ownership remain deferred. `QSH` remains blocked. No UDP
 expectation, retry, bare-XML correlation, transport recovery, or Scan Mode
 behavior changes in this slice.
 
+## Milestone 24.7 implementation boundary
+
+Milestone 24.6 completed the narrow AST/APR foundation without inventing stop
+wires or authoritative analysis-session state. The first narrow Milestone 24.7
+slice is receive-only: it models already-received `PWF` and `GWF` line records
+and gives typed waterfall data bounded local publication/subscription ownership.
+It sends no waterfall command.
+
+`PWF` preserves every received positional field exactly as a string, including
+empty and unknown values, and retains the complete source `Packet`. No fixed PWF
+arity or FFT value semantics are inferred. `GWF` is promoted to a typed data
+response only for the reviewed shape of exactly 240 FFT fields; those fields
+likewise remain uninterpreted strings with the source packet preserved. Other
+GWF line shapes remain generic lossless packets so this slice does not invent
+acknowledgement, error, or malformed-data semantics that the reviewed evidence
+does not establish.
+
+A synthetic receive-only fixture covers variable PWF shape, an empty field, an
+unknown value, and one exact 240-field GWF data record. It is
+specification-derived structural evidence rather than physical capture evidence.
+
+One radio-owned waterfall publisher assigns globally ordered local sequence
+numbers and fans typed PWF/GWF responses into isolated bounded queues. Consumer
+overflow drops only that consumer's oldest unread response and records
+cumulative loss. Subscription close and radio close are local ownership
+operations only; they send no scanner wire and do not claim scanner-side
+waterfall termination.
+
+The reviewed control notation `PWF,[FFT_TYPE],[ON/OFF]` and
+`GWF,[TYPE],[ON/OFF]` is not promoted to a command API in this slice. No
+running/stopped state, start/stop behavior, reconnect restoration, cadence,
+numeric FFT scale, transport applicability, model/firmware support, or renderer
+integration is inferred. `GW2` remains deferred: V2.00 describes it as a
+binary/no-separator form, while the current serial and UDP control receive paths
+decode bytes to text before radio dispatch. Preserving GW2 therefore requires a
+separate evidence-backed binary transport/framing contract rather than forcing
+binary data through the line parser.
+
 ## Evidence policy
 
 Material claims must identify their strongest evidence as specification,

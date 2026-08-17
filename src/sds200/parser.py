@@ -7,8 +7,10 @@ from .models import (
     ChargeStatus,
     DisplayLine,
     FirmwareResponse,
+    GwfResponse,
     ModelResponse,
     Packet,
+    PwfResponse,
     StatusResponse,
     ValueResponse,
 )
@@ -56,6 +58,8 @@ class PacketParser:
         | FirmwareResponse
         | ValueResponse
         | StatusResponse
+        | PwfResponse
+        | GwfResponse
     ):
         if packet.command == "MDL":
             reported_model = self._required(packet, 0).strip()
@@ -77,6 +81,10 @@ class PacketParser:
             )
         if packet.command == "STS":
             return self._parse_status(packet)
+        if packet.command == "PWF":
+            return PwfResponse(values=packet.fields, packet=packet)
+        if packet.command == "GWF" and len(packet.fields) == 240:
+            return GwfResponse(values=packet.fields, packet=packet)
         return packet
 
     @staticmethod

@@ -631,9 +631,11 @@ from .models import (
     FirmwareResponse,
     GltRecord,
     GltResponse,
+    GwfResponse,
     HealthSummary,
     ModelResponse,
     Packet,
+    PwfResponse,
     RadioEvent,
     RadioHealth,
     ScannerInfo,
@@ -642,6 +644,7 @@ from .models import (
     ScannerRecordingStatusResponse,
     StatusResponse,
     ValueResponse,
+    WaterfallResponse,
 )
 from .network import DEFAULT_UDP_PORT, UdpDatagramDecoder, UdpTransport
 from .network_audio import NetworkAudioStatistics, NetworkAudioTransport
@@ -937,6 +940,17 @@ from .transport import (
     ControlTransport,
     SerialTransport,
     TransportDiagnostic,
+)
+from .waterfall_subscriptions import (
+    WATERFALL_DEFAULT_QUEUE_CAPACITY,
+    WaterfallDelivery,
+    WaterfallPublication,
+    WaterfallPublisher,
+    WaterfallPublisherSnapshot,
+    WaterfallSubscription,
+    WaterfallSubscriptionClosed,
+    WaterfallSubscriptionHealth,
+    WaterfallSubscriptionSnapshot,
 )
 from .xml_protocol import AnalysisParser
 
@@ -1304,6 +1318,7 @@ __all__ = [
     "FirmwareResponse",
     "GltRecord",
     "GltResponse",
+    "GwfResponse",
     "GetChargeStatus",
     "GetFirmware",
     "GetFavoritesQuickKeys",
@@ -1355,6 +1370,7 @@ __all__ = [
     "PcmuSubscriptionHealth",
     "PcmuSubscriptionSnapshot",
     "Packet",
+    "PwfResponse",
     "PcmSink",
     "PcmSinkRouter",
     "PcmSinkRouterSnapshot",
@@ -1566,6 +1582,16 @@ __all__ = [
     "UnsupportedScannerModelError",
     "ValidationStatus",
     "ValueResponse",
+    "WATERFALL_DEFAULT_QUEUE_CAPACITY",
+    "WaterfallDelivery",
+    "WaterfallPublication",
+    "WaterfallPublisher",
+    "WaterfallPublisherSnapshot",
+    "WaterfallResponse",
+    "WaterfallSubscription",
+    "WaterfallSubscriptionClosed",
+    "WaterfallSubscriptionHealth",
+    "WaterfallSubscriptionSnapshot",
     "capabilities_for_model",
     "classify_connection",
     "classify_scanner_screen",

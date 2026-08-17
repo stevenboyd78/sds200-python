@@ -42,6 +42,51 @@ class ScannerRecordingStatusResponse:
     packet: Packet
 
 
+@dataclass(frozen=True, slots=True)
+class PwfResponse:
+    """One lossless received PWF waterfall line."""
+
+    values: tuple[str, ...]
+    packet: Packet
+
+    def __post_init__(self) -> None:
+        values = tuple(self.values)
+        if not isinstance(self.packet, Packet):
+            raise TypeError("PWF responses require the source Packet.")
+        if self.packet.command != "PWF":
+            raise ValueError("PWF responses require a PWF packet.")
+        if values != self.packet.fields:
+            raise ValueError(
+                "PWF response values must exactly match packet fields."
+            )
+        object.__setattr__(self, "values", values)
+
+
+@dataclass(frozen=True, slots=True)
+class GwfResponse:
+    """One lossless received 240-value GWF waterfall line."""
+
+    values: tuple[str, ...]
+    packet: Packet
+
+    def __post_init__(self) -> None:
+        values = tuple(self.values)
+        if not isinstance(self.packet, Packet):
+            raise TypeError("GWF responses require the source Packet.")
+        if self.packet.command != "GWF":
+            raise ValueError("GWF responses require a GWF packet.")
+        if len(values) != 240:
+            raise ValueError("GWF responses require exactly 240 values.")
+        if values != self.packet.fields:
+            raise ValueError(
+                "GWF response values must exactly match packet fields."
+            )
+        object.__setattr__(self, "values", values)
+
+
+WaterfallResponse = PwfResponse | GwfResponse
+
+
 class AnalysisMode(StrEnum):
     SYSTEM_STATUS = "SYSTEM_STATUS"
     RF_POWER_PLOT = "RF_POWER_PLOT"
