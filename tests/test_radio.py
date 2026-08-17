@@ -3,6 +3,7 @@ import time
 
 import pytest
 
+from sds200.analysis_subscriptions import AnalysisSubscriptionClosed
 from sds200.exceptions import (
     CommandRejectedError,
     CommandTimeoutError,
@@ -655,6 +656,65 @@ def test_analysis_starts_correlate_first_ast_and_later_ast_is_published() -> Non
         "APR,CURRENT_ACTIVITY",
         "AST,LCN_MONITOR,9",
     ]
+
+
+def test_radio_owns_bounded_analysis_publication_without_state_or_wire_side_effects() -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport)
+    subscription = radio.subscribe_analysis()
+    observed: list[AnalysisResponse] = []
+    radio.events.subscribe("ast", observed.append)
+    initial_state = radio.state.snapshot
+
+    def feed_ast(identifier: str) -> None:
+        transport.feed_line("AST,<XML>,")
+        transport.feed_line(
+            f'<AST><CurrentActivity SyntheticId="{identifier}" /></AST>'
+        )
+
+    radio.connect()
+
+    def respond() -> None:
+        while transport.writes != ["AST,CURRENT_ACTIVITY,7"]:
+            time.sleep(0.005)
+        feed_ast("first")
+
+    thread = threading.Thread(target=respond)
+    thread.start()
+    first = radio.start_current_activity_analysis(7, timeout=1.0)
+    thread.join(timeout=1.0)
+    feed_ast("later")
+
+    deliveries = [subscription.get(0), subscription.get(0)]
+    assert deliveries[0].response is first
+    assert [delivery.sequence for delivery in deliveries] == [1, 2]
+    assert [item.records[0].attributes["SyntheticId"] for item in observed] == [
+        "first",
+        "later",
+    ]
+    assert radio.analysis_snapshot().responses_published == 2
+    assert radio.analysis_snapshot().last_sequence == 2
+    assert radio.state.snapshot == initial_state
+
+    subscription.close()
+    assert transport.writes == ["AST,CURRENT_ACTIVITY,7"]
+
+    blocked = radio.subscribe_analysis()
+    failures: list[type[BaseException]] = []
+
+    def receive() -> None:
+        try:
+            blocked.get()
+        except BaseException as exc:
+            failures.append(type(exc))
+
+    reader = threading.Thread(target=receive)
+    reader.start()
+    radio.close()
+    reader.join(timeout=1.0)
+
+    assert failures == [AnalysisSubscriptionClosed]
+    assert transport.writes == ["AST,CURRENT_ACTIVITY,7"]
 
 
 def test_identical_psi_frames_refresh_state_observers() -> None:

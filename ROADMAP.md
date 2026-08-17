@@ -17,18 +17,22 @@ Milestone 24.5 completed and merged the specification-backed `URC` scanner
 recording-status and control slice. Quick Search (`QSH`) remains blocked because
 its exact `FRQ` representation lacks sufficient evidence.
 
-This first narrow Milestone 24.6 slice adds only the exact Current Activity and
+The first narrow Milestone 24.6 slice added only the exact Current Activity and
 LCN Monitor `AST` start wires, lossless `AST` XML framing and modeling, and the
-exact combined `APR` pause/resume control. It is not yet the full
-analysis-session owner. The reviewed V2.00 AST/APR section supplies no stop wire
-form, so no stop semantics or inferred paused/running state are introduced.
+exact combined `APR` pause/resume control. This second narrow slice adds only
+local bounded AST publication/subscription ownership: globally ordered
+publications, isolated bounded consumer queues, explicit local close and
+overflow accounting, and radio-close wakeup of local subscribers. It does not
+add an analysis-session state machine or authoritative scanner-session state.
 
+The reviewed V2.00 AST/APR section documents no `AST,STOP` or `APR,STOP`, and no
+distinct pause and resume wire forms. Local subscription or publisher close is
+not a claim that scanner analysis has terminated; no running, paused, or stopped
+state is inferred. There is no reconnect restoration, transport/model/firmware
+applicability claim, new mode runtime, or physical scanner validation claim.
 Activity Log, LCN Finder, Band Scope, Raw Data Output, System Status, RF Power
-Plot, bounded subscription/session ownership, reconnect restoration, and
-transport-specific behavior remain deferred to later evidence-led Milestone
-24.6 or later slices. This work does not automate Scan Mode changes and makes no
-physical timing, model, firmware, transport, termination, or scanner-validation
-claim. `QSH` remains blocked.
+Plot, and broader session ownership remain deferred. This work does not
+automate Scan Mode changes, and `QSH` remains blocked.
 
 ## Deferred hardware validation
 
