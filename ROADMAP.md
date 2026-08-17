@@ -11,11 +11,16 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 24.1 — Advanced protocol research and fixture foundation
+### Milestone 24.2 — GLT retrieval and generalized bounded-XML framing
 
-This slice is research, evidence-ledger, and fixture/provenance foundation work
-only. It does not implement or expose new scanner behavior; the preserved
-Milestone 24 scope remains scheduled below.
+This active implementation slice adds only the exact reviewed Favorites-list
+request `GLT,FL`; public typed retrieval through `GetGltFavorites`, `GltRecord`,
+`GltResponse`, and `get_glt_favorites()`; and generalized bounded-XML framing
+around explicit command/root relationships. It extends SDS200 UDP XML
+recognition, reassembly, and retry to GLT while preserving existing GSI and PSI
+behavior. Validation is fixture- and synthetic-transport-based rather than
+physical scanner validation. Milestone 24.2 is active feature work and is not
+yet described as merged or released.
 
 ## Deferred hardware validation
 
@@ -385,7 +390,7 @@ Tentative evidence-led slicing is:
 
 - Milestone 24.1: protocol inventory, evidence ledger, and fixture/provenance
   foundation;
-- Milestone 24.2: `GLT` retrieval and generalized bounded-XML framing;
+- Milestone 24.2: exact `GLT,FL` retrieval and generalized bounded-XML framing;
 - Milestone 24.3: conservative `FQK` read/control and `QSH` control support;
 - Milestone 24.4: richer NAC, RAN, color-code, area, activity, and quality
   preservation and modeling;
@@ -396,13 +401,16 @@ Tentative evidence-led slicing is:
 - later discovery, system-status, and RF-power work built on the analysis
   substrate.
 
-`GLT` is the leading first implementation candidate, subject to fixture and
-later physical evidence, because it is bounded retrieval that complements the
-Favorites foundation and requires generalized bounded-XML framing before more
-stateful work. The reported `MSM,1` reboot behavior remains separately gated
-pending stronger independent protocol and firmware evidence; the officially
-documented disruptive `POF` operation is adjacent evidence, not a substitute.
-Later slice numbering may move as physical evidence is collected.
+Milestone 24.1 selected `GLT` as the safest leading implementation candidate
+because it is bounded retrieval that complements the Favorites foundation and
+requires generalized bounded-XML framing before more stateful work. Milestone
+24.2 now implements only the narrow, evidence-backed `GLT,FL` slice. Broader
+GLT arguments and hierarchy forms remain deferred until evidence supports their
+exact request and response semantics. The reported `MSM,1` reboot behavior
+remains separately gated pending stronger independent protocol and firmware
+evidence; the officially documented disruptive `POF` operation is adjacent
+evidence, not a substitute. Later slice numbering may move as physical evidence
+is collected.
 
 ### Milestone 25 — Portability, containers, and additional interfaces
 

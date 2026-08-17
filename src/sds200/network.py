@@ -24,6 +24,7 @@ from .transport import (
     LineHandler,
     TransportDiagnostic,
 )
+from .xml_protocol import XML_COMMAND_ROOTS
 
 logger = logging.getLogger(__name__)
 DEFAULT_UDP_PORT = 50536
@@ -58,6 +59,12 @@ class _XmlSequence:
     attributes: dict[str, str]
     children: list[ET.Element] = field(default_factory=list)
     next_number: int = 1
+
+
+@dataclass(frozen=True, slots=True)
+class _XmlDecodeResult:
+    lines: tuple[str, ...] = ()
+    completed: bool = False
 
 
 @dataclass(slots=True)
@@ -138,6 +145,7 @@ class UdpDatagramDecoder:
         name = name.upper()
 
         with self._lock:
+            self._expected_xml_command = None
             if name == "GSI":
                 self._expected_xml_command = "GSI"
             elif name == "PSI":
@@ -148,6 +156,8 @@ class UdpDatagramDecoder:
                 else:
                     self._expected_xml_command = "PSI"
                     self._stream_xml_command = "PSI"
+            elif name == "GLT" and argument.strip().upper() == "FL":
+                self._expected_xml_command = "GLT"
 
     def feed(self, data: bytes) -> tuple[str, ...]:
         text = data.decode("utf-8", errors="replace").strip("\x00")
@@ -164,23 +174,24 @@ class UdpDatagramDecoder:
                 )
                 if command and payload:
                     result = self._feed_xml(command, payload)
-                    self._complete_expected(command, result)
-                    return result
+                    self._complete_expected(command, result.completed)
+                    return result.lines
                 if command:
                     return (f"{command}{_XML_MARKER}",)
 
             stripped = text.lstrip("\x00\r\n ")
             if self._looks_like_xml(stripped):
-                xml_command = self._expected_xml_command or self._stream_xml_command
+                root_tag = self._xml_root(stripped)
+                xml_command = self._bare_xml_command(root_tag)
                 if xml_command is not None:
                     result = self._feed_xml(xml_command, stripped)
-                    self._complete_expected(xml_command, result)
-                    return result
+                    self._complete_expected(xml_command, result.completed)
+                    return result.lines
 
             return self._split_lines(text)
 
-    def _complete_expected(self, command: str, result: tuple[str, ...]) -> None:
-        if not result:
+    def _complete_expected(self, command: str, completed: bool) -> None:
+        if not completed:
             return
         if self._expected_xml_command == command:
             self._expected_xml_command = None
@@ -211,22 +222,64 @@ class UdpDatagramDecoder:
 
     @staticmethod
     def _looks_like_xml(text: str) -> bool:
-        return text.startswith("<?xml") or text.startswith("<ScannerInfo")
+        return text.startswith("<?xml") or any(
+            UdpDatagramDecoder._starts_with_root(text, root)
+            for root in set(XML_COMMAND_ROOTS.values())
+        )
 
-    def _feed_xml(self, command: str, payload: str) -> tuple[str, ...]:
+    @staticmethod
+    def _starts_with_root(text: str, root: str) -> bool:
+        prefix = f"<{root}"
+        return text.startswith(prefix) and len(text) > len(prefix) and text[
+            len(prefix)
+        ] in "\t\r\n />"
+
+    @staticmethod
+    def _xml_root(payload: str) -> str | None:
+        try:
+            return ET.fromstring(payload).tag
+        except ET.ParseError:
+            candidate = payload.lstrip()
+            if candidate.startswith("<?xml"):
+                declaration_end = candidate.find("?>")
+                if declaration_end < 0:
+                    return None
+                candidate = candidate[declaration_end + 2 :].lstrip()
+            for root in set(XML_COMMAND_ROOTS.values()):
+                if UdpDatagramDecoder._starts_with_root(candidate, root):
+                    return root
+            return None
+
+    def _bare_xml_command(self, root_tag: str | None) -> str | None:
+        for command in (self._expected_xml_command, self._stream_xml_command):
+            if command is not None and XML_COMMAND_ROOTS[command] == root_tag:
+                return command
+        return None
+
+    def _feed_xml(self, command: str, payload: str) -> _XmlDecodeResult:
+        expected_root = XML_COMMAND_ROOTS.get(command)
+        if expected_root is None:
+            return _XmlDecodeResult()
         try:
             root = ET.fromstring(payload)
         except ET.ParseError:
-            return (f"{command}{_XML_MARKER}", *self._split_lines(payload))
+            return _XmlDecodeResult(
+                (f"{command}{_XML_MARKER}", *self._split_lines(payload))
+            )
+        if root.tag != expected_root:
+            return _XmlDecodeResult()
 
         footer = self._remove_footer(root)
         if footer is None:
-            return (f"{command}{_XML_MARKER}", *self._split_lines(payload))
+            return _XmlDecodeResult(
+                (f"{command}{_XML_MARKER}", *self._split_lines(payload)),
+                completed=True,
+            )
 
         number = self._parse_sequence_number(command, footer)
         if number is None:
             self._sequences.pop(command, None)
-            return ()
+            return _XmlDecodeResult()
 
         end_of_transmission = footer.attrib.get("EOT") == "1"
         sequence = self._sequences.get(command)
@@ -245,7 +298,7 @@ class UdpDatagramDecoder:
                 expected_fragment=1,
                 received_fragment=number,
             )
-            return ()
+            return _XmlDecodeResult()
 
         assert sequence is not None
         if sequence.root_tag != root.tag or number != sequence.next_number:
@@ -258,18 +311,21 @@ class UdpDatagramDecoder:
                 received_fragment=number,
             )
             self._sequences.pop(command, None)
-            return ()
+            return _XmlDecodeResult()
 
         sequence.children.extend(list(root))
         sequence.next_number = number + 1
         if not end_of_transmission:
-            return ()
+            return _XmlDecodeResult()
 
         merged = ET.Element(sequence.root_tag, sequence.attributes)
         merged.extend(sequence.children)
         self._sequences.pop(command, None)
         xml = ET.tostring(merged, encoding="unicode")
-        return (f"{command}{_XML_MARKER}", xml)
+        return _XmlDecodeResult(
+            (f"{command}{_XML_MARKER}", xml),
+            completed=True,
+        )
 
     @staticmethod
     def _remove_footer(root: ET.Element) -> ET.Element | None:
@@ -444,6 +500,9 @@ class UdpTransport:
             else:
                 self._last_xml_commands[command] = normalized
                 self._xml_retry_counts[command] = 0
+        elif command == "GLT" and argument.strip().upper() == "FL":
+            self._last_xml_commands[command] = normalized
+            self._xml_retry_counts[command] = 0
 
     def _send_normalized(self, normalized: str, *, retry: bool) -> None:
         data = (normalized + "\r").encode("ascii")
@@ -583,6 +642,9 @@ class UdpTransport:
 
     def _xml_completed(self, command: str) -> None:
         self._xml_retry_counts[command] = 0
+        if command == "GLT":
+            self._last_xml_commands.pop(command, None)
+            self._xml_retry_counts.pop(command, None)
         with self._statistics_lock:
             self._mutable_statistics.xml_documents_completed += 1
 

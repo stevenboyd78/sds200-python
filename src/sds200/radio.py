@@ -16,6 +16,7 @@ from .commands import (
     Command,
     GetChargeStatus,
     GetFirmware,
+    GetGltFavorites,
     GetModel,
     GetScannerInfo,
     GetSquelch,
@@ -44,6 +45,7 @@ from .fallback import FallbackTransport, TransportCandidate
 from .models import (
     ChargeStatus,
     FirmwareResponse,
+    GltResponse,
     HealthSummary,
     ModelResponse,
     Packet,
@@ -82,7 +84,7 @@ from .transport import (
     StatisticalControlTransport,
     TransportDiagnostic,
 )
-from .xml_protocol import ScannerInfoParser, XmlResponseAssembler
+from .xml_protocol import GltParser, ScannerInfoParser, XmlResponseAssembler
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -165,6 +167,7 @@ class SDSScanner:
 
         self.parser = PacketParser()
         self.xml_parser = ScannerInfoParser()
+        self.glt_parser = GltParser()
         self.xml_assembler = XmlResponseAssembler()
         self.events = EventBus()
         if isinstance(self.transport, DiagnosticControlTransport):
@@ -760,6 +763,9 @@ class SDSScanner:
     def get_scanner_info(self, *, timeout: float = 3.0) -> ScannerInfo:
         return self.execute(GetScannerInfo(), timeout=timeout)
 
+    def get_glt_favorites(self, *, timeout: float = 3.0) -> GltResponse:
+        return self.execute(GetGltFavorites(), timeout=timeout)
+
     def _create_health(
         self,
         *,
@@ -1084,11 +1090,20 @@ class SDSScanner:
         if assembled is not None:
             command, xml = assembled
             try:
-                info = self.xml_parser.parse(command, xml)
+                xml_response = (
+                    self.glt_parser.parse(command, xml)
+                    if command == "GLT"
+                    else self.xml_parser.parse(command, xml)
+                )
             except ProtocolError as exc:
                 self.events.emit("protocol_error", exc)
                 return
 
+            if isinstance(xml_response, GltResponse):
+                self._publish(command, xml_response)
+                return
+
+            info = xml_response
             with self._health_lock:
                 self._last_state_at = info.received_at
             change = self.state.update(info)
@@ -1109,7 +1124,7 @@ class SDSScanner:
             self._publish(command, info)
             return
 
-        if self.xml_assembler.collecting or raw.startswith(("GSI,<XML>", "PSI,<XML>")):
+        if self.xml_assembler.collecting or self.xml_assembler.recognizes_header(raw):
             return
 
         try:

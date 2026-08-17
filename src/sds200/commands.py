@@ -7,6 +7,7 @@ from .exceptions import CommandRejectedError, ProtocolError
 from .models import (
     ChargeStatus,
     FirmwareResponse,
+    GltResponse,
     ModelResponse,
     Packet,
     ScannerInfo,
@@ -190,6 +191,22 @@ class GetScannerInfo:
     def parse_response(self, response: object) -> ScannerInfo:
         if not isinstance(response, ScannerInfo):
             raise TypeError("GSI did not return ScannerInfo")
+        return response
+
+
+@dataclass(frozen=True, slots=True)
+class GetGltFavorites:
+    @property
+    def wire(self) -> str:
+        return "GLT,FL"
+
+    @property
+    def response_command(self) -> str:
+        return "GLT"
+
+    def parse_response(self, response: object) -> GltResponse:
+        if not isinstance(response, GltResponse):
+            raise TypeError("GLT did not return GltResponse")
         return response
 
 
