@@ -30,3 +30,9 @@ unverified unless separately documented.
   acknowledgements. Its zero-delay events are deterministic structural replay
   evidence, not physical timing, model, firmware, transport, or termination
   validation.
+- `synthetic-pwf-gwf.jsonl` is receive-only synthetic framing evidence for the
+  first Milestone 24.7 slice. It preserves variable-length PWF fields including
+  an empty field and deliberate unknown value, plus one GWF record with exactly
+  240 uninterpreted FFT fields. It contains no start/stop transmission and does
+  not establish ON/OFF token semantics, GW2 binary framing, transport behavior,
+  model/firmware applicability, cadence, termination, or physical validation.

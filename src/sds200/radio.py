@@ -62,9 +62,11 @@ from .models import (
     FavoritesQuickKeyState,
     FirmwareResponse,
     GltResponse,
+    GwfResponse,
     HealthSummary,
     ModelResponse,
     Packet,
+    PwfResponse,
     RadioEvent,
     RadioHealth,
     ScannerInfo,
@@ -101,6 +103,11 @@ from .transport import (
     SerialTransport,
     StatisticalControlTransport,
     TransportDiagnostic,
+)
+from .waterfall_subscriptions import (
+    WaterfallPublisher,
+    WaterfallPublisherSnapshot,
+    WaterfallSubscription,
 )
 from .xml_protocol import AnalysisParser, GltParser, ScannerInfoParser, XmlResponseAssembler
 
@@ -190,6 +197,7 @@ class SDSScanner:
         self.xml_assembler = XmlResponseAssembler()
         self.events = EventBus()
         self._analysis_publisher = AnalysisPublisher()
+        self._waterfall_publisher = WaterfallPublisher()
         if isinstance(self.transport, DiagnosticControlTransport):
             self.transport.set_diagnostic_handler(self._transport_diagnostic)
         self.state = RadioState()
@@ -568,6 +576,7 @@ class SDSScanner:
 
     def close(self) -> None:
         self._analysis_publisher.close()
+        self._waterfall_publisher.close()
         if self.psi_active:
             with suppress(SDS200Error, OSError, ValueError):
                 self.stop_scanner_info_push()
@@ -597,6 +606,12 @@ class SDSScanner:
 
     def analysis_snapshot(self) -> AnalysisPublisherSnapshot:
         return self._analysis_publisher.snapshot()
+
+    def subscribe_waterfall(self) -> WaterfallSubscription:
+        return self._waterfall_publisher.subscribe()
+
+    def waterfall_snapshot(self) -> WaterfallPublisherSnapshot:
+        return self._waterfall_publisher.snapshot()
 
     def on_response(self, callback: Callable[[object], None]) -> Callable[[], None]:
         return self.events.subscribe("response", callback)
@@ -1230,6 +1245,8 @@ class SDSScanner:
                 self._firmware = response.version
         if isinstance(response, AnalysisResponse):
             self._analysis_publisher.publish(response)
+        if isinstance(response, (PwfResponse, GwfResponse)):
+            self._waterfall_publisher.publish(response)
         self.events.emit("response", response)
         self.events.emit(command.lower(), response)
         with self._response_lock:

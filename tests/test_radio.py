@@ -1360,3 +1360,58 @@ def test_recorded_udp_transport_keeps_psi_renewal_support(tmp_path) -> None:
     )
 
     assert radio._psi_renewal_supported is True
+
+
+
+def test_radio_owns_receive_only_bounded_waterfall_publication() -> None:
+    from sds200.models import GwfResponse, PwfResponse
+    from sds200.waterfall_subscriptions import WaterfallSubscriptionClosed
+
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport)
+    subscription = radio.subscribe_waterfall()
+    observed: list[object] = []
+    radio.on_response(observed.append)
+    initial_state = radio.state.snapshot
+
+    radio.connect()
+    transport.feed_line("PWF,17,,23,FUTURE")
+    gwf_values = tuple(str(index) for index in range(240))
+    transport.feed_line("GWF," + ",".join(gwf_values))
+
+    deliveries = [subscription.get(0), subscription.get(0)]
+
+    assert isinstance(deliveries[0].response, PwfResponse)
+    assert deliveries[0].response.values == ("17", "", "23", "FUTURE")
+    assert isinstance(deliveries[1].response, GwfResponse)
+    assert deliveries[1].response.values == gwf_values
+    assert [delivery.sequence for delivery in deliveries] == [1, 2]
+    assert observed[-2:] == [
+        deliveries[0].response,
+        deliveries[1].response,
+    ]
+    assert radio.waterfall_snapshot().responses_published == 2
+    assert radio.waterfall_snapshot().last_sequence == 2
+    assert radio.state.snapshot == initial_state
+    assert transport.writes == []
+
+    subscription.close()
+    assert transport.writes == []
+
+    blocked = radio.subscribe_waterfall()
+    failures: list[type[BaseException]] = []
+
+    def receive() -> None:
+        try:
+            blocked.get()
+        except BaseException as exc:
+            failures.append(type(exc))
+
+    thread = threading.Thread(target=receive)
+    thread.start()
+    radio.close()
+    thread.join(timeout=1)
+
+    assert not thread.is_alive()
+    assert failures == [WaterfallSubscriptionClosed]
+    assert transport.writes == []
