@@ -20,6 +20,7 @@ from .commands import (
     GetGltFavorites,
     GetModel,
     GetScannerInfo,
+    GetScannerRecordingStatus,
     GetSquelch,
     GetStatus,
     GetVolume,
@@ -29,6 +30,7 @@ from .commands import (
     PressKey,
     PreviousSelection,
     SetFavoritesQuickKeys,
+    SetScannerRecordingStatus,
     SetSquelch,
     SetVolume,
     StartScannerInfoPush,
@@ -56,6 +58,8 @@ from .models import (
     RadioEvent,
     RadioHealth,
     ScannerInfo,
+    ScannerRecordingStatus,
+    ScannerRecordingStatusResponse,
     StatusResponse,
 )
 from .network import (
@@ -782,6 +786,19 @@ class SDSScanner:
         timeout: float = 2.0,
     ) -> None:
         self.execute(SetFavoritesQuickKeys(states), timeout=timeout)
+
+    def get_scanner_recording_status(
+        self, *, timeout: float = 2.0
+    ) -> ScannerRecordingStatusResponse:
+        return self.execute(GetScannerRecordingStatus(), timeout=timeout)
+
+    def set_scanner_recording_status(
+        self,
+        status: int | ScannerRecordingStatus,
+        *,
+        timeout: float = 2.0,
+    ) -> None:
+        self.execute(SetScannerRecordingStatus(status), timeout=timeout)
 
     def _create_health(
         self,

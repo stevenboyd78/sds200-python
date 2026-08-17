@@ -34,6 +34,25 @@ class CommandRejectedError(ProtocolError):
     """The scanner explicitly rejected a pending command with ERR or NG."""
 
 
+class ScannerRecordingControlError(CommandRejectedError):
+    """The scanner rejected a URC recording-control operation."""
+
+    _REASONS = {
+        "0001": "FILE ACCESS",
+        "0002": "LOW BATTERY",
+        "0003": "SESSION OVER LIMIT",
+        "0004": "RTC LOST",
+    }
+
+    def __init__(self, code: str) -> None:
+        self.code = code
+        self.reason = self._REASONS.get(code)
+        message = f"Scanner recording control failed with error code {code}"
+        if self.reason is not None:
+            message += f": {self.reason}"
+        super().__init__(message + ".")
+
+
 class ProfileError(SDS200Error):
     """A saved connection profile is missing or invalid."""
 

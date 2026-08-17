@@ -17,3 +17,8 @@ unverified unless separately documented.
 - `synthetic-fqk.jsonl` asserts an ordinary `FQK` line read with exactly 100
   reviewed status positions, a distinct 100-position write, and the exact
   `FQK,OK` acknowledgement.
+- `synthetic-urc.jsonl` asserts the reviewed V2.00 `URC` status read, explicit
+  start and stop writes, exact `URC,OK` acknowledgements, all four documented
+  operation-error codes, and one deliberate unknown synthetic code. It is
+  specification-derived replay evidence only; no event was captured from
+  scanner hardware.

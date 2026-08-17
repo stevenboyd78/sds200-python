@@ -12,6 +12,7 @@ from sds200.exceptions import (
     CommandRejectedError,
     ReplayMismatchError,
     ScannerConnectionError,
+    ScannerRecordingControlError,
 )
 from sds200.radio import SDSScanner
 from sds200.replay import (
@@ -187,6 +188,37 @@ def test_replay_executes_exact_favorites_quick_key_read_and_write() -> None:
     assert len(response.states) == 100
     assert tuple(int(state) for state in response.states) == read_states
     assert response.packet.fields == tuple(str(state) for state in read_states)
+
+
+def test_replay_executes_scanner_recording_control_and_errors() -> None:
+    expected_errors = (
+        ("0001", "FILE ACCESS"),
+        ("0002", "LOW BATTERY"),
+        ("0003", "SESSION OVER LIMIT"),
+        ("0004", "RTC LOST"),
+        ("9999", None),
+    )
+
+    with SDSScanner.replay(
+        ADVANCED_PROTOCOL_FIXTURES / "synthetic-urc.jsonl"
+    ) as radio:
+        stopped = radio.get_scanner_recording_status(timeout=1.0)
+        radio.set_scanner_recording_status(1, timeout=1.0)
+        recording = radio.get_scanner_recording_status(timeout=1.0)
+        radio.set_scanner_recording_status(0, timeout=1.0)
+
+        observed_errors: list[tuple[str, str | None]] = []
+        for code, reason in expected_errors:
+            with pytest.raises(ScannerRecordingControlError) as caught:
+                radio.set_scanner_recording_status(1, timeout=1.0)
+            observed_errors.append((caught.value.code, caught.value.reason))
+            assert (caught.value.code, caught.value.reason) == (code, reason)
+
+    assert stopped.status.value == 0
+    assert stopped.packet.raw == "URC,0"
+    assert recording.status.value == 1
+    assert recording.packet.raw == "URC,1"
+    assert observed_errors == list(expected_errors)
 
 
 def test_replay_preserves_generic_command_rejection(tmp_path: Path) -> None:

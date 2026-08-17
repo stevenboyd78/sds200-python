@@ -11,22 +11,23 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 24.4 — Richer ScannerInfo metadata modeling
+### Milestone 24.5 — URC scanner recording control
 
-Milestone 24.3 completed and merged exact Favorites Quick Key (`FQK`) read and
-control through distinct typed APIs. Quick Search (`QSH`) runtime support remains
-blocked and deferred because its exact `FRQ` representation requires stronger
-fixture or physical evidence; redaction test data is not protocol evidence.
+Milestone 24.4 completed and merged the ordered/repeated `ScannerInfo`
+losslessness foundation while preserving the existing compatibility projection.
+Quick Search (`QSH`) runtime support remains blocked and deferred because its
+exact `FRQ` representation requires stronger fixture or physical evidence;
+redaction test data is not protocol evidence.
 
-This first narrow Milestone 24.4 slice adds only the losslessness foundation for
-richer `ScannerInfo` modeling: every non-root node is preserved in source
-traversal order, including repeated and unknown elements and their attributes,
-while the existing tag-keyed, last-occurrence-wins compatibility projection and
-ordinary properties remain unchanged. No new `ScannerInfo` RAN, Color Code,
-Area, activity, or quality field names or semantics are invented in this slice.
-Existing raw `SAD` examples provide evidence for values such as CTCSS and NAC,
-but do not establish additional field names for RAN, Color Code, or Area.
-Validation is synthetic-fixture-based and is not physical scanner validation.
+This first narrow Milestone 24.5 slice adds exact typed scanner-side `URC`
+recording-status reads and explicit recording-control writes, operation-specific
+mapping for all four documented error codes with lossless preservation of
+unknown well-formed codes, and deterministic synthetic replay evidence. It does
+not integrate scanner-side `URC` behavior with the project's separate
+network-audio or daemon-owned WAV recording workflows. Transport restrictions,
+firmware distinctions, additional statuses and errors, storage behavior, and
+model-specific availability remain unknown. Validation is specification- and
+synthetic-fixture-based; no physical scanner validation is claimed.
 
 ## Deferred hardware validation
 

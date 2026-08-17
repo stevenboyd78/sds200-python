@@ -139,6 +139,43 @@ they do not establish additional field names for RAN, Color Code, or Area.
 Synthetic regression evidence verifies preservation behavior but is not
 physical scanner validation.
 
+## Milestone 24.5 implementation boundary
+
+Milestone 24.4 completed and merged the ordered/repeated `ScannerInfo`
+losslessness foundation. This first narrow Milestone 24.5 slice implements only
+the V2.00 specification-backed ordinary-line `URC` recording-status read and
+recording-control mutation. `ScannerRecordingStatus` represents exact status
+`0` as `STOPPED` and `1` as `RECORDING`; the immutable
+`ScannerRecordingStatusResponse` preserves the successful read's exact generic
+`Packet`. Separate `GetScannerRecordingStatus` and
+`SetScannerRecordingStatus` commands expose exact `URC`, `URC,0`, and `URC,1`
+wires through corresponding `SDSScanner` methods. Reads accept only one exact
+`0` or `1` field, and writes accept only exact `URC,OK` acknowledgements.
+
+Exact `URC,ERR,<code>` operation errors use one shared strict parser and raise
+`ScannerRecordingControlError`. Codes `0001`, `0002`, `0003`, and `0004` map
+respectively to `FILE ACCESS`, `LOW BATTERY`, `SESSION OVER LIMIT`, and
+`RTC LOST`; an unknown well-formed four-digit code remains available exactly
+with no invented reason. Malformed fields, extra fields, whitespace decoration,
+and undocumented status values fail closed as protocol errors. Stable exception
+text does not expose arbitrary scanner payload text.
+
+The synthetic `synthetic-urc.jsonl` capture exercises stopped/read,
+start/acknowledgement, recording/read, stop/acknowledgement, every documented
+operation error, and one deliberate unknown error through the production replay
+API. It is derived from the reviewed Uniden SDS Series Remote Command
+Specification V2.00, not physical scanner capture evidence. No physical scanner
+validation is claimed. Transport restrictions, firmware distinctions,
+per-command model availability, storage and SD-card behavior, additional
+statuses or errors, session-limit semantics, and recovery behavior remain
+unknown.
+
+Scanner-side `URC` control remains separate from the project's network-audio,
+daemon, recording-metadata, recording-inventory, and WAV workflows. This slice
+adds no integration or convenience start/stop methods, capability gating,
+parser or response-dispatch changes, renderer exposure, background behavior, or
+`QSH` support. `QSH` remains deferred for lack of exact `FRQ` evidence.
+
 ## Evidence policy
 
 Material claims must identify their strongest evidence as specification,
