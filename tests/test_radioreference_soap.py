@@ -591,7 +591,10 @@ def test_decoded_talkgroup_result_maps_to_normalized_observation() -> None:
     assert observation.evidence.revision is None
     assert tuple(
         (field.name, field.value) for field in observation.fields
-    ) == (("name", "Ops"),)
+    ) == (
+        ("name", "Ops"),
+        ("decimal", "12345"),
+    )
 
 
 def test_decode_country_info_with_nested_arrays() -> None:

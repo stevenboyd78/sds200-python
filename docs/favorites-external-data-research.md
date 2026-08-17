@@ -1,8 +1,9 @@
 # External Favorites data research
 
 This document records the source-neutral data, provenance, security, and
-synchronization constraints for Milestone 23.1. It does not authorize live
-provider access, automatic synchronization, or scanner-storage mutation.
+synchronization constraints established across Milestone 23. Supported
+synchronization remains explicit and assisted; it does not authorize automatic
+or background synchronization.
 
 ## Scope
 
@@ -708,6 +709,61 @@ transformed scanner representations, record creation/removal, live
 RadioReference transport or credentials, renderer/daemon/CLI/TUI/web/Home
 Assistant wiring, MyRR, batching, or automatic/background synchronization.
 
+
+## Milestone 23.25 assisted-synchronization closure
+
+Milestone 23.25 closes the renderer-neutral foundation by composing, rather
+than replacing, the preceding planning, execution, durability, and lifecycle
+owners. One synchronous application service owns exactly one active provenance
+lifecycle and one normalized provider source. Construction performs no provider
+read. Each explicit refresh performs one new provider read against the
+lifecycle's exact current snapshot and returns the existing immutable
+observations, preview, and lifecycle evidence. Planning and execution never
+reread the provider, and there is no timer, polling loop, schedule, daemon
+wiring, or background behavior.
+
+Assisted acceptance remains field-selective. The durable arbitrary-field path
+accepts one exact reviewed mapping, passes its ordinary write plan to an
+injected existing executor, independently verifies storage, conditionally
+publishes complete provenance, and advances the same lifecycle. It never accepts
+another changed field implicitly. The only reviewed RadioReference mappings are:
+
+- conventional `C-Freq` name;
+- conventional `C-Freq` whole-Hz frequency;
+- `TGID` name; and
+- `TGID` canonical decimal talkgroup ID.
+
+Unsupported representations remain unsupported. In particular, the application
+composition does not infer a target type, fall back between fields, or convert
+mode, tone, encryption, tags, descriptions, color codes, or other provider
+values into scanner fields.
+
+Structural choices are likewise explicit and distinct. An unbound `ADDED`
+preview can be imported only when the caller supplies an exact supported
+`FavoritesSourceRecord` scanner template, an insertion anchor, and explicit
+field bindings; provider observations alone are insufficient to guess scanner
+defaults or hierarchy. A provider `REMOVED` preview causes no mutation by
+itself. The caller must separately choose verified structural deletion or
+keep-local/detach. A removal conflict cannot be routed through deletion, while
+keep-local may detach it when the existing detach contract permits.
+
+Import and deletion reuse the existing structural record-mutation owner. After
+an insertion or deletion, every affected source-index-addressed provenance
+record is reselected against the intended Favorites snapshot and the complete
+provenance collection is serialized and rebound before execution. Successful
+verified mutation conditionally publishes that exact collection and advances
+the lifecycle atomically. The first-import `None` provenance state remains
+distinct from a present empty collection. Keep-local and ordinary field/record
+detach preserve Favorites bytes and durably change ownership through the
+existing detach orchestration. All returned state-after-execution evidence is
+the existing exact lifecycle snapshot; no competing lifecycle or snapshot model
+is introduced.
+
+These APIs expose typed refresh, name acceptance, mapped-field acceptance,
+record import, record delete, keep-local/detach, and direct detach methods. They
+intentionally provide no generic “sync” or “merge” decision that could import,
+accept, delete, or detach automatically. Renderer-specific workflows remain
+outside this foundation.
 
 ## Detach semantics
 

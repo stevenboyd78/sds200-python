@@ -369,12 +369,23 @@ from .favorites_external import (
     preview_favorites_external_import,
     preview_favorites_external_source,
 )
+from .favorites_external_assisted_sync import (
+    FavoritesExternalAssistedSynchronizationService,
+    RadioReferenceAssistedSynchronizationSourceFactory,
+    RadioReferenceFavoritesMappedField,
+)
 from .favorites_external_field_acceptance import (
     FavoritesExternalFieldAcceptanceExecutionResult,
     FavoritesExternalFieldAcceptanceExecutor,
     FavoritesExternalFieldAcceptancePlan,
     execute_favorites_external_field_acceptance,
     plan_favorites_external_field_acceptance,
+)
+from .favorites_external_field_provenance_acceptance import (
+    FavoritesExternalFieldAcceptanceDurableResult,
+    FavoritesExternalFieldAcceptancePersistenceError,
+    FavoritesExternalFieldAcceptanceProvenanceError,
+    execute_favorites_external_field_acceptance_durably,
 )
 from .favorites_external_mapping import (
     FavoritesExternalFieldMapping,
@@ -431,9 +442,38 @@ from .favorites_external_refresh_detach_orchestration import (
     FavoritesExternalRefreshDetachResult,
     execute_favorites_external_refresh_detach,
 )
+from .favorites_external_refresh_field_acceptance import (
+    FavoritesExternalRefreshFieldAcceptancePlan,
+    plan_favorites_external_refresh_field_acceptance,
+)
+from .favorites_external_refresh_field_orchestration import (
+    FavoritesExternalRefreshFieldAcceptanceResult,
+    execute_favorites_external_refresh_field_acceptance,
+)
 from .favorites_external_refresh_orchestration import (
     FavoritesExternalRefreshNameAcceptanceResult,
     execute_favorites_external_refresh_name_acceptance,
+)
+from .favorites_external_refresh_record_import import (
+    FavoritesExternalRefreshRecordImportPlan,
+    plan_favorites_external_refresh_record_import,
+)
+from .favorites_external_refresh_record_mutation import (
+    FavoritesExternalRefreshRecordMutationDurableResult,
+    FavoritesExternalRefreshRecordMutationError,
+    FavoritesExternalRefreshRecordMutationExecutor,
+    FavoritesExternalRefreshRecordMutationPersistenceError,
+    FavoritesExternalRefreshRecordMutationPlan,
+    execute_favorites_external_refresh_record_mutation_durably,
+)
+from .favorites_external_refresh_record_orchestration import (
+    FavoritesExternalRefreshRecordMutationResult,
+    execute_favorites_external_refresh_record_mutation,
+)
+from .favorites_external_refresh_record_removal import (
+    FavoritesExternalRefreshRecordDeletePlan,
+    plan_favorites_external_refresh_record_delete,
+    plan_favorites_external_refresh_record_keep_local,
 )
 from .favorites_file import (
     FavoritesFileParseError,
@@ -647,8 +687,18 @@ from .radioreference import (
     RadioReferenceSoapStyle,
     RadioReferenceSource,
 )
+from .radioreference_http import (
+    RADIOREFERENCE_HTTPS_DEFAULT_MAX_REQUEST_BYTES,
+    RADIOREFERENCE_HTTPS_DEFAULT_MAX_RESPONSE_BYTES,
+    RADIOREFERENCE_HTTPS_DEFAULT_TIMEOUT,
+    RadioReferenceHttpsSoapExchange,
+    RadioReferenceHttpsSoapExchangeFactory,
+)
 from .radioreference_mapping import (
     radioreference_favorites_frequency_mapping,
+    radioreference_favorites_frequency_name_mapping,
+    radioreference_favorites_talkgroup_decimal_mapping,
+    radioreference_favorites_talkgroup_name_mapping,
     radioreference_frequency_observation,
     radioreference_soap_result_observations,
     radioreference_talkgroup_observation,
@@ -1108,9 +1158,12 @@ __all__ = [
     "FavoritesConventionalDepartment",
     "FavoritesConventionalSystem",
     "FavoritesExternalChangeKind",
+    "FavoritesExternalFieldAcceptanceDurableResult",
     "FavoritesExternalFieldAcceptanceExecutionResult",
     "FavoritesExternalFieldAcceptanceExecutor",
+    "FavoritesExternalFieldAcceptancePersistenceError",
     "FavoritesExternalFieldAcceptancePlan",
+    "FavoritesExternalFieldAcceptanceProvenanceError",
     "FavoritesExternalFieldBinding",
     "FavoritesExternalFieldMapping",
     "FavoritesExternalFieldMappingError",
@@ -1120,6 +1173,7 @@ __all__ = [
     "FavoritesExternalFieldOwnership",
     "FavoritesExternalFieldPreview",
     "FavoritesExternalFieldState",
+    "FavoritesExternalAssistedSynchronizationService",
     "FavoritesExternalImportError",
     "FavoritesExternalImportPreview",
     "FavoritesExternalNameAcceptanceDurableResult",
@@ -1140,9 +1194,19 @@ __all__ = [
     "FavoritesExternalRefreshDetachProvenanceError",
     "FavoritesExternalRefreshDetachResult",
     "FavoritesExternalRefreshDetachScope",
+    "FavoritesExternalRefreshFieldAcceptancePlan",
+    "FavoritesExternalRefreshFieldAcceptanceResult",
     "FavoritesExternalRefreshResult",
     "FavoritesExternalRefreshNameAcceptancePlan",
     "FavoritesExternalRefreshNameAcceptanceResult",
+    "FavoritesExternalRefreshRecordDeletePlan",
+    "FavoritesExternalRefreshRecordImportPlan",
+    "FavoritesExternalRefreshRecordMutationDurableResult",
+    "FavoritesExternalRefreshRecordMutationError",
+    "FavoritesExternalRefreshRecordMutationExecutor",
+    "FavoritesExternalRefreshRecordMutationPersistenceError",
+    "FavoritesExternalRefreshRecordMutationPlan",
+    "FavoritesExternalRefreshRecordMutationResult",
     "FavoritesExternalRefreshSession",
     "FavoritesExternalSource",
     "FavoritesExternalSourceIdentity",
@@ -1271,6 +1335,7 @@ __all__ = [
     "RADIOREFERENCE_SERVICE_URL",
     "RADIOREFERENCE_WSDL_URL",
     "RadioReferenceConfiguration",
+    "RadioReferenceAssistedSynchronizationSourceFactory",
     "RadioReferenceCredential",
     "RadioReferenceError",
     "RadioReferenceErrorReason",
@@ -1283,9 +1348,15 @@ __all__ = [
     "RadioReferenceObservationRequestPlan",
     "RadioReferenceObservationSession",
     "RadioReferenceObservationSessionFactory",
+    "RadioReferenceHttpsSoapExchange",
+    "RadioReferenceHttpsSoapExchangeFactory",
+    "RadioReferenceFavoritesMappedField",
     "RadioReferenceSoapExchange",
     "RadioReferenceSoapExchangeFactory",
     "radioreference_favorites_frequency_mapping",
+    "radioreference_favorites_frequency_name_mapping",
+    "radioreference_favorites_talkgroup_decimal_mapping",
+    "radioreference_favorites_talkgroup_name_mapping",
     "radioreference_frequency_observation",
     "radioreference_soap_result_observations",
     "radioreference_talkgroup_observation",
@@ -1326,6 +1397,9 @@ __all__ = [
     "RadioReferenceWsdlParameter",
     "radioreference_operation_contract",
     "RADIOREFERENCE_SOAP_DEFAULT_MAX_DOCUMENT_BYTES",
+    "RADIOREFERENCE_HTTPS_DEFAULT_MAX_REQUEST_BYTES",
+    "RADIOREFERENCE_HTTPS_DEFAULT_MAX_RESPONSE_BYTES",
+    "RADIOREFERENCE_HTTPS_DEFAULT_TIMEOUT",
     "RADIOREFERENCE_SOAP_DEFAULT_MAX_ELEMENTS",
     "RADIOREFERENCE_SOAP_DEFAULT_MAX_REFERENCES",
     "RADIOREFERENCE_SOAP_DEFAULT_MAX_REFERENCE_DEPTH",
@@ -1471,15 +1545,23 @@ __all__ = [
     "parse_rtp_transport",
     "parse_sdp_audio",
     "execute_favorites_external_field_acceptance",
+    "execute_favorites_external_field_acceptance_durably",
     "execute_favorites_external_name_acceptance",
     "execute_favorites_external_name_acceptance_durably",
     "execute_favorites_external_refresh_detach",
     "execute_favorites_external_refresh_detach_durably",
+    "execute_favorites_external_refresh_field_acceptance",
     "execute_favorites_external_refresh_name_acceptance",
+    "execute_favorites_external_refresh_record_mutation",
+    "execute_favorites_external_refresh_record_mutation_durably",
     "plan_favorites_external_field_acceptance",
     "plan_favorites_external_name_acceptance",
     "plan_favorites_external_refresh_detach",
+    "plan_favorites_external_refresh_field_acceptance",
     "plan_favorites_external_refresh_name_acceptance",
+    "plan_favorites_external_refresh_record_delete",
+    "plan_favorites_external_refresh_record_import",
+    "plan_favorites_external_refresh_record_keep_local",
     "plan_favorites_write",
     "execute_favorites_copied_tree_write",
     "preflight_favorites_copied_tree_write",
