@@ -11,7 +11,7 @@ from sds200.exceptions import (
     UnsupportedScannerModelError,
 )
 from sds200.fallback import FallbackTransport
-from sds200.models import RadioEvent, ScannerInfo
+from sds200.models import FavoritesQuickKeyState, RadioEvent, ScannerInfo
 from sds200.profiles import ConnectionProfile
 from sds200.radio import SDS200
 from sds200.transport import TransportDiagnostic
@@ -35,6 +35,70 @@ def test_command_is_cr_terminated_and_matches_response() -> None:
         thread.join()
 
     assert fake.writes == [b"MDL\r"]
+
+
+def test_favorites_quick_keys_high_level_read_is_typed_and_exact() -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport)
+    fields = tuple(str(index % 3) for index in range(100))
+
+    with radio:
+        def respond() -> None:
+            while transport.writes != ["FQK"]:
+                time.sleep(0.005)
+            transport.feed_line("FQK," + ",".join(fields))
+
+        thread = threading.Thread(target=respond)
+        thread.start()
+        result = radio.get_favorites_quick_keys(timeout=1.0)
+        thread.join(timeout=1.0)
+
+    assert transport.writes == ["FQK"]
+    assert result.states[:3] == (
+        FavoritesQuickKeyState.NONEXISTENT,
+        FavoritesQuickKeyState.DISABLED,
+        FavoritesQuickKeyState.ENABLED,
+    )
+    assert isinstance(result.states, tuple)
+    assert result.packet.raw == "FQK," + ",".join(fields)
+
+
+def test_favorites_quick_keys_high_level_write_is_exact() -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport)
+    states = tuple(index % 3 for index in range(100))
+    wire = "FQK," + ",".join(str(state) for state in states)
+
+    with radio:
+        def respond() -> None:
+            while transport.writes != [wire]:
+                time.sleep(0.005)
+            transport.feed_line("FQK,OK")
+
+        thread = threading.Thread(target=respond)
+        thread.start()
+        radio.set_favorites_quick_keys(states, timeout=1.0)
+        thread.join(timeout=1.0)
+
+    assert transport.writes == [wire]
+
+
+def test_favorites_quick_keys_rejection_is_correlated_to_fqk() -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport)
+
+    with radio:
+        def respond() -> None:
+            while not transport.writes:
+                time.sleep(0.005)
+            transport.feed_line("OTHER,NG")
+            transport.feed_line("FQK,NG")
+
+        thread = threading.Thread(target=respond)
+        thread.start()
+        with pytest.raises(CommandRejectedError, match="rejected FQK"):
+            radio.set_favorites_quick_keys([1] * 100, timeout=1.0)
+        thread.join(timeout=1.0)
 
 
 def test_set_volume_range() -> None:

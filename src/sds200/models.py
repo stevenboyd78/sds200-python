@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from enum import IntEnum
 from types import MappingProxyType
 
 
@@ -16,6 +17,18 @@ class Packet:
     fields: tuple[str, ...]
     raw: str
     received_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
+class FavoritesQuickKeyState(IntEnum):
+    NONEXISTENT = 0
+    DISABLED = 1
+    ENABLED = 2
+
+
+@dataclass(frozen=True, slots=True)
+class FavoritesQuickKeys:
+    states: tuple[FavoritesQuickKeyState, ...]
+    packet: Packet
 
 
 @dataclass(frozen=True, slots=True)

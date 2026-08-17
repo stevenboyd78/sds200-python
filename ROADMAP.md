@@ -11,16 +11,19 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 24.2 — GLT retrieval and generalized bounded-XML framing
+### Milestone 24.3 — FQK read and control
 
-This active implementation slice adds only the exact reviewed Favorites-list
-request `GLT,FL`; public typed retrieval through `GetGltFavorites`, `GltRecord`,
-`GltResponse`, and `get_glt_favorites()`; and generalized bounded-XML framing
-around explicit command/root relationships. It extends SDS200 UDP XML
-recognition, reassembly, and retry to GLT while preserving existing GSI and PSI
-behavior. Validation is fixture- and synthetic-transport-based rather than
-physical scanner validation. Milestone 24.2 is active feature work and is not
-yet described as merged or released.
+Milestone 24.2 completed and merged the exact `GLT,FL` retrieval and generalized
+bounded-XML framing foundation. This first Milestone 24.3 implementation slice
+adds only exact Favorites Quick Key (`FQK`) read and control through distinct
+typed APIs. Both forms preserve all 100 status positions, accept only reviewed
+status values `0`, `1`, and `2`, and use the ordinary command-correlation path.
+Validation is specification- and synthetic-fixture-based; no physical scanner
+validation is claimed.
+
+QSH runtime support remains blocked and deferred. The exact QSH `FRQ`
+representation requires stronger fixture or physical evidence before an API or
+wire implementation can be added; redaction test data is not protocol evidence.
 
 ## Deferred hardware validation
 

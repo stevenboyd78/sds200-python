@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal, Protocol, TypeVar
 
 from .exceptions import CommandRejectedError, ProtocolError
 from .models import (
     ChargeStatus,
+    FavoritesQuickKeys,
+    FavoritesQuickKeyState,
     FirmwareResponse,
     GltResponse,
     ModelResponse,
@@ -208,6 +211,67 @@ class GetGltFavorites:
         if not isinstance(response, GltResponse):
             raise TypeError("GLT did not return GltResponse")
         return response
+
+
+@dataclass(frozen=True, slots=True)
+class GetFavoritesQuickKeys:
+    @property
+    def wire(self) -> str:
+        return "FQK"
+
+    @property
+    def response_command(self) -> str:
+        return "FQK"
+
+    def parse_response(self, response: object) -> FavoritesQuickKeys:
+        if not isinstance(response, Packet) or response.command != "FQK":
+            raise ProtocolError("FQK read returned an unexpected response.")
+        if len(response.fields) != 100:
+            raise ProtocolError("FQK read must return exactly 100 status fields.")
+        if any(field not in {"0", "1", "2"} for field in response.fields):
+            raise ProtocolError("FQK read returned an invalid status field.")
+        return FavoritesQuickKeys(
+            states=tuple(FavoritesQuickKeyState(int(field)) for field in response.fields),
+            packet=response,
+        )
+
+
+@dataclass(frozen=True, slots=True, init=False)
+class SetFavoritesQuickKeys:
+    """Set 100 FQK states; controller status 0 is scanner-ignored by specification."""
+
+    states: tuple[FavoritesQuickKeyState, ...]
+
+    def __init__(self, states: Sequence[int | FavoritesQuickKeyState]) -> None:
+        if len(states) != 100:
+            raise ValueError("FQK write requires exactly 100 states.")
+        normalized: list[FavoritesQuickKeyState] = []
+        for state in states:
+            if isinstance(state, bool) or not isinstance(state, int):
+                raise ValueError("FQK states must be integers 0, 1, or 2.")
+            try:
+                normalized.append(FavoritesQuickKeyState(state))
+            except ValueError as exc:
+                raise ValueError("FQK states must be integers 0, 1, or 2.") from exc
+        object.__setattr__(self, "states", tuple(normalized))
+
+    @property
+    def wire(self) -> str:
+        return "FQK," + ",".join(str(int(state)) for state in self.states)
+
+    @property
+    def response_command(self) -> str:
+        return "FQK"
+
+    def parse_response(self, response: object) -> None:
+        if not isinstance(response, Packet) or response.command != "FQK":
+            raise ProtocolError("FQK write returned an unexpected response.")
+        if len(response.fields) != 1:
+            raise ProtocolError("FQK write acknowledgement must contain exactly one field.")
+        if response.fields == ("OK",):
+            return
+        _parse_acknowledgement(response, "FQK")
+        raise ProtocolError("FQK write acknowledgement must be exactly FQK,OK.")
 
 
 @dataclass(frozen=True, slots=True)

@@ -89,6 +89,37 @@ slice also adds no FQK, QSH, URC, AST, APR, waterfall, menu, disruptive, or
 recovery behavior. Broader GLT arguments and hierarchy forms remain deferred
 until evidence establishes their exact request and response semantics.
 
+## Milestone 24.3 implementation boundary
+
+The first Milestone 24.3 slice implements only the reviewed FQK ordinary-line
+read and control forms. The public `FavoritesQuickKeyState` integer enum names
+`NONEXISTENT = 0`, `DISABLED = 1`, and `ENABLED = 2`.
+`FavoritesQuickKeys` is an immutable response containing exactly 100 typed
+states and the original generic `Packet`, preserving its raw line and fields.
+`GetFavoritesQuickKeys` and `SDSScanner.get_favorites_quick_keys()` provide the
+read surface; `SetFavoritesQuickKeys` and
+`SDSScanner.set_favorites_quick_keys()` provide the separate mutation surface.
+
+The read wire is exactly `FQK`, and only an `FQK` packet with exactly 100
+fields whose text is exactly `0`, `1`, or `2` is accepted. Missing, extra,
+blank, whitespace-decorated, and other values fail closed. A write requires and
+immutably normalizes exactly 100 integer or enum states, explicitly excluding
+booleans, and emits `FQK` followed by those 100 decimal fields. Success is only
+the exact acknowledgement `FQK,OK`; documented general negative
+acknowledgements remain errors. Controller write status `0` is preserved
+without reinterpretation because the reviewed specification intentionally says
+the scanner ignores that position when setting.
+
+FQK is specification- and synthetic-fixture-validated, not physically
+validated on a scanner. This slice does not add transport framing, parser
+specialization, or any CLI, TUI, web, daemon, MQTT, Home Assistant, or
+background behavior.
+
+QSH remains unimplemented and blocked pending stronger evidence for the exact
+`FRQ` syntax. The QSH-looking literal used by replay redaction testing is not
+protocol evidence and does not weaken the existing warning in the evidence
+ledger below.
+
 ## Evidence policy
 
 Material claims must identify their strongest evidence as specification,

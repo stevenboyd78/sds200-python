@@ -174,6 +174,21 @@ def test_replay_executes_lossless_glt_favorites_retrieval() -> None:
     assert favorites[0].attributes["FutureAttr"] == "preserve-me"
 
 
+def test_replay_executes_exact_favorites_quick_key_read_and_write() -> None:
+    read_states = tuple(index % 3 for index in range(100))
+    write_states = tuple((index + 2) % 3 for index in range(100))
+
+    with SDSScanner.replay(
+        ADVANCED_PROTOCOL_FIXTURES / "synthetic-fqk.jsonl"
+    ) as radio:
+        response = radio.get_favorites_quick_keys(timeout=1.0)
+        radio.set_favorites_quick_keys(write_states, timeout=1.0)
+
+    assert len(response.states) == 100
+    assert tuple(int(state) for state in response.states) == read_states
+    assert response.packet.fields == tuple(str(state) for state in read_states)
+
+
 def test_replay_preserves_generic_command_rejection(tmp_path: Path) -> None:
     path = tmp_path / "rejected.jsonl"
     write_capture(
