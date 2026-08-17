@@ -13,6 +13,14 @@ from .favorites_external import (
     FavoritesExternalNameAcceptancePlan,
     FavoritesExternalRecordState,
 )
+from .favorites_external_field_acceptance import (
+    FavoritesExternalFieldAcceptanceExecutor,
+    FavoritesExternalFieldAcceptancePlan,
+)
+from .favorites_external_field_provenance_acceptance import (
+    FavoritesExternalFieldAcceptanceDurableResult,
+    execute_favorites_external_field_acceptance_durably,
+)
 from .favorites_external_provenance import (
     FAVORITES_EXTERNAL_PROVENANCE_DEFAULT_MAX_BYTES,
     FAVORITES_EXTERNAL_PROVENANCE_DEFAULT_MAX_FIELDS_PER_RECORD,
@@ -32,6 +40,11 @@ if TYPE_CHECKING:
         FavoritesExternalRefreshDetachDurableResult,
     )
     from .favorites_external_refresh_detach import FavoritesExternalRefreshDetachPlan
+    from .favorites_external_refresh_record_mutation import (
+        FavoritesExternalRefreshRecordMutationDurableResult,
+        FavoritesExternalRefreshRecordMutationExecutor,
+        FavoritesExternalRefreshRecordMutationPlan,
+    )
 
 
 class FavoritesExternalProvenanceLifecycleState(StrEnum):
@@ -229,8 +242,14 @@ class FavoritesExternalProvenanceLifecycle:
         self._last_adopted_name_acceptance_result: (
             FavoritesExternalNameAcceptanceDurableResult | None
         ) = None
+        self._last_adopted_field_acceptance_result: (
+            FavoritesExternalFieldAcceptanceDurableResult | None
+        ) = None
         self._last_adopted_refresh_detach_result: (
             FavoritesExternalRefreshDetachDurableResult | None
+        ) = None
+        self._last_adopted_record_mutation_result: (
+            FavoritesExternalRefreshRecordMutationDurableResult | None
         ) = None
 
     def snapshot(self) -> FavoritesExternalProvenanceLifecycleSnapshot:
@@ -409,6 +428,119 @@ class FavoritesExternalProvenanceLifecycle:
             self._last_adopted_name_acceptance_result = result
             return self._snapshot_locked()
 
+    def _execute_field_acceptance_durably_from_snapshot(
+        self,
+        expected_snapshot: FavoritesExternalProvenanceLifecycleSnapshot,
+        plan: FavoritesExternalFieldAcceptancePlan,
+        executor: FavoritesExternalFieldAcceptanceExecutor,
+    ) -> tuple[
+        FavoritesExternalFieldAcceptanceDurableResult,
+        FavoritesExternalProvenanceLifecycleSnapshot,
+    ]:
+        """Execute durable field acceptance and advance under one lifecycle lock."""
+
+        if type(expected_snapshot) is not FavoritesExternalProvenanceLifecycleSnapshot:
+            raise TypeError(
+                "External Favorites lifecycle field acceptance requires an exact "
+                "FavoritesExternalProvenanceLifecycleSnapshot."
+            )
+        if type(plan) is not FavoritesExternalFieldAcceptancePlan:
+            raise TypeError(
+                "External Favorites lifecycle field acceptance requires an exact "
+                "FavoritesExternalFieldAcceptancePlan."
+            )
+        if not callable(executor):
+            raise TypeError(
+                "External Favorites lifecycle field acceptance executor must be callable."
+            )
+
+        with self._lifecycle_lock:
+            if self._state is not FavoritesExternalProvenanceLifecycleState.ACTIVE:
+                raise RuntimeError(
+                    "External Favorites provenance lifecycle must be active "
+                    "to execute field acceptance."
+                )
+            if self._snapshot_locked() != expected_snapshot:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "External Favorites provenance lifecycle evidence does not match "
+                    "the selected refresh baseline."
+                )
+            if expected_snapshot.provenance_path != self.provenance_path:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "External Favorites provenance lifecycle path does not match "
+                    "the selected refresh baseline."
+                )
+            if expected_snapshot.favorites_snapshot != plan.write_plan.baseline_snapshot:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "External Favorites provenance lifecycle Favorites evidence "
+                    "does not match the selected field-acceptance plan."
+                )
+            if expected_snapshot.provenance_records is None:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "External Favorites provenance lifecycle requires persisted "
+                    "baseline records for field acceptance."
+                )
+
+            durable_result = execute_favorites_external_field_acceptance_durably(
+                plan,
+                executor,
+                self.storage_source,
+                self.provenance_path,
+                max_bytes=self.max_bytes,
+                max_records=self.max_records,
+                max_fields_per_record=self.max_fields_per_record,
+                expected_baseline_provenance_records=expected_snapshot.provenance_records,
+            )
+            advanced_snapshot = self.advance_after_field_acceptance(durable_result)
+            return durable_result, advanced_snapshot
+
+    def advance_after_field_acceptance(
+        self,
+        result: FavoritesExternalFieldAcceptanceDurableResult,
+    ) -> FavoritesExternalProvenanceLifecycleSnapshot:
+        """Adopt one already-verified durable field acceptance in memory."""
+
+        if type(result) is not FavoritesExternalFieldAcceptanceDurableResult:
+            raise TypeError(
+                "External Favorites provenance lifecycle field advancement requires "
+                "FavoritesExternalFieldAcceptanceDurableResult."
+            )
+        with self._lifecycle_lock:
+            if self._state is not FavoritesExternalProvenanceLifecycleState.ACTIVE:
+                raise RuntimeError(
+                    "External Favorites provenance lifecycle must be active "
+                    "to advance after field acceptance."
+                )
+            if self.provenance_path != result.provenance_path:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "External Favorites provenance lifecycle path does not match "
+                    "the durable field acceptance."
+                )
+            if self._last_adopted_field_acceptance_result is result:
+                if (
+                    self._favorites_snapshot == result.execution.observed_snapshot
+                    and self._provenance_records == result.provenance_records
+                ):
+                    return self._snapshot_locked()
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "External Favorites provenance lifecycle no longer matches "
+                    "the durable field acceptance result."
+                )
+            if self._favorites_snapshot != result.execution.plan.write_plan.baseline_snapshot:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "External Favorites provenance lifecycle Favorites evidence "
+                    "does not match the durable field acceptance baseline."
+                )
+            if self._provenance_records != result.baseline_provenance_records:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "External Favorites provenance lifecycle records do not match "
+                    "the durable field acceptance baseline."
+                )
+            self._favorites_snapshot = result.execution.observed_snapshot
+            self._provenance_records = result.provenance_records
+            self._last_adopted_field_acceptance_result = result
+            return self._snapshot_locked()
+
     def _execute_refresh_detach_durably_from_snapshot(
         self,
         expected_snapshot: FavoritesExternalProvenanceLifecycleSnapshot,
@@ -529,6 +661,114 @@ class FavoritesExternalProvenanceLifecycle:
 
             self._provenance_records = result.provenance_records
             self._last_adopted_refresh_detach_result = result
+            return self._snapshot_locked()
+
+    def _execute_record_mutation_durably_from_snapshot(
+        self,
+        expected_snapshot: FavoritesExternalProvenanceLifecycleSnapshot,
+        plan: FavoritesExternalRefreshRecordMutationPlan,
+        executor: FavoritesExternalRefreshRecordMutationExecutor,
+    ) -> tuple[
+        FavoritesExternalRefreshRecordMutationDurableResult,
+        FavoritesExternalProvenanceLifecycleSnapshot,
+    ]:
+        """Execute, publish, and adopt one structural mutation under the lock."""
+        from .favorites_external_refresh_record_import import (
+            FavoritesExternalRefreshRecordImportPlan,
+        )
+        from .favorites_external_refresh_record_mutation import (
+            execute_favorites_external_refresh_record_mutation_durably,
+        )
+        from .favorites_external_refresh_record_removal import (
+            FavoritesExternalRefreshRecordDeletePlan,
+        )
+
+        if type(expected_snapshot) is not FavoritesExternalProvenanceLifecycleSnapshot:
+            raise TypeError("Record mutation requires an exact lifecycle snapshot.")
+        if type(plan) not in {
+            FavoritesExternalRefreshRecordImportPlan,
+            FavoritesExternalRefreshRecordDeletePlan,
+        }:
+            raise TypeError("Record mutation requires an exact import or delete plan.")
+        if not callable(executor):
+            raise TypeError("Record mutation executor must be callable.")
+        with self._lifecycle_lock:
+            if self._state is not FavoritesExternalProvenanceLifecycleState.ACTIVE:
+                raise RuntimeError(
+                    "External Favorites provenance lifecycle must be active "
+                    "to execute a record mutation."
+                )
+            if self._snapshot_locked() != expected_snapshot:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "External Favorites provenance lifecycle evidence does not "
+                    "match the selected refresh baseline."
+                )
+            if plan.refresh_result.lifecycle_snapshot != expected_snapshot:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "Record mutation plan does not match the selected refresh baseline."
+                )
+            if expected_snapshot.provenance_path != self.provenance_path:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "Record mutation provenance path does not match the lifecycle."
+                )
+            if expected_snapshot.favorites_snapshot != plan.write_plan.baseline_snapshot:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "Record mutation Favorites baseline does not match the lifecycle."
+                )
+            if expected_snapshot.provenance_records != plan.baseline_provenance_records:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "Record mutation provenance baseline does not match the lifecycle."
+                )
+            result = execute_favorites_external_refresh_record_mutation_durably(
+                plan, executor, self.storage_source, self.provenance_path,
+                max_bytes=self.max_bytes, max_records=self.max_records,
+                max_fields_per_record=self.max_fields_per_record,
+            )
+            return result, self.advance_after_record_mutation(result)
+
+    def advance_after_record_mutation(
+        self,
+        result: FavoritesExternalRefreshRecordMutationDurableResult,
+    ) -> FavoritesExternalProvenanceLifecycleSnapshot:
+        """Adopt one already-verified structural mutation."""
+        from .favorites_external_refresh_record_mutation import (
+            FavoritesExternalRefreshRecordMutationDurableResult,
+        )
+
+        if type(result) is not FavoritesExternalRefreshRecordMutationDurableResult:
+            raise TypeError("Record mutation advancement requires an exact durable result.")
+        with self._lifecycle_lock:
+            if self._state is not FavoritesExternalProvenanceLifecycleState.ACTIVE:
+                raise RuntimeError(
+                    "External Favorites provenance lifecycle must be active "
+                    "to advance a record mutation."
+                )
+            if self.provenance_path != result.provenance_path:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "Record mutation path does not match the lifecycle."
+                )
+            if self._last_adopted_record_mutation_result is result:
+                if (
+                    self._favorites_snapshot == result.observed_snapshot
+                    and self._provenance_records
+                    == result.intended_provenance_records
+                ):
+                    return self._snapshot_locked()
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "External Favorites provenance lifecycle no longer matches "
+                    "the durable record mutation result."
+                )
+            if self._favorites_snapshot != result.plan.write_plan.baseline_snapshot:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "Record mutation Favorites baseline is stale."
+                )
+            if self._provenance_records != result.baseline_provenance_records:
+                raise FavoritesExternalProvenanceLifecycleAdvanceError(
+                    "Record mutation provenance baseline is stale."
+                )
+            self._favorites_snapshot = result.observed_snapshot
+            self._provenance_records = result.intended_provenance_records
+            self._last_adopted_record_mutation_result = result
             return self._snapshot_locked()
 
     def _snapshot_locked(self) -> FavoritesExternalProvenanceLifecycleSnapshot:

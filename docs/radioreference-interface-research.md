@@ -4,8 +4,9 @@ This document records the provider-specific research and security boundary begun
 in Milestone 23.2, extended by the WSDL-contract work in Milestone 23.3, the
 offline SOAP response decoder in Milestone 23.4, the offline SOAP request
 serializer in Milestone 23.5, and the offline provider-to-observation mapping
-foundation in Milestone 23.6. It remains intentionally separate from the
-renderer-neutral external Favorites model introduced in Milestone 23.1.
+foundation in Milestone 23.6, through the production exchange and assisted
+application composition completed in Milestone 23.25. Provider transport remains
+separate from the renderer-neutral external Favorites model.
 
 The project may use RadioReference only through documented and approved
 interfaces. This document does not authorize scraping, undocumented/private
@@ -398,10 +399,42 @@ conventional-frequency result and one talkgroup result. These tests establish th
 local decoder-to-normalization contract only; they are not evidence of live
 provider acceptance or transport behavior.
 
-HTTP/TLS transport, credential use, live authenticated calls, provider session
-implementation, production endpoint behavior, automatic synchronization, MyRR,
-operator merge acceptance, and Favorites storage mutation remain separate
-follow-on work.
+## Milestone 23.25 production exchange and reviewed mapping closure
+
+The production transport is a stdlib HTTPS SOAP exchange fixed to
+`RADIOREFERENCE_SERVICE_URL`. It uses the platform's normal certificate-authority
+and hostname validation, accepts no redirect or downgrade behavior, bounds both
+request and response bytes, and sends the exact reviewed operation `SOAPAction`.
+Connections and responses are owned per exchange and deterministically closed,
+including failure paths. Provider, HTTP, TLS, response, and cleanup detail is
+reduced to the existing stable redacted `RadioReferenceError` boundary.
+
+The immutable assisted-source factory composes existing owners in one documented
+chain: secret-free `RadioReferenceConfiguration`, an exact reviewed
+`RadioReferenceObservationRequestPlan`, `RadioReferenceHttpsSoapExchangeFactory`,
+`RadioReferenceObservationSessionFactory`, and `RadioReferenceSource`. Factory
+and application-service construction perform no network operation and do not
+resolve secrets. User password and application key values are resolved only
+through the existing secret-reference boundary when the source performs an
+explicit read; resolved values, request XML, and response bytes are not retained
+by the factory or application service. Session/source close behavior remains the
+existing deterministic ownership behavior.
+
+Only the documented provider SOAP/XML interface is implemented. The reviewed
+normalized and Favorites mapping surface covers conventional frequency records
+(`C-Freq` name and exact whole-Hz frequency) and trunked talkgroups (`TGID` name
+and canonical decimal talkgroup ID). Target command, provider identity,
+observation state and evidence, domain representation, and scanner field index
+are validated by the authoritative mapping functions. There is no cross-field
+fallback or mode, tone, encryption, tag, description, or hierarchy conversion.
+
+This transport and composition are implemented and tested offline with synthetic
+SOAP/XML fixtures and fake HTTPS connections, including exact `SOAPAction`,
+bounds, redacted failures, and cleanup. Live authenticated provider validation
+has not yet been performed; the tests do not claim provider acceptance or live
+endpoint qualification. A premium/user credential requirement remains an
+operator and RadioReference policy boundary, not something the application
+bypasses or validates offline.
 
 ## Intended product use
 
@@ -580,20 +613,16 @@ private endpoints.
 
 ## Deferred behavior
 
-The current RadioReference foundation still does not include:
+The completed renderer-neutral RadioReference foundation still does not include:
 
-- live production RadioReference synchronization;
-- provider-to-SDS template or hierarchy construction beyond the reviewed
-  normalized frequency/name observations documented for Milestone 23.6;
+- live authenticated RadioReference provider qualification/validation;
+- provider-to-SDS template or hierarchy construction beyond the four reviewed
+  conventional/talkgroup mappings documented above;
 - implicit scanner record creation from provider objects;
-- arbitrary-field, record-creation/removal, or automatic merge acceptance beyond
-  the explicit source-neutral linked-record name-acceptance boundary;
+- implicit arbitrary-field, record-creation/removal, or merge acceptance;
 - renderer-specific CLI/TUI/web/Home Assistant assisted-import or acceptance UI;
-- automatic application/daemon/renderer construction or startup wiring of the
-  renderer-neutral external-provenance lifecycle owner;
-- application/daemon/renderer wiring of the renderer-neutral assisted-refresh
-  preview session; Milestone 23.16 only composes an injected normalized source
-  with one active lifecycle snapshot and retains immutable per-attempt evidence;
+- automatic application/daemon/renderer startup wiring of the renderer-neutral
+  lifecycle or assisted-synchronization service;
 - automatic or scheduled synchronization;
 - MyRR synchronization; or
 - bypassing the existing Favorites editing, validation, planning, backup,

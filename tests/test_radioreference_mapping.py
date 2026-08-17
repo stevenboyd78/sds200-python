@@ -17,6 +17,7 @@ from sds200 import (
     FavoritesExternalRecordIdentity,
     FavoritesExternalRecordObservation,
     FavoritesExternalRecordObservationState,
+    FavoritesExternalRecordState,
     FavoritesExternalSourceIdentity,
     FavoritesStorageDocument,
     FavoritesStorageSnapshot,
@@ -24,7 +25,11 @@ from sds200 import (
     RadioReferenceTag,
     RadioReferenceTalkgroup,
     RadioReferenceWsdlOperation,
+    plan_favorites_external_field_acceptance,
     radioreference_favorites_frequency_mapping,
+    radioreference_favorites_frequency_name_mapping,
+    radioreference_favorites_talkgroup_decimal_mapping,
+    radioreference_favorites_talkgroup_name_mapping,
     radioreference_frequency_observation,
     radioreference_soap_result_observations,
     radioreference_talkgroup_observation,
@@ -52,6 +57,14 @@ def _conventional_channel_target():
     return select_favorites_record_target(
         _favorites_snapshot(),
         5,
+        document_index=0,
+    )
+
+
+def _talkgroup_channel_target():
+    return select_favorites_record_target(
+        _favorites_snapshot(),
+        14,
         document_index=0,
     )
 
@@ -94,10 +107,12 @@ def _talkgroup(
     *,
     alpha_tag: str = "Ops",
     description: str = "Operations",
+    decimal: int = 12345,
+    talkgroup_id: int = 200,
 ) -> RadioReferenceTalkgroup:
     return RadioReferenceTalkgroup(
-        talkgroup_id=200,
-        decimal=12345,
+        talkgroup_id=talkgroup_id,
+        decimal=decimal,
         subfleet="",
         ltr=False,
         slot="",
@@ -673,11 +688,18 @@ def test_talkgroup_observation_maps_only_reviewed_first_slice() -> None:
     assert observation.evidence.observed_at is observed_at
     assert observation.evidence.revision is None
     assert observation.state is FavoritesExternalRecordObservationState.ACTIVE
-    assert tuple(field.name for field in observation.fields) == ("name",)
+    assert tuple(field.name for field in observation.fields) == (
+        "name",
+        "decimal",
+    )
     assert observation.fields[0].state is (
         FavoritesExternalFieldObservationState.VALUE
     )
     assert observation.fields[0].value == "Ops"
+    assert observation.fields[1].state is (
+        FavoritesExternalFieldObservationState.VALUE
+    )
+    assert observation.fields[1].value == "12345"
 
 
 def test_talkgroup_observation_preserves_alpha_tag_without_fallback() -> None:
@@ -700,15 +722,22 @@ def test_talkgroup_observation_preserves_padded_alpha_tag_value() -> None:
     assert observation.fields[0].value == " Ops "
 
 
-def test_talkgroup_observation_does_not_map_unreviewed_decimal_field() -> None:
+@pytest.mark.parametrize(("decimal", "expected"), ((12345, "12345"), (0, "0"), (-1, "-1")))
+def test_talkgroup_observation_maps_canonical_decimal_independent_of_identity(
+    decimal: int,
+    expected: str,
+) -> None:
     observation = radioreference_talkgroup_observation(
-        _talkgroup(),
+        _talkgroup(decimal=decimal, talkgroup_id=200),
         source=_source(),
         observed_at=datetime(2026, 8, 13, tzinfo=UTC),
     )
 
-    assert tuple(field.name for field in observation.fields) == ("name",)
-    assert all(field.value != "12345" for field in observation.fields)
+    assert tuple(field.name for field in observation.fields) == ("name", "decimal")
+    assert observation.fields[1].value == expected
+    assert observation.fields[1].value != observation.identity.record_id.removeprefix(
+        "talkgroup-"
+    )
 
 
 def test_talkgroup_observation_does_not_treat_date_as_revision() -> None:
@@ -827,6 +856,219 @@ def test_soap_result_adapter_maps_reviewed_talkgroup_operation() -> None:
         "Third",
         "Second",
     ]
+    assert [item.fields[1].value for item in observations] == [
+        "12345",
+        "12345",
+    ]
+
+
+def _reconstructed_observation(
+    *,
+    record_id: str,
+    name: str | None = "Provider Name",
+    decimal: str | None = "12345",
+    state: FavoritesExternalRecordObservationState = (
+        FavoritesExternalRecordObservationState.ACTIVE
+    ),
+    provider: str = "radioreference",
+) -> FavoritesExternalRecordObservation:
+    fields = []
+    if name is not None:
+        fields.append(
+            FavoritesExternalFieldObservation(
+                name="name",
+                state=FavoritesExternalFieldObservationState.VALUE,
+                value=name,
+            )
+        )
+    if decimal is not None:
+        fields.append(
+            FavoritesExternalFieldObservation(
+                name="decimal",
+                state=FavoritesExternalFieldObservationState.VALUE,
+                value=decimal,
+            )
+        )
+    return FavoritesExternalRecordObservation(
+        identity=FavoritesExternalRecordIdentity(
+            source=_source(provider=provider),
+            record_id=record_id,
+        ),
+        evidence=FavoritesExternalObservationEvidence(
+            observed_at=datetime(2026, 8, 16, tzinfo=UTC),
+        ),
+        fields=tuple(fields),
+        state=state,
+    )
+
+
+@pytest.mark.parametrize(
+    ("value", "accepted"),
+    (("", True), (" " * 64, True), (" padded ", True), ("x" * 65, False),
+     ("bad\n", False), ("café", False)),
+)
+@pytest.mark.parametrize(
+    ("mapper", "target", "record_id"),
+    (
+        (
+            radioreference_favorites_frequency_name_mapping,
+            _conventional_channel_target,
+            "frequency-101",
+        ),
+        (
+            radioreference_favorites_talkgroup_name_mapping,
+            _talkgroup_channel_target,
+            "talkgroup-200",
+        ),
+    ),
+)
+def test_rr_name_mappings_preserve_exact_favorites_name_tag_domain(
+    value: str,
+    accepted: bool,
+    mapper,
+    target,
+    record_id: str,
+) -> None:
+    observation = _reconstructed_observation(record_id=record_id, name=value)
+    if not accepted:
+        with pytest.raises(FavoritesExternalFieldMappingError, match="Name Tag"):
+            mapper(target(), observation)
+        return
+
+    mapping = mapper(target(), observation)
+    assert mapping.field is observation.fields[0]
+    assert mapping.field_index == 2
+    assert mapping.scanner_value == value
+
+
+@pytest.mark.parametrize(
+    "record_id",
+    ("talkgroup-0", "talkgroup-1", "talkgroup--1", "talkgroup-2147483647", "talkgroup--2147483648"),
+)
+def test_rr_talkgroup_name_mapping_accepts_canonical_xsd_int_identity(record_id: str) -> None:
+    mapping = radioreference_favorites_talkgroup_name_mapping(
+        _talkgroup_channel_target(), _reconstructed_observation(record_id=record_id)
+    )
+    assert mapping.scanner_value == "Provider Name"
+
+
+@pytest.mark.parametrize(
+    "record_id",
+    ("frequency-1", "talkgroup--0", "talkgroup-01", "talkgroup--01",
+     "talkgroup-2147483648", "talkgroup--2147483649", "talkgroup-x"),
+)
+def test_rr_talkgroup_mappings_reject_unreviewed_identity(record_id: str) -> None:
+    observation = _reconstructed_observation(record_id=record_id)
+    for mapper in (
+        radioreference_favorites_talkgroup_name_mapping,
+        radioreference_favorites_talkgroup_decimal_mapping,
+    ):
+        with pytest.raises(FavoritesExternalFieldMappingError, match="reviewed talkgroup"):
+            mapper(_talkgroup_channel_target(), observation)
+
+
+@pytest.mark.parametrize("value", ("0", "1", "2147483647"))
+def test_rr_talkgroup_decimal_mapping_accepts_scanner_domain(value: str) -> None:
+    observation = _reconstructed_observation(record_id="talkgroup-200", decimal=value)
+    mapping = radioreference_favorites_talkgroup_decimal_mapping(
+        _talkgroup_channel_target(), observation
+    )
+    assert mapping.field is observation.fields[1]
+    assert mapping.field_index == 4
+    assert mapping.scanner_value == value
+    assert mapping.scanner_value != "200"
+
+
+@pytest.mark.parametrize(
+    "value",
+    ("-1", "01", "+1", " 1", "1 ", "1.0", "1e0", "2147483648", ""),
+)
+def test_rr_talkgroup_decimal_mapping_rejects_unrepresentable_text(value: str) -> None:
+    with pytest.raises(FavoritesExternalFieldMappingError, match="canonical non-negative"):
+        radioreference_favorites_talkgroup_decimal_mapping(
+            _talkgroup_channel_target(),
+            _reconstructed_observation(record_id="talkgroup-200", decimal=value),
+        )
+
+
+def test_rr_talkgroup_negative_dto_observation_is_valid_but_unrepresentable() -> None:
+    observation = radioreference_talkgroup_observation(
+        _talkgroup(decimal=-2147483648),
+        source=_source(),
+        observed_at=datetime(2026, 8, 16, tzinfo=UTC),
+    )
+    assert observation.fields[1].value == "-2147483648"
+    with pytest.raises(FavoritesExternalFieldMappingError):
+        radioreference_favorites_talkgroup_decimal_mapping(
+            _talkgroup_channel_target(), observation
+        )
+
+
+def test_checkpoint_d_mapping_symbols_are_package_exports() -> None:
+    for name, symbol in (
+        (
+            "radioreference_favorites_frequency_name_mapping",
+            radioreference_favorites_frequency_name_mapping,
+        ),
+        (
+            "radioreference_favorites_talkgroup_name_mapping",
+            radioreference_favorites_talkgroup_name_mapping,
+        ),
+        (
+            "radioreference_favorites_talkgroup_decimal_mapping",
+            radioreference_favorites_talkgroup_decimal_mapping,
+        ),
+    ):
+        assert getattr(sds200, name) is symbol
+        assert name in sds200.__all__
+
+
+@pytest.mark.parametrize(
+    ("mapper", "target_factory", "observation"),
+    (
+        (
+            radioreference_favorites_frequency_name_mapping,
+            _conventional_channel_target,
+            _reconstructed_observation(record_id="frequency-101"),
+        ),
+        (
+            radioreference_favorites_talkgroup_name_mapping,
+            _talkgroup_channel_target,
+            _reconstructed_observation(record_id="talkgroup-200"),
+        ),
+        (
+            radioreference_favorites_talkgroup_decimal_mapping,
+            _talkgroup_channel_target,
+            _reconstructed_observation(record_id="talkgroup-200"),
+        ),
+    ),
+)
+def test_checkpoint_d_mappings_compose_as_one_selected_field(
+    mapper,
+    target_factory,
+    observation: FavoritesExternalRecordObservation,
+) -> None:
+    snapshot = _favorites_snapshot()
+    target = target_factory()
+    mapping = mapper(target, observation)
+    record = FavoritesExternalRecordState(
+        target=target,
+        fields=(),
+        external_identity=observation.identity,
+        last_observation=FavoritesExternalObservationEvidence(
+            observed_at=datetime(2026, 8, 15, tzinfo=UTC),
+        ),
+    )
+
+    plan = plan_favorites_external_field_acceptance(snapshot, record, mapping)
+
+    assert plan.mapping is mapping
+    assert plan.intended_state.target.record.fields[mapping.field_index] == (
+        mapping.scanner_value
+    )
+    assert tuple(field.name for field in plan.intended_state.fields) == (
+        mapping.field.name,
+    )
 
 
 @pytest.mark.parametrize(

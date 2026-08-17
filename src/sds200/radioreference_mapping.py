@@ -135,13 +135,23 @@ def radioreference_talkgroup_observation(
                 state=FavoritesExternalFieldObservationState.VALUE,
                 value=talkgroup.alpha_tag,
             ),
+            FavoritesExternalFieldObservation(
+                name="decimal",
+                state=FavoritesExternalFieldObservationState.VALUE,
+                value=str(talkgroup.decimal),
+            ),
         ),
     )
 
 
 _RADIOREFERENCE_FAVORITES_FREQUENCY_FIELD_INDEX = 4
+_RADIOREFERENCE_FAVORITES_NAME_FIELD_INDEX = 2
+_RADIOREFERENCE_FAVORITES_TALKGROUP_DECIMAL_FIELD_INDEX = 4
 _RADIOREFERENCE_FREQUENCY_RECORD_ID = re.compile(
     r"frequency-(0|[1-9][0-9]*|-[1-9][0-9]*)\Z"
+)
+_RADIOREFERENCE_TALKGROUP_RECORD_ID = re.compile(
+    r"talkgroup-(0|[1-9][0-9]*|-[1-9][0-9]*)\Z"
 )
 _XSD_INT_MIN = -(2**31)
 _XSD_INT_MAX = 2**31 - 1
@@ -154,6 +164,168 @@ def _is_radioreference_frequency_record_id(record_id: str) -> bool:
         return False
     value = int(match.group(1))
     return _XSD_INT_MIN <= value <= _XSD_INT_MAX
+
+
+def _is_radioreference_talkgroup_record_id(record_id: str) -> bool:
+    match = _RADIOREFERENCE_TALKGROUP_RECORD_ID.fullmatch(record_id)
+    if match is None:
+        return False
+    value = int(match.group(1))
+    return _XSD_INT_MIN <= value <= _XSD_INT_MAX
+
+
+def _radioreference_favorites_name_mapping(
+    target: FavoritesRecordTarget,
+    observation: FavoritesExternalRecordObservation,
+    *,
+    command: str,
+    identity_is_valid: bool,
+    identity_label: str,
+    label: str,
+) -> FavoritesExternalFieldMapping:
+    if not isinstance(target, FavoritesRecordTarget):
+        raise TypeError(f"{label} requires FavoritesRecordTarget.")
+    if not isinstance(observation, FavoritesExternalRecordObservation):
+        raise TypeError(
+            f"{label} requires FavoritesExternalRecordObservation."
+        )
+    _require_radioreference_source(observation.identity.source, label=label)
+    if observation.state is not FavoritesExternalRecordObservationState.ACTIVE:
+        raise FavoritesExternalFieldMappingError(
+            f"{label} requires an active observation."
+        )
+    if not identity_is_valid:
+        raise FavoritesExternalFieldMappingError(
+            f"{label} requires a reviewed {identity_label} observation."
+        )
+    if target.source_kind is not FavoritesRecordSourceKind.HPD:
+        raise FavoritesExternalFieldMappingError(f"{label} requires an HPD target.")
+    if target.record.command != command:
+        raise FavoritesExternalFieldMappingError(
+            f"{label} requires a {command} target."
+        )
+    name_field = next(
+        (field for field in observation.fields if field.name == "name"),
+        None,
+    )
+    if name_field is None:
+        raise FavoritesExternalFieldMappingError(
+            f"{label} requires the normalized name field."
+        )
+    if name_field.state is not FavoritesExternalFieldObservationState.VALUE:
+        raise FavoritesExternalFieldMappingError(
+            f"{label} requires an observed name value."
+        )
+    name_value = name_field.value
+    assert name_value is not None
+    if len(name_value) > 64 or any(
+        not 0x20 <= ord(character) <= 0x7E for character in name_value
+    ):
+        raise FavoritesExternalFieldMappingError(
+            f"{label} requires a Favorites Name Tag of at most 64 printable "
+            "ASCII characters."
+        )
+    return FavoritesExternalFieldMapping(
+        target=target,
+        observation=observation,
+        field=name_field,
+        field_index=_RADIOREFERENCE_FAVORITES_NAME_FIELD_INDEX,
+        scanner_value=name_value,
+    )
+
+
+def radioreference_favorites_frequency_name_mapping(
+    target: FavoritesRecordTarget,
+    observation: FavoritesExternalRecordObservation,
+) -> FavoritesExternalFieldMapping:
+    """Map one normalized RR conventional name to the exact C-Freq Name field."""
+
+    return _radioreference_favorites_name_mapping(
+        target,
+        observation,
+        command="C-Freq",
+        identity_is_valid=_is_radioreference_frequency_record_id(
+            observation.identity.record_id
+        )
+        if isinstance(observation, FavoritesExternalRecordObservation)
+        else False,
+        identity_label="conventional frequency",
+        label="RadioReference Favorites frequency name mapping",
+    )
+
+
+def radioreference_favorites_talkgroup_name_mapping(
+    target: FavoritesRecordTarget,
+    observation: FavoritesExternalRecordObservation,
+) -> FavoritesExternalFieldMapping:
+    """Map one normalized RR talkgroup name to the exact TGID Name field."""
+
+    return _radioreference_favorites_name_mapping(
+        target,
+        observation,
+        command="TGID",
+        identity_is_valid=_is_radioreference_talkgroup_record_id(
+            observation.identity.record_id
+        )
+        if isinstance(observation, FavoritesExternalRecordObservation)
+        else False,
+        identity_label="talkgroup",
+        label="RadioReference Favorites talkgroup name mapping",
+    )
+
+
+def radioreference_favorites_talkgroup_decimal_mapping(
+    target: FavoritesRecordTarget,
+    observation: FavoritesExternalRecordObservation,
+) -> FavoritesExternalFieldMapping:
+    """Map one normalized RR talkgroup decimal value to the exact TGID ID field."""
+
+    label = "RadioReference Favorites talkgroup decimal mapping"
+    if not isinstance(target, FavoritesRecordTarget):
+        raise TypeError(f"{label} requires FavoritesRecordTarget.")
+    if not isinstance(observation, FavoritesExternalRecordObservation):
+        raise TypeError(f"{label} requires FavoritesExternalRecordObservation.")
+    _require_radioreference_source(observation.identity.source, label=label)
+    if observation.state is not FavoritesExternalRecordObservationState.ACTIVE:
+        raise FavoritesExternalFieldMappingError(
+            f"{label} requires an active observation."
+        )
+    if not _is_radioreference_talkgroup_record_id(observation.identity.record_id):
+        raise FavoritesExternalFieldMappingError(
+            f"{label} requires a reviewed talkgroup observation."
+        )
+    if target.source_kind is not FavoritesRecordSourceKind.HPD:
+        raise FavoritesExternalFieldMappingError(f"{label} requires an HPD target.")
+    if target.record.command != "TGID":
+        raise FavoritesExternalFieldMappingError(f"{label} requires a TGID target.")
+    decimal_field = next(
+        (field for field in observation.fields if field.name == "decimal"),
+        None,
+    )
+    if decimal_field is None:
+        raise FavoritesExternalFieldMappingError(
+            f"{label} requires the normalized decimal field."
+        )
+    if decimal_field.state is not FavoritesExternalFieldObservationState.VALUE:
+        raise FavoritesExternalFieldMappingError(
+            f"{label} requires an observed decimal value."
+        )
+    decimal_value = decimal_field.value
+    assert decimal_value is not None
+    if (
+        _CANONICAL_WHOLE_HZ_TEXT.fullmatch(decimal_value) is None
+        or int(decimal_value) > _XSD_INT_MAX
+    ):
+        raise FavoritesExternalFieldMappingError(
+            f"{label} requires canonical non-negative xsd:int decimal text."
+        )
+    return FavoritesExternalFieldMapping(
+        target=target,
+        observation=observation,
+        field=decimal_field,
+        field_index=_RADIOREFERENCE_FAVORITES_TALKGROUP_DECIMAL_FIELD_INDEX,
+        scanner_value=decimal_value,
+    )
 
 
 def radioreference_favorites_frequency_mapping(
@@ -318,6 +490,9 @@ def radioreference_soap_result_observations(
 
 __all__ = [
     "radioreference_favorites_frequency_mapping",
+    "radioreference_favorites_frequency_name_mapping",
+    "radioreference_favorites_talkgroup_decimal_mapping",
+    "radioreference_favorites_talkgroup_name_mapping",
     "radioreference_frequency_observation",
     "radioreference_soap_result_observations",
     "radioreference_talkgroup_observation",

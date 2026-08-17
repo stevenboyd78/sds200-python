@@ -11,36 +11,10 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 23.24 — External Favorites arbitrary-field acceptance execution composition
+### Milestone 24 — Advanced protocol and analysis modes
 
-- Begin from the exact fully merged Milestone 23.23 foundation at
-  `e1fcaf7158f8397bb757f92c9c3b315e810eb4df`.
-- Compose one already-validated `FavoritesExternalFieldAcceptancePlan` with an
-  injected storage-specific executor without redoing provider mapping, preview
-  classification, source-field selection, positional editing, or write planning.
-- Pass only the plan's ordinary immutable `FavoritesWritePlan` to the executor
-  and retain its return value as opaque backend-specific execution evidence.
-- Independently reread storage through one injected `FavoritesStorageSource`
-  after executor return and require exact equality with the write plan's
-  `intended_snapshot` before returning accepted in-memory provenance.
-- Preserve no-op acceptance semantics: an exact no-op write plan still flows
-  through the injected executor and independent readback so an already-equal
-  scanner value can gain or refresh external provenance without manufacturing a
-  storage-byte change.
-- Propagate executor failures without claiming acceptance. Redact storage
-  readback failures and fail closed on malformed or mismatched post-write
-  snapshots even when the backend returned success.
-- Keep copied-tree and USB qualification, locking, backup/staging, activation,
-  recovery, and durable operation evidence owned by their existing executors;
-  do not add another storage backend or a public arbitrary-index writer.
-- Keep durable provenance publication, lifecycle advancement, assisted-refresh
-  selection/orchestration, mapping expansion, transformed scanner
-  representations, record creation/removal, live RadioReference transport and
-  credentials, renderer/daemon/CLI/TUI/web/Home Assistant wiring, MyRR,
-  batching, and automatic/background synchronization deferred.
-- Use synthetic observations, existing local Favorites fixtures, and fake
-  executor/storage-source boundaries in automated tests; no physical scanner,
-  USB device, FTP target, provider account, or network access is required.
+Detailed slicing is pending. Research and fixture work must precede public
+support, preserving the existing Milestone 24 scope below.
 
 ## Deferred hardware validation
 
@@ -354,13 +328,34 @@ begins.
   exact mapping consumption, externally owned or previously unbound selected
   fields, collision/conflict rejection, exact positional replacement or no-op
   write planning, and intended in-memory provenance without execution.
-- Add RadioReference-assisted import with update previews.
-- Preserve provenance and field ownership for externally sourced data.
-- Support merge decisions and detaching local records from an external source.
-- Store credentials and application keys outside exported Favorites data.
-- Investigate MyRR synchronization only through an approved and documented
-  interface.
-- Do not scrape or depend on undocumented private interfaces.
+- Milestone 23.24 completed arbitrary-field acceptance execution composition:
+  exact mapped-field plans flow through injected existing write executors,
+  independent exact readback, opaque backend evidence retention, and fail-closed
+  durability without another editor or storage backend.
+- Milestone 23.25 completed the renderer-neutral assisted-synchronization
+  foundation across checkpoints A–F: durable arbitrary-field acceptance and
+  lifecycle orchestration; explicit template-and-binding-backed record import;
+  explicit provider-removal delete versus keep-local/detach planning; exact
+  provenance rebasing after structural changes; the production documented
+  RadioReference stdlib HTTPS SOAP exchange and reviewed request/session/source
+  chain; reviewed conventional and talkgroup observation mappings; and one
+  synchronous renderer-neutral application service exposing typed refresh,
+  plan, and execute choices.
+- Milestone 23 is renderer-neutral foundation complete. Supported
+  synchronization is user-initiated and assisted only—never automatic,
+  scheduled, polling, or background behavior. Only exact reviewed mappings are
+  supported: conventional `C-Freq` name and whole-Hz frequency, plus `TGID`
+  name and decimal talkgroup ID. Structural import requires an explicit scanner
+  template and field bindings, and provider removal requires an explicit delete
+  or keep-local/detach decision.
+- The production RadioReference exchange is implemented and tested with
+  deterministic offline fixtures and fake HTTPS connections. No live
+  credentialed RadioReference validation or live scanner-hardware validation
+  was performed for this milestone.
+- Keep credentials and application keys outside exported Favorites data. Keep
+  MyRR, scraping, undocumented/private interfaces, broader mappings and scanner
+  transformations, renderer wiring, and automatic synchronization out of this
+  foundation.
 
 ### Milestone 24 — Advanced protocol and analysis modes
 
