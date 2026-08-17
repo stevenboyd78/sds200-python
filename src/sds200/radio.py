@@ -12,6 +12,11 @@ from pathlib import Path
 from time import monotonic
 from typing import Self, TypeVar
 
+from .analysis_subscriptions import (
+    AnalysisPublisher,
+    AnalysisPublisherSnapshot,
+    AnalysisSubscription,
+)
 from .commands import (
     Command,
     GetChargeStatus,
@@ -184,6 +189,7 @@ class SDSScanner:
         self.analysis_parser = AnalysisParser()
         self.xml_assembler = XmlResponseAssembler()
         self.events = EventBus()
+        self._analysis_publisher = AnalysisPublisher()
         if isinstance(self.transport, DiagnosticControlTransport):
             self.transport.set_diagnostic_handler(self._transport_diagnostic)
         self.state = RadioState()
@@ -561,6 +567,7 @@ class SDSScanner:
             self._command_lock.release()
 
     def close(self) -> None:
+        self._analysis_publisher.close()
         if self.psi_active:
             with suppress(SDS200Error, OSError, ValueError):
                 self.stop_scanner_info_push()
@@ -584,6 +591,12 @@ class SDSScanner:
 
     def on_packet(self, callback: Callable[[Packet], None]) -> Callable[[], None]:
         return self.events.subscribe("packet", callback)
+
+    def subscribe_analysis(self) -> AnalysisSubscription:
+        return self._analysis_publisher.subscribe()
+
+    def analysis_snapshot(self) -> AnalysisPublisherSnapshot:
+        return self._analysis_publisher.snapshot()
 
     def on_response(self, callback: Callable[[object], None]) -> Callable[[], None]:
         return self.events.subscribe("response", callback)
@@ -1215,6 +1228,8 @@ class SDSScanner:
                 self._model = normalize_model_name(response.model)
             elif isinstance(response, FirmwareResponse):
                 self._firmware = response.version
+        if isinstance(response, AnalysisResponse):
+            self._analysis_publisher.publish(response)
         self.events.emit("response", response)
         self.events.emit(command.lower(), response)
         with self._response_lock:

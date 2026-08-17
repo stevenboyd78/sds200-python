@@ -203,13 +203,25 @@ response family and using the ordinary correlation path for its first response
 is an architectural inference from the recurring-response shape, not a claimed
 scanner lifecycle or termination fact.
 
-This is not the full analysis-session owner. Activity Log, LCN Finder, Band
-Scope, Raw Data Output, System Status, RF Power Plot, bounded subscription and
-session ownership, reconnect restoration, and transport-specific behavior are
-deferred to later evidence-led 24.6 or later slices. Transport/model/firmware
-applicability remains unknown; no UDP expectation, retry, bare-XML correlation,
-or recovery behavior changes here. No physical scanner validation is claimed,
-and `QSH` remains blocked.
+The second narrow Milestone 24.6 slice adds only local bounded AST publication
+and subscription ownership for already-parsed `AnalysisResponse` values. One
+radio-owned publisher assigns globally ordered sequence numbers and fans each
+response into isolated bounded consumer queues. Each consumer independently
+drops its oldest unread response on overflow and exposes cumulative drop and
+overflow accounting. Explicit local subscription close removes and wakes that
+consumer; radio close locally closes the publisher and wakes all remaining
+blocked consumers. These operations issue no new scanner command.
+
+This remains short of a full analysis-session owner. The evidence still supplies
+no documented `AST,STOP` or `APR,STOP`, and no distinct pause and resume wire
+forms. Local subscription or publisher close is not a claim that scanner
+analysis has terminated, and no running, paused, or stopped state is inferred.
+There is no reconnect restoration, transport/model/firmware applicability
+claim, new mode runtime, or physical scanner validation claim. Activity Log,
+LCN Finder, Band Scope, Raw Data Output, System Status, RF Power Plot, and
+broader session ownership remain deferred. `QSH` remains blocked. No UDP
+expectation, retry, bare-XML correlation, transport recovery, or Scan Mode
+behavior changes in this slice.
 
 ## Evidence policy
 
