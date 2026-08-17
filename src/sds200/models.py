@@ -101,9 +101,13 @@ class ScannerInfo:
     nodes: Mapping[str, ScannerNode]
     raw_xml: str
     received_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    records: tuple[ScannerNode, ...] = ()
 
     def node(self, tag: str) -> ScannerNode | None:
         return self.nodes.get(tag)
+
+    def records_by_tag(self, tag: str) -> tuple[ScannerNode, ...]:
+        return tuple(record for record in self.records if record.tag == tag)
 
     def _attribute(self, tags: tuple[str, ...], name: str) -> str | None:
         for tag in tags:

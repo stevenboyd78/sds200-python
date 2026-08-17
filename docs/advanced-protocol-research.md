@@ -120,6 +120,25 @@ QSH remains unimplemented and blocked pending stronger evidence for the exact
 protocol evidence and does not weaken the existing warning in the evidence
 ledger below.
 
+## Milestone 24.4 implementation boundary
+
+Milestone 24.3 completed and merged the reviewed FQK read/control forms. QSH
+remains deferred because the exact `FRQ` representation is unresolved. This
+first narrow Milestone 24.4 slice adds only an immutable ordered/repeated
+`ScannerInfo` projection containing every non-root node from the existing source
+traversal. The existing tag-keyed projection remains compatible and continues
+to select the last occurrence, and existing typed properties retain their
+semantics. Raw XML remains exact.
+
+This preservation foundation retains repeated and unknown elements and their
+attributes for later evidence-led modeling. It does not invent new
+`ScannerInfo` RAN, Color Code, Area, activity, or quality field names or
+semantics, and it does not parse `SAD` into a speculative structured code model.
+Existing raw `SAD` examples are evidence for values including CTCSS and NAC;
+they do not establish additional field names for RAN, Color Code, or Area.
+Synthetic regression evidence verifies preservation behavior but is not
+physical scanner validation.
+
 ## Evidence policy
 
 Material claims must identify their strongest evidence as specification,
@@ -464,9 +483,10 @@ scope decision, not hardware validation or a promise of model/firmware support.
 - 24.1: research, evidence ledger, and fixture/provenance foundation;
 - 24.2: exact GLT Favorites-list (`GLT,FL`) retrieval and generalized
   bounded-XML framing;
-- 24.3: conservative FQK read/control and QSH control support;
-- 24.4: richer NAC/RAN/color-code/area/activity/quality preservation and
-  modeling;
+- 24.3: completed FQK read/control; QSH remains deferred pending evidence for
+  its exact FRQ representation;
+- 24.4: ordered/repeated ScannerInfo preservation foundation before any
+  evidence-backed richer NAC/RAN/color-code/area/activity/quality modeling;
 - 24.5: URC scanner recording control;
 - 24.6: AST/APR analysis-session foundation;
 - 24.7: PWF/GWF/GW2 waterfall session and data work;

@@ -11,19 +11,22 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 24.3 — FQK read and control
+### Milestone 24.4 — Richer ScannerInfo metadata modeling
 
-Milestone 24.2 completed and merged the exact `GLT,FL` retrieval and generalized
-bounded-XML framing foundation. This first Milestone 24.3 implementation slice
-adds only exact Favorites Quick Key (`FQK`) read and control through distinct
-typed APIs. Both forms preserve all 100 status positions, accept only reviewed
-status values `0`, `1`, and `2`, and use the ordinary command-correlation path.
-Validation is specification- and synthetic-fixture-based; no physical scanner
-validation is claimed.
+Milestone 24.3 completed and merged exact Favorites Quick Key (`FQK`) read and
+control through distinct typed APIs. Quick Search (`QSH`) runtime support remains
+blocked and deferred because its exact `FRQ` representation requires stronger
+fixture or physical evidence; redaction test data is not protocol evidence.
 
-QSH runtime support remains blocked and deferred. The exact QSH `FRQ`
-representation requires stronger fixture or physical evidence before an API or
-wire implementation can be added; redaction test data is not protocol evidence.
+This first narrow Milestone 24.4 slice adds only the losslessness foundation for
+richer `ScannerInfo` modeling: every non-root node is preserved in source
+traversal order, including repeated and unknown elements and their attributes,
+while the existing tag-keyed, last-occurrence-wins compatibility projection and
+ordinary properties remain unchanged. No new `ScannerInfo` RAN, Color Code,
+Area, activity, or quality field names or semantics are invented in this slice.
+Existing raw `SAD` examples provide evidence for values such as CTCSS and NAC,
+but do not establish additional field names for RAN, Color Code, or Area.
+Validation is synthetic-fixture-based and is not physical scanner validation.
 
 ## Deferred hardware validation
 
@@ -394,9 +397,11 @@ Tentative evidence-led slicing is:
 - Milestone 24.1: protocol inventory, evidence ledger, and fixture/provenance
   foundation;
 - Milestone 24.2: exact `GLT,FL` retrieval and generalized bounded-XML framing;
-- Milestone 24.3: conservative `FQK` read/control and `QSH` control support;
-- Milestone 24.4: richer NAC, RAN, color-code, area, activity, and quality
-  preservation and modeling;
+- Milestone 24.3: completed `FQK` read/control; `QSH` remains deferred pending
+  evidence for its exact `FRQ` representation;
+- Milestone 24.4: ordered/repeated `ScannerInfo` preservation foundation before
+  any evidence-backed richer NAC, RAN, color-code, area, activity, or quality
+  modeling;
 - Milestone 24.5: `URC` scanner recording control;
 - Milestone 24.6: `AST`/`APR` analysis-session foundation;
 - Milestone 24.7: `PWF`/`GWF`/`GW2` waterfall session and data work;
