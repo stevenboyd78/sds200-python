@@ -13,6 +13,8 @@ from sds200.exceptions import (
 )
 from sds200.fallback import FallbackTransport
 from sds200.models import (
+    AnalysisMode,
+    AnalysisResponse,
     FavoritesQuickKeyState,
     RadioEvent,
     ScannerInfo,
@@ -592,6 +594,67 @@ def test_malformed_glt_emits_protocol_error_without_a_response() -> None:
 
     assert len(errors) == 1
     assert str(errors[0]) == "Invalid GLT XML response"
+
+
+def test_analysis_starts_correlate_first_ast_and_later_ast_is_published() -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport)
+    observed: list[AnalysisResponse] = []
+    radio.events.subscribe("ast", observed.append)
+    initial_state = radio.state.snapshot
+
+    def feed_ast(tag: str, identifier: str) -> None:
+        transport.feed_line("AST,<XML>,")
+        transport.feed_line('<AST FutureRoot="keep">')
+        transport.feed_line(f'<{tag} SyntheticId="{identifier}" />')
+        transport.feed_line("</AST>")
+
+    with radio:
+        def respond_current() -> None:
+            while transport.writes != ["AST,CURRENT_ACTIVITY,7"]:
+                time.sleep(0.005)
+            feed_ast("CurrentActivity", "first")
+
+        thread = threading.Thread(target=respond_current, daemon=True)
+        thread.start()
+        current = radio.start_current_activity_analysis(7, timeout=1.0)
+        thread.join(timeout=1.0)
+
+        feed_ast("CurrentActivity", "subsequent")
+
+        def respond_apr() -> None:
+            while transport.writes[-1:] != ["APR,CURRENT_ACTIVITY"]:
+                time.sleep(0.005)
+            transport.feed_line("APR,OK")
+
+        thread = threading.Thread(target=respond_apr, daemon=True)
+        thread.start()
+        radio.pause_resume_analysis(AnalysisMode.CURRENT_ACTIVITY, timeout=1.0)
+        thread.join(timeout=1.0)
+
+        def respond_lcn() -> None:
+            while transport.writes[-1:] != ["AST,LCN_MONITOR,9"]:
+                time.sleep(0.005)
+            feed_ast("LcnMonitor", "lcn-first")
+
+        thread = threading.Thread(target=respond_lcn, daemon=True)
+        thread.start()
+        lcn = radio.start_lcn_monitor_analysis(9, timeout=1.0)
+        thread.join(timeout=1.0)
+
+    assert current.records[0].attributes["SyntheticId"] == "first"
+    assert lcn.records[0].attributes["SyntheticId"] == "lcn-first"
+    assert [item.records[0].attributes["SyntheticId"] for item in observed] == [
+        "first",
+        "subsequent",
+        "lcn-first",
+    ]
+    assert radio.state.snapshot == initial_state
+    assert transport.writes == [
+        "AST,CURRENT_ACTIVITY,7",
+        "APR,CURRENT_ACTIVITY",
+        "AST,LCN_MONITOR,9",
+    ]
 
 
 def test_identical_psi_frames_refresh_state_observers() -> None:

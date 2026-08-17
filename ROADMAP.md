@@ -11,23 +11,24 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 24.5 — URC scanner recording control
+### Milestone 24.6 — AST/APR analysis-session foundation
 
-Milestone 24.4 completed and merged the ordered/repeated `ScannerInfo`
-losslessness foundation while preserving the existing compatibility projection.
-Quick Search (`QSH`) runtime support remains blocked and deferred because its
-exact `FRQ` representation requires stronger fixture or physical evidence;
-redaction test data is not protocol evidence.
+Milestone 24.5 completed and merged the specification-backed `URC` scanner
+recording-status and control slice. Quick Search (`QSH`) remains blocked because
+its exact `FRQ` representation lacks sufficient evidence.
 
-This first narrow Milestone 24.5 slice adds exact typed scanner-side `URC`
-recording-status reads and explicit recording-control writes, operation-specific
-mapping for all four documented error codes with lossless preservation of
-unknown well-formed codes, and deterministic synthetic replay evidence. It does
-not integrate scanner-side `URC` behavior with the project's separate
-network-audio or daemon-owned WAV recording workflows. Transport restrictions,
-firmware distinctions, additional statuses and errors, storage behavior, and
-model-specific availability remain unknown. Validation is specification- and
-synthetic-fixture-based; no physical scanner validation is claimed.
+This first narrow Milestone 24.6 slice adds only the exact Current Activity and
+LCN Monitor `AST` start wires, lossless `AST` XML framing and modeling, and the
+exact combined `APR` pause/resume control. It is not yet the full
+analysis-session owner. The reviewed V2.00 AST/APR section supplies no stop wire
+form, so no stop semantics or inferred paused/running state are introduced.
+
+Activity Log, LCN Finder, Band Scope, Raw Data Output, System Status, RF Power
+Plot, bounded subscription/session ownership, reconnect restoration, and
+transport-specific behavior remain deferred to later evidence-led Milestone
+24.6 or later slices. This work does not automate Scan Mode changes and makes no
+physical timing, model, firmware, transport, termination, or scanner-validation
+claim. `QSH` remains blocked.
 
 ## Deferred hardware validation
 

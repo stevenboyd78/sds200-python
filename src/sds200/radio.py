@@ -27,12 +27,15 @@ from .commands import (
     HoldSelection,
     NavigationTarget,
     NextSelection,
+    PauseResumeAnalysis,
     PressKey,
     PreviousSelection,
     SetFavoritesQuickKeys,
     SetScannerRecordingStatus,
     SetSquelch,
     SetVolume,
+    StartCurrentActivityAnalysis,
+    StartLcnMonitorAnalysis,
     StartScannerInfoPush,
 )
 from .device import choose_scanner
@@ -47,6 +50,8 @@ from .exceptions import (
 )
 from .fallback import FallbackTransport, TransportCandidate
 from .models import (
+    AnalysisMode,
+    AnalysisResponse,
     ChargeStatus,
     FavoritesQuickKeys,
     FavoritesQuickKeyState,
@@ -92,7 +97,7 @@ from .transport import (
     StatisticalControlTransport,
     TransportDiagnostic,
 )
-from .xml_protocol import GltParser, ScannerInfoParser, XmlResponseAssembler
+from .xml_protocol import AnalysisParser, GltParser, ScannerInfoParser, XmlResponseAssembler
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -176,6 +181,7 @@ class SDSScanner:
         self.parser = PacketParser()
         self.xml_parser = ScannerInfoParser()
         self.glt_parser = GltParser()
+        self.analysis_parser = AnalysisParser()
         self.xml_assembler = XmlResponseAssembler()
         self.events = EventBus()
         if isinstance(self.transport, DiagnosticControlTransport):
@@ -774,6 +780,21 @@ class SDSScanner:
     def get_glt_favorites(self, *, timeout: float = 3.0) -> GltResponse:
         return self.execute(GetGltFavorites(), timeout=timeout)
 
+    def start_current_activity_analysis(
+        self, site_index: int, *, timeout: float = 2.0
+    ) -> AnalysisResponse:
+        return self.execute(StartCurrentActivityAnalysis(site_index), timeout=timeout)
+
+    def start_lcn_monitor_analysis(
+        self, site_index: int, *, timeout: float = 2.0
+    ) -> AnalysisResponse:
+        return self.execute(StartLcnMonitorAnalysis(site_index), timeout=timeout)
+
+    def pause_resume_analysis(
+        self, mode: AnalysisMode, *, timeout: float = 2.0
+    ) -> None:
+        self.execute(PauseResumeAnalysis(mode), timeout=timeout)
+
     def get_favorites_quick_keys(
         self, *, timeout: float = 2.0
     ) -> FavoritesQuickKeys:
@@ -1124,16 +1145,18 @@ class SDSScanner:
         if assembled is not None:
             command, xml = assembled
             try:
-                xml_response = (
-                    self.glt_parser.parse(command, xml)
-                    if command == "GLT"
-                    else self.xml_parser.parse(command, xml)
-                )
+                xml_response: GltResponse | AnalysisResponse | ScannerInfo
+                if command == "GLT":
+                    xml_response = self.glt_parser.parse(command, xml)
+                elif command == "AST":
+                    xml_response = self.analysis_parser.parse(command, xml)
+                else:
+                    xml_response = self.xml_parser.parse(command, xml)
             except ProtocolError as exc:
                 self.events.emit("protocol_error", exc)
                 return
 
-            if isinstance(xml_response, GltResponse):
+            if isinstance(xml_response, (GltResponse, AnalysisResponse)):
                 self._publish(command, xml_response)
                 return
 

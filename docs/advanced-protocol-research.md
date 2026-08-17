@@ -176,6 +176,41 @@ adds no integration or convenience start/stop methods, capability gating,
 parser or response-dispatch changes, renderer exposure, background behavior, or
 `QSH` support. `QSH` remains deferred for lack of exact `FRQ` evidence.
 
+## Milestone 24.6 implementation boundary
+
+Milestone 24.5 completed and merged the specification-backed `URC` slice. This
+first narrow Milestone 24.6 slice implements only exact
+`AST,CURRENT_ACTIVITY,[Site Index]` and `AST,LCN_MONITOR,[Site Index]` starts,
+lossless `AST` XML framing and modeling, and the one documented combined
+`APR,[Analize Mode]` pause/resume operation with exact `APR,OK`
+acknowledgement. The public `AnalysisMode` grammar contains the six exact APR
+tokens documented by V2.00, but that enumeration does not implement the other
+modes' runtime protocols.
+
+The specification establishes repeated Current Activity and LCN Monitor XML,
+approximately 200 ms and one-second transmission intervals respectively, and
+the exact spelling `ReceiveStaus` in the reviewed example. The implementation
+preserves attributes and unknown/repeated descendant records without assigning
+semantic meaning. Synthetic replay delays are structural test data and are not
+physical cadence measurements. The specification also advises entering Scan
+Mode before AST loads hpdb data; this slice does not automate that mode change.
+
+The reviewed section titled “Analize Pauze/Resume” supplies one APR wire form.
+It does not supply distinct pause, resume, `AST,STOP`, `APR,STOP`, or other stop
+forms. Therefore separate pause/resume/stop APIs, local toggle state, and
+termination behavior are deliberately absent. Treating AST as a persistent
+response family and using the ordinary correlation path for its first response
+is an architectural inference from the recurring-response shape, not a claimed
+scanner lifecycle or termination fact.
+
+This is not the full analysis-session owner. Activity Log, LCN Finder, Band
+Scope, Raw Data Output, System Status, RF Power Plot, bounded subscription and
+session ownership, reconnect restoration, and transport-specific behavior are
+deferred to later evidence-led 24.6 or later slices. Transport/model/firmware
+applicability remains unknown; no UDP expectation, retry, bare-XML correlation,
+or recovery behavior changes here. No physical scanner validation is claimed,
+and `QSH` remains blocked.
+
 ## Evidence policy
 
 Material claims must identify their strongest evidence as specification,
@@ -356,10 +391,11 @@ abstraction” is a planning inference, not established protocol behavior.
   `APR` pauses/resumes documented modes including `SYSTEM_STATUS`,
   `RF_POWER_PLOT`, `CURRENT_ACTIVITY`, `LCN_MONITOR`, `ACTIVITY_LOG`, and
   `RAW_DATA_OUTPUT`.
-- **Lifecycle and safety:** persistent push/session protocol with `APR` as
-  lifecycle control. It needs exclusive ownership, bounded queues, explicit
-  pause/resume/stop, cancellation, disconnect recovery, and mode-aware errors;
-  these are architectural requirements inferred from the reviewed behavior.
+- **Lifecycle and safety:** persistent push/session protocol with `APR` as the
+  documented combined pause/resume control. Bounded ownership, cancellation,
+  disconnect recovery, and mode-aware errors are future architectural needs
+  inferred from the reviewed behavior. The reviewed section supplies no
+  explicit stop wire or separate pause and resume forms.
 - **Repository fit:** a new analysis-session abstraction above transport, not
   repeated ordinary commands. Synthetic fixtures should separately represent
   each established framing/cadence shape, pause/resume, interleaving, unknown

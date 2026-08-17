@@ -1,7 +1,12 @@
 import pytest
 
 from sds200.exceptions import ProtocolError
-from sds200.xml_protocol import GltParser, ScannerInfoParser, XmlResponseAssembler
+from sds200.xml_protocol import (
+    AnalysisParser,
+    GltParser,
+    ScannerInfoParser,
+    XmlResponseAssembler,
+)
 
 XML = """<?xml version="1.0" encoding="utf-8"?>
 <ScannerInfo Mode="Trunk Scan Hold" V_Screen="trunk_scan">
@@ -184,3 +189,51 @@ def test_glt_parser_rejects_malformed_xml() -> None:
 def test_glt_parser_rejects_wrong_root() -> None:
     with pytest.raises(ProtocolError, match="Expected GLT root"):
         GltParser().parse("GLT", "<ScannerInfo />")
+
+
+AST_XML = """<AST FutureRoot="keep-root">
+<CurrentActivity Frequency="155.012500" TGID="1001" FutureAttr="keep-first" />
+<Container><FutureRecord Value="nested" /></Container>
+<CurrentActivity Frequency="155.112500" TGID="1002" />
+</AST>"""
+
+
+def test_xml_assembler_assembles_ast_with_its_root() -> None:
+    assembler = XmlResponseAssembler()
+    assert assembler.feed("AST,<XML>,") is None
+    result = None
+    for line in AST_XML.splitlines():
+        result = assembler.feed(line)
+    assert result == ("AST", AST_XML)
+
+
+def test_analysis_parser_preserves_all_descendants_in_source_order() -> None:
+    response = AnalysisParser().parse("AST", AST_XML)
+    assert response.command == "AST"
+    assert dict(response.root_attributes) == {"FutureRoot": "keep-root"}
+    assert [record.tag for record in response.records] == [
+        "CurrentActivity",
+        "Container",
+        "FutureRecord",
+        "CurrentActivity",
+    ]
+    assert [record.attributes["TGID"] for record in response.records_by_tag(
+        "CurrentActivity"
+    )] == ["1001", "1002"]
+    assert response.records[0].attributes["FutureAttr"] == "keep-first"
+    assert response.records[2].attributes["Value"] == "nested"
+    assert response.raw_xml == AST_XML
+    with pytest.raises(TypeError):
+        response.root_attributes["new"] = "value"  # type: ignore[index]
+
+
+def test_analysis_parser_rejects_malformed_xml_without_payload_text() -> None:
+    payload = "<AST><Secret Value='do-not-echo'></AST>"
+    with pytest.raises(ProtocolError, match="^Invalid AST XML response$") as caught:
+        AnalysisParser().parse("AST", payload)
+    assert "do-not-echo" not in str(caught.value)
+
+
+def test_analysis_parser_rejects_wrong_root() -> None:
+    with pytest.raises(ProtocolError, match="^Expected AST root"):
+        AnalysisParser().parse("AST", "<ScannerInfo />")

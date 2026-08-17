@@ -10,6 +10,8 @@ from .exceptions import (
     ScannerRecordingControlError,
 )
 from .models import (
+    AnalysisMode,
+    AnalysisResponse,
     ChargeStatus,
     FavoritesQuickKeys,
     FavoritesQuickKeyState,
@@ -217,6 +219,82 @@ class GetGltFavorites:
         if not isinstance(response, GltResponse):
             raise TypeError("GLT did not return GltResponse")
         return response
+
+
+def _require_site_index(site_index: int) -> None:
+    """Validate the host/API boundary, without claiming a protocol upper range."""
+    if isinstance(site_index, bool) or not isinstance(site_index, int):
+        raise ValueError("AST site index must be a non-negative integer.")
+    if site_index < 0:
+        raise ValueError("AST site index must be a non-negative integer.")
+
+
+@dataclass(frozen=True, slots=True)
+class StartCurrentActivityAnalysis:
+    site_index: int
+
+    def __post_init__(self) -> None:
+        _require_site_index(self.site_index)
+
+    @property
+    def wire(self) -> str:
+        return f"AST,CURRENT_ACTIVITY,{self.site_index}"
+
+    @property
+    def response_command(self) -> str:
+        return "AST"
+
+    def parse_response(self, response: object) -> AnalysisResponse:
+        if not isinstance(response, AnalysisResponse):
+            raise TypeError("AST did not return AnalysisResponse")
+        return response
+
+
+@dataclass(frozen=True, slots=True)
+class StartLcnMonitorAnalysis:
+    site_index: int
+
+    def __post_init__(self) -> None:
+        _require_site_index(self.site_index)
+
+    @property
+    def wire(self) -> str:
+        return f"AST,LCN_MONITOR,{self.site_index}"
+
+    @property
+    def response_command(self) -> str:
+        return "AST"
+
+    def parse_response(self, response: object) -> AnalysisResponse:
+        if not isinstance(response, AnalysisResponse):
+            raise TypeError("AST did not return AnalysisResponse")
+        return response
+
+
+@dataclass(frozen=True, slots=True)
+class PauseResumeAnalysis:
+    mode: AnalysisMode
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.mode, AnalysisMode):
+            raise ValueError("APR mode must be an AnalysisMode value.")
+
+    @property
+    def wire(self) -> str:
+        return f"APR,{self.mode.value}"
+
+    @property
+    def response_command(self) -> str:
+        return "APR"
+
+    def parse_response(self, response: object) -> None:
+        if not isinstance(response, Packet) or response.command != "APR":
+            raise ProtocolError("APR returned an unexpected response.")
+        if response.fields == ("OK",):
+            return
+        if response.fields in {("NG",), ("ERR",), ("ERROR",)}:
+            _parse_acknowledgement(response, "APR")
+        raise ProtocolError("APR acknowledgement must be exactly APR,OK.")
 
 
 @dataclass(frozen=True, slots=True)

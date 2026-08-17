@@ -22,3 +22,11 @@ unverified unless separately documented.
   operation-error codes, and one deliberate unknown synthetic code. It is
   specification-derived replay evidence only; no event was captured from
   scanner hardware.
+- `synthetic-ast-apr.jsonl` is explicitly synthetic, is based on the reviewed
+  Uniden SDS Series Remote Command Specification V2.00 dated 2025-07-07, and is
+  not derived from hardware. It covers exact Current Activity and LCN Monitor
+  start wires, structural CR-line-compatible AST XML framing, ordered repeated
+  and unknown-field preservation, and exact combined APR pause/resume wires and
+  acknowledgements. Its zero-delay events are deterministic structural replay
+  evidence, not physical timing, model, firmware, transport, or termination
+  validation.

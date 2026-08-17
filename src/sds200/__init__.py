@@ -68,11 +68,14 @@ from .commands import (
     HoldSelection,
     NavigationTarget,
     NextSelection,
+    PauseResumeAnalysis,
     PreviousSelection,
     SetFavoritesQuickKeys,
     SetScannerRecordingStatus,
     SetSquelch,
     SetVolume,
+    StartCurrentActivityAnalysis,
+    StartLcnMonitorAnalysis,
     StartScannerInfoPush,
 )
 from .configuration import (
@@ -608,6 +611,9 @@ from .local_playback import (
     start_command_playback_process,
 )
 from .models import (
+    AnalysisMode,
+    AnalysisRecord,
+    AnalysisResponse,
     ChargeStatus,
     FavoritesQuickKeys,
     FavoritesQuickKeyState,
@@ -921,6 +927,7 @@ from .transport import (
     SerialTransport,
     TransportDiagnostic,
 )
+from .xml_protocol import AnalysisParser
 
 __all__ = [
     "ASTERISK_MOH_CHANNELS",
@@ -930,6 +937,10 @@ __all__ = [
     "APPLICATION_CONFIG_FILENAME",
     "APPLICATION_CONFIGURATION_FIELDS",
     "APPLICATION_CONFIGURATION_VERSION",
+    "AnalysisMode",
+    "AnalysisParser",
+    "AnalysisRecord",
+    "AnalysisResponse",
     "ApplicationConfiguration",
     "ActivityStatus",
     "AlsaPlaybackAdapter",
@@ -1295,6 +1306,7 @@ __all__ = [
     "ModelResponse",
     "NAVIGATION_TARGETS",
     "NavigationTarget",
+    "PauseResumeAnalysis",
     "NetworkAudioStatistics",
     "NetworkAudioTransport",
     "NetworkScanner",
@@ -1517,6 +1529,8 @@ __all__ = [
     "SoundDevicePlaybackSink",
     "start_command_playback_process",
     "StartScannerInfoPush",
+    "StartCurrentActivityAnalysis",
+    "StartLcnMonitorAnalysis",
     "StateChange",
     "StatusResponse",
     "ThemePalette",

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import IntEnum
+from enum import IntEnum, StrEnum
 from types import MappingProxyType
 
 
@@ -40,6 +40,15 @@ class ScannerRecordingStatus(IntEnum):
 class ScannerRecordingStatusResponse:
     status: ScannerRecordingStatus
     packet: Packet
+
+
+class AnalysisMode(StrEnum):
+    SYSTEM_STATUS = "SYSTEM_STATUS"
+    RF_POWER_PLOT = "RF_POWER_PLOT"
+    CURRENT_ACTIVITY = "CURRENT_ACTIVITY"
+    LCN_MONITOR = "LCN_MONITOR"
+    ACTIVITY_LOG = "ACTIVITY_LOG"
+    RAW_DATA_OUTPUT = "RAW_DATA_OUTPUT"
 
 
 @dataclass(frozen=True, slots=True)
@@ -403,6 +412,51 @@ class GltResponse:
         )
 
     def records_by_tag(self, tag: str) -> tuple[GltRecord, ...]:
+        return tuple(record for record in self.records if record.tag == tag)
+
+
+@dataclass(frozen=True, slots=True)
+class AnalysisRecord:
+    tag: str
+    attributes: Mapping[str, str]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "attributes", MappingProxyType(dict(self.attributes)))
+
+    @classmethod
+    def create(cls, tag: str, attributes: Mapping[str, str]) -> AnalysisRecord:
+        return cls(tag=tag, attributes=attributes)
+
+
+@dataclass(frozen=True, slots=True)
+class AnalysisResponse:
+    command: str
+    root_attributes: Mapping[str, str]
+    records: tuple[AnalysisRecord, ...]
+    raw_xml: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "root_attributes", MappingProxyType(dict(self.root_attributes))
+        )
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        command: str,
+        root_attributes: Mapping[str, str],
+        records: tuple[AnalysisRecord, ...],
+        raw_xml: str,
+    ) -> AnalysisResponse:
+        return cls(
+            command=command,
+            root_attributes=root_attributes,
+            records=records,
+            raw_xml=raw_xml,
+        )
+
+    def records_by_tag(self, tag: str) -> tuple[AnalysisRecord, ...]:
         return tuple(record for record in self.records if record.tag == tag)
 
 

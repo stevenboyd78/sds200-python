@@ -1,0 +1,18 @@
+{"endpoint":"fixture://advanced-protocol/ast-apr","schema":"sds200.capture","version":1}
+{"data":"AST,CURRENT_ACTIVITY,7","delay_ms":0.0,"direction":"tx"}
+{"data":"AST,<XML>,","delay_ms":0.0,"direction":"rx"}
+{"data":"<AST FutureRoot=\"preserve-root\">","delay_ms":0.0,"direction":"rx"}
+{"data":"  <CurrentActivity Frequency=\"155.012500\" TGID=\"1001\" FutureAttr=\"preserve-child\" />","delay_ms":0.0,"direction":"rx"}
+{"data":"  <CurrentActivity Frequency=\"155.112500\" TGID=\"1002\" />","delay_ms":0.0,"direction":"rx"}
+{"data":"</AST>","delay_ms":0.0,"direction":"rx"}
+{"data":"APR,CURRENT_ACTIVITY","delay_ms":0.0,"direction":"tx"}
+{"data":"APR,OK","delay_ms":0.0,"direction":"rx"}
+{"data":"AST,LCN_MONITOR,9","delay_ms":0.0,"direction":"tx"}
+{"data":"AST,<XML>,","delay_ms":0.0,"direction":"rx"}
+{"data":"<AST Session=\"synthetic\">","delay_ms":0.0,"direction":"rx"}
+{"data":"  <LcnMonitor LCN=\"1\" Frequency=\"851.012500\" ReceiveStaus=\"Active\" />","delay_ms":0.0,"direction":"rx"}
+{"data":"  <FutureRecord FutureValue=\"preserve-record\" />","delay_ms":0.0,"direction":"rx"}
+{"data":"  <LcnMonitor LCN=\"2\" Frequency=\"851.112500\" ReceiveStaus=\"Idle\" FutureAttr=\"preserve-lcn\" />","delay_ms":0.0,"direction":"rx"}
+{"data":"</AST>","delay_ms":0.0,"direction":"rx"}
+{"data":"APR,LCN_MONITOR","delay_ms":0.0,"direction":"tx"}
+{"data":"APR,OK","delay_ms":0.0,"direction":"rx"}
