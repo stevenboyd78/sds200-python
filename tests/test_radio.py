@@ -6,6 +6,7 @@ import pytest
 from sds200.exceptions import (
     CommandRejectedError,
     CommandTimeoutError,
+    ProtocolError,
     UnsupportedScannerFeatureError,
     UnsupportedScannerModelError,
 )
@@ -438,6 +439,20 @@ def test_on_psi_emits_parsed_frame_after_state_update_and_unsubscribes() -> None
     assert observed[0].command == "PSI"
     assert observed[0].channel == "Example Channel"
     assert state_channels == ["Example Channel"]
+
+
+def test_malformed_glt_emits_protocol_error_without_a_response() -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport)
+    errors: list[ProtocolError] = []
+    radio.events.subscribe("protocol_error", errors.append)
+
+    with radio:
+        transport.feed_line("GLT,<XML>,")
+        transport.feed_line("<GLT><FL></GLT>")
+
+    assert len(errors) == 1
+    assert str(errors[0]) == "Invalid GLT XML response"
 
 
 def test_identical_psi_frames_refresh_state_observers() -> None:

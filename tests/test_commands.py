@@ -1,6 +1,7 @@
 import pytest
 
 from sds200.commands import (
+    GetGltFavorites,
     HoldSelection,
     NextSelection,
     PressKey,
@@ -10,7 +11,7 @@ from sds200.commands import (
     StartScannerInfoPush,
 )
 from sds200.exceptions import CommandRejectedError, ProtocolError
-from sds200.models import Packet
+from sds200.models import GltResponse, Packet
 
 
 def test_set_volume_wire() -> None:
@@ -31,6 +32,19 @@ def test_psi_command_wire_and_validation() -> None:
     assert StartScannerInfoPush(250).wire == "PSI,250"
     with pytest.raises(ValueError):
         StartScannerInfoPush(0)
+
+
+def test_get_glt_favorites_contract() -> None:
+    command = GetGltFavorites()
+    response = GltResponse.create(
+        command="GLT", root_attributes={}, records=(), raw_xml="<GLT />"
+    )
+
+    assert command.wire == "GLT,FL"
+    assert command.response_command == "GLT"
+    assert command.parse_response(response) is response
+    with pytest.raises(TypeError, match="GLT did not return GltResponse"):
+        command.parse_response(Packet(command="GLT", fields=(), raw="GLT"))
 
 
 def test_psi_command_accepts_acknowledgement() -> None:

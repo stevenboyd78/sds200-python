@@ -3,6 +3,7 @@ from __future__ import annotations
 import socket
 import threading
 import time
+import xml.etree.ElementTree as ET
 from collections.abc import Callable
 
 import pytest
@@ -244,6 +245,93 @@ def test_decoder_keeps_psi_for_repeated_bare_xml_updates() -> None:
     assert decoder.feed(second)[0] == "PSI,<XML>,"
 
 
+def test_decoder_wraps_bare_glt_xml_once_after_exact_command() -> None:
+    decoder = UdpDatagramDecoder()
+    decoder.expect_command("GLT,FL")
+    bare_xml = (
+        b'<GLT Version="future"><FL Index="0" Name="First" />'
+        b'<FL Index="1" Name="Second" FutureAttr="preserve-me" /></GLT>'
+    )
+
+    lines = decoder.feed(bare_xml)
+
+    assert lines == ("GLT,<XML>,", bare_xml.decode())
+    assert decoder.feed(bare_xml) == (bare_xml.decode(),)
+
+
+def test_decoder_malformed_bare_glt_does_not_complete_expectation() -> None:
+    completed: list[str] = []
+    decoder = UdpDatagramDecoder(completion_handler=completed.append)
+    decoder.expect_command("GLT,FL")
+    malformed = b'<GLT><FL Index="0"></GLT>'
+    valid = b'<GLT><FL Index="0" /></GLT>'
+
+    assert decoder.feed(malformed) == ("GLT,<XML>,", malformed.decode())
+    assert completed == []
+
+    assert decoder.feed(valid) == ("GLT,<XML>,", valid.decode())
+    assert completed == ["GLT"]
+    assert decoder.feed(valid) == (valid.decode(),)
+    assert completed == ["GLT"]
+
+
+def test_decoder_new_command_clears_stale_glt_expectation() -> None:
+    decoder = UdpDatagramDecoder()
+    decoder.expect_command("GLT,FL")
+    decoder.expect_command("MDL")
+    bare_xml = b'<GLT><FL Index="0" /></GLT>'
+
+    assert decoder.feed(bare_xml) == (bare_xml.decode(),)
+
+
+def test_decoder_correlates_bare_xml_by_expected_root() -> None:
+    scanner_info = b"<ScannerInfo><Property Sig=\"4\" /></ScannerInfo>"
+    glt = b"<GLT><FL Index=\"0\" /></GLT>"
+
+    decoder = UdpDatagramDecoder()
+    decoder.expect_command("GLT,FL")
+    assert decoder.feed(scanner_info) == (scanner_info.decode(),)
+
+    for command in ("GSI", "PSI,500"):
+        decoder = UdpDatagramDecoder()
+        decoder.expect_command(command)
+        assert decoder.feed(glt) == (glt.decode(),)
+
+
+def test_decoder_accepts_only_matching_explicit_glt_root() -> None:
+    decoder = UdpDatagramDecoder()
+    glt = '<GLT FutureRoot="keep"><FL Index="0" /></GLT>'
+
+    assert decoder.feed(f"GLT,<XML>,{glt}".encode()) == ("GLT,<XML>,", glt)
+    assert decoder.feed(b"GLT,<XML>,<ScannerInfo />") == ()
+
+
+def test_decoder_reassembles_numbered_glt_datagrams_in_source_order() -> None:
+    completed: list[str] = []
+    decoder = UdpDatagramDecoder(completion_handler=completed.append)
+    decoder.expect_command("GLT,FL")
+    first = (
+        b'GLT,<XML>,<GLT Version="future"><FL Index="0" Name="First" '
+        b'FutureAttr="preserve-me" /><Footer No="1" EOT="0" /></GLT>'
+    )
+    second = (
+        b'GLT,<XML>,<GLT Version="future"><FL Index="1" Name="Second" />'
+        b'<Foot No="2" EOT="1" /></GLT>'
+    )
+
+    assert decoder.feed(first) == ()
+    assert completed == []
+    lines = decoder.feed(second)
+
+    assert completed == ["GLT"]
+    assert lines[0] == "GLT,<XML>,"
+    root = ET.fromstring(lines[1])
+    assert root.tag == "GLT"
+    assert root.attrib == {"Version": "future"}
+    assert [child.attrib["Name"] for child in root] == ["First", "Second"]
+    assert root[0].attrib["FutureAttr"] == "preserve-me"
+
+
 def test_radio_network_parses_bare_scanner_info() -> None:
     fake = FakeDatagramSocket()
     factory = FakeDatagramSocketFactory(fake)
@@ -304,6 +392,67 @@ def test_udp_transport_retries_after_fragment_gap_and_tracks_statistics() -> Non
     assert transport.statistics["xml_fragments_dropped"] == 1
 
 
+def test_udp_transport_retries_glt_with_exact_original_wire_command() -> None:
+    fake = FakeDatagramSocket()
+    transport = UdpTransport(
+        "192.0.2.25",
+        socket_factory=FakeDatagramSocketFactory(fake),
+        reconnect=False,
+        max_xml_retries=2,
+    )
+    diagnostics: list[TransportDiagnostic] = []
+    transport.set_diagnostic_handler(diagnostics.append)
+    transport.start(lambda _line: None)
+    try:
+        transport.write_command("GLT,FL")
+        fake.feed(
+            b'GLT,<XML>,<GLT><FL Index="0" /><Footer No="1" EOT="0" /></GLT>'
+        )
+        fake.feed(
+            b'GLT,<XML>,<GLT><FL Index="2" /><Footer No="3" EOT="1" /></GLT>'
+        )
+        wait_until(lambda: fake.sent == [b"GLT,FL\r", b"GLT,FL\r"])
+    finally:
+        transport.stop()
+
+    assert diagnostics[0].kind == "sequence_gap"
+    assert transport.statistics["commands_sent"] == 2
+    assert transport.statistics["retries_sent"] == 1
+    assert transport.statistics["xml_fragments_dropped"] == 1
+
+
+def test_radio_network_parses_bare_glt_favorites() -> None:
+    fake = FakeDatagramSocket()
+    radio = SDS200.network(
+        "scanner.example.test",
+        socket_factory=FakeDatagramSocketFactory(fake),
+    )
+    xml = (
+        b'<GLT Version="future"><FL Index="0" Name="Example Favorites A" '
+        b'Monitor="On" Q_Key="1" N_Tag="None" FutureAttr="preserve-me" />'
+        b'<FL Index="1" Name="Example Favorites B" Monitor="On" Q_Key="1" '
+        b'N_Tag="None" /></GLT>'
+    )
+
+    with radio:
+        def respond() -> None:
+            wait_until(lambda: fake.sent == [b"GLT,FL\r"])
+            fake.feed(xml)
+
+        thread = threading.Thread(target=respond)
+        thread.start()
+        response = radio.get_glt_favorites(timeout=1.0)
+        thread.join(timeout=1.0)
+
+    favorites = response.records_by_tag("FL")
+    assert [record.attributes["Name"] for record in favorites] == [
+        "Example Favorites A",
+        "Example Favorites B",
+    ]
+    assert favorites[0].attributes["FutureAttr"] == "preserve-me"
+    assert fake.sent == [b"GLT,FL\r"]
+
+
 def test_udp_transport_statistics_count_completed_xml() -> None:
     fake = FakeDatagramSocket()
     transport = UdpTransport(
@@ -323,6 +472,38 @@ def test_udp_transport_statistics_count_completed_xml() -> None:
     assert transport.statistics["commands_sent"] == 1
     assert transport.statistics["datagrams_received"] == 1
     assert transport.statistics["bytes_received"] > 0
+
+
+def test_udp_transport_does_not_complete_malformed_glt() -> None:
+    fake = FakeDatagramSocket()
+    transport = UdpTransport(
+        "192.0.2.25",
+        socket_factory=FakeDatagramSocketFactory(fake),
+        reconnect=False,
+    )
+    received: list[str] = []
+    malformed = b'<GLT><FL Index="0"></GLT>'
+    valid = b'<GLT><FL Index="0" /></GLT>'
+    transport.start(received.append)
+    try:
+        transport.write_command("GLT,FL")
+        fake.feed(malformed)
+        wait_until(lambda: len(received) == 2)
+        assert received == ["GLT,<XML>,", malformed.decode()]
+        assert transport.statistics["xml_documents_completed"] == 0
+
+        fake.feed(valid)
+        wait_until(lambda: transport.statistics["xml_documents_completed"] == 1)
+    finally:
+        transport.stop()
+
+    assert received == [
+        "GLT,<XML>,",
+        malformed.decode(),
+        "GLT,<XML>,",
+        valid.decode(),
+    ]
+    assert transport.statistics["xml_documents_completed"] == 1
 
 
 def test_udp_transport_reconnects_with_policy() -> None:

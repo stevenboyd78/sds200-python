@@ -17,6 +17,78 @@ and requires no disruptive discovery. Advanced operations remain
 specification-backed or fixture-tested until each is physically exercised and
 documented with its own model, firmware, transport, scenario, and limitations.
 
+## Milestone 24.2 implementation boundary
+
+Milestone 24.2 implements the narrow evidence-backed Favorites-list retrieval
+request `GLT,FL`. It adds public `GetGltFavorites`, `GltRecord`, `GltResponse`,
+and `SDSScanner`/`SDS200.get_glt_favorites()` surfaces through the normal
+command-correlation path. `GetGltFavorites.wire` is exactly `GLT,FL`, and its
+response command is exactly `GLT`; there is no arbitrary or free-form GLT
+keyword API.
+
+One authoritative immutable internal framing definition relates supported XML
+commands to their bounded document roots:
+
+- `GSI` -> `ScannerInfo`;
+- `PSI` -> `ScannerInfo`; and
+- `GLT` -> `GLT`.
+
+CR-delimited bounded assembly and UDP XML detection and correlation share this
+definition. It is internal implementation framing, not a new package-level API.
+`XmlResponseAssembler` is command/root-aware and continues to accept an
+explicit constructor mapping override for future bounded-XML extensions. A new
+recognized XML header is also a resynchronization point for an incomplete
+document.
+
+Domain parsing remains separate from framing and transport: `GltParser`
+produces `GltResponse`, rather than embedding GLT semantics in
+`XmlResponseAssembler` or the UDP network layer. The represented `GLT,FL` shape
+is intentionally lossless: root attributes are preserved; direct child records
+are retained as an ordered tuple; repeated and unknown child tags are
+preserved; and every child attribute and the complete raw XML are retained.
+`Index`, `Q_Key`, `Monitor`, `N_Tag`, and unknown values are not speculatively
+converted. Raw XML remains the fallback preservation boundary for structure not
+modeled by `GltRecord`.
+
+### Serial and replay-style transport
+
+A response begins with `GLT,<XML>,`, after which the generalized assembler
+collects the bounded `<GLT>...</GLT>` document. All recognized XML headers,
+including GLT, remain resynchronization points. This extends framing without
+changing existing GSI or PSI behavior.
+
+### SDS200 UDP transport
+
+Sending exact `GLT,FL` creates a one-shot GLT expectation. Bare `<GLT>` XML is
+correlated only when the expected root matches: GLT cannot claim
+`ScannerInfo`, and GSI/PSI cannot claim `GLT`. Explicitly prefixed GLT XML is
+also validated against the `GLT` root. Existing numbered `Footer`/`Foot`
+fragment reassembly applies to GLT, and the exact original `GLT,FL` wire command
+is retained for retry after retryable sequence failures. Successful GLT
+completion ends its one-shot expectation and retry state, while PSI remains the
+persistent `ScannerInfo` stream.
+
+Malformed supported XML may still be forwarded to domain parsing so a
+`protocol_error` can be emitted. It does not count as a completed UDP XML
+document, consume the pending one-shot expectation, or erase GLT retry state.
+An incomplete numbered sequence likewise does not count as completion.
+
+### Evidence and exposure limits
+
+`tests/fixtures/advanced_protocol/synthetic-glt-fl.jsonl` remains the
+representative replay fixture. It is synthetic, not hardware-derived; its
+repeated `FL` records and deliberate unknown `FutureAttr` enforce source order
+and forward-compatible preservation. Deterministic fake UDP datagrams validate
+transport mechanics. No scanner, firmware, or model-specific physical GLT
+capability claim is made, no live scanner probing occurred, and physical GLT
+validation is future evidence rather than a closure prerequisite for this
+offline/synthetic implementation slice.
+
+No CLI, TUI, web, daemon, MQTT, or Home Assistant exposure was added. This
+slice also adds no FQK, QSH, URC, AST, APR, waterfall, menu, disruptive, or
+recovery behavior. Broader GLT arguments and hierarchy forms remain deferred
+until evidence establishes their exact request and response semantics.
+
 ## Evidence policy
 
 Material claims must identify their strongest evidence as specification,
@@ -72,21 +144,21 @@ current contract.
 
 ### ScannerInfo XML path
 
-`XmlResponseAssembler` recognizes only `GSI,<XML>` and `PSI,<XML>` and completes
-only at `</ScannerInfo>`. `ScannerInfoParser` requires a `ScannerInfo` root.
-`ScannerNode` preserves every XML attribute and `ScannerInfo` preserves raw XML.
-Advanced XML models must meet or exceed this lossless baseline and cannot be
-added by merely widening the current root check.
+Before Milestone 24.2, `XmlResponseAssembler` recognized only `GSI,<XML>` and
+`PSI,<XML>` and completed only at `</ScannerInfo>`. `ScannerInfoParser` requires
+a `ScannerInfo` root. `ScannerNode` preserves every XML attribute and
+`ScannerInfo` preserves raw XML. Milestone 24.2 generalizes the assembler around
+the explicit command/root definition described above while preserving this
+existing behavior.
 
 ### SDS200 UDP XML reconstruction
 
 `UdpDatagramDecoder` reconstructs numbered XML fragments using `Foot`/`Footer`,
-`No`, and `EOT` after a command is recognized. Command expectation, streaming,
-retry bookkeeping, and recovery are explicitly `GSI`/`PSI`-specific.
-Reconstruction remains a transport concern; `GLT`, `MSI`, `AST`, and other
-domain semantics belong above it. Later bounded-XML support must intentionally
-extend command recognition and retry boundaries without putting protocol domain
-models in `network.py`.
+`No`, and `EOT` after a command is recognized. Milestone 24.2 extends command
+expectation and retry bookkeeping from the existing GSI/PSI paths to exact
+`GLT,FL`, while reconstruction remains a transport concern and GLT domain
+semantics remain above `network.py`. MSI, AST, and other future protocols are
+still deferred.
 
 ### Existing stream lifecycle
 
@@ -348,16 +420,19 @@ session abstraction with ownership and recovery. KAL demonstrates the need for
 a no-response execution path. Disruptive operations need a separately gated
 recovery workflow rather than ordinary reconnect.
 
-GLT is currently the safest leading Milestone 24.2 candidate: it is
-retrieval-oriented and bounded, complements the existing Favorites foundation,
-and forces generalized bounded-XML framing to be solved before more stateful
-protocols. This is an evidence-led planning conclusion, not hardware validation
-or a promise of model/firmware support.
+Milestone 24.1 selected GLT as the safest leading Milestone 24.2 candidate: it
+is retrieval-oriented and bounded, complements the existing Favorites
+foundation, and forces generalized bounded-XML framing to be solved before more
+stateful protocols. Milestone 24.2 now implements only exact `GLT,FL`. Broader
+GLT arguments and hierarchy forms remain deferred until their exact request and
+response semantics have sufficient evidence. This remains an evidence-led
+scope decision, not hardware validation or a promise of model/firmware support.
 
 ## Proposed Milestone 24 slicing
 
 - 24.1: research, evidence ledger, and fixture/provenance foundation;
-- 24.2: GLT bounded-XML retrieval and generalized bounded-XML framing;
+- 24.2: exact GLT Favorites-list (`GLT,FL`) retrieval and generalized
+  bounded-XML framing;
 - 24.3: conservative FQK read/control and QSH control support;
 - 24.4: richer NAC/RAN/color-code/area/activity/quality preservation and
   modeling;
@@ -390,3 +465,24 @@ adjacent official disruptive evidence and must not silently replace it.
 - Before milestone closure, normal repository-wide Ruff, MyPy, pytest,
   documentation, package-build, and Twine validation remains required; this
   research slice does not waive those release checks.
+
+## Milestone 24.2 acceptance criteria
+
+- Public retrieval sends exact `GLT,FL` only; no free-form GLT syntax is
+  exposed.
+- The typed response model losslessly preserves ordered and repeated records,
+  unknown tags and attributes, root attributes, and complete raw XML.
+- One shared internal command/root definition governs bounded CR-delimited
+  assembly and UDP XML recognition and correlation.
+- Serial/replay and UDP paths both support GLT while strict root correlation
+  prevents GLT and ScannerInfo cross-claiming.
+- UDP retries preserve the exact original `GLT,FL` wire command, and successful
+  one-shot completion clears GLT expectation and retry state.
+- Malformed supported XML and incomplete numbered sequences do not count as UDP
+  document completion; malformed XML can still produce a `protocol_error`.
+- Existing GSI and persistent PSI behavior remains compatible.
+- The representative synthetic GLT fixture is reused, and deterministic fake
+  UDP datagrams cover transport mechanics.
+- Targeted and full repository validation remain required before closure.
+- Physical GLT validation remains future evidence, not a closure prerequisite
+  for this offline/synthetic implementation slice.

@@ -331,6 +331,54 @@ class ScannerInfo:
 
 
 @dataclass(frozen=True, slots=True)
+class GltRecord:
+    tag: str
+    attributes: Mapping[str, str]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "attributes", MappingProxyType(dict(self.attributes)))
+
+    @classmethod
+    def create(cls, tag: str, attributes: Mapping[str, str]) -> GltRecord:
+        return cls(tag=tag, attributes=MappingProxyType(dict(attributes)))
+
+
+@dataclass(frozen=True, slots=True)
+class GltResponse:
+    command: str
+    root_attributes: Mapping[str, str]
+    records: tuple[GltRecord, ...]
+    raw_xml: str
+    received_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "root_attributes",
+            MappingProxyType(dict(self.root_attributes)),
+        )
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        command: str,
+        root_attributes: Mapping[str, str],
+        records: tuple[GltRecord, ...],
+        raw_xml: str,
+    ) -> GltResponse:
+        return cls(
+            command=command,
+            root_attributes=MappingProxyType(dict(root_attributes)),
+            records=records,
+            raw_xml=raw_xml,
+        )
+
+    def records_by_tag(self, tag: str) -> tuple[GltRecord, ...]:
+        return tuple(record for record in self.records if record.tag == tag)
+
+
+@dataclass(frozen=True, slots=True)
 class RadioEvent:
     kind: str
     message: str

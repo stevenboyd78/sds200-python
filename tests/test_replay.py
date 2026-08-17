@@ -25,6 +25,7 @@ from sds200.replay import (
 from .fakes import FakeTransport
 
 FIXTURES = Path(__file__).parent / "fixtures" / "replay"
+ADVANCED_PROTOCOL_FIXTURES = Path(__file__).parent / "fixtures" / "advanced_protocol"
 
 
 def test_hardware_derived_sds100_info_capture_replays_typed_api() -> None:
@@ -157,6 +158,20 @@ def test_replay_preserves_multiline_gsi_parsing() -> None:
     assert info.frequency == "769.431250MHz"
     assert info.rssi == -86
     assert info.battery is None
+
+
+def test_replay_executes_lossless_glt_favorites_retrieval() -> None:
+    with SDSScanner.replay(
+        ADVANCED_PROTOCOL_FIXTURES / "synthetic-glt-fl.jsonl"
+    ) as radio:
+        response = radio.get_glt_favorites(timeout=1.0)
+
+    favorites = response.records_by_tag("FL")
+    assert [record.attributes["Name"] for record in favorites] == [
+        "Example Favorites A",
+        "Example Favorites B",
+    ]
+    assert favorites[0].attributes["FutureAttr"] == "preserve-me"
 
 
 def test_replay_preserves_generic_command_rejection(tmp_path: Path) -> None:
