@@ -35,6 +35,51 @@ def test_scanner_info_parser() -> None:
     assert info.rssi == -88.0
     assert info.recording == "Off"
     assert info.mute == "Mute"
+    assert info.raw_xml == XML
+
+
+REPEATED_SCANNER_INFO_XML = """<ScannerInfo Mode="Synthetic" V_Screen="future">
+<System Name="First synthetic system" FutureSystemAttr="keep-system" />
+<FutureRecord Value="first" FutureAttr="keep-first">
+  <NestedFutureRecord Value="nested" NestedAttr="keep-nested" />
+</FutureRecord>
+<Department Name="Synthetic department" />
+<FutureRecord Value="second" FutureAttr="keep-second" />
+<Property VOL="1" Sig="3" />
+</ScannerInfo>"""
+
+
+def test_scanner_info_parser_preserves_ordered_repeated_records() -> None:
+    info = ScannerInfoParser().parse("PSI", REPEATED_SCANNER_INFO_XML)
+
+    assert [record.tag for record in info.records] == [
+        "System",
+        "FutureRecord",
+        "NestedFutureRecord",
+        "Department",
+        "FutureRecord",
+        "Property",
+    ]
+    assert [
+        dict(record.attributes) for record in info.records_by_tag("FutureRecord")
+    ] == [
+        {"Value": "first", "FutureAttr": "keep-first"},
+        {"Value": "second", "FutureAttr": "keep-second"},
+    ]
+    assert dict(info.records[0].attributes) == {
+        "Name": "First synthetic system",
+        "FutureSystemAttr": "keep-system",
+    }
+    assert dict(info.records[2].attributes) == {
+        "Value": "nested",
+        "NestedAttr": "keep-nested",
+    }
+    assert info.node("FutureRecord") is info.records_by_tag("FutureRecord")[-1]
+    assert info.node("FutureRecord").get("Value") == "second"
+    assert info.system == "First synthetic system"
+    assert info.department == "Synthetic department"
+    assert info.signal == 3
+    assert info.raw_xml == REPEATED_SCANNER_INFO_XML
 
 
 def test_xml_assembler_resynchronizes_on_a_new_header() -> None:

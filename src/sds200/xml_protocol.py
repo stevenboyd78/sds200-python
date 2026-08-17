@@ -77,11 +77,12 @@ class ScannerInfoParser:
         if root.tag != "ScannerInfo":
             raise ProtocolError(f"Expected ScannerInfo root, received {root.tag!r}")
 
-        nodes: dict[str, ScannerNode] = {}
-        for element in root.iter():
-            if element is root:
-                continue
-            nodes[element.tag] = ScannerNode.create(element.tag, element.attrib)
+        records = tuple(
+            ScannerNode.create(element.tag, element.attrib)
+            for element in root.iter()
+            if element is not root
+        )
+        nodes = {record.tag: record for record in records}
 
         return ScannerInfo(
             command=command,
@@ -89,6 +90,7 @@ class ScannerInfoParser:
             screen=root.attrib.get("V_Screen"),
             nodes=MappingProxyType(nodes),
             raw_xml=xml,
+            records=records,
         )
 
 
