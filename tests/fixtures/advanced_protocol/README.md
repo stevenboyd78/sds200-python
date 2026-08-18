@@ -34,6 +34,15 @@ unverified unless separately documented.
   acknowledgements. Its zero-delay events are deterministic structural replay
   evidence, not physical timing, model, firmware, transport, or termination
   validation.
+- `synthetic-ast-system-status.jsonl` is explicitly synthetic shared
+  V1.02/V2.00 evidence for the first Milestone 24.9 slice. Both reviewed
+  specifications show exact `AST,SYSTEM_STATUS,[site_index]` transmission and
+  exact `AST,OK` acknowledgement. The fixture covers only that start/
+  acknowledgement transaction with a fabricated site index. It does not
+  establish ScannerInfo cadence or ownership, automatic PSI/GSI behavior,
+  analysis-session state, site-index upper bounds, negative/error reply shapes,
+  transport/model/firmware applicability, RF Power Plot behavior, or physical
+  scanner validation.
 - `synthetic-pwf-gwf.jsonl` is receive-only synthetic framing evidence for the
   first Milestone 24.7 slice. It preserves variable-length PWF fields including
   an empty field and deliberate unknown value, plus one GWF record with exactly

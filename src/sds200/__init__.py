@@ -92,6 +92,7 @@ from .commands import (
     StartCurrentActivityAnalysis,
     StartLcnMonitorAnalysis,
     StartScannerInfoPush,
+    StartSystemStatusAnalysis,
 )
 from .configuration import (
     APPLICATION_CONFIG_FILENAME,
@@ -1593,6 +1594,7 @@ __all__ = [
     "StartScannerInfoPush",
     "StartCurrentActivityAnalysis",
     "StartLcnMonitorAnalysis",
+    "StartSystemStatusAnalysis",
     "StateChange",
     "StatusResponse",
     "ThemePalette",

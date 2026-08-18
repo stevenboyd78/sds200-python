@@ -142,6 +142,31 @@ def test_synthetic_ast_apr_fixture_contract() -> None:
     ]
 
 
+def test_synthetic_ast_system_status_fixture_contract() -> None:
+    capture = load_capture(FIXTURES / "synthetic-ast-system-status.jsonl")
+
+    assert capture.endpoint == "fixture://advanced-protocol/ast-system-status"
+    assert [event.direction for event in capture.events] == ["tx", "rx"]
+    assert [event.data for event in capture.events] == [
+        "AST,SYSTEM_STATUS,7",
+        "AST,OK",
+    ]
+    assert all(event.delay_ms == 0.0 for event in capture.events)
+
+
+def test_system_status_fixture_documents_shared_spec_scope() -> None:
+    provenance = (FIXTURES / "README.md").read_text(encoding="utf-8")
+    normalized = " ".join(provenance.split())
+
+    assert "synthetic-ast-system-status.jsonl" in normalized
+    assert "shared V1.02/V2.00 evidence" in normalized
+    assert "exact `AST,SYSTEM_STATUS,[site_index]` transmission" in normalized
+    assert "exact `AST,OK` acknowledgement" in normalized
+    assert "does not establish ScannerInfo cadence or ownership" in normalized
+    assert "negative/error reply shapes" in normalized
+    assert "RF Power Plot behavior" in normalized
+
+
 def test_advanced_protocol_fixture_provenance_is_explicit() -> None:
     provenance = (FIXTURES / "README.md").read_text(encoding="utf-8")
     normalized_provenance = " ".join(provenance.split())

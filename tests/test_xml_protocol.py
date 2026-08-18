@@ -88,6 +88,45 @@ def test_scanner_info_parser_preserves_ordered_repeated_records() -> None:
     assert info.raw_xml == REPEATED_SCANNER_INFO_XML
 
 
+SYSTEM_STATUS_XML = """<ScannerInfo Mode="Analyze" V_Screen="analyze_system_status">
+<SystemStatus SystemName="Synthetic System" SiteName="Synthetic Site" Signal="73"
+ Quality="64" Activity="12" SystemID="123" SystemSubID="7" SiteID="42"
+ WacnID="456" NAC="789" Color="4" RAN="17" Area="1" Att="Off"
+ Freqs="3" P25Status="P25" FutureSystemStatus="keep-system-status" />
+<FutureSystemStatusRecord Value="keep-future-record" />
+</ScannerInfo>"""
+
+
+def test_scanner_info_parser_preserves_documented_system_status_record_losslessly() -> None:
+    info = ScannerInfoParser().parse("GSI", SYSTEM_STATUS_XML)
+
+    assert info.mode == "Analyze"
+    assert info.screen == "analyze_system_status"
+    assert dict(info.records_by_tag("SystemStatus")[0].attributes) == {
+        "SystemName": "Synthetic System",
+        "SiteName": "Synthetic Site",
+        "Signal": "73",
+        "Quality": "64",
+        "Activity": "12",
+        "SystemID": "123",
+        "SystemSubID": "7",
+        "SiteID": "42",
+        "WacnID": "456",
+        "NAC": "789",
+        "Color": "4",
+        "RAN": "17",
+        "Area": "1",
+        "Att": "Off",
+        "Freqs": "3",
+        "P25Status": "P25",
+        "FutureSystemStatus": "keep-system-status",
+    }
+    assert dict(info.records_by_tag("FutureSystemStatusRecord")[0].attributes) == {
+        "Value": "keep-future-record"
+    }
+    assert info.raw_xml == SYSTEM_STATUS_XML
+
+
 def test_xml_assembler_resynchronizes_on_a_new_header() -> None:
     assembler = XmlResponseAssembler()
     assert assembler.feed("PSI,<XML>,") is None

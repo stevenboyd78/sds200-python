@@ -19,6 +19,7 @@ from sds200.commands import (
     StartCurrentActivityAnalysis,
     StartLcnMonitorAnalysis,
     StartScannerInfoPush,
+    StartSystemStatusAnalysis,
 )
 from sds200.exceptions import (
     CommandRejectedError,
@@ -69,9 +70,44 @@ def test_analysis_start_commands_exact_contract(command_type: type, mode: str) -
         command.parse_response(Packet(command="AST", fields=(), raw="AST"))
 
 
+def test_system_status_start_exact_acknowledgement_contract() -> None:
+    command = StartSystemStatusAnalysis(123456789)
+
+    assert command.wire == "AST,SYSTEM_STATUS,123456789"
+    assert command.response_command == "AST"
+    assert command.parse_response(
+        Packet(command="AST", fields=("OK",), raw="AST,OK")
+    ) is None
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        object(),
+        Packet(command="OTHER", fields=("OK",), raw="OTHER,OK"),
+        Packet(command="AST", fields=(), raw="AST"),
+        Packet(command="AST", fields=("NG",), raw="AST,NG"),
+        Packet(command="AST", fields=("ERR",), raw="AST,ERR"),
+        Packet(command="AST", fields=("ERROR",), raw="AST,ERROR"),
+        Packet(command="AST", fields=("OK", "EXTRA"), raw="AST,OK,EXTRA"),
+        Packet(command="AST", fields=(" OK",), raw="AST, OK"),
+    ],
+)
+def test_system_status_start_rejects_nonexact_acknowledgement(
+    response: object,
+) -> None:
+    with pytest.raises(ProtocolError, match="AST SYSTEM_STATUS"):
+        StartSystemStatusAnalysis(7).parse_response(response)
+
+
 @pytest.mark.parametrize("site_index", [True, "1", -1])
 @pytest.mark.parametrize(
-    "command_type", [StartCurrentActivityAnalysis, StartLcnMonitorAnalysis]
+    "command_type",
+    [
+        StartCurrentActivityAnalysis,
+        StartLcnMonitorAnalysis,
+        StartSystemStatusAnalysis,
+    ],
 )
 def test_analysis_start_rejects_invalid_site_index(
     command_type: type, site_index: object

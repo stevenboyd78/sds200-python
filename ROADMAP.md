@@ -11,59 +11,37 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 24.8 — indexed-menu snapshot composition foundation
+### Milestone 24.9 — System Status analysis foundation
 
-The first four Milestone 24.8 slices established lossless bounded MSI XML
-modeling/parsing, exact serialized `MSI\r` retrieval for CR-line/replay
-transports, the six evidence-backed indexed `MNU` forms, and a read-only typed
-projection for the documented MSI menu fields while preserving all lossless
-source evidence.
+Milestone 24.8 is closed after seven evidence-led menu slices. Remaining
+unindexed `MNU` and `MSV`/`MSB` execution stay blocked because the reviewed
+official evidence does not establish the required omitted/empty INDEX or
+serialized `[RSV]` wire forms.
 
-This fifth narrow slice promotes exact one-shot `MSI\r` retrieval into the
-existing SDS200 UDP bounded-XML machinery. The shared production XML command
-map now includes `MSI -> MSI`; an exact bare `MSI` request establishes a
-one-shot MSI expectation; matching bare or explicitly prefixed MSI XML can be
-assembled; numbered `Footer`/`Foot` fragments use the existing bounded
-reassembly path; retryable sequence failures resend the exact original `MSI`
-wire; and successful completion clears one-shot MSI retry/expectation state.
+The first Milestone 24.9 slice moves to the documented later analysis work.
+Official SDS100/SDS200 Remote Command Specification V1.02 and SDS Series Remote
+Command Specification V2.00 both show exact
+`AST,SYSTEM_STATUS,[site_index]\r` transmission followed by exact
+`AST,OK\r`. A dedicated `StartSystemStatusAnalysis` command and
+`SDSScanner.start_system_status_analysis()` therefore model only this
+acknowledged start transaction. Existing non-negative site-index validation is
+reused as a host/API safety boundary without claiming an upper protocol range.
 
-This sixth narrow hardening slice adds no production protocol behavior. It adds
-direct behavioral regression coverage for two invariants already provided by
-the shared UDP machinery: an exact one-shot MSI expectation survives unrelated
-bare XML roots until matching MSI XML arrives, and successful MSI completion
-after an automatic sequence-gap retry removes the one-shot retry authority so
-later stray MSI fragment gaps cannot resend a stale command. The tests use only
-deterministic fake datagrams and synchronize on a later ordinary response before
-asserting that no additional UDP write occurred.
+System Status output is not reclassified as AST XML. Both reviewed
+specifications list `SystemStatus` among PSI/GSI `ScannerInfo` mode elements,
+with documented fields including `SystemName`, `SiteName`, `Signal`, `Quality`,
+`Activity`, `SystemID`, `SystemSubID`, `SiteID`, `WacnID`, `NAC`, `Color`,
+`RAN`, `Area`, `Att`, `Freqs`, and `P25Status`. The existing lossless
+`ScannerInfo` record path already preserves these exact strings plus unknown
+attributes/records; this slice adds regression evidence rather than coercing
+their values or creating a competing parser.
 
-This seventh narrow slice composes only already-supported operations.
-`SDSScanner.open_indexed_menu_snapshot()` validates one of the six existing
-indexed MNU forms, applies one total timeout budget including command-lock wait,
-holds the existing re-entrant command lock across exact `MNU,...` acknowledgement
-and the following exact `MSI` retrieval, and returns the existing lossless
-`MsiResponse`. MSI transport support is checked before MNU transmission so a
-transport on which MSI is blocked cannot be left in a newly opened menu merely
-because the second half of the composition is unavailable.
-
-The composition is a host-side serialization guarantee only. It adds no new
-wire form, scanner-side transaction/atomicity claim, menu lifecycle ownership,
-automatic menu exit/back behavior, or interpretation that the returned MSI
-fields are guaranteed by the scanner to identify the requested index beyond
-their preserved documented strings.
-
-Direct `UdpTransport` and its capture wrapper are covered only with deterministic
-fake datagrams. This is software transport/framing evidence, not a physical
-scanner or firmware-support claim. Fallback transports remain blocked because
-their active candidate can change and no fallback-wide MSI transport contract
-has been established. Custom transports that merely advertise an `udp://`
-endpoint remain fail-closed unless they are the repository's direct
-`UdpTransport` path.
-
-This seventh slice does not add `MSV`/`MSB` execution, unindexed `MNU`, menu
-lifecycle/state ownership, renderer behavior, fallback MSI support,
-model/firmware applicability, or physical validation. The serialized `[RSV]`
-field in `MSV`/`MSB` remains unresolved, and Quick Search (`QSH`) remains
-blocked pending exact `FRQ` evidence.
+The existing `AnalysisMode.SYSTEM_STATUS` APR token remains independently
+available, but this slice does not infer running/paused/stopped state or
+automatically issue APR, PSI, or GSI. It adds no ScannerInfo cadence/session
+ownership, renderer behavior, reconnect restoration, negative/error AST reply
+classification, UDP/transport expansion, site-index range semantics,
+model/firmware applicability, physical validation, or RF Power Plot support.
 
 ## Deferred hardware validation
 

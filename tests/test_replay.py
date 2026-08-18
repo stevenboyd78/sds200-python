@@ -264,6 +264,18 @@ def test_replay_executes_exact_indexed_mnu_controls() -> None:
     assert after == before
 
 
+def test_replay_executes_exact_system_status_start_acknowledgement() -> None:
+    with SDSScanner.replay(
+        ADVANCED_PROTOCOL_FIXTURES / "synthetic-ast-system-status.jsonl"
+    ) as radio:
+        before = radio.state.snapshot
+        result = radio.start_system_status_analysis(7, timeout=1.0)
+        after = radio.state.snapshot
+
+    assert result is None
+    assert after == before
+
+
 def test_replay_executes_current_activity_apr_lcn_monitor_apr() -> None:
     with SDSScanner.replay(
         ADVANCED_PROTOCOL_FIXTURES / "synthetic-ast-apr.jsonl"
