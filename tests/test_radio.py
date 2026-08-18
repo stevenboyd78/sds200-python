@@ -1318,7 +1318,7 @@ def test_psi_renewal_defers_while_response_command_is_pending() -> None:
     radio = SDS200.from_transport(transport, expected_model="SDS200")
     radio.connect()
     radio._psi_interval_ms = 500
-    radio._psi_renewal_timeout = 0.1
+    radio._psi_renewal_timeout = 0.5
     xml = (
         '<?xml version="1.0" encoding="utf-8"?>\n'
         '<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">\n'
