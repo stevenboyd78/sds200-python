@@ -1,0 +1,23 @@
+{"endpoint":"fixture://advanced-protocol/msi-menu-projection","schema":"sds200.capture","version":1}
+{"data":"MSI","delay_ms":0.0,"direction":"tx"}
+{"data":"MSI,<XML>,","delay_ms":0.0,"direction":"rx"}
+{"data":"<MSI Name=\"Synthetic Select\" Index=\"select-menu\" MenuType=\"TypeSelect\" Value=\"select-value\" Selected=\"selected-opaque\" FutureRoot=\"keep-select-root\">","delay_ms":0.0,"direction":"rx"}
+{"data":"  <MenuItem Name=\"Alpha\" Index=\"item-a\" Value=\"value-a\" FutureItem=\"keep-item-a\" />","delay_ms":0.0,"direction":"rx"}
+{"data":"  <MenuItem Name=\"Beta\" Index=\"item-b\" Value=\"value-b\" />","delay_ms":0.0,"direction":"rx"}
+{"data":"  <FutureMenuNode FutureValue=\"keep-future\" />","delay_ms":0.0,"direction":"rx"}
+{"data":"</MSI>","delay_ms":0.0,"direction":"rx"}
+{"data":"MSI","delay_ms":0.0,"direction":"tx"}
+{"data":"MSI,<XML>,","delay_ms":0.0,"direction":"rx"}
+{"data":"<MSI Name=\"Synthetic Input\" Index=\"input-menu\" MenuType=\"TypeInput\" Value=\"input-value\">","delay_ms":0.0,"direction":"rx"}
+{"data":"  <MenuInput MaxLength=\"64\" EnableKeys=\"ABC123\" AddedInformation=\"Synthetic information\" FutureInput=\"keep-input\" />","delay_ms":0.0,"direction":"rx"}
+{"data":"</MSI>","delay_ms":0.0,"direction":"rx"}
+{"data":"MSI","delay_ms":0.0,"direction":"tx"}
+{"data":"MSI,<XML>,","delay_ms":0.0,"direction":"rx"}
+{"data":"<MSI Name=\"Synthetic Location\" Index=\"location-menu\" MenuType=\"TypeLocation\" Value=\"location-value\">","delay_ms":0.0,"direction":"rx"}
+{"data":"  <MenuLocation MaxLength=\"99\" EnableKeys=\"0123456789.-\" IsLatitude=\"1\" FutureLocation=\"keep-location\" />","delay_ms":0.0,"direction":"rx"}
+{"data":"</MSI>","delay_ms":0.0,"direction":"rx"}
+{"data":"MSI","delay_ms":0.0,"direction":"tx"}
+{"data":"MSI,<XML>,","delay_ms":0.0,"direction":"rx"}
+{"data":"<MSI Name=\"Synthetic Error\" Index=\"error-menu\" MenuType=\"TypeError\" Value=\"error-value\">","delay_ms":0.0,"direction":"rx"}
+{"data":"  <MenuErrorMsg Text=\"Synthetic error\" ScanButton=\"0\" FutureError=\"keep-error\" />","delay_ms":0.0,"direction":"rx"}
+{"data":"</MSI>","delay_ms":0.0,"direction":"rx"}

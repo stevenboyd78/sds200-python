@@ -11,36 +11,30 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 24.8 — indexed MNU menu-control foundation
+### Milestone 24.8 — MSI documented menu projection foundation
 
-The first Milestone 24.8 slice established immutable, lossless `MsiRecord` and
-`MsiResponse` values plus exact-root `MsiParser` handling without transmitting
-scanner commands or registering MSI in the shared production XML command map.
+The first three Milestone 24.8 slices established lossless bounded MSI XML
+modeling/parsing, exact serialized `MSI\r` retrieval for the existing
+CR-line/replay path, and the six indexed `MNU` forms whose menu/index roles are
+shared by the official SDS100/SDS200 Remote Command Specification V1.02
+(2023-12-22) and SDS Series Remote Command Specification V2.00 (2025-07-07).
 
-The second narrow slice added exact `MSI\r` retrieval through a typed `GetMsi`
-command and `SDSScanner.get_msi()`. Radio-side XML assembly extends the existing
-command/root mapping locally so CR-line serial transport and deterministic replay
-can correlate and parse MSI without assigning menu-field semantics or mutating
-`RadioState`.
+This fourth narrow slice adds a read-only documented projection over the
+existing lossless `MsiResponse`. Both specifications define the same MSI root
+attributes (`Name`, `Index`, `MenuType`, `Value`, `Selected`) and the same
+`MenuItem`, `MenuInput`, `MenuLocation`, and `MenuErrorMsg` attribute names.
+Typed projection records expose those named fields while retaining their exact
+string values and complete attribute mappings. Missing, unknown, repeated, and
+future values continue to be preserved rather than rejected or coerced.
 
-This third narrow slice uses only behavior that is identical in the official
-SDS100/SDS200 Remote Command Specification V1.02 (2023-12-22) and SDS Series
-Remote Command Specification V2.00 (2025-07-07). Both show
-`MNU,[MENU_ID],[INDEX]\r` with exact `MNU,OK\r`, and both identify concrete
-index kinds for exactly `SCAN_SYSTEM`, `SCAN_DEPARTMENT`, `SCAN_SITE`,
-`SCAN_CHANNEL`, `SRCH_RANGE`, and `FTO_CHANNEL`. `OpenIndexedMenu` and
-`SDSScanner.open_indexed_menu()` preserve the caller-supplied non-empty index as
-an opaque string token and assign no range, numeric encoding, or menu-field
-semantics.
-
-Rows whose INDEX column is `-`, negative/error response shapes, menu lifecycle
-and state ownership, and `MSV`/`MSB` execution remain deferred. The shared
-`XML_COMMAND_ROOTS` mapping and `UdpDatagramDecoder` behavior remain unchanged,
-and this MNU slice makes no new physical transport, model, firmware, or renderer
-applicability claim. Future Milestone 24 slices must compare V1.02 and V2.00
-where commands overlap and preserve version provenance where they differ or a
-command exists only in a later specification. Quick Search (`QSH`) also remains
-blocked pending evidence for its exact `FRQ` representation.
+The original root attributes, all descendant `MsiRecord` values, source order,
+unknown elements/attributes, and raw XML remain authoritative and unchanged.
+This slice sends no new scanner command and adds no `MSV`/`MSB` execution,
+unindexed `MNU`, menu lifecycle/state ownership, renderer behavior, UDP/XML-map
+support, model/firmware applicability, or physical scanner claim. In particular,
+the serialized value of the documented `[RSV]` field in `MSV`/`MSB` remains
+unresolved and is not inferred from unrelated empty-parameter conventions.
+Quick Search (`QSH`) likewise remains blocked pending exact `FRQ` evidence.
 
 ## Deferred hardware validation
 

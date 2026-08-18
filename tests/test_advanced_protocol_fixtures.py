@@ -309,3 +309,74 @@ def test_msi_retrieval_fixture_documents_narrow_transport_scope() -> None:
         in normalized
     )
     assert "MNU, MSV, or MSB control behavior" in normalized
+
+
+def test_synthetic_msi_menu_projection_fixture_contract() -> None:
+    capture = load_capture(FIXTURES / "synthetic-msi-menu-projection.jsonl")
+
+    assert capture.endpoint == "fixture://advanced-protocol/msi-menu-projection"
+    assert all(event.delay_ms == 0.0 for event in capture.events)
+    assert [event.data for event in capture.events if event.direction == "tx"] == [
+        "MSI",
+        "MSI",
+        "MSI",
+        "MSI",
+    ]
+
+    roots = []
+    index = 0
+    while index < len(capture.events):
+        event = capture.events[index]
+        if event.direction != "tx":
+            index += 1
+            continue
+        assert event.data == "MSI"
+        assert capture.events[index + 1].data == "MSI,<XML>,"
+        lines = []
+        index += 2
+        while index < len(capture.events):
+            data = capture.events[index].data or ""
+            lines.append(data)
+            index += 1
+            if data == "</MSI>":
+                break
+        roots.append(ElementTree.fromstring("\n".join(lines)))
+
+    assert [root.attrib["MenuType"] for root in roots] == [
+        "TypeSelect",
+        "TypeInput",
+        "TypeLocation",
+        "TypeError",
+    ]
+    assert [child.tag for child in roots[0]] == [
+        "MenuItem",
+        "MenuItem",
+        "FutureMenuNode",
+    ]
+    assert roots[0].attrib["Selected"] == "selected-opaque"
+    assert roots[0].attrib["FutureRoot"] == "keep-select-root"
+    assert roots[0][0].attrib["FutureItem"] == "keep-item-a"
+    assert roots[1][0].tag == "MenuInput"
+    assert roots[1][0].attrib["MaxLength"] == "64"
+    assert roots[1][0].attrib["FutureInput"] == "keep-input"
+    assert roots[2][0].tag == "MenuLocation"
+    assert roots[2][0].attrib["IsLatitude"] == "1"
+    assert roots[2][0].attrib["FutureLocation"] == "keep-location"
+    assert roots[3][0].tag == "MenuErrorMsg"
+    assert roots[3][0].attrib["ScanButton"] == "0"
+    assert roots[3][0].attrib["FutureError"] == "keep-error"
+
+
+def test_msi_menu_projection_fixture_documents_dual_spec_read_only_scope() -> None:
+    provenance = (FIXTURES / "README.md").read_text(encoding="utf-8")
+    normalized = " ".join(provenance.split())
+
+    assert "synthetic-msi-menu-projection.jsonl" in normalized
+    assert "V1.02 and V2.00 have the same MSI attribute table" in normalized
+    assert "TypeSelect" in normalized
+    assert "TypeInput" in normalized
+    assert "TypeLocation" in normalized
+    assert "TypeError" in normalized
+    assert "deliberately synthetic exact strings" in normalized
+    assert "does not establish numeric/boolean coercion" in normalized
+    assert "does not establish MSV/MSB reserved field serialization" in normalized

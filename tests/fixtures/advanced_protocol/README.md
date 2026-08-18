@@ -67,3 +67,16 @@ unverified unless separately documented.
   rows, negative/error responses, menu lifecycle/state semantics, MSV/MSB
   execution, transport/model/firmware applicability, renderer exposure, and
   physical scanner validation remain deferred.
+- `synthetic-msi-menu-projection.jsonl` is deterministic synthetic replay
+  evidence for the fourth narrow Milestone 24.8 slice. V1.02 and V2.00 have the
+  same MSI attribute table for the root plus `MenuItem`, `MenuInput`,
+  `MenuLocation`, and `MenuErrorMsg`. Four separate transactions represent the
+  documented `TypeSelect`, `TypeInput`, `TypeLocation`, and `TypeError` shapes.
+  All values are deliberately synthetic exact strings, including index-like,
+  length-like, latitude-like, selected, and scan-button values; the fixture does
+  not establish numeric/boolean coercion, runtime ranges, or physically valid
+  scanner menu state. Deliberate future attributes/elements verify that the
+  typed projection does not replace lossless preservation. It adds no new wire
+  command beyond existing MSI retrieval and does not establish MSV/MSB reserved
+  field serialization, menu mutation/lifecycle semantics, UDP support,
+  model/firmware applicability, renderer exposure, or physical validation.
