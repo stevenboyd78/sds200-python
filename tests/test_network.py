@@ -284,6 +284,29 @@ def test_udp_decoder_does_not_expect_nonexact_msi_command(command: str) -> None:
     assert decoder.feed(bare_xml) == (bare_xml.decode(),)
 
 
+@pytest.mark.parametrize(
+    "other_xml",
+    [
+        (
+            b'<ScannerInfo Mode="Trunk Scan"><Property Sig="4" />'
+            b"</ScannerInfo>"
+        ),
+        b'<GLT><FL Index="0" /></GLT>',
+        b'<AST><System Name="Synthetic" /></AST>',
+    ],
+)
+def test_udp_decoder_keeps_msi_expectation_across_other_xml_roots(
+    other_xml: bytes,
+) -> None:
+    decoder = UdpDatagramDecoder()
+    decoder.expect_command("MSI")
+    msi = b'<MSI FutureRoot="keep-root"><SyntheticRecord /></MSI>'
+
+    assert decoder.feed(other_xml) == (other_xml.decode(),)
+    assert decoder.feed(msi) == ("MSI,<XML>,", msi.decode())
+    assert decoder.feed(msi) == (msi.decode(),)
+
+
 def test_decoder_malformed_bare_glt_does_not_complete_expectation() -> None:
     completed: list[str] = []
     decoder = UdpDatagramDecoder(completion_handler=completed.append)
@@ -502,6 +525,61 @@ def test_udp_transport_retries_msi_with_exact_original_wire_command() -> None:
     assert transport.statistics["commands_sent"] == 2
     assert transport.statistics["retries_sent"] == 1
     assert transport.statistics["xml_fragments_dropped"] == 1
+
+
+def test_udp_transport_completed_msi_clears_one_shot_retry_state() -> None:
+    fake = FakeDatagramSocket()
+    transport = UdpTransport(
+        "192.0.2.25",
+        socket_factory=FakeDatagramSocketFactory(fake),
+        reconnect=False,
+        max_xml_retries=2,
+    )
+    diagnostics: list[TransportDiagnostic] = []
+    received: list[str] = []
+    transport.set_diagnostic_handler(diagnostics.append)
+    transport.start(received.append)
+    try:
+        transport.write_command("MSI")
+        fake.feed(
+            b'MSI,<XML>,<MSI><MenuItem Name="One" />'
+            b'<Footer No="1" EOT="0" /></MSI>'
+        )
+        fake.feed(
+            b'MSI,<XML>,<MSI><MenuItem Name="Three" />'
+            b'<Footer No="3" EOT="1" /></MSI>'
+        )
+        wait_until(lambda: fake.sent == [b"MSI\r", b"MSI\r"])
+
+        fake.feed(
+            b'MSI,<XML>,<MSI><MenuItem Name="Recovered" /></MSI>'
+        )
+        wait_until(
+            lambda: transport.statistics["xml_documents_completed"] == 1
+        )
+
+        fake.feed(
+            b'MSI,<XML>,<MSI><MenuItem Name="StaleOne" />'
+            b'<Footer No="1" EOT="0" /></MSI>'
+        )
+        fake.feed(
+            b'MSI,<XML>,<MSI><MenuItem Name="StaleThree" />'
+            b'<Footer No="3" EOT="1" /></MSI>'
+        )
+        fake.feed(b"MDL,SDS200\r")
+        wait_until(lambda: "MDL,SDS200" in received)
+    finally:
+        transport.stop()
+
+    assert [diagnostic.kind for diagnostic in diagnostics] == [
+        "sequence_gap",
+        "sequence_gap",
+    ]
+    assert fake.sent == [b"MSI\r", b"MSI\r"]
+    assert transport.statistics["commands_sent"] == 2
+    assert transport.statistics["retries_sent"] == 1
+    assert transport.statistics["xml_fragments_dropped"] == 2
+    assert transport.statistics["xml_documents_completed"] == 1
 
 
 def test_radio_network_parses_bare_glt_favorites() -> None:
