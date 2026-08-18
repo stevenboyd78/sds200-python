@@ -11,7 +11,7 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 24.8 — MSI UDP correlation/completion hardening
+### Milestone 24.8 — indexed-menu snapshot composition foundation
 
 The first four Milestone 24.8 slices established lossless bounded MSI XML
 modeling/parsing, exact serialized `MSI\r` retrieval for CR-line/replay
@@ -36,6 +36,21 @@ later stray MSI fragment gaps cannot resend a stale command. The tests use only
 deterministic fake datagrams and synchronize on a later ordinary response before
 asserting that no additional UDP write occurred.
 
+This seventh narrow slice composes only already-supported operations.
+`SDSScanner.open_indexed_menu_snapshot()` validates one of the six existing
+indexed MNU forms, applies one total timeout budget including command-lock wait,
+holds the existing re-entrant command lock across exact `MNU,...` acknowledgement
+and the following exact `MSI` retrieval, and returns the existing lossless
+`MsiResponse`. MSI transport support is checked before MNU transmission so a
+transport on which MSI is blocked cannot be left in a newly opened menu merely
+because the second half of the composition is unavailable.
+
+The composition is a host-side serialization guarantee only. It adds no new
+wire form, scanner-side transaction/atomicity claim, menu lifecycle ownership,
+automatic menu exit/back behavior, or interpretation that the returned MSI
+fields are guaranteed by the scanner to identify the requested index beyond
+their preserved documented strings.
+
 Direct `UdpTransport` and its capture wrapper are covered only with deterministic
 fake datagrams. This is software transport/framing evidence, not a physical
 scanner or firmware-support claim. Fallback transports remain blocked because
@@ -44,11 +59,11 @@ has been established. Custom transports that merely advertise an `udp://`
 endpoint remain fail-closed unless they are the repository's direct
 `UdpTransport` path.
 
-This hardening slice does not add `MSV`/`MSB` execution, unindexed `MNU`, menu
-lifecycle/state ownership, renderer behavior, model/firmware applicability, or
-physical validation. The serialized `[RSV]` field in `MSV`/`MSB` remains
-unresolved, and Quick Search (`QSH`) remains blocked pending exact `FRQ`
-evidence.
+This seventh slice does not add `MSV`/`MSB` execution, unindexed `MNU`, menu
+lifecycle/state ownership, renderer behavior, fallback MSI support,
+model/firmware applicability, or physical validation. The serialized `[RSV]`
+field in `MSV`/`MSB` remains unresolved, and Quick Search (`QSH`) remains
+blocked pending exact `FRQ` evidence.
 
 ## Deferred hardware validation
 

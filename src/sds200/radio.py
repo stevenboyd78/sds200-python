@@ -821,6 +821,16 @@ class SDSScanner:
     def get_glt_favorites(self, *, timeout: float = 3.0) -> GltResponse:
         return self.execute(GetGltFavorites(), timeout=timeout)
 
+    def _require_msi_retrieval_supported(self) -> None:
+        if self._fallback_transport is not None or (
+            self.endpoint.startswith("udp://")
+            and not self._direct_udp_msi_supported
+        ):
+            raise UnsupportedScannerFeatureError(
+                "MSI retrieval is unavailable on unverified UDP-like and "
+                "fallback control transports."
+            )
+
     def get_msi(self, *, timeout: float = 3.0) -> MsiResponse:
         return self.execute(GetMsi(), timeout=timeout)
 
@@ -832,6 +842,45 @@ class SDSScanner:
         timeout: float = 2.0,
     ) -> None:
         self.execute(OpenIndexedMenu(menu_id, index), timeout=timeout)
+
+    def open_indexed_menu_snapshot(
+        self,
+        menu_id: IndexedMenuId,
+        index: str,
+        *,
+        timeout: float = 3.0,
+    ) -> MsiResponse:
+        # Compose existing indexed-MNU and MSI operations under one host lock.
+        menu_command = OpenIndexedMenu(menu_id, index)
+        normalized_timeout = _require_positive_timeout(
+            timeout,
+            label="Indexed menu snapshot timeout",
+        )
+        deadline = monotonic() + normalized_timeout
+        remaining = deadline - monotonic()
+        if remaining <= 0 or not self._command_lock.acquire(timeout=remaining):
+            raise CommandTimeoutError(
+                "Indexed menu snapshot timed out waiting for scanner command activity."
+            )
+
+        try:
+            self._require_msi_retrieval_supported()
+
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                raise CommandTimeoutError(
+                    "Indexed menu snapshot timed out before MNU request."
+                )
+            self.execute(menu_command, timeout=remaining)
+
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                raise CommandTimeoutError(
+                    "Indexed menu snapshot timed out before MSI request."
+                )
+            return self.execute(GetMsi(), timeout=remaining)
+        finally:
+            self._command_lock.release()
 
     def start_current_activity_analysis(
         self, site_index: int, *, timeout: float = 2.0
@@ -1161,17 +1210,8 @@ class SDSScanner:
                     f"Timed out waiting for {response_command} response."
                 )
 
-            if response_command == "MSI" and (
-                self._fallback_transport is not None
-                or (
-                    self.endpoint.startswith("udp://")
-                    and not self._direct_udp_msi_supported
-                )
-            ):
-                raise UnsupportedScannerFeatureError(
-                    "MSI retrieval is unavailable on unverified UDP-like and "
-                    "fallback control transports."
-                )
+            if response_command == "MSI":
+                self._require_msi_retrieval_supported()
 
             response_queue: queue.Queue[object] = queue.Queue(maxsize=1)
             pending = _PendingResponse(command=response_command, queue=response_queue)
