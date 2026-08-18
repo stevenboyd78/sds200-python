@@ -1,10 +1,14 @@
 # Advanced protocol fixtures
 
 Every fixture in this directory is explicitly synthetic and is not derived from scanner hardware.
-It contains no private scanner data. The reviewed source is the *Uniden SDS
-Series Remote Command Specification V2.00*, dated 2025-07-07. No model-specific
-or firmware-specific physical validation is implied. Endpoint values are fixture
-identifiers, not real scanner addresses.
+It contains no private scanner data. Official protocol evidence is versioned:
+the *SDS100/SDS200 Remote Command Specification V1.02*, dated 2023-12-22, and
+the later *Uniden SDS Series Remote Command Specification V2.00*, dated
+2025-07-07, are compared when a command appears in both documents. A fixture
+must not silently treat V2.00 behavior as universal when the versions differ,
+and later-version-only commands must retain their version provenance. No
+model-specific or firmware-specific physical validation is implied. Endpoint
+values are fixture identifiers, not real scanner addresses.
 
 Unknown fields and elements are deliberately retained where present. These
 fixtures model framing and evidence only; they do not establish public command
@@ -52,3 +56,14 @@ unverified unless separately documented.
   fragment, or bare-XML behavior; it also does not establish menu field
   semantics, physical scanner/model/firmware applicability, menu lifecycle, or
   MNU, MSV, or MSB control behavior.
+- `synthetic-mnu-indexed.jsonl` is deterministic synthetic replay evidence for
+  the third narrow Milestone 24.8 slice. The V1.02 and V2.00 official command
+  tables agree on the exact `MNU,[MENU_ID],[INDEX]` request, `MNU,OK`
+  acknowledgement, and the six rows whose INDEX column names a concrete index
+  kind: `SCAN_SYSTEM`, `SCAN_DEPARTMENT`, `SCAN_SITE`, `SCAN_CHANNEL`,
+  `SRCH_RANGE`, and `FTO_CHANNEL`. The zero-padded index strings in this fixture
+  are deliberately fabricated opaque tokens; neither specification establishes
+  those literal values, an index range, or a numeric encoding. Unindexed MNU
+  rows, negative/error responses, menu lifecycle/state semantics, MSV/MSB
+  execution, transport/model/firmware applicability, renderer exposure, and
+  physical scanner validation remain deferred.

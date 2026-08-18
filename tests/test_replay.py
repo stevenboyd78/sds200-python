@@ -193,6 +193,27 @@ def test_replay_executes_lossless_msi_retrieval() -> None:
     )
 
 
+def test_replay_executes_exact_indexed_mnu_controls() -> None:
+    requests = (
+        ("SCAN_SYSTEM", "000001"),
+        ("SCAN_DEPARTMENT", "000002"),
+        ("SCAN_SITE", "000003"),
+        ("SCAN_CHANNEL", "000004"),
+        ("SRCH_RANGE", "000005"),
+        ("FTO_CHANNEL", "000006"),
+    )
+
+    with SDSScanner.replay(
+        ADVANCED_PROTOCOL_FIXTURES / "synthetic-mnu-indexed.jsonl"
+    ) as radio:
+        before = radio.state.snapshot
+        for menu_id, index in requests:
+            radio.open_indexed_menu(menu_id, index, timeout=1.0)  # type: ignore[arg-type]
+        after = radio.state.snapshot
+
+    assert after == before
+
+
 def test_replay_executes_current_activity_apr_lcn_monitor_apr() -> None:
     with SDSScanner.replay(
         ADVANCED_PROTOCOL_FIXTURES / "synthetic-ast-apr.jsonl"

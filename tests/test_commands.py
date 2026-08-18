@@ -1,12 +1,14 @@
 import pytest
 
 from sds200.commands import (
+    INDEXED_MENU_IDS,
     GetFavoritesQuickKeys,
     GetGltFavorites,
     GetMsi,
     GetScannerRecordingStatus,
     HoldSelection,
     NextSelection,
+    OpenIndexedMenu,
     PauseResumeAnalysis,
     PressKey,
     PreviousSelection,
@@ -160,6 +162,76 @@ def test_get_msi_contract() -> None:
     assert command.parse_response(response) is response
     with pytest.raises(TypeError, match="MSI did not return MsiResponse"):
         command.parse_response(Packet(command="MSI", fields=(), raw="MSI"))
+
+
+def test_indexed_mnu_menu_ids_are_the_six_shared_specification_tokens() -> None:
+    assert INDEXED_MENU_IDS == (
+        "SCAN_SYSTEM",
+        "SCAN_DEPARTMENT",
+        "SCAN_SITE",
+        "SCAN_CHANNEL",
+        "SRCH_RANGE",
+        "FTO_CHANNEL",
+    )
+
+
+@pytest.mark.parametrize("menu_id", INDEXED_MENU_IDS)
+def test_open_indexed_menu_exact_contract(menu_id: str) -> None:
+    command = OpenIndexedMenu(menu_id, "000007")  # type: ignore[arg-type]
+
+    assert command.menu_id == menu_id
+    assert command.index == "000007"
+    assert command.wire == f"MNU,{menu_id},000007"
+    assert command.response_command == "MNU"
+    assert command.parse_response(
+        Packet(command="MNU", fields=("OK",), raw="MNU,OK")
+    ) is None
+
+
+@pytest.mark.parametrize(
+    "menu_id",
+    [
+        "TOP",
+        "MONITOR_LIST",
+        "SRCH_OPT",
+        "CC",
+        "CC_BAND",
+        "WX",
+        "SETTINGS",
+        "BRDCST_SCREEN",
+        "UNKNOWN",
+        "scan_system",
+    ],
+)
+def test_open_indexed_menu_rejects_unindexed_or_nonexact_menu_id(menu_id: str) -> None:
+    with pytest.raises(ValueError, match="Indexed MNU menu ID"):
+        OpenIndexedMenu(menu_id, "0")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "index",
+    ["", " 1", "1 ", "1,2", "1\r2", "1\n2", 7, None, True],
+)
+def test_open_indexed_menu_rejects_unsafe_or_nonstring_index(index: object) -> None:
+    with pytest.raises(ValueError, match="MNU index"):
+        OpenIndexedMenu("SCAN_SYSTEM", index)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        object(),
+        Packet(command="OTHER", fields=("OK",), raw="OTHER,OK"),
+        Packet(command="MNU", fields=(), raw="MNU"),
+        Packet(command="MNU", fields=("NG",), raw="MNU,NG"),
+        Packet(command="MNU", fields=("ERR",), raw="MNU,ERR"),
+        Packet(command="MNU", fields=("OK", "EXTRA"), raw="MNU,OK,EXTRA"),
+        Packet(command="MNU", fields=(" OK",), raw="MNU, OK"),
+    ],
+)
+def test_open_indexed_menu_rejects_nonexact_acknowledgement(response: object) -> None:
+    with pytest.raises(ProtocolError, match="MNU"):
+        OpenIndexedMenu("SCAN_SYSTEM", "0").parse_response(response)
 
 
 def test_get_favorites_quick_keys_exact_contract_and_values() -> None:

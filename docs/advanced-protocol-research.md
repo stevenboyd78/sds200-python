@@ -470,16 +470,34 @@ abstraction” is a planning inference, not established protocol behavior.
 
 ### MNU, MSI, MSV, and MSB
 
-- **Evidence:** V2.00 specification; status: specification.
-- **Shape:** `MNU,[MENU_ID],[INDEX]\r` returns `MNU,OK`. Reviewed menu IDs are
-  `TOP`, `MONITOR_LIST`, `SCAN_SYSTEM`, `SCAN_DEPARTMENT`, `SCAN_SITE`,
-  `SCAN_CHANNEL`, `SRCH_RANGE`, `SRCH_OPT`, `CC`, `CC_BAND`, `WX`,
-  `FTO_CHANNEL`, `SETTINGS`, and `BRDCST_SCREEN`. `MSI\r` returns bounded
-  multiline XML rooted at `<MSI ...>`. `MSV` and `MSB` are acknowledgement and
-  state-change operations.
+- **Evidence:** official SDS100/SDS200 Remote Command Specification V1.02,
+  dated 2023-12-22, compared with official SDS Series Remote Command
+  Specification V2.00, dated 2025-07-07; status: shared specification evidence
+  for the forms described below.
+- **Version comparison:** the MNU/MSI/MSV/MSB request and acknowledgement forms
+  reviewed here are the same in V1.02 and V2.00. Future advanced-protocol work
+  must continue comparing overlapping commands rather than treating V2.00 as an
+  automatic replacement for V1.02; version-specific additions or changed fields
+  must retain their own provenance.
+- **Shape:** both specifications show `MNU,[MENU_ID],[INDEX]\r` returning
+  `MNU,OK`. The common menu table contains `TOP`, `MONITOR_LIST`,
+  `SCAN_SYSTEM`, `SCAN_DEPARTMENT`, `SCAN_SITE`, `SCAN_CHANNEL`, `SRCH_RANGE`,
+  `SRCH_OPT`, `CC`, `CC_BAND`, `WX`, `FTO_CHANNEL`, `SETTINGS`, and
+  `BRDCST_SCREEN`. Its INDEX column names System, Department, Site, Channel,
+  Custom Bank, and FTO Channel indexes only for `SCAN_SYSTEM`,
+  `SCAN_DEPARTMENT`, `SCAN_SITE`, `SCAN_CHANNEL`, `SRCH_RANGE`, and
+  `FTO_CHANNEL`; the other reviewed rows show `-`.
+  Both specifications show `MSI\r` returning bounded multiline XML rooted at
+  `<MSI ...>`, `MSV,[RSV],[VALUE]\r` returning `MSV,OK`, and
+  `MSB,[RSV],[RET_LEVEL]\r` returning `MSB,OK`. They describe MSV VALUE as a
+  selected-item index for select menus or an input string for input menus, with
+  commas in input values replaced by tabs. They also preserve the exact
+  `RETURN_PREVOUS_MODE` token for exiting menu mode and describe an empty
+  RET_LEVEL as one level back.
 - **Lifecycle and safety:** mixed bounded-XML retrieval and ordinary controls.
-  Menu state is a precondition; exact indices, errors, field semantics,
-  transports, and firmware applicability need more evidence.
+  Menu state is a precondition; index ranges/encoding, negative/error responses,
+  detailed field semantics, physical transport behavior, and firmware
+  applicability need more evidence.
 - **Repository fit:** generalized bounded XML for MSI and separate conservative
   control commands. Fixtures need reviewed menu IDs, unknown fields, malformed
   XML, acknowledgement/rejection, and state-sensitive failures.
@@ -515,10 +533,24 @@ a pending response or writing `MSI`. Network and fallback MSI framing remain
 explicit later evidence/transport tasks rather than implicit consequences of the
 high-level retrieval API.
 
-The reviewed `MNU` menu IDs remain evidence only; exact menu indices,
-rejection/error shapes, menu-state preconditions, and `MSV`/`MSB` state-change
-semantics remain deferred. Model, firmware, physical-scanner applicability,
-renderer exposure, and menu lifecycle ownership also remain unverified.
+The third narrow slice implements only the six MNU rows whose INDEX column
+names a concrete index kind in both V1.02 and V2.00: `SCAN_SYSTEM`,
+`SCAN_DEPARTMENT`, `SCAN_SITE`, `SCAN_CHANNEL`, `SRCH_RANGE`, and
+`FTO_CHANNEL`. The command accepts only those exact MENU_ID tokens plus a
+non-empty opaque string index, rejects leading/trailing whitespace and
+comma/line-break injection as host-side safety constraints, preserves the index
+without assigning a range or numeric encoding, and accepts only exact `MNU,OK`.
+
+Synthetic replay uses deliberately fabricated zero-padded index-shaped tokens;
+neither specification establishes those literal values. Rows whose INDEX column
+is `-` remain deferred because the common table does not establish an exact
+serialized empty/omitted-field form. Negative/error MNU replies are not
+classified because no exact rejection shape is established by the reviewed
+forms. `MSV` and `MSB` now have their shared outer wire/acknowledgement forms
+recorded, but their menu-state-sensitive value/back behavior remains deferred
+from this slice. Model, firmware, physical-scanner applicability, renderer
+exposure, physical transport applicability, and menu lifecycle ownership remain
+unverified.
 
 ### Richer NAC, RAN, color-code, area, activity, and quality data
 
