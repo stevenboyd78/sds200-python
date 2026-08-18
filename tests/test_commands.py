@@ -3,6 +3,7 @@ import pytest
 from sds200.commands import (
     GetFavoritesQuickKeys,
     GetGltFavorites,
+    GetMsi,
     GetScannerRecordingStatus,
     HoldSelection,
     NextSelection,
@@ -28,6 +29,7 @@ from sds200.models import (
     FavoritesQuickKeys,
     FavoritesQuickKeyState,
     GltResponse,
+    MsiResponse,
     Packet,
     ScannerRecordingStatus,
     ScannerRecordingStatusResponse,
@@ -145,6 +147,19 @@ def test_get_glt_favorites_contract() -> None:
     assert command.parse_response(response) is response
     with pytest.raises(TypeError, match="GLT did not return GltResponse"):
         command.parse_response(Packet(command="GLT", fields=(), raw="GLT"))
+
+
+def test_get_msi_contract() -> None:
+    command = GetMsi()
+    response = MsiResponse.create(
+        command="MSI", root_attributes={}, records=(), raw_xml="<MSI />"
+    )
+
+    assert command.wire == "MSI"
+    assert command.response_command == "MSI"
+    assert command.parse_response(response) is response
+    with pytest.raises(TypeError, match="MSI did not return MsiResponse"):
+        command.parse_response(Packet(command="MSI", fields=(), raw="MSI"))
 
 
 def test_get_favorites_quick_keys_exact_contract_and_values() -> None:

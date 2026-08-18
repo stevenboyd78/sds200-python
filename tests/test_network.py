@@ -12,7 +12,11 @@ from sds200.network import UdpDatagramDecoder, UdpTransport
 from sds200.radio import SDS200
 from sds200.reliability import ReconnectPolicy
 from sds200.transport import TransportDiagnostic
-from sds200.xml_protocol import ScannerInfoParser, XmlResponseAssembler
+from sds200.xml_protocol import (
+    XML_COMMAND_ROOTS,
+    ScannerInfoParser,
+    XmlResponseAssembler,
+)
 
 from .fakes import (
     DatagramSocketSequenceFactory,
@@ -257,6 +261,17 @@ def test_decoder_wraps_bare_glt_xml_once_after_exact_command() -> None:
 
     assert lines == ("GLT,<XML>,", bare_xml.decode())
     assert decoder.feed(bare_xml) == (bare_xml.decode(),)
+
+
+def test_udp_decoder_does_not_register_or_wrap_msi_xml() -> None:
+    assert "MSI" not in XML_COMMAND_ROOTS
+
+    decoder = UdpDatagramDecoder()
+    decoder.expect_command("MSI")
+    bare_xml = b'<MSI FutureRoot="keep-root"><SyntheticRecord /></MSI>'
+
+    assert decoder.feed(bare_xml) == (bare_xml.decode(),)
+    assert decoder.feed(b"MSI,<XML>," + bare_xml) == ()
 
 
 def test_decoder_malformed_bare_glt_does_not_complete_expectation() -> None:

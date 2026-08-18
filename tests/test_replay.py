@@ -176,6 +176,23 @@ def test_replay_executes_lossless_glt_favorites_retrieval() -> None:
     assert favorites[0].attributes["FutureAttr"] == "preserve-me"
 
 
+def test_replay_executes_lossless_msi_retrieval() -> None:
+    with SDSScanner.replay(
+        ADVANCED_PROTOCOL_FIXTURES / "synthetic-msi-retrieval.jsonl"
+    ) as radio:
+        response = radio.get_msi(timeout=1.0)
+
+    assert response.command == "MSI"
+    assert response.root_attributes["FutureRoot"] == "keep-root"
+    assert [
+        record.attributes["SyntheticId"]
+        for record in response.records_by_tag("SyntheticRecord")
+    ] == ["first", "second"]
+    assert response.records_by_tag("FutureRecord")[0].attributes["FutureNested"] == (
+        "keep-nested"
+    )
+
+
 def test_replay_executes_current_activity_apr_lcn_monitor_apr() -> None:
     with SDSScanner.replay(
         ADVANCED_PROTOCOL_FIXTURES / "synthetic-ast-apr.jsonl"

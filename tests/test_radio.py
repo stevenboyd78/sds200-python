@@ -12,11 +12,12 @@ from sds200.exceptions import (
     UnsupportedScannerFeatureError,
     UnsupportedScannerModelError,
 )
-from sds200.fallback import FallbackTransport
+from sds200.fallback import FallbackTransport, TransportCandidate
 from sds200.models import (
     AnalysisMode,
     AnalysisResponse,
     FavoritesQuickKeyState,
+    MsiResponse,
     RadioEvent,
     ScannerInfo,
     ScannerRecordingStatus,
@@ -44,6 +45,101 @@ def test_command_is_cr_terminated_and_matches_response() -> None:
         thread.join()
 
     assert fake.writes == [b"MDL\r"]
+
+
+def test_serial_msi_retrieval_is_lossless_and_state_neutral() -> None:
+    fake = FakeSerial()
+    radio = SDS200("/dev/fake", reconnect=False, serial_factory=lambda **kwargs: fake)
+    initial_state = radio.state.snapshot
+
+    with radio:
+        def respond() -> None:
+            while fake.writes != [b"MSI\r"]:
+                time.sleep(0.005)
+            fake.feed(
+                b'MSI,<XML>,\r'
+                b'<MSI FutureRoot="keep-root">\r'
+                b'<SyntheticRecord SyntheticId="first" FutureAttr="keep-first" />\r'
+                b'<Container><FutureRecord Value="nested" '
+                b'FutureNested="keep-nested" /></Container>\r'
+                b'<SyntheticRecord SyntheticId="second" />\r'
+                b'</MSI>\r'
+            )
+
+        thread = threading.Thread(target=respond)
+        thread.start()
+        response = radio.get_msi(timeout=1.0)
+        thread.join(timeout=1.0)
+
+    assert isinstance(response, MsiResponse)
+    assert response.command == "MSI"
+    assert response.root_attributes["FutureRoot"] == "keep-root"
+    assert [record.tag for record in response.records] == [
+        "SyntheticRecord",
+        "Container",
+        "FutureRecord",
+        "SyntheticRecord",
+    ]
+    assert [
+        record.attributes["SyntheticId"]
+        for record in response.records_by_tag("SyntheticRecord")
+    ] == ["first", "second"]
+    assert response.records_by_tag("FutureRecord")[0].attributes == {
+        "Value": "nested",
+        "FutureNested": "keep-nested",
+    }
+    assert radio.state.snapshot == initial_state
+    assert fake.writes == [b"MSI\r"]
+
+
+def test_msi_retrieval_fails_closed_before_direct_udp_write() -> None:
+    transport = FakeTransport("udp://scanner")
+    radio = SDS200.from_transport(transport)
+
+    with pytest.raises(
+        UnsupportedScannerFeatureError,
+        match="MSI retrieval is unavailable on UDP and fallback control transports",
+    ):
+        radio.get_msi(timeout=1.0)
+
+    assert transport.writes == []
+
+
+def test_msi_retrieval_fails_closed_through_recording_udp_wrapper(tmp_path) -> None:
+    transport = FakeTransport("udp://scanner")
+    radio = SDS200.from_transport(
+        transport,
+        capture_path=tmp_path / "capture.jsonl",
+    )
+
+    with pytest.raises(
+        UnsupportedScannerFeatureError,
+        match="MSI retrieval is unavailable on UDP and fallback control transports",
+    ):
+        radio.get_msi(timeout=1.0)
+
+    assert transport.writes == []
+
+
+def test_msi_retrieval_fails_closed_before_fallback_write() -> None:
+    preferred = FakeTransport("fake://serial")
+    backup = FakeTransport("udp://scanner")
+    fallback = FallbackTransport(
+        (
+            TransportCandidate("serial", preferred.endpoint, lambda: preferred),
+            TransportCandidate("network", backup.endpoint, lambda: backup),
+        )
+    )
+    radio = SDS200.from_transport(fallback)
+
+    with pytest.raises(
+        UnsupportedScannerFeatureError,
+        match="MSI retrieval is unavailable on UDP and fallback control transports",
+    ):
+        radio.get_msi(timeout=1.0)
+
+    assert preferred.writes == []
+    assert backup.writes == []
 
 
 def test_favorites_quick_keys_high_level_read_is_typed_and_exact() -> None:

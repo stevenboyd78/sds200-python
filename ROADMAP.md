@@ -11,30 +11,26 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 24.7 — PWF/GWF/GW2 waterfall session and data work
+### Milestone 24.8 — MSI retrieval integration
 
-Milestone 24.6 completed and merged the evidence-backed AST/APR foundation:
-exact Current Activity and LCN Monitor starts, lossless AST XML modeling, the
-documented combined APR pause/resume wire, and bounded local AST publication.
-Broader analysis-session ownership and the deferred AST modes remain separate
-future work. Quick Search (`QSH`) remains blocked because its exact `FRQ`
-representation lacks sufficient evidence.
+The first Milestone 24.8 slice established immutable, lossless `MsiRecord` and
+`MsiResponse` values plus exact-root `MsiParser` handling without transmitting
+scanner commands or registering MSI in the shared production XML command map.
 
-The first narrow Milestone 24.7 slice adds receive-only PWF/GWF line-data
-modeling and bounded local publication. PWF values remain variable-length raw
-strings, including empty and unknown fields. GWF retains the reviewed exact
-240-value data shape as uninterpreted strings. Other GWF line shapes remain
-lossless generic packets rather than being assigned undocumented semantics.
-The complete source `Packet`, including its raw line, remains available; no FFT
-numeric meaning, range, scale, cadence, or screen semantics are inferred.
+This second narrow slice adds exact `MSI\r` retrieval through a typed `GetMsi`
+command and `SDSScanner.get_msi()`. Radio-side XML assembly extends the existing
+command/root mapping locally so CR-line serial transport and deterministic replay
+can correlate and parse MSI without assigning menu-field semantics or mutating
+`RadioState`.
 
-This slice adds no PWF/GWF start or stop command API and does not infer ON/OFF
-token semantics beyond the reviewed placeholder notation. It adds no scanner
-waterfall running/stopped state, reconnect restoration, transport/model/firmware
-applicability claim, renderer integration, or physical validation. `GW2` remains
-deferred because the reviewed form is binary/no-separator while the current
-control transports decode received bytes to text before radio dispatch; exact
-GW2 binary framing requires a separate transport contract.
+The shared `XML_COMMAND_ROOTS` mapping and `UdpDatagramDecoder` behavior remain
+unchanged. The serialized MSI request/response path fails closed before
+transmission on direct or capture-wrapped `udp://` endpoints and on fallback
+transports. This slice therefore does not claim MSI UDP expectation, retry,
+fragment reassembly, bare-XML, or fallback support. `MNU`, `MSV`, and `MSB`
+controls, menu-state lifecycle semantics, model/firmware applicability, renderer
+exposure, and physical scanner validation remain deferred. Quick Search (`QSH`)
+also remains blocked pending evidence for its exact `FRQ` representation.
 
 ## Deferred hardware validation
 
@@ -417,12 +413,17 @@ Tentative evidence-led slicing is:
 - later discovery, system-status, and RF-power work built on the analysis
   substrate.
 
-Milestone 24.8 is now active with a first receive-only `MSI` bounded-XML
-model/parser foundation. This slice preserves the exact reviewed `<MSI ...>`
-root, root attributes, ordered/repeated descendants, unknown attributes and
-elements, and raw XML. It deliberately does not send `MSI`, register `MSI` in
-the default XML command map, add scanner or transport APIs, infer menu field
-semantics, or implement `MNU`, `MSV`, or `MSB` control behavior.
+Milestone 24.8 began with a receive-only `MSI` bounded-XML model/parser
+foundation preserving the exact reviewed `<MSI ...>` root, root attributes,
+ordered/repeated descendants, unknown attributes and elements, and raw XML. The
+second narrow slice adds exact `MSI` retrieval through typed command/radio APIs
+and radio-local bounded-XML assembly for CR-line serial and deterministic replay
+coverage. The shared production XML command map remains unchanged, and the
+serialized MSI request/response path rejects direct/capture-wrapped UDP and
+fallback transports before transmission. UDP expectation/retry/bare-XML and
+fallback MSI behavior therefore remain deferred. No menu-field semantics,
+`MNU`/`MSV`/`MSB` controls, menu lifecycle, or model/firmware/physical-scanner
+applicability is inferred.
 
 Milestone 24.1 selected `GLT` as the safest leading implementation candidate
 because it is bounded retrieval that complements the Favorites foundation and

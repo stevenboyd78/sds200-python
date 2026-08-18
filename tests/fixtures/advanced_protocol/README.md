@@ -43,3 +43,12 @@ unverified unless separately documented.
   register MSI in the default XML command map, and does not establish menu field
   semantics, transport behavior, model/firmware applicability, menu lifecycle,
   or MNU, MSV, or MSB control behavior.
+- `synthetic-msi-retrieval.jsonl` adds deterministic replay evidence for the
+  second narrow Milestone 24.8 slice: exact `MSI` request transmission followed
+  by the reviewed bounded `<MSI ...>` XML shape with the same deliberately
+  unknown/repeated structural data. It establishes only software command
+  correlation plus CR-line/replay integration. The shared UDP XML command map
+  remains unchanged, so this fixture does not establish UDP expectation, retry,
+  fragment, or bare-XML behavior; it also does not establish menu field
+  semantics, physical scanner/model/firmware applicability, menu lifecycle, or
+  MNU, MSV, or MSB control behavior.
