@@ -24,6 +24,7 @@ from .commands import (
     GetFirmware,
     GetGltFavorites,
     GetModel,
+    GetMsi,
     GetScannerInfo,
     GetScannerRecordingStatus,
     GetSquelch,
@@ -65,6 +66,7 @@ from .models import (
     GwfResponse,
     HealthSummary,
     ModelResponse,
+    MsiResponse,
     Packet,
     PwfResponse,
     RadioEvent,
@@ -109,7 +111,14 @@ from .waterfall_subscriptions import (
     WaterfallPublisherSnapshot,
     WaterfallSubscription,
 )
-from .xml_protocol import AnalysisParser, GltParser, ScannerInfoParser, XmlResponseAssembler
+from .xml_protocol import (
+    XML_COMMAND_ROOTS,
+    AnalysisParser,
+    GltParser,
+    MsiParser,
+    ScannerInfoParser,
+    XmlResponseAssembler,
+)
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -194,7 +203,8 @@ class SDSScanner:
         self.xml_parser = ScannerInfoParser()
         self.glt_parser = GltParser()
         self.analysis_parser = AnalysisParser()
-        self.xml_assembler = XmlResponseAssembler()
+        self.msi_parser = MsiParser()
+        self.xml_assembler = XmlResponseAssembler({**XML_COMMAND_ROOTS, "MSI": "MSI"})
         self.events = EventBus()
         self._analysis_publisher = AnalysisPublisher()
         self._waterfall_publisher = WaterfallPublisher()
@@ -808,6 +818,9 @@ class SDSScanner:
     def get_glt_favorites(self, *, timeout: float = 3.0) -> GltResponse:
         return self.execute(GetGltFavorites(), timeout=timeout)
 
+    def get_msi(self, *, timeout: float = 3.0) -> MsiResponse:
+        return self.execute(GetMsi(), timeout=timeout)
+
     def start_current_activity_analysis(
         self, site_index: int, *, timeout: float = 2.0
     ) -> AnalysisResponse:
@@ -1136,6 +1149,15 @@ class SDSScanner:
                     f"Timed out waiting for {response_command} response."
                 )
 
+            if response_command == "MSI" and (
+                self.endpoint.startswith("udp://")
+                or self._fallback_transport is not None
+            ):
+                raise UnsupportedScannerFeatureError(
+                    "MSI retrieval is unavailable on UDP and fallback "
+                    "control transports."
+                )
+
             response_queue: queue.Queue[object] = queue.Queue(maxsize=1)
             pending = _PendingResponse(command=response_command, queue=response_queue)
             with self._response_lock:
@@ -1173,18 +1195,20 @@ class SDSScanner:
         if assembled is not None:
             command, xml = assembled
             try:
-                xml_response: GltResponse | AnalysisResponse | ScannerInfo
+                xml_response: GltResponse | AnalysisResponse | MsiResponse | ScannerInfo
                 if command == "GLT":
                     xml_response = self.glt_parser.parse(command, xml)
                 elif command == "AST":
                     xml_response = self.analysis_parser.parse(command, xml)
+                elif command == "MSI":
+                    xml_response = self.msi_parser.parse(command, xml)
                 else:
                     xml_response = self.xml_parser.parse(command, xml)
             except ProtocolError as exc:
                 self.events.emit("protocol_error", exc)
                 return
 
-            if isinstance(xml_response, (GltResponse, AnalysisResponse)):
+            if isinstance(xml_response, (GltResponse, AnalysisResponse, MsiResponse)):
                 self._publish(command, xml_response)
                 return
 

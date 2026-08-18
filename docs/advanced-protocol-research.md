@@ -494,14 +494,31 @@ No menu-field names or values are assigned semantics.
 
 The generic `XmlResponseAssembler` is exercised with an explicit test-local
 `{"MSI": "MSI"}` mapping. `MSI` is intentionally not added to the production
-default XML command map, so this slice does not imply UDP expectation, retry,
-bare-XML, serial, replay, or any other transport support. The synthetic fixture
-is receive-only structural evidence and contains no transmitted `MSI` request.
+default XML command map, so the first slice does not imply UDP expectation,
+retry, bare-XML, serial, replay, or any other transport support. Its synthetic
+fixture remains receive-only structural evidence and contains no transmitted
+`MSI` request.
 
-No `SDSScanner` MSI method or command class is added. The reviewed `MNU` menu
-IDs remain evidence only; exact menu indices, rejection/error shapes, menu-state
-preconditions, and `MSV`/`MSB` state-change semantics remain deferred. Model,
-firmware, transport, and physical scanner applicability also remain unverified.
+The second narrow slice adds `GetMsi` with exact wire `MSI` and response command
+`MSI`, plus `SDSScanner.get_msi()`. The radio constructs a local
+`XmlResponseAssembler` mapping that extends the shared roots with `MSI -> MSI`,
+dispatches completed MSI documents only through `MsiParser`, and publishes the
+result without updating `RadioState`. Deterministic fake-serial and replay tests
+exercise CR-delimited request/response flow and lossless result correlation.
+
+`XML_COMMAND_ROOTS` itself remains unchanged, and `UdpDatagramDecoder` therefore
+does not gain MSI bare-XML recognition, expected-command correlation, numbered
+fragment handling, completion bookkeeping, or retry behavior. While holding the
+scanner command lock, the serialized MSI request/response path rejects direct or
+capture-wrapped `udp://` endpoints and all fallback transports before registering
+a pending response or writing `MSI`. Network and fallback MSI framing remain
+explicit later evidence/transport tasks rather than implicit consequences of the
+high-level retrieval API.
+
+The reviewed `MNU` menu IDs remain evidence only; exact menu indices,
+rejection/error shapes, menu-state preconditions, and `MSV`/`MSB` state-change
+semantics remain deferred. Model, firmware, physical-scanner applicability,
+renderer exposure, and menu lifecycle ownership also remain unverified.
 
 ### Richer NAC, RAN, color-code, area, activity, and quality data
 

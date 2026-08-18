@@ -1,0 +1,8 @@
+{"endpoint":"fixture://advanced-protocol/msi-retrieval","schema":"sds200.capture","version":1}
+{"data":"MSI","delay_ms":0.0,"direction":"tx"}
+{"data":"MSI,<XML>,","delay_ms":0.0,"direction":"rx"}
+{"data":"<MSI FutureRoot=\"keep-root\">","delay_ms":0.0,"direction":"rx"}
+{"data":"  <SyntheticRecord SyntheticId=\"first\" FutureAttr=\"keep-first\" />","delay_ms":0.0,"direction":"rx"}
+{"data":"  <Container><FutureRecord Value=\"nested\" FutureNested=\"keep-nested\" /></Container>","delay_ms":0.0,"direction":"rx"}
+{"data":"  <SyntheticRecord SyntheticId=\"second\" />","delay_ms":0.0,"direction":"rx"}
+{"data":"</MSI>","delay_ms":0.0,"direction":"rx"}

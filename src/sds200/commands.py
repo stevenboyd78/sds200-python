@@ -18,6 +18,7 @@ from .models import (
     FirmwareResponse,
     GltResponse,
     ModelResponse,
+    MsiResponse,
     Packet,
     ScannerInfo,
     ScannerRecordingStatus,
@@ -218,6 +219,22 @@ class GetGltFavorites:
     def parse_response(self, response: object) -> GltResponse:
         if not isinstance(response, GltResponse):
             raise TypeError("GLT did not return GltResponse")
+        return response
+
+
+@dataclass(frozen=True, slots=True)
+class GetMsi:
+    @property
+    def wire(self) -> str:
+        return "MSI"
+
+    @property
+    def response_command(self) -> str:
+        return "MSI"
+
+    def parse_response(self, response: object) -> MsiResponse:
+        if not isinstance(response, MsiResponse):
+            raise TypeError("MSI did not return MsiResponse")
         return response
 
 

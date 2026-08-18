@@ -225,3 +225,52 @@ def test_msi_fixture_documents_receive_only_model_parser_scope() -> None:
     assert "does not register MSI in the default XML command map" in normalized
     assert "does not establish menu field semantics" in normalized
     assert "MNU, MSV, or MSB control behavior" in normalized
+
+
+def test_synthetic_msi_retrieval_fixture_contract() -> None:
+    capture = load_capture(FIXTURES / "synthetic-msi-retrieval.jsonl")
+
+    assert capture.endpoint == "fixture://advanced-protocol/msi-retrieval"
+    assert [event.direction for event in capture.events] == [
+        "tx",
+        "rx",
+        "rx",
+        "rx",
+        "rx",
+        "rx",
+        "rx",
+    ]
+    assert all(event.delay_ms == 0.0 for event in capture.events)
+    assert capture.events[0].data == "MSI"
+    assert capture.events[1].data == "MSI,<XML>,"
+
+    xml = "\n".join(event.data or "" for event in capture.events[2:])
+    root = ElementTree.fromstring(xml)
+
+    assert root.tag == "MSI"
+    assert root.attrib == {"FutureRoot": "keep-root"}
+    assert [child.tag for child in root] == [
+        "SyntheticRecord",
+        "Container",
+        "SyntheticRecord",
+    ]
+    assert root[0].attrib["FutureAttr"] == "keep-first"
+    assert root[1][0].attrib == {
+        "Value": "nested",
+        "FutureNested": "keep-nested",
+    }
+
+
+def test_msi_retrieval_fixture_documents_narrow_transport_scope() -> None:
+    provenance = (FIXTURES / "README.md").read_text(encoding="utf-8")
+    normalized = " ".join(provenance.split())
+
+    assert "synthetic-msi-retrieval.jsonl" in normalized
+    assert "exact `MSI` request transmission" in normalized
+    assert "CR-line/replay integration" in normalized
+    assert "shared UDP XML command map remains unchanged" in normalized
+    assert (
+        "does not establish UDP expectation, retry, fragment, or bare-XML behavior"
+        in normalized
+    )
+    assert "MNU, MSV, or MSB control behavior" in normalized
