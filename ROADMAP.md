@@ -417,6 +417,13 @@ Tentative evidence-led slicing is:
 - later discovery, system-status, and RF-power work built on the analysis
   substrate.
 
+Milestone 24.8 is now active with a first receive-only `MSI` bounded-XML
+model/parser foundation. This slice preserves the exact reviewed `<MSI ...>`
+root, root attributes, ordered/repeated descendants, unknown attributes and
+elements, and raw XML. It deliberately does not send `MSI`, register `MSI` in
+the default XML command map, add scanner or transport APIs, infer menu field
+semantics, or implement `MNU`, `MSV`, or `MSB` control behavior.
+
 Milestone 24.1 selected `GLT` as the safest leading implementation candidate
 because it is bounded retrieval that complements the Favorites foundation and
 requires generalized bounded-XML framing before more stateful work. Milestone

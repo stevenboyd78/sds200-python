@@ -634,6 +634,8 @@ from .models import (
     GwfResponse,
     HealthSummary,
     ModelResponse,
+    MsiRecord,
+    MsiResponse,
     Packet,
     PwfResponse,
     RadioEvent,
@@ -952,7 +954,10 @@ from .waterfall_subscriptions import (
     WaterfallSubscriptionHealth,
     WaterfallSubscriptionSnapshot,
 )
-from .xml_protocol import AnalysisParser
+from .xml_protocol import (
+    AnalysisParser,
+    MsiParser,
+)
 
 __all__ = [
     "ASTERISK_MOH_CHANNELS",
@@ -1339,6 +1344,9 @@ __all__ = [
     "LocalPlaybackAdapter",
     "LocalPlaybackAdapterFactory",
     "ModelResponse",
+    "MsiParser",
+    "MsiRecord",
+    "MsiResponse",
     "NAVIGATION_TARGETS",
     "NavigationTarget",
     "PauseResumeAnalysis",

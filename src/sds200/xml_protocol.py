@@ -10,6 +10,8 @@ from .models import (
     AnalysisResponse,
     GltRecord,
     GltResponse,
+    MsiRecord,
+    MsiResponse,
     ScannerInfo,
     ScannerNode,
 )
@@ -116,6 +118,30 @@ class GltParser:
             root_attributes=root.attrib,
             records=tuple(
                 GltRecord.create(element.tag, element.attrib) for element in root
+            ),
+            raw_xml=xml,
+        )
+
+
+class MsiParser:
+    """Parse bounded MSI XML without assigning menu-field semantics."""
+
+    def parse(self, command: str, xml: str) -> MsiResponse:
+        try:
+            root = ET.fromstring(xml)
+        except ET.ParseError as exc:
+            raise ProtocolError("Invalid MSI XML response") from exc
+
+        if root.tag != "MSI":
+            raise ProtocolError(f"Expected MSI root, received {root.tag!r}")
+
+        return MsiResponse.create(
+            command=command,
+            root_attributes=root.attrib,
+            records=tuple(
+                MsiRecord.create(element.tag, element.attrib)
+                for element in root.iter()
+                if element is not root
             ),
             raw_xml=xml,
         )

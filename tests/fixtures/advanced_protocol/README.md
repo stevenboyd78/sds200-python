@@ -36,3 +36,10 @@ unverified unless separately documented.
   240 uninterpreted FFT fields. It contains no start/stop transmission and does
   not establish ON/OFF token semantics, GW2 binary framing, transport behavior,
   model/firmware applicability, cadence, termination, or physical validation.
+- `synthetic-msi.jsonl` is receive-only synthetic bounded-XML evidence for the
+  first Milestone 24.8 slice. It proves only the reviewed `<MSI ...>` root and
+  lossless structural preservation using deliberately synthetic unknown
+  elements and attributes. It contains no MSI command transmission, does not
+  register MSI in the default XML command map, and does not establish menu field
+  semantics, transport behavior, model/firmware applicability, menu lifecycle,
+  or MNU, MSV, or MSB control behavior.

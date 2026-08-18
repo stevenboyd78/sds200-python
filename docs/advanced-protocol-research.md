@@ -484,6 +484,25 @@ abstraction” is a planning inference, not established protocol behavior.
   control commands. Fixtures need reviewed menu IDs, unknown fields, malformed
   XML, acknowledgement/rejection, and state-sensitive failures.
 
+## Milestone 24.8 implementation boundary
+
+The first Milestone 24.8 slice is receive/model/parser-only. `MsiParser` accepts
+bounded XML only when the document root is exactly `MSI` and returns immutable
+`MsiResponse`/`MsiRecord` values that preserve root attributes, every descendant
+in source order, repeated and unknown elements, all attributes, and the raw XML.
+No menu-field names or values are assigned semantics.
+
+The generic `XmlResponseAssembler` is exercised with an explicit test-local
+`{"MSI": "MSI"}` mapping. `MSI` is intentionally not added to the production
+default XML command map, so this slice does not imply UDP expectation, retry,
+bare-XML, serial, replay, or any other transport support. The synthetic fixture
+is receive-only structural evidence and contains no transmitted `MSI` request.
+
+No `SDSScanner` MSI method or command class is added. The reviewed `MNU` menu
+IDs remain evidence only; exact menu indices, rejection/error shapes, menu-state
+preconditions, and `MSV`/`MSB` state-change semantics remain deferred. Model,
+firmware, transport, and physical scanner applicability also remain unverified.
+
 ### Richer NAC, RAN, color-code, area, activity, and quality data
 
 The reviewed GLT glossary establishes SAS as a family encompassing CTCSS/DCS,
