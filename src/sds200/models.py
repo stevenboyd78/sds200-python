@@ -480,8 +480,179 @@ class MsiRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class MsiMenuItem:
+    """Documented MenuItem projection with exact source attributes."""
+
+    attributes: Mapping[str, str]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "attributes",
+            MappingProxyType(dict(self.attributes)),
+        )
+
+    @property
+    def name(self) -> str | None:
+        return self.attributes.get("Name")
+
+    @property
+    def index(self) -> str | None:
+        return self.attributes.get("Index")
+
+    @property
+    def value(self) -> str | None:
+        return self.attributes.get("Value")
+
+
+@dataclass(frozen=True, slots=True)
+class MsiMenuInput:
+    """Documented MenuInput projection with uninterpreted wire values."""
+
+    attributes: Mapping[str, str]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "attributes",
+            MappingProxyType(dict(self.attributes)),
+        )
+
+    @property
+    def max_length(self) -> str | None:
+        return self.attributes.get("MaxLength")
+
+    @property
+    def enable_keys(self) -> str | None:
+        return self.attributes.get("EnableKeys")
+
+    @property
+    def added_information(self) -> str | None:
+        return self.attributes.get("AddedInformation")
+
+
+@dataclass(frozen=True, slots=True)
+class MsiMenuLocation:
+    """Documented MenuLocation projection with uninterpreted wire values."""
+
+    attributes: Mapping[str, str]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "attributes",
+            MappingProxyType(dict(self.attributes)),
+        )
+
+    @property
+    def max_length(self) -> str | None:
+        return self.attributes.get("MaxLength")
+
+    @property
+    def enable_keys(self) -> str | None:
+        return self.attributes.get("EnableKeys")
+
+    @property
+    def is_latitude(self) -> str | None:
+        return self.attributes.get("IsLatitude")
+
+
+@dataclass(frozen=True, slots=True)
+class MsiMenuErrorMessage:
+    """Documented MenuErrorMsg projection with uninterpreted wire values."""
+
+    attributes: Mapping[str, str]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "attributes",
+            MappingProxyType(dict(self.attributes)),
+        )
+
+    @property
+    def text(self) -> str | None:
+        return self.attributes.get("Text")
+
+    @property
+    def scan_button(self) -> str | None:
+        return self.attributes.get("ScanButton")
+
+
+@dataclass(frozen=True, slots=True)
+class MsiMenuProjection:
+    """Documented MSI names layered over the complete lossless record set."""
+
+    root_attributes: Mapping[str, str]
+    records: tuple[MsiRecord, ...]
+    menu_items: tuple[MsiMenuItem, ...]
+    menu_inputs: tuple[MsiMenuInput, ...]
+    menu_locations: tuple[MsiMenuLocation, ...]
+    error_messages: tuple[MsiMenuErrorMessage, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "root_attributes",
+            MappingProxyType(dict(self.root_attributes)),
+        )
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        root_attributes: Mapping[str, str],
+        records: tuple[MsiRecord, ...],
+    ) -> MsiMenuProjection:
+        return cls(
+            root_attributes=root_attributes,
+            records=records,
+            menu_items=tuple(
+                MsiMenuItem(record.attributes)
+                for record in records
+                if record.tag == "MenuItem"
+            ),
+            menu_inputs=tuple(
+                MsiMenuInput(record.attributes)
+                for record in records
+                if record.tag == "MenuInput"
+            ),
+            menu_locations=tuple(
+                MsiMenuLocation(record.attributes)
+                for record in records
+                if record.tag == "MenuLocation"
+            ),
+            error_messages=tuple(
+                MsiMenuErrorMessage(record.attributes)
+                for record in records
+                if record.tag == "MenuErrorMsg"
+            ),
+        )
+
+    @property
+    def name(self) -> str | None:
+        return self.root_attributes.get("Name")
+
+    @property
+    def index(self) -> str | None:
+        return self.root_attributes.get("Index")
+
+    @property
+    def menu_type(self) -> str | None:
+        return self.root_attributes.get("MenuType")
+
+    @property
+    def value(self) -> str | None:
+        return self.root_attributes.get("Value")
+
+    @property
+    def selected(self) -> str | None:
+        return self.root_attributes.get("Selected")
+
+
+@dataclass(frozen=True, slots=True)
 class MsiResponse:
-    """Lossless bounded MSI XML without inferred menu-field semantics."""
+    """Lossless bounded MSI XML with an optional documented read projection."""
 
     command: str
     root_attributes: Mapping[str, str]
@@ -514,6 +685,13 @@ class MsiResponse:
 
     def records_by_tag(self, tag: str) -> tuple[MsiRecord, ...]:
         return tuple(record for record in self.records if record.tag == tag)
+
+    @property
+    def menu_projection(self) -> MsiMenuProjection:
+        return MsiMenuProjection.create(
+            root_attributes=self.root_attributes,
+            records=self.records,
+        )
 
 
 @dataclass(frozen=True, slots=True)

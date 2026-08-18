@@ -488,12 +488,21 @@ abstraction” is a planning inference, not established protocol behavior.
   `SCAN_DEPARTMENT`, `SCAN_SITE`, `SCAN_CHANNEL`, `SRCH_RANGE`, and
   `FTO_CHANNEL`; the other reviewed rows show `-`.
   Both specifications show `MSI\r` returning bounded multiline XML rooted at
-  `<MSI ...>`, `MSV,[RSV],[VALUE]\r` returning `MSV,OK`, and
+  `<MSI ...>`. Their MSI tables identically document root attributes `Name`
+  (menu title), `Index` (menu index), `MenuType`
+  (`TypeSelect`/`TypeInput`/`TypeLocation`/`TypeError`), `Value` (current set
+  value), and `Selected` (listed without an additional value description).
+  They identically document `MenuItem` attributes `Name`, `Index`, and `Value`;
+  `MenuInput` attributes `MaxLength`, `EnableKeys`, and `AddedInformation`;
+  `MenuLocation` attributes `MaxLength`, `EnableKeys`, and `IsLatitude`; and
+  `MenuErrorMsg` attributes `Text` and `ScanButton`.
+  Both specifications also show `MSV,[RSV],[VALUE]\r` returning `MSV,OK` and
   `MSB,[RSV],[RET_LEVEL]\r` returning `MSB,OK`. They describe MSV VALUE as a
   selected-item index for select menus or an input string for input menus, with
-  commas in input values replaced by tabs. They also preserve the exact
+  commas in input values replaced by tabs. They preserve the exact
   `RETURN_PREVOUS_MODE` token for exiting menu mode and describe an empty
-  RET_LEVEL as one level back.
+  RET_LEVEL as one level back. Neither reviewed SDS table establishes the
+  serialized value of `[RSV]`.
 - **Lifecycle and safety:** mixed bounded-XML retrieval and ordinary controls.
   Menu state is a precondition; index ranges/encoding, negative/error responses,
   detailed field semantics, physical transport behavior, and firmware
@@ -546,11 +555,30 @@ neither specification establishes those literal values. Rows whose INDEX column
 is `-` remain deferred because the common table does not establish an exact
 serialized empty/omitted-field form. Negative/error MNU replies are not
 classified because no exact rejection shape is established by the reviewed
-forms. `MSV` and `MSB` now have their shared outer wire/acknowledgement forms
-recorded, but their menu-state-sensitive value/back behavior remains deferred
-from this slice. Model, firmware, physical-scanner applicability, renderer
-exposure, physical transport applicability, and menu lifecycle ownership remain
-unverified.
+forms.
+
+The fourth narrow slice adds only a documented read projection over the
+lossless MSI model. `MsiMenuProjection` exposes the five documented root
+attribute names and groups recognized descendants into immutable
+`MsiMenuItem`, `MsiMenuInput`, `MsiMenuLocation`, and `MsiMenuErrorMessage`
+values. Every named field remains an exact optional string: documented
+number-like or boolean-like values are not coerced, ranges are not enforced on
+received data, and the otherwise-undescribed `Selected` value is not assigned
+new semantics. Each typed record retains its complete attribute mapping, while
+the projection also retains the complete ordered `MsiRecord` tuple so unknown
+and future descendants remain available. `MsiResponse` continues to retain the
+original root mapping and raw XML.
+
+A synthetic four-transaction replay fixture represents `TypeSelect`,
+`TypeInput`, `TypeLocation`, and `TypeError` separately. Its strings are
+structural test data, not claims about physically observed menu indexes, values,
+limits, keys, or scanner states. `MSV` and `MSB` execution remains blocked:
+V1.02 and V2.00 document their outer forms but do not establish the serialized
+value of `[RSV]`, and the reviewed official RH-536HP predecessor source contains
+no searchable MSV/MSB implementation that resolves it. Unindexed MNU, menu
+lifecycle/state ownership, renderer exposure, UDP/XML-map behavior,
+model/firmware applicability, physical transport applicability, and physical
+scanner validation likewise remain deferred.
 
 ### Richer NAC, RAN, color-code, area, activity, and quality data
 

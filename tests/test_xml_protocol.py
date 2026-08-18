@@ -295,6 +295,98 @@ def test_msi_parser_preserves_all_descendants_in_source_order() -> None:
         response.records[0].attributes["new"] = "value"  # type: ignore[index]
 
 
+MSI_DOCUMENTED_MENU_XML = """<MSI Name="Menu title" Index="menu-index"
+ MenuType="TypeSelect" Value="current-value" Selected="selected-raw"
+ FutureRoot="keep-root">
+<MenuItem Name="Item A" Index="item-a" Value="value-a" FutureItem="keep-item" />
+<MenuItem Name="Item B" Index="item-b" Value="value-b" />
+<MenuInput MaxLength="64" EnableKeys="ABC123" AddedInformation="info"
+ FutureInput="keep-input" />
+<MenuLocation MaxLength="123" EnableKeys="0123456789.-" IsLatitude="1"
+ FutureLocation="keep-location" />
+<MenuErrorMsg Text="error text" ScanButton="0" FutureError="keep-error" />
+<FutureMenuNode FutureValue="keep-future" />
+</MSI>"""
+
+
+def test_msi_documented_menu_projection_preserves_exact_strings_and_unknowns() -> None:
+    response = MsiParser().parse("MSI", MSI_DOCUMENTED_MENU_XML)
+    projection = response.menu_projection
+
+    assert projection.name == "Menu title"
+    assert projection.index == "menu-index"
+    assert projection.menu_type == "TypeSelect"
+    assert projection.value == "current-value"
+    assert projection.selected == "selected-raw"
+    assert projection.root_attributes["FutureRoot"] == "keep-root"
+
+    assert [item.name for item in projection.menu_items] == ["Item A", "Item B"]
+    assert [item.index for item in projection.menu_items] == ["item-a", "item-b"]
+    assert [item.value for item in projection.menu_items] == ["value-a", "value-b"]
+    assert projection.menu_items[0].attributes["FutureItem"] == "keep-item"
+
+    assert projection.menu_inputs[0].max_length == "64"
+    assert projection.menu_inputs[0].enable_keys == "ABC123"
+    assert projection.menu_inputs[0].added_information == "info"
+    assert projection.menu_inputs[0].attributes["FutureInput"] == "keep-input"
+
+    assert projection.menu_locations[0].max_length == "123"
+    assert projection.menu_locations[0].enable_keys == "0123456789.-"
+    assert projection.menu_locations[0].is_latitude == "1"
+    assert projection.menu_locations[0].attributes["FutureLocation"] == (
+        "keep-location"
+    )
+
+    assert projection.error_messages[0].text == "error text"
+    assert projection.error_messages[0].scan_button == "0"
+    assert projection.error_messages[0].attributes["FutureError"] == "keep-error"
+
+    assert projection.records == response.records
+    assert response.records_by_tag("FutureMenuNode")[0].attributes["FutureValue"] == (
+        "keep-future"
+    )
+    assert response.raw_xml == MSI_DOCUMENTED_MENU_XML
+
+    with pytest.raises(TypeError):
+        projection.root_attributes["new"] = "value"  # type: ignore[index]
+    with pytest.raises(TypeError):
+        projection.menu_items[0].attributes["new"] = "value"  # type: ignore[index]
+
+
+def test_msi_documented_projection_does_not_reject_partial_or_future_values() -> None:
+    xml = (
+        '<MSI MenuType="FutureMenuType" Selected="future-selected">'
+        '<MenuItem FutureItem="keep" />'
+        '<MenuInput MaxLength="future-length" />'
+        '<MenuLocation IsLatitude="future-coordinate-kind" />'
+        '<MenuErrorMsg ScanButton="future-button" />'
+        '<FutureNode Future="keep" />'
+        "</MSI>"
+    )
+
+    response = MsiParser().parse("MSI", xml)
+    projection = response.menu_projection
+
+    assert projection.name is None
+    assert projection.index is None
+    assert projection.menu_type == "FutureMenuType"
+    assert projection.value is None
+    assert projection.selected == "future-selected"
+
+    assert projection.menu_items[0].name is None
+    assert projection.menu_items[0].index is None
+    assert projection.menu_items[0].value is None
+    assert projection.menu_items[0].attributes["FutureItem"] == "keep"
+
+    assert projection.menu_inputs[0].max_length == "future-length"
+    assert projection.menu_inputs[0].enable_keys is None
+    assert projection.menu_inputs[0].added_information is None
+
+    assert projection.menu_locations[0].is_latitude == "future-coordinate-kind"
+    assert projection.error_messages[0].scan_button == "future-button"
+    assert response.records_by_tag("FutureNode")[0].attributes["Future"] == "keep"
+
+
 def test_msi_parser_rejects_malformed_xml_without_payload_text() -> None:
     payload = "<MSI><SyntheticSecret Value='do-not-echo'></MSI>"
 

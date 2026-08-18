@@ -193,6 +193,56 @@ def test_replay_executes_lossless_msi_retrieval() -> None:
     )
 
 
+def test_replay_projects_documented_msi_menu_shapes_losslessly() -> None:
+    with SDSScanner.replay(
+        ADVANCED_PROTOCOL_FIXTURES / "synthetic-msi-menu-projection.jsonl"
+    ) as radio:
+        before = radio.state.snapshot
+        select = radio.get_msi(timeout=1.0)
+        menu_input = radio.get_msi(timeout=1.0)
+        location = radio.get_msi(timeout=1.0)
+        error = radio.get_msi(timeout=1.0)
+        after = radio.state.snapshot
+
+    select_projection = select.menu_projection
+    assert select_projection.name == "Synthetic Select"
+    assert select_projection.index == "select-menu"
+    assert select_projection.menu_type == "TypeSelect"
+    assert select_projection.value == "select-value"
+    assert select_projection.selected == "selected-opaque"
+    assert [item.name for item in select_projection.menu_items] == ["Alpha", "Beta"]
+    assert [item.index for item in select_projection.menu_items] == ["item-a", "item-b"]
+    assert select_projection.menu_items[0].attributes["FutureItem"] == "keep-item-a"
+    assert select_projection.records == select.records
+    assert select.records_by_tag("FutureMenuNode")[0].attributes["FutureValue"] == (
+        "keep-future"
+    )
+
+    input_projection = menu_input.menu_projection
+    assert input_projection.menu_type == "TypeInput"
+    assert input_projection.menu_inputs[0].max_length == "64"
+    assert input_projection.menu_inputs[0].enable_keys == "ABC123"
+    assert input_projection.menu_inputs[0].added_information == "Synthetic information"
+    assert input_projection.menu_inputs[0].attributes["FutureInput"] == "keep-input"
+
+    location_projection = location.menu_projection
+    assert location_projection.menu_type == "TypeLocation"
+    assert location_projection.menu_locations[0].max_length == "99"
+    assert location_projection.menu_locations[0].enable_keys == "0123456789.-"
+    assert location_projection.menu_locations[0].is_latitude == "1"
+    assert location_projection.menu_locations[0].attributes["FutureLocation"] == (
+        "keep-location"
+    )
+
+    error_projection = error.menu_projection
+    assert error_projection.menu_type == "TypeError"
+    assert error_projection.error_messages[0].text == "Synthetic error"
+    assert error_projection.error_messages[0].scan_button == "0"
+    assert error_projection.error_messages[0].attributes["FutureError"] == "keep-error"
+
+    assert after == before
+
+
 def test_replay_executes_exact_indexed_mnu_controls() -> None:
     requests = (
         ("SCAN_SYSTEM", "000001"),
