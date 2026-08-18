@@ -1,5 +1,6 @@
 import pytest
 
+from sds200 import SystemStatusProjection
 from sds200.exceptions import ProtocolError
 from sds200.xml_protocol import (
     AnalysisParser,
@@ -93,6 +94,7 @@ SYSTEM_STATUS_XML = """<ScannerInfo Mode="Analyze" V_Screen="analyze_system_stat
  Quality="64" Activity="12" SystemID="123" SystemSubID="7" SiteID="42"
  WacnID="456" NAC="789" Color="4" RAN="17" Area="1" Att="Off"
  Freqs="3" P25Status="P25" FutureSystemStatus="keep-system-status" />
+<SystemStatus Signal="future-signal" FutureSystemStatus="keep-second-status" />
 <FutureSystemStatusRecord Value="keep-future-record" />
 </ScannerInfo>"""
 
@@ -125,6 +127,68 @@ def test_scanner_info_parser_preserves_documented_system_status_record_losslessl
         "Value": "keep-future-record"
     }
     assert info.raw_xml == SYSTEM_STATUS_XML
+
+
+def test_system_status_projection_preserves_exact_strings_repetition_and_unknowns() -> None:
+    info = ScannerInfoParser().parse("PSI", SYSTEM_STATUS_XML)
+
+    statuses = info.system_statuses
+
+    assert len(statuses) == 2
+    first, second = statuses
+    assert isinstance(first, SystemStatusProjection)
+    assert first.system_name == "Synthetic System"
+    assert first.site_name == "Synthetic Site"
+    assert first.signal == "73"
+    assert first.quality == "64"
+    assert first.activity == "12"
+    assert first.system_id == "123"
+    assert first.system_sub_id == "7"
+    assert first.site_id == "42"
+    assert first.wacn_id == "456"
+    assert first.nac == "789"
+    assert first.color == "4"
+    assert first.ran == "17"
+    assert first.area == "1"
+    assert first.att == "Off"
+    assert first.freqs == "3"
+    assert first.p25_status == "P25"
+    assert first.attributes["FutureSystemStatus"] == "keep-system-status"
+
+    assert second.system_name is None
+    assert second.site_name is None
+    assert second.signal == "future-signal"
+    assert second.quality is None
+    assert second.activity is None
+    assert second.system_id is None
+    assert second.system_sub_id is None
+    assert second.site_id is None
+    assert second.wacn_id is None
+    assert second.nac is None
+    assert second.color is None
+    assert second.ran is None
+    assert second.area is None
+    assert second.att is None
+    assert second.freqs is None
+    assert second.p25_status is None
+    assert second.attributes["FutureSystemStatus"] == "keep-second-status"
+
+    assert [dict(record.attributes) for record in info.records_by_tag("SystemStatus")] == [
+        dict(first.attributes),
+        dict(second.attributes),
+    ]
+    assert info.records_by_tag("FutureSystemStatusRecord")[0].attributes["Value"] == (
+        "keep-future-record"
+    )
+
+    with pytest.raises(TypeError):
+        first.attributes["new"] = "value"  # type: ignore[index]
+
+
+def test_system_status_projection_is_empty_when_scanner_info_has_no_status_record() -> None:
+    info = ScannerInfoParser().parse("GSI", XML)
+
+    assert info.system_statuses == ()
 
 
 def test_xml_assembler_resynchronizes_on_a_new_header() -> None:

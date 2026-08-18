@@ -655,6 +655,7 @@ from .models import (
     ScannerRecordingStatus,
     ScannerRecordingStatusResponse,
     StatusResponse,
+    SystemStatusProjection,
     ValueResponse,
     WaterfallResponse,
 )
@@ -1597,6 +1598,7 @@ __all__ = [
     "StartSystemStatusAnalysis",
     "StateChange",
     "StatusResponse",
+    "SystemStatusProjection",
     "ThemePalette",
     "ThemeRole",
     "ThemeStyle",
