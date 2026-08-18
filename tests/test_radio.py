@@ -4,6 +4,7 @@ import time
 import pytest
 
 from sds200.analysis_subscriptions import AnalysisSubscriptionClosed
+from sds200.commands import GetMsi, OpenIndexedMenu
 from sds200.exceptions import (
     CommandRejectedError,
     CommandTimeoutError,
@@ -110,6 +111,208 @@ def test_serial_indexed_mnu_is_exact_and_state_neutral() -> None:
 
     assert radio.state.snapshot == initial_state
     assert fake.writes == [b"MNU,SCAN_SYSTEM,000007\r"]
+
+
+def test_serial_indexed_menu_snapshot_composes_exact_mnu_then_msi() -> None:
+    fake = FakeSerial()
+    radio = SDS200("/dev/fake", reconnect=False, serial_factory=lambda **kwargs: fake)
+    initial_state = radio.state.snapshot
+
+    with radio:
+        def respond() -> None:
+            while fake.writes != [b"MNU,SCAN_SYSTEM,000007\r"]:
+                time.sleep(0.005)
+            fake.feed(b"MNU,OK\r")
+            while fake.writes != [
+                b"MNU,SCAN_SYSTEM,000007\r",
+                b"MSI\r",
+            ]:
+                time.sleep(0.005)
+            fake.feed(
+                b"MSI,<XML>,\r"
+                b'<MSI Name="Synthetic System" Index="000007" '
+                b'MenuType="TypeSelect" FutureRoot="keep">\r'
+                b'<MenuItem Name="Alpha" Index="item-a" Value="value-a" />\r'
+                b"</MSI>\r"
+            )
+
+        thread = threading.Thread(target=respond, daemon=True)
+        thread.start()
+        response = radio.open_indexed_menu_snapshot(
+            "SCAN_SYSTEM",
+            "000007",
+            timeout=1.0,
+        )
+        thread.join(timeout=1.0)
+
+    assert not thread.is_alive()
+    assert response.menu_projection.name == "Synthetic System"
+    assert response.menu_projection.index == "000007"
+    assert response.menu_projection.menu_type == "TypeSelect"
+    assert response.root_attributes["FutureRoot"] == "keep"
+    assert radio.state.snapshot == initial_state
+    assert fake.writes == [
+        b"MNU,SCAN_SYSTEM,000007\r",
+        b"MSI\r",
+    ]
+
+
+def test_indexed_menu_snapshot_fails_closed_before_unverified_udp_like_mnu() -> None:
+    transport = FakeTransport("udp://scanner")
+    radio = SDS200.from_transport(transport)
+
+    with pytest.raises(
+        UnsupportedScannerFeatureError,
+        match="MSI retrieval is unavailable on unverified UDP-like and fallback control transports",
+    ):
+        radio.open_indexed_menu_snapshot(
+            "SCAN_SYSTEM",
+            "000007",
+            timeout=1.0,
+        )
+
+    assert transport.writes == []
+
+
+def test_indexed_menu_snapshot_uses_one_total_timeout_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    radio = SDS200.from_transport(FakeTransport())
+    response = MsiResponse.create(
+        command="MSI",
+        root_attributes={"Name": "Synthetic"},
+        records=(),
+        raw_xml='<MSI Name="Synthetic" />',
+    )
+    observed_timeouts: list[float] = []
+
+    def execute(command: object, *, timeout: float = 2.0) -> object:
+        observed_timeouts.append(timeout)
+        if isinstance(command, OpenIndexedMenu):
+            time.sleep(0.02)
+            return None
+        if isinstance(command, GetMsi):
+            return response
+        raise AssertionError(f"unexpected command: {command!r}")
+
+    monkeypatch.setattr(radio, "execute", execute)
+
+    result = radio.open_indexed_menu_snapshot(
+        "SCAN_SYSTEM",
+        "000007",
+        timeout=0.2,
+    )
+
+    assert result is response
+    assert len(observed_timeouts) == 2
+    assert 0 < observed_timeouts[1] < observed_timeouts[0] <= 0.2
+
+
+@pytest.mark.parametrize("timeout", [True, 0, float("inf")])
+def test_indexed_menu_snapshot_rejects_invalid_total_timeout(timeout: object) -> None:
+    radio = SDS200.from_transport(FakeTransport())
+
+    with pytest.raises(
+        (TypeError, ValueError),
+        match="Indexed menu snapshot timeout",
+    ):
+        radio.open_indexed_menu_snapshot(
+            "SCAN_SYSTEM",
+            "000007",
+            timeout=timeout,  # type: ignore[arg-type]
+        )
+
+
+def test_indexed_menu_snapshot_keeps_lock_between_mnu_and_msi(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport)
+    original_execute = radio.execute
+    mnu_completed = threading.Event()
+    release_after_mnu = threading.Event()
+    competitor_started = threading.Event()
+    snapshot_results: list[MsiResponse] = []
+    snapshot_errors: list[BaseException] = []
+
+    def controlled_execute(command: object, *, timeout: float = 2.0) -> object:
+        result = original_execute(command, timeout=timeout)  # type: ignore[arg-type]
+        if isinstance(command, OpenIndexedMenu):
+            mnu_completed.set()
+            assert release_after_mnu.wait(timeout=1.0)
+        return result
+
+    monkeypatch.setattr(radio, "execute", controlled_execute)
+
+    def respond() -> None:
+        deadline = time.monotonic() + 1.0
+        while (
+            transport.writes != ["MNU,SCAN_SYSTEM,000007"]
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.001)
+        if transport.writes != ["MNU,SCAN_SYSTEM,000007"]:
+            return
+        transport.feed_line("MNU,OK")
+
+        deadline = time.monotonic() + 1.0
+        while "MSI" not in transport.writes and time.monotonic() < deadline:
+            time.sleep(0.001)
+        if "MSI" not in transport.writes:
+            return
+        transport.feed_line("MSI,<XML>,")
+        transport.feed_line(
+            '<MSI Name="Synthetic System" Index="000007" MenuType="TypeSelect">'
+        )
+        transport.feed_line("</MSI>")
+
+    def snapshot() -> None:
+        try:
+            result = radio.open_indexed_menu_snapshot(
+                "SCAN_SYSTEM",
+                "000007",
+                timeout=1.0,
+            )
+            snapshot_results.append(result)
+        except BaseException as error:
+            snapshot_errors.append(error)
+
+    def competitor() -> None:
+        competitor_started.set()
+        radio.send("MDL")
+
+    with radio:
+        responder = threading.Thread(target=respond, daemon=True)
+        requester = threading.Thread(target=snapshot, daemon=True)
+        responder.start()
+        requester.start()
+
+        assert mnu_completed.wait(timeout=1.0)
+
+        competing = threading.Thread(target=competitor, daemon=True)
+        competing.start()
+        assert competitor_started.wait(timeout=1.0)
+        time.sleep(0.02)
+
+        assert transport.writes == ["MNU,SCAN_SYSTEM,000007"]
+
+        release_after_mnu.set()
+
+        requester.join(timeout=1.0)
+        responder.join(timeout=1.0)
+        competing.join(timeout=1.0)
+
+    assert not requester.is_alive()
+    assert not responder.is_alive()
+    assert not competing.is_alive()
+    assert snapshot_errors == []
+    assert len(snapshot_results) == 1
+    assert snapshot_results[0].menu_projection.name == "Synthetic System"
+    assert transport.writes == [
+        "MNU,SCAN_SYSTEM,000007",
+        "MSI",
+        "MDL",
+    ]
 
 
 def test_msi_retrieval_fails_closed_before_direct_udp_write() -> None:

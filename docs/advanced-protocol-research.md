@@ -598,14 +598,33 @@ request's automatic-retry authority. The latter assertion waits for a later
 ordinary decoded response before checking the transmitted datagrams, avoiding a
 negative-write race.
 
+The seventh narrow slice composes the already-supported indexed MNU and MSI
+operations without introducing another command shape.
+`SDSScanner.open_indexed_menu_snapshot()` first validates an existing
+`OpenIndexedMenu`, then applies one total deadline while acquiring and retaining
+the scanner's existing re-entrant command lock across the exact `MNU,...` /
+`MNU,OK` transaction and the following exact `MSI` request/response transaction.
+Only remaining time from that one deadline is passed to each nested response
+wait. MSI transport eligibility is preflighted while the outer command lock is
+held and before MNU is sent, so unverified UDP-like or fallback transports fail
+closed without opening the indexed menu.
+
+This is host-side command serialization, not evidence of a scanner-side atomic
+menu transaction. The operation returns the existing lossless `MsiResponse` and
+does not infer that an MSI `Index`, `Selected`, `Value`, or descendant field
+transactionally proves the requested MNU index. It does not own menu exit/back
+state or add automatic cleanup if a scanner accepts MNU but the subsequent MSI
+transaction fails.
+
 All UDP evidence in the fifth and sixth slices is deterministic fake-datagram
-software evidence.
+software evidence. The seventh slice adds host-side composition coverage but no
+new UDP framing evidence.
 It does not establish physical SDS200 behavior, firmware availability, or a
 broader transport guarantee. Fallback transports remain fail-closed because
 their active transport can change and no fallback-wide MSI framing contract is
 established. Custom controls that merely present an `udp://` endpoint are not
-treated as evidence-equivalent to `UdpTransport`. Unindexed MNU, menu
-lifecycle/state ownership, renderer exposure, model/firmware applicability,
+treated as evidence-equivalent to `UdpTransport`. Unindexed MNU, `MSV`/`MSB`,
+menu lifecycle/state ownership, renderer exposure, model/firmware applicability,
 physical transport applicability, and physical scanner validation remain
 deferred.
 
