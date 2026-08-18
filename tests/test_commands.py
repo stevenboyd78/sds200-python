@@ -2,6 +2,8 @@ import pytest
 
 from sds200.commands import (
     INDEXED_MENU_IDS,
+    RF_POWER_PLOT_MODULATIONS,
+    RF_POWER_PLOT_SAMPLING_RATES,
     GetFavoritesQuickKeys,
     GetGltFavorites,
     GetMsi,
@@ -18,6 +20,7 @@ from sds200.commands import (
     SetVolume,
     StartCurrentActivityAnalysis,
     StartLcnMonitorAnalysis,
+    StartRfPowerPlotAnalysis,
     StartScannerInfoPush,
     StartSystemStatusAnalysis,
 )
@@ -78,6 +81,77 @@ def test_system_status_start_exact_acknowledgement_contract() -> None:
     assert command.parse_response(
         Packet(command="AST", fields=("OK",), raw="AST,OK")
     ) is None
+
+
+def test_rf_power_plot_start_exact_acknowledgement_contract() -> None:
+    command = StartRfPowerPlotAnalysis(250000, "Auto", 100)
+
+    assert RF_POWER_PLOT_MODULATIONS == ("Auto", "AM", "NFM", "FM", "WFM", "FMB")
+    assert RF_POWER_PLOT_SAMPLING_RATES == (100, 200, 400, 800)
+    assert command.wire == "AST,RF_POWER_PLOT,250000,Auto,100"
+    assert command.response_command == "AST"
+    assert command.parse_response(
+        Packet(command="AST", fields=("OK",), raw="AST,OK")
+    ) is None
+
+
+@pytest.mark.parametrize("frequency", [250000, 13000000])
+def test_rf_power_plot_start_accepts_documented_frequency_bounds(
+    frequency: int,
+) -> None:
+    assert StartRfPowerPlotAnalysis(frequency, "FMB", 800).frequency == frequency
+
+
+@pytest.mark.parametrize("frequency", [True, "250000", 249999, 13000001])
+def test_rf_power_plot_start_rejects_invalid_frequency(frequency: object) -> None:
+    with pytest.raises(ValueError, match="RF_POWER_PLOT frequency"):
+        StartRfPowerPlotAnalysis(
+            frequency,  # type: ignore[arg-type]
+            "Auto",
+            100,
+        )
+
+
+@pytest.mark.parametrize("modulation", ["AUTO", "auto", "", "P25", 1, None])
+def test_rf_power_plot_start_rejects_nonexact_modulation(modulation: object) -> None:
+    with pytest.raises(ValueError, match="RF_POWER_PLOT modulation"):
+        StartRfPowerPlotAnalysis(
+            250000,
+            modulation,  # type: ignore[arg-type]
+            100,
+        )
+
+
+@pytest.mark.parametrize("sampling_rate", [True, "100", 99, 101, 1600])
+def test_rf_power_plot_start_rejects_invalid_sampling_rate(
+    sampling_rate: object,
+) -> None:
+    with pytest.raises(ValueError, match="RF_POWER_PLOT sampling rate"):
+        StartRfPowerPlotAnalysis(
+            250000,
+            "Auto",
+            sampling_rate,  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        object(),
+        Packet(command="OTHER", fields=("OK",), raw="OTHER,OK"),
+        Packet(command="AST", fields=(), raw="AST"),
+        Packet(command="AST", fields=("NG",), raw="AST,NG"),
+        Packet(command="AST", fields=("ERR",), raw="AST,ERR"),
+        Packet(command="AST", fields=("ERROR",), raw="AST,ERROR"),
+        Packet(command="AST", fields=("OK", "EXTRA"), raw="AST,OK,EXTRA"),
+        Packet(command="AST", fields=(" OK",), raw="AST, OK"),
+    ],
+)
+def test_rf_power_plot_start_rejects_nonexact_acknowledgement(
+    response: object,
+) -> None:
+    with pytest.raises(ProtocolError, match="AST RF_POWER_PLOT"):
+        StartRfPowerPlotAnalysis(250000, "Auto", 100).parse_response(response)
 
 
 @pytest.mark.parametrize(

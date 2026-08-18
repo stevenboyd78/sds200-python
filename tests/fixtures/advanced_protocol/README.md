@@ -43,6 +43,20 @@ unverified unless separately documented.
   analysis-session state, site-index upper bounds, negative/error reply shapes,
   transport/model/firmware applicability, RF Power Plot behavior, or physical
   scanner validation.
+- `synthetic-ast-rf-power-plot.jsonl` is explicitly synthetic shared
+  V1.02/V2.00 evidence for the first Milestone 24.10 slice. Both reviewed
+  specifications show exact
+  `AST,RF_POWER_PLOT,[Frequency],[Modulation],[Sampling Rate]` transmission,
+  raw integer Frequency range `250000` through `13000000`, exact modulation
+  tokens `Auto`, `AM`, `NFM`, `FM`, `WFM`, and `FMB`, sampling-rate tokens
+  `100`, `200`, `400`, and `800`, and exact `AST,OK` acknowledgement. V1.02
+  and V2.00 visibly mark the RF Power Plot block `Removed in SDS100`; V2.00
+  covers SDS100, SDS150, and SDS200, so this fixture uses an SDS200 model probe
+  while SDS150 support remains specification-only. The raw Frequency integer is
+  not assigned a unit conversion or step-alignment meaning here. This fixture
+  does not establish RF-power output/data framing, automatic APR behavior,
+  lifecycle/session state, reconnect restoration, negative/error reply shapes,
+  physical transport/firmware behavior, or hardware validation.
 - `synthetic-pwf-gwf.jsonl` is receive-only synthetic framing evidence for the
   first Milestone 24.7 slice. It preserves variable-length PWF fields including
   an empty field and deliberate unknown value, plus one GWF record with exactly

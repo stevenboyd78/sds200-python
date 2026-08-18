@@ -11,44 +11,37 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 24.9 — System Status analysis foundation
+### Milestone 24.10 — RF Power Plot analysis foundation
 
-Milestone 24.8 is closed after seven evidence-led menu slices. Remaining
-unindexed `MNU` and `MSV`/`MSB` execution stay blocked because the reviewed
-official evidence does not establish the required omitted/empty INDEX or
-serialized `[RSV]` wire forms.
+Milestone 24.9 is closed after two evidence-led System Status slices: exact
+acknowledged `AST,SYSTEM_STATUS,[site_index]` start plus a read-only documented
+projection over existing lossless `ScannerInfo` SystemStatus records. It does
+not infer analysis lifecycle/cadence or automatic APR/PSI/GSI behavior.
 
-The first Milestone 24.9 slice moves to the documented later analysis work.
-Official SDS100/SDS200 Remote Command Specification V1.02 and SDS Series Remote
-Command Specification V2.00 both show exact
-`AST,SYSTEM_STATUS,[site_index]\r` transmission followed by exact
-`AST,OK\r`. A dedicated `StartSystemStatusAnalysis` command and
-`SDSScanner.start_system_status_analysis()` therefore model only this
-acknowledged start transaction. Existing non-negative site-index validation is
-reused as a host/API safety boundary without claiming an upper protocol range.
+The first Milestone 24.10 slice follows the separate RF Power Plot table shared
+by official SDS100/SDS200 Remote Command Specification V1.02 and SDS Series
+Remote Command Specification V2.00. Both show exact
+`AST,RF_POWER_PLOT,[Frequency],[Modulation],[Sampling Rate]\r` transmission
+followed by exact `AST,OK\r`. The documented raw Frequency integer range is
+`250000` through `13000000`; exact modulation tokens are `Auto`, `AM`, `NFM`,
+`FM`, `WFM`, and `FMB`; and exact sampling-rate tokens are `100`, `200`, `400`,
+and `800`.
 
-System Status output is not reclassified as AST XML. Both reviewed
-specifications list `SystemStatus` among PSI/GSI `ScannerInfo` mode elements,
-with documented fields including `SystemName`, `SiteName`, `Signal`, `Quality`,
-`Activity`, `SystemID`, `SystemSubID`, `SiteID`, `WacnID`, `NAC`, `Color`,
-`RAN`, `Area`, `Att`, `Freqs`, and `P25Status`. The existing lossless
-`ScannerInfo` record path already preserves these exact strings plus unknown
-attributes/records; the first slice adds regression evidence rather than
-coercing their values or creating a competing parser.
+Both reviewed tables visibly mark the RF Power Plot block `Removed in SDS100`.
+V2.00 covers SDS100, SDS150, and SDS200, so the radio API rejects a resolved
+SDS100 before sending RF Power Plot AST while allowing specification-backed
+SDS150/SDS200. SDS150 remains specification-only, and no physical validation is
+claimed. The raw Frequency integer is serialized exactly as documented without
+assigning a unit conversion, frequency-step alignment, or wider tuning semantic.
 
-The second Milestone 24.9 slice layers a read-only `SystemStatusProjection`
-over each existing `SystemStatus` record. `ScannerInfo.system_statuses`
-preserves repeated records in received order, exposes the sixteen documented
-attribute names as optional uninterpreted strings, and keeps unknown attributes
-available through each projection's immutable source mapping. Published ranges
-remain documentation rather than host-side validation or coercion rules.
-
-The existing `AnalysisMode.SYSTEM_STATUS` APR token remains independently
-available, but neither slice infers running/paused/stopped state or automatically
-issues APR, PSI, or GSI. They add no ScannerInfo cadence/session ownership,
-renderer behavior, reconnect restoration, negative/error AST reply
-classification, UDP/transport expansion, site-index range semantics,
-model/firmware applicability, physical validation, or RF Power Plot support.
+This slice models only parameter validation, exact acknowledged start, model
+applicability at the RF Power Plot API, public typed constants, deterministic
+synthetic replay evidence, and documentation. Existing
+`AnalysisMode.RF_POWER_PLOT` APR support remains independent. No RF-power output
+or data-frame model, automatic APR, analysis running/paused/stopped state,
+renderer behavior, reconnect restoration, new capability flag, negative/error
+AST reply classification, transport expansion, firmware guarantee, or hardware
+validation is inferred.
 
 ## Deferred hardware validation
 

@@ -1,0 +1,5 @@
+{"endpoint":"fixture://advanced-protocol/ast-rf-power-plot","schema":"sds200.capture","version":1}
+{"data":"MDL","delay_ms":0.0,"direction":"tx"}
+{"data":"MDL,SDS200","delay_ms":0.0,"direction":"rx"}
+{"data":"AST,RF_POWER_PLOT,250000,Auto,100","delay_ms":0.0,"direction":"tx"}
+{"data":"AST,OK","delay_ms":0.0,"direction":"rx"}
