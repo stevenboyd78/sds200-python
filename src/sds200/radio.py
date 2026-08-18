@@ -45,6 +45,7 @@ from .commands import (
     StartCurrentActivityAnalysis,
     StartLcnMonitorAnalysis,
     StartScannerInfoPush,
+    StartSystemStatusAnalysis,
 )
 from .device import choose_scanner
 from .events import EventBus
@@ -881,6 +882,11 @@ class SDSScanner:
             return self.execute(GetMsi(), timeout=remaining)
         finally:
             self._command_lock.release()
+
+    def start_system_status_analysis(
+        self, site_index: int, *, timeout: float = 2.0
+    ) -> None:
+        self.execute(StartSystemStatusAnalysis(site_index), timeout=timeout)
 
     def start_current_activity_analysis(
         self, site_index: int, *, timeout: float = 2.0

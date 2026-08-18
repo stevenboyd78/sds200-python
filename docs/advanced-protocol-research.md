@@ -628,6 +628,44 @@ menu lifecycle/state ownership, renderer exposure, model/firmware applicability,
 physical transport applicability, and physical scanner validation remain
 deferred.
 
+## Milestone 24.9 implementation boundary
+
+The first Milestone 24.9 slice begins the documented later System Status work on
+the existing analysis substrate. The official SDS100/SDS200 Remote Command
+Specification V1.02 dated 2023-12-22 and SDS Series Remote Command
+Specification V2.00 dated 2025-07-07 agree on the exact start form
+`AST,SYSTEM_STATUS,[site_index]\r` and exact acknowledgement `AST,OK\r`.
+This differs from the already-supported Current Activity and LCN Monitor start
+surfaces, whose first correlated result is modeled as bounded AST XML.
+
+`StartSystemStatusAnalysis` therefore reuses only the existing host-side
+non-negative site-index validation and requires an exact `AST,OK`
+acknowledgement. `SDSScanner.start_system_status_analysis()` returns `None`;
+it does not wait for or synthesize a System Status data frame. The reviewed
+documents do not establish a negative/error AST reply shape for this operation,
+so nonexact acknowledgements remain protocol errors rather than being assigned
+new operation-specific meaning.
+
+Both reviewed specifications separately place `SystemStatus` in the PSI/GSI
+ScannerInfo element table. The documented attribute names are `SystemName`,
+`SiteName`, `Signal`, `Quality`, `Activity`, `SystemID`, `SystemSubID`,
+`SiteID`, `WacnID`, `NAC`, `Color`, `RAN`, `Area`, `Att`, `Freqs`, and
+`P25Status`; `analyze_system_status` is a documented ScannerInfo screen. The
+existing ordered/repeated lossless ScannerInfo representation already preserves
+such records and unknown extensions, so this slice adds explicit structural
+regression coverage without new field coercion or a second XML model.
+
+A new synthetic replay fixture covers only exact System Status AST start and
+acknowledgement. Its site index is fabricated test data. No fixture or test in
+this slice claims ScannerInfo cadence, automatic PSI/GSI activation, a
+scanner-side transaction linking the acknowledgement to a later frame, analysis
+running/paused/stopped state, reconnect restoration, model/firmware support,
+transport applicability, or physical scanner validation. The existing
+`AnalysisMode.SYSTEM_STATUS` APR token remains independently supported and is
+not automatically issued. RF Power Plot remains deferred as a separate slice
+because its start grammar and applicability carry additional parameters and
+version/model caveats.
+
 ### Richer NAC, RAN, color-code, area, activity, and quality data
 
 The reviewed GLT glossary establishes SAS as a family encompassing CTCSS/DCS,

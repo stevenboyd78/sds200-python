@@ -19,6 +19,7 @@ from sds200.models import (
     AnalysisResponse,
     FavoritesQuickKeyState,
     MsiResponse,
+    Packet,
     RadioEvent,
     ScannerInfo,
     ScannerRecordingStatus,
@@ -914,6 +915,34 @@ def test_malformed_glt_emits_protocol_error_without_a_response() -> None:
 
     assert len(errors) == 1
     assert str(errors[0]) == "Invalid GLT XML response"
+
+
+def test_system_status_start_correlates_exact_ast_ack_without_state_mutation() -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport)
+    initial_state = radio.state.snapshot
+    observed: list[object] = []
+    radio.events.subscribe("ast", observed.append)
+
+    with radio:
+        def respond() -> None:
+            while transport.writes != ["AST,SYSTEM_STATUS,7"]:
+                time.sleep(0.005)
+            transport.feed_line("AST,OK")
+
+        thread = threading.Thread(target=respond, daemon=True)
+        thread.start()
+        radio.start_system_status_analysis(7, timeout=1.0)
+        thread.join(timeout=1.0)
+
+    assert not thread.is_alive()
+    assert transport.writes == ["AST,SYSTEM_STATUS,7"]
+    assert radio.state.snapshot == initial_state
+    assert len(observed) == 1
+    assert isinstance(observed[0], Packet)
+    assert observed[0].command == "AST"
+    assert observed[0].fields == ("OK",)
+    assert observed[0].raw == "AST,OK"
 
 
 def test_analysis_starts_correlate_first_ast_and_later_ast_is_published() -> None:

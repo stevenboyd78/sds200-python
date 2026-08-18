@@ -308,6 +308,32 @@ def _require_site_index(site_index: int) -> None:
 
 
 @dataclass(frozen=True, slots=True)
+class StartSystemStatusAnalysis:
+    """Start the documented System Status analysis mode and require exact AST,OK."""
+
+    site_index: int
+
+    def __post_init__(self) -> None:
+        _require_site_index(self.site_index)
+
+    @property
+    def wire(self) -> str:
+        return f"AST,SYSTEM_STATUS,{self.site_index}"
+
+    @property
+    def response_command(self) -> str:
+        return "AST"
+
+    def parse_response(self, response: object) -> None:
+        if not isinstance(response, Packet) or response.command != "AST":
+            raise ProtocolError("AST SYSTEM_STATUS returned an unexpected response.")
+        if response.fields != ("OK",):
+            raise ProtocolError(
+                "AST SYSTEM_STATUS acknowledgement must be exactly AST,OK."
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class StartCurrentActivityAnalysis:
     site_index: int
 
