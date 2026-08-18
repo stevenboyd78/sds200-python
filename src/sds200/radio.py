@@ -38,12 +38,15 @@ from .commands import (
     PauseResumeAnalysis,
     PressKey,
     PreviousSelection,
+    RfPowerPlotModulation,
+    RfPowerPlotSamplingRate,
     SetFavoritesQuickKeys,
     SetScannerRecordingStatus,
     SetSquelch,
     SetVolume,
     StartCurrentActivityAnalysis,
     StartLcnMonitorAnalysis,
+    StartRfPowerPlotAnalysis,
     StartScannerInfoPush,
     StartSystemStatusAnalysis,
 )
@@ -887,6 +890,47 @@ class SDSScanner:
         self, site_index: int, *, timeout: float = 2.0
     ) -> None:
         self.execute(StartSystemStatusAnalysis(site_index), timeout=timeout)
+
+    def start_rf_power_plot_analysis(
+        self,
+        frequency: int,
+        modulation: RfPowerPlotModulation,
+        sampling_rate: RfPowerPlotSamplingRate,
+        *,
+        timeout: float = 2.0,
+    ) -> None:
+        command = StartRfPowerPlotAnalysis(frequency, modulation, sampling_rate)
+        normalized_timeout = _require_positive_timeout(
+            timeout,
+            label="RF Power Plot analysis timeout",
+        )
+        deadline = monotonic() + normalized_timeout
+        remaining = deadline - monotonic()
+        if remaining <= 0 or not self._command_lock.acquire(timeout=remaining):
+            raise CommandTimeoutError(
+                "RF Power Plot analysis timed out waiting for scanner command activity."
+            )
+
+        try:
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                raise CommandTimeoutError(
+                    "RF Power Plot analysis timed out before model validation."
+                )
+            capabilities = self._model_capabilities(timeout=remaining)
+            if capabilities.model == "SDS100":
+                raise UnsupportedScannerFeatureError(
+                    "SDS100 does not provide RF Power Plot analysis."
+                )
+
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                raise CommandTimeoutError(
+                    "RF Power Plot analysis timed out before AST request."
+                )
+            self.execute(command, timeout=remaining)
+        finally:
+            self._command_lock.release()
 
     def start_current_activity_analysis(
         self, site_index: int, *, timeout: float = 2.0

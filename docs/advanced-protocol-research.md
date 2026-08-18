@@ -674,6 +674,41 @@ not automatically issued. RF Power Plot remains deferred as a separate slice
 because its start grammar and applicability carry additional parameters and
 version/model caveats.
 
+## Milestone 24.10 implementation boundary
+
+The first Milestone 24.10 slice is the separately deferred RF Power Plot start
+transaction. Official SDS100/SDS200 Remote Command Specification V1.02 and SDS
+Series Remote Command Specification V2.00 agree on exact
+`AST,RF_POWER_PLOT,[Frequency],[Modulation],[Sampling Rate]\r` transmission
+and exact `AST,OK\r` acknowledgement. Both tables document raw Frequency
+integer range `250000` through `13000000`, exact modulation tokens `Auto`, `AM`,
+`NFM`, `FM`, `WFM`, and `FMB`, and sampling-rate tokens `100`, `200`, `400`,
+and `800`.
+
+The same RF Power Plot block is visibly marked `Removed in SDS100` in both
+reviewed tables. V2.00 is the SDS-series document covering SDS100, SDS150, and
+SDS200; this slice therefore treats SDS150 and SDS200 as specification-backed
+for this operation and rejects a resolved SDS100 before transmitting the RF
+Power Plot AST request. SDS150 remains specification-only because representative
+hardware has not been validated. No new general `ScannerCapabilities` flag is
+introduced for this one operation.
+
+`StartRfPowerPlotAnalysis` preserves the documented raw integer/tokens and
+requires exact `AST,OK`. `SDSScanner.start_rf_power_plot_analysis()` validates
+the command before any model probe, resolves the actual scanner model through
+the existing cached-or-MDL path under one total timeout/command-lock budget,
+rejects SDS100 before AST, and otherwise performs only that acknowledged start.
+The raw Frequency integer is not interpreted as a unit-converted public
+frequency, and no undocumented frequency-step alignment is imposed.
+
+The existing `AnalysisMode.RF_POWER_PLOT` APR token remains independent. This
+slice adds no RF-power output/data parser, start-to-output correlation, automatic
+APR, running/paused/stopped state, cadence/session ownership, renderer behavior,
+reconnect restoration, negative/error AST reply classification, transport
+expansion, firmware guarantee, new capability dimension, or physical scanner
+validation. The synthetic replay fixture is deterministic software evidence
+only.
+
 ### Richer NAC, RAN, color-code, area, activity, and quality data
 
 The reviewed GLT glossary establishes SAS as a family encompassing CTCSS/DCS,

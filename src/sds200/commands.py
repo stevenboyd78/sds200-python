@@ -255,6 +255,23 @@ INDEXED_MENU_IDS: tuple[IndexedMenuId, ...] = (
     "FTO_CHANNEL",
 )
 
+RfPowerPlotModulation = Literal["Auto", "AM", "NFM", "FM", "WFM", "FMB"]
+RF_POWER_PLOT_MODULATIONS: tuple[RfPowerPlotModulation, ...] = (
+    "Auto",
+    "AM",
+    "NFM",
+    "FM",
+    "WFM",
+    "FMB",
+)
+RfPowerPlotSamplingRate = Literal[100, 200, 400, 800]
+RF_POWER_PLOT_SAMPLING_RATES: tuple[RfPowerPlotSamplingRate, ...] = (
+    100,
+    200,
+    400,
+    800,
+)
+
 
 def _indexed_menu_id(value: str) -> IndexedMenuId:
     for menu_id in INDEXED_MENU_IDS:
@@ -305,6 +322,83 @@ def _require_site_index(site_index: int) -> None:
         raise ValueError("AST site index must be a non-negative integer.")
     if site_index < 0:
         raise ValueError("AST site index must be a non-negative integer.")
+
+
+def _rf_power_plot_frequency(value: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("AST RF_POWER_PLOT frequency must be an integer.")
+    if not 250000 <= value <= 13000000:
+        raise ValueError(
+            "AST RF_POWER_PLOT frequency must be between 250000 and 13000000."
+        )
+    return value
+
+
+def _rf_power_plot_modulation(value: str) -> RfPowerPlotModulation:
+    if not isinstance(value, str):
+        raise ValueError(
+            "AST RF_POWER_PLOT modulation must be one of: "
+            + ", ".join(RF_POWER_PLOT_MODULATIONS)
+            + "."
+        )
+    for modulation in RF_POWER_PLOT_MODULATIONS:
+        if value == modulation:
+            return modulation
+    raise ValueError(
+        "AST RF_POWER_PLOT modulation must be one of: "
+        + ", ".join(RF_POWER_PLOT_MODULATIONS)
+        + "."
+    )
+
+
+def _rf_power_plot_sampling_rate(value: int) -> RfPowerPlotSamplingRate:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(
+            "AST RF_POWER_PLOT sampling rate must be one of: 100, 200, 400, 800."
+        )
+    for sampling_rate in RF_POWER_PLOT_SAMPLING_RATES:
+        if value == sampling_rate:
+            return sampling_rate
+    raise ValueError(
+        "AST RF_POWER_PLOT sampling rate must be one of: 100, 200, 400, 800."
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class StartRfPowerPlotAnalysis:
+    """Start the documented RF Power Plot mode and require exact AST,OK."""
+
+    frequency: int
+    modulation: RfPowerPlotModulation
+    sampling_rate: RfPowerPlotSamplingRate
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "frequency", _rf_power_plot_frequency(self.frequency))
+        object.__setattr__(
+            self, "modulation", _rf_power_plot_modulation(self.modulation)
+        )
+        object.__setattr__(
+            self, "sampling_rate", _rf_power_plot_sampling_rate(self.sampling_rate)
+        )
+
+    @property
+    def wire(self) -> str:
+        return (
+            f"AST,RF_POWER_PLOT,{self.frequency},"
+            f"{self.modulation},{self.sampling_rate}"
+        )
+
+    @property
+    def response_command(self) -> str:
+        return "AST"
+
+    def parse_response(self, response: object) -> None:
+        if not isinstance(response, Packet) or response.command != "AST":
+            raise ProtocolError("AST RF_POWER_PLOT returned an unexpected response.")
+        if response.fields != ("OK",):
+            raise ProtocolError(
+                "AST RF_POWER_PLOT acknowledgement must be exactly AST,OK."
+            )
 
 
 @dataclass(frozen=True, slots=True)

@@ -167,6 +167,37 @@ def test_system_status_fixture_documents_shared_spec_scope() -> None:
     assert "RF Power Plot behavior" in normalized
 
 
+def test_synthetic_ast_rf_power_plot_fixture_contract() -> None:
+    capture = load_capture(FIXTURES / "synthetic-ast-rf-power-plot.jsonl")
+
+    assert capture.endpoint == "fixture://advanced-protocol/ast-rf-power-plot"
+    assert [event.direction for event in capture.events] == ["tx", "rx", "tx", "rx"]
+    assert [event.data for event in capture.events] == [
+        "MDL",
+        "MDL,SDS200",
+        "AST,RF_POWER_PLOT,250000,Auto,100",
+        "AST,OK",
+    ]
+    assert all(event.delay_ms == 0.0 for event in capture.events)
+
+
+def test_rf_power_plot_fixture_documents_exact_scope_and_model_boundary() -> None:
+    provenance = (FIXTURES / "README.md").read_text(encoding="utf-8")
+    normalized = " ".join(provenance.split())
+
+    assert "synthetic-ast-rf-power-plot.jsonl" in normalized
+    assert "shared V1.02/V2.00 evidence" in normalized
+    assert "exact `AST,RF_POWER_PLOT,[Frequency],[Modulation],[Sampling Rate]`" in normalized
+    assert "Frequency range `250000` through `13000000`" in normalized
+    assert "`Auto`, `AM`, `NFM`, `FM`, `WFM`, and `FMB`" in normalized
+    assert "`100`, `200`, `400`, and `800`" in normalized
+    assert "`Removed in SDS100`" in normalized
+    assert "SDS150 support remains specification-only" in normalized
+    assert "not assigned a unit conversion or step-alignment meaning" in normalized
+    assert "does not establish RF-power output/data framing" in normalized
+    assert "hardware validation" in normalized
+
+
 def test_advanced_protocol_fixture_provenance_is_explicit() -> None:
     provenance = (FIXTURES / "README.md").read_text(encoding="utf-8")
     normalized_provenance = " ".join(provenance.split())

@@ -276,6 +276,19 @@ def test_replay_executes_exact_system_status_start_acknowledgement() -> None:
     assert after == before
 
 
+def test_replay_executes_exact_rf_power_plot_start_acknowledgement() -> None:
+    with SDSScanner.replay(
+        ADVANCED_PROTOCOL_FIXTURES / "synthetic-ast-rf-power-plot.jsonl"
+    ) as radio:
+        before = radio.state.snapshot
+        result = radio.start_rf_power_plot_analysis(250000, "Auto", 100, timeout=1.0)
+        after = radio.state.snapshot
+
+    assert result is None
+    assert radio.model == "SDS200"
+    assert after == before
+
+
 def test_replay_executes_current_activity_apr_lcn_monitor_apr() -> None:
     with SDSScanner.replay(
         ADVANCED_PROTOCOL_FIXTURES / "synthetic-ast-apr.jsonl"

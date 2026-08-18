@@ -4,7 +4,7 @@ import time
 import pytest
 
 from sds200.analysis_subscriptions import AnalysisSubscriptionClosed
-from sds200.commands import GetMsi, OpenIndexedMenu
+from sds200.commands import GetMsi, OpenIndexedMenu, StartRfPowerPlotAnalysis
 from sds200.exceptions import (
     CommandRejectedError,
     CommandTimeoutError,
@@ -943,6 +943,101 @@ def test_system_status_start_correlates_exact_ast_ack_without_state_mutation() -
     assert observed[0].command == "AST"
     assert observed[0].fields == ("OK",)
     assert observed[0].raw == "AST,OK"
+
+
+@pytest.mark.parametrize("model", ["SDS150", "SDS200"])
+def test_rf_power_plot_start_probes_supported_model_then_correlates_exact_ack(
+    model: str,
+) -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport)
+    initial_state = radio.state.snapshot
+    observed: list[object] = []
+    radio.events.subscribe("ast", observed.append)
+
+    with radio:
+        def respond() -> None:
+            while transport.writes != ["MDL"]:
+                time.sleep(0.005)
+            transport.feed_line(f"MDL,{model}")
+            while transport.writes != [
+                "MDL",
+                "AST,RF_POWER_PLOT,250000,Auto,100",
+            ]:
+                time.sleep(0.005)
+            transport.feed_line("AST,OK")
+
+        thread = threading.Thread(target=respond, daemon=True)
+        thread.start()
+        radio.start_rf_power_plot_analysis(250000, "Auto", 100, timeout=1.0)
+        thread.join(timeout=1.0)
+
+    assert not thread.is_alive()
+    assert transport.writes == ["MDL", "AST,RF_POWER_PLOT,250000,Auto,100"]
+    assert radio.model == model
+    assert radio.state.snapshot == initial_state
+    assert len(observed) == 1
+    assert isinstance(observed[0], Packet)
+    assert observed[0].fields == ("OK",)
+
+
+def test_rf_power_plot_start_rejects_sds100_before_ast_request() -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport)
+
+    with radio:
+        def respond() -> None:
+            while transport.writes != ["MDL"]:
+                time.sleep(0.005)
+            transport.feed_line("MDL,SDS100")
+
+        thread = threading.Thread(target=respond, daemon=True)
+        thread.start()
+        with pytest.raises(
+            UnsupportedScannerFeatureError,
+            match="SDS100 does not provide RF Power Plot analysis",
+        ):
+            radio.start_rf_power_plot_analysis(250000, "Auto", 100, timeout=1.0)
+        thread.join(timeout=1.0)
+
+    assert not thread.is_alive()
+    assert transport.writes == ["MDL"]
+    assert radio.model == "SDS100"
+
+
+def test_rf_power_plot_start_validates_parameters_before_model_probe() -> None:
+    transport = FakeTransport()
+    radio = SDS200.from_transport(transport)
+
+    with pytest.raises(ValueError, match="RF_POWER_PLOT frequency"):
+        radio.start_rf_power_plot_analysis(249999, "Auto", 100, timeout=1.0)
+
+    assert transport.writes == []
+
+
+def test_rf_power_plot_start_uses_one_total_timeout_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    radio = SDS200.from_transport(FakeTransport())
+    observed_timeouts: list[float] = []
+
+    def model_capabilities(*, timeout: float) -> object:
+        observed_timeouts.append(timeout)
+        time.sleep(0.02)
+        return type("Capabilities", (), {"model": "SDS200"})()
+
+    def execute(command: object, *, timeout: float = 2.0) -> object:
+        assert isinstance(command, StartRfPowerPlotAnalysis)
+        observed_timeouts.append(timeout)
+        return None
+
+    monkeypatch.setattr(radio, "_model_capabilities", model_capabilities)
+    monkeypatch.setattr(radio, "execute", execute)
+
+    radio.start_rf_power_plot_analysis(250000, "Auto", 100, timeout=0.2)
+
+    assert len(observed_timeouts) == 2
+    assert 0 < observed_timeouts[1] < observed_timeouts[0] <= 0.2
 
 
 def test_analysis_starts_correlate_first_ast_and_later_ast_is_published() -> None:
