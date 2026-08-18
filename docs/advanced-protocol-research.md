@@ -652,13 +652,21 @@ ScannerInfo element table. The documented attribute names are `SystemName`,
 `SiteID`, `WacnID`, `NAC`, `Color`, `RAN`, `Area`, `Att`, `Freqs`, and
 `P25Status`; `analyze_system_status` is a documented ScannerInfo screen. The
 existing ordered/repeated lossless ScannerInfo representation already preserves
-such records and unknown extensions, so this slice adds explicit structural
+such records and unknown extensions, so the first slice adds explicit structural
 regression coverage without new field coercion or a second XML model.
 
-A new synthetic replay fixture covers only exact System Status AST start and
-acknowledgement. Its site index is fabricated test data. No fixture or test in
-this slice claims ScannerInfo cadence, automatic PSI/GSI activation, a
-scanner-side transaction linking the acknowledgement to a later frame, analysis
+The second Milestone 24.9 slice adds `SystemStatusProjection` as a read-only
+view over each existing lossless `SystemStatus` record.
+`ScannerInfo.system_statuses` preserves repeated records in received order.
+The sixteen documented attributes remain optional uninterpreted strings; no
+published range becomes a host-side coercion or validation rule. Unknown
+attributes stay available through each projection's immutable attribute mapping,
+and unknown sibling records remain available through `ScannerInfo.records`.
+
+The first slice's synthetic replay fixture covers only exact System Status AST
+start and acknowledgement. Its site index is fabricated test data. Neither
+slice claims ScannerInfo cadence, automatic PSI/GSI activation, a scanner-side
+transaction linking the acknowledgement to a later frame, analysis
 running/paused/stopped state, reconnect restoration, model/firmware support,
 transport applicability, or physical scanner validation. The existing
 `AnalysisMode.SYSTEM_STATUS` APR token remains independently supported and is

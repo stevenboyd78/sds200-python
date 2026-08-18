@@ -159,6 +159,84 @@ class ScannerNode:
 
 
 @dataclass(frozen=True, slots=True)
+class SystemStatusProjection:
+    """Documented SystemStatus attributes with uninterpreted wire values."""
+
+    attributes: Mapping[str, str]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "attributes",
+            MappingProxyType(dict(self.attributes)),
+        )
+
+    @property
+    def system_name(self) -> str | None:
+        return self.attributes.get("SystemName")
+
+    @property
+    def site_name(self) -> str | None:
+        return self.attributes.get("SiteName")
+
+    @property
+    def signal(self) -> str | None:
+        return self.attributes.get("Signal")
+
+    @property
+    def quality(self) -> str | None:
+        return self.attributes.get("Quality")
+
+    @property
+    def activity(self) -> str | None:
+        return self.attributes.get("Activity")
+
+    @property
+    def system_id(self) -> str | None:
+        return self.attributes.get("SystemID")
+
+    @property
+    def system_sub_id(self) -> str | None:
+        return self.attributes.get("SystemSubID")
+
+    @property
+    def site_id(self) -> str | None:
+        return self.attributes.get("SiteID")
+
+    @property
+    def wacn_id(self) -> str | None:
+        return self.attributes.get("WacnID")
+
+    @property
+    def nac(self) -> str | None:
+        return self.attributes.get("NAC")
+
+    @property
+    def color(self) -> str | None:
+        return self.attributes.get("Color")
+
+    @property
+    def ran(self) -> str | None:
+        return self.attributes.get("RAN")
+
+    @property
+    def area(self) -> str | None:
+        return self.attributes.get("Area")
+
+    @property
+    def att(self) -> str | None:
+        return self.attributes.get("Att")
+
+    @property
+    def freqs(self) -> str | None:
+        return self.attributes.get("Freqs")
+
+    @property
+    def p25_status(self) -> str | None:
+        return self.attributes.get("P25Status")
+
+
+@dataclass(frozen=True, slots=True)
 class ScannerInfo:
     command: str
     mode: str | None
@@ -173,6 +251,16 @@ class ScannerInfo:
 
     def records_by_tag(self, tag: str) -> tuple[ScannerNode, ...]:
         return tuple(record for record in self.records if record.tag == tag)
+
+    @property
+    def system_statuses(self) -> tuple[SystemStatusProjection, ...]:
+        """Return documented SystemStatus records in their received order."""
+
+        return tuple(
+            SystemStatusProjection(record.attributes)
+            for record in self.records
+            if record.tag == "SystemStatus"
+        )
 
     def _attribute(self, tags: tuple[str, ...], name: str) -> str | None:
         for tag in tags:

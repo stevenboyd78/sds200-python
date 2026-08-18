@@ -33,13 +33,20 @@ with documented fields including `SystemName`, `SiteName`, `Signal`, `Quality`,
 `Activity`, `SystemID`, `SystemSubID`, `SiteID`, `WacnID`, `NAC`, `Color`,
 `RAN`, `Area`, `Att`, `Freqs`, and `P25Status`. The existing lossless
 `ScannerInfo` record path already preserves these exact strings plus unknown
-attributes/records; this slice adds regression evidence rather than coercing
-their values or creating a competing parser.
+attributes/records; the first slice adds regression evidence rather than
+coercing their values or creating a competing parser.
+
+The second Milestone 24.9 slice layers a read-only `SystemStatusProjection`
+over each existing `SystemStatus` record. `ScannerInfo.system_statuses`
+preserves repeated records in received order, exposes the sixteen documented
+attribute names as optional uninterpreted strings, and keeps unknown attributes
+available through each projection's immutable source mapping. Published ranges
+remain documentation rather than host-side validation or coercion rules.
 
 The existing `AnalysisMode.SYSTEM_STATUS` APR token remains independently
-available, but this slice does not infer running/paused/stopped state or
-automatically issue APR, PSI, or GSI. It adds no ScannerInfo cadence/session
-ownership, renderer behavior, reconnect restoration, negative/error AST reply
+available, but neither slice infers running/paused/stopped state or automatically
+issues APR, PSI, or GSI. They add no ScannerInfo cadence/session ownership,
+renderer behavior, reconnect restoration, negative/error AST reply
 classification, UDP/transport expansion, site-index range semantics,
 model/firmware applicability, physical validation, or RF Power Plot support.
 
