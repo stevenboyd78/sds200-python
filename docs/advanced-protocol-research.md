@@ -588,7 +588,18 @@ completion clears MSI one-shot retry state. `SDSScanner.get_msi()` is therefore
 allowed on the repository's direct `UdpTransport`, including when wrapped by
 capture recording.
 
-All UDP evidence in this slice is deterministic fake-datagram software evidence.
+The sixth narrow slice adds no production protocol behavior. It hardens the
+existing direct-UDP contract with explicit behavioral regressions for root
+correlation and one-shot retry cleanup: while `MSI` is expected, unrelated bare
+`ScannerInfo`, `GLT`, or `AST` XML remains uncorrelated and does not consume the
+MSI expectation; after a retryable MSI fragment gap and a subsequent successful
+MSI completion, another stray MSI fragment gap cannot reuse the completed
+request's automatic-retry authority. The latter assertion waits for a later
+ordinary decoded response before checking the transmitted datagrams, avoiding a
+negative-write race.
+
+All UDP evidence in the fifth and sixth slices is deterministic fake-datagram
+software evidence.
 It does not establish physical SDS200 behavior, firmware availability, or a
 broader transport guarantee. Fallback transports remain fail-closed because
 their active transport can change and no fallback-wide MSI framing contract is

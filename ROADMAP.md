@@ -11,7 +11,7 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 24.8 — MSI direct-UDP retrieval foundation
+### Milestone 24.8 — MSI UDP correlation/completion hardening
 
 The first four Milestone 24.8 slices established lossless bounded MSI XML
 modeling/parsing, exact serialized `MSI\r` retrieval for CR-line/replay
@@ -27,6 +27,15 @@ assembled; numbered `Footer`/`Foot` fragments use the existing bounded
 reassembly path; retryable sequence failures resend the exact original `MSI`
 wire; and successful completion clears one-shot MSI retry/expectation state.
 
+This sixth narrow hardening slice adds no production protocol behavior. It adds
+direct behavioral regression coverage for two invariants already provided by
+the shared UDP machinery: an exact one-shot MSI expectation survives unrelated
+bare XML roots until matching MSI XML arrives, and successful MSI completion
+after an automatic sequence-gap retry removes the one-shot retry authority so
+later stray MSI fragment gaps cannot resend a stale command. The tests use only
+deterministic fake datagrams and synchronize on a later ordinary response before
+asserting that no additional UDP write occurred.
+
 Direct `UdpTransport` and its capture wrapper are covered only with deterministic
 fake datagrams. This is software transport/framing evidence, not a physical
 scanner or firmware-support claim. Fallback transports remain blocked because
@@ -35,7 +44,7 @@ has been established. Custom transports that merely advertise an `udp://`
 endpoint remain fail-closed unless they are the repository's direct
 `UdpTransport` path.
 
-This slice does not add `MSV`/`MSB` execution, unindexed `MNU`, menu
+This hardening slice does not add `MSV`/`MSB` execution, unindexed `MNU`, menu
 lifecycle/state ownership, renderer behavior, model/firmware applicability, or
 physical validation. The serialized `[RSV]` field in `MSV`/`MSB` remains
 unresolved, and Quick Search (`QSH`) remains blocked pending exact `FRQ`
