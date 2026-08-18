@@ -326,11 +326,12 @@ existing behavior.
 ### SDS200 UDP XML reconstruction
 
 `UdpDatagramDecoder` reconstructs numbered XML fragments using `Foot`/`Footer`,
-`No`, and `EOT` after a command is recognized. Milestone 24.2 extends command
+`No`, and `EOT` after a command is recognized. Milestone 24.2 extended command
 expectation and retry bookkeeping from the existing GSI/PSI paths to exact
 `GLT,FL`, while reconstruction remains a transport concern and GLT domain
-semantics remain above `network.py`. MSI, AST, and other future protocols are
-still deferred.
+semantics remain above `network.py`. Milestone 24.8's fifth slice now reuses
+that same one-shot bounded-XML machinery for exact `MSI`, without changing MSI
+domain parsing or claiming physical UDP support.
 
 ### Existing stream lifecycle
 
@@ -575,10 +576,27 @@ structural test data, not claims about physically observed menu indexes, values,
 limits, keys, or scanner states. `MSV` and `MSB` execution remains blocked:
 V1.02 and V2.00 document their outer forms but do not establish the serialized
 value of `[RSV]`, and the reviewed official RH-536HP predecessor source contains
-no searchable MSV/MSB implementation that resolves it. Unindexed MNU, menu
-lifecycle/state ownership, renderer exposure, UDP/XML-map behavior,
-model/firmware applicability, physical transport applicability, and physical
-scanner validation likewise remain deferred.
+no searchable MSV/MSB implementation that resolves it.
+
+The fifth narrow slice promotes exact `MSI` into `XML_COMMAND_ROOTS` and the
+existing SDS200 direct-UDP one-shot bounded-XML machinery. An exact bare `MSI`
+request establishes the expectation; a nonexact `MSI,` or `MSI,...` request does
+not. Matching bare or explicitly prefixed MSI XML is correlated by root,
+numbered `Footer`/`Foot` fragments reuse the existing ordered reassembly path,
+retryable sequence failures resend the exact original `MSI` wire, and successful
+completion clears MSI one-shot retry state. `SDSScanner.get_msi()` is therefore
+allowed on the repository's direct `UdpTransport`, including when wrapped by
+capture recording.
+
+All UDP evidence in this slice is deterministic fake-datagram software evidence.
+It does not establish physical SDS200 behavior, firmware availability, or a
+broader transport guarantee. Fallback transports remain fail-closed because
+their active transport can change and no fallback-wide MSI framing contract is
+established. Custom controls that merely present an `udp://` endpoint are not
+treated as evidence-equivalent to `UdpTransport`. Unindexed MNU, menu
+lifecycle/state ownership, renderer exposure, model/firmware applicability,
+physical transport applicability, and physical scanner validation remain
+deferred.
 
 ### Richer NAC, RAN, color-code, area, activity, and quality data
 

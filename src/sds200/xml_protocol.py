@@ -17,7 +17,13 @@ from .models import (
 )
 
 XML_COMMAND_ROOTS: Mapping[str, str] = MappingProxyType(
-    {"GSI": "ScannerInfo", "PSI": "ScannerInfo", "GLT": "GLT", "AST": "AST"}
+    {
+        "GSI": "ScannerInfo",
+        "PSI": "ScannerInfo",
+        "GLT": "GLT",
+        "AST": "AST",
+        "MSI": "MSI",
+    }
 )
 
 

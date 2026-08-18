@@ -246,16 +246,8 @@ MSI_XML = """<MSI FutureRoot="keep-root">
 </MSI>"""
 
 
-def test_default_xml_assembler_does_not_register_msi() -> None:
+def test_default_xml_assembler_assembles_msi() -> None:
     assembler = XmlResponseAssembler()
-
-    assert assembler.recognizes_header("MSI,<XML>,") is False
-    assert assembler.feed("MSI,<XML>,") is None
-    assert assembler.collecting is False
-
-
-def test_custom_xml_assembler_assembles_msi_with_exact_root() -> None:
-    assembler = XmlResponseAssembler({"MSI": "MSI"})
 
     assert assembler.recognizes_header("MSI,<XML>,") is True
     assert assembler.feed("MSI,<XML>,") is None

@@ -141,7 +141,7 @@ class UdpDatagramDecoder:
     def expect_command(self, command: str) -> None:
         """Record commands whose UDP response may be a bare XML document."""
         normalized = command.rstrip("\r\n").strip()
-        name, _, argument = normalized.partition(",")
+        name, separator, argument = normalized.partition(",")
         name = name.upper()
 
         with self._lock:
@@ -158,6 +158,8 @@ class UdpDatagramDecoder:
                     self._stream_xml_command = "PSI"
             elif name == "GLT" and argument.strip().upper() == "FL":
                 self._expected_xml_command = "GLT"
+            elif name == "MSI" and not separator:
+                self._expected_xml_command = "MSI"
 
     def feed(self, data: bytes) -> tuple[str, ...]:
         text = data.decode("utf-8", errors="replace").strip("\x00")
@@ -487,7 +489,7 @@ class UdpTransport:
         self._send_normalized(normalized, retry=False)
 
     def _remember_xml_command(self, normalized: str) -> None:
-        command, _, argument = normalized.partition(",")
+        command, separator, argument = normalized.partition(",")
         command = command.upper()
         self._decoder.expect_command(normalized)
         if command == "GSI":
@@ -500,7 +502,9 @@ class UdpTransport:
             else:
                 self._last_xml_commands[command] = normalized
                 self._xml_retry_counts[command] = 0
-        elif command == "GLT" and argument.strip().upper() == "FL":
+        elif (
+            command == "GLT" and argument.strip().upper() == "FL"
+        ) or (command == "MSI" and not separator):
             self._last_xml_commands[command] = normalized
             self._xml_retry_counts[command] = 0
 
@@ -642,7 +646,7 @@ class UdpTransport:
 
     def _xml_completed(self, command: str) -> None:
         self._xml_retry_counts[command] = 0
-        if command == "GLT":
+        if command in {"GLT", "MSI"}:
             self._last_xml_commands.pop(command, None)
             self._xml_retry_counts.pop(command, None)
         with self._statistics_lock:

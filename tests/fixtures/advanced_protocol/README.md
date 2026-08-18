@@ -80,3 +80,11 @@ unverified unless separately documented.
   command beyond existing MSI retrieval and does not establish MSV/MSB reserved
   field serialization, menu mutation/lifecycle semantics, UDP support,
   model/firmware applicability, renderer exposure, or physical validation.
+- The fifth narrow Milestone 24.8 slice adds no new fixture file. Instead,
+  deterministic fake SDS200 UDP datagrams reuse the existing synthetic MSI
+  shapes to validate software-only one-shot expectation, bare/prefixed root
+  correlation, numbered fragment reassembly, exact-wire retry, capture-wrapper
+  behavior, and state-neutral typed retrieval. This does not convert synthetic
+  transport tests into physical scanner, firmware, or model evidence. Fallback
+  MSI, unindexed MNU, MSV/MSB execution, menu lifecycle, and renderer behavior
+  remain outside the slice.

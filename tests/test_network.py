@@ -5,6 +5,7 @@ import threading
 import time
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 
@@ -263,15 +264,24 @@ def test_decoder_wraps_bare_glt_xml_once_after_exact_command() -> None:
     assert decoder.feed(bare_xml) == (bare_xml.decode(),)
 
 
-def test_udp_decoder_does_not_register_or_wrap_msi_xml() -> None:
-    assert "MSI" not in XML_COMMAND_ROOTS
+def test_udp_decoder_wraps_bare_msi_xml_once_after_exact_command() -> None:
+    assert XML_COMMAND_ROOTS["MSI"] == "MSI"
 
     decoder = UdpDatagramDecoder()
     decoder.expect_command("MSI")
     bare_xml = b'<MSI FutureRoot="keep-root"><SyntheticRecord /></MSI>'
 
+    assert decoder.feed(bare_xml) == ("MSI,<XML>,", bare_xml.decode())
     assert decoder.feed(bare_xml) == (bare_xml.decode(),)
-    assert decoder.feed(b"MSI,<XML>," + bare_xml) == ()
+
+
+@pytest.mark.parametrize("command", ["MSI,", "MSI,FUTURE"])
+def test_udp_decoder_does_not_expect_nonexact_msi_command(command: str) -> None:
+    decoder = UdpDatagramDecoder()
+    decoder.expect_command(command)
+    bare_xml = b'<MSI FutureRoot="keep-root"><SyntheticRecord /></MSI>'
+
+    assert decoder.feed(bare_xml) == (bare_xml.decode(),)
 
 
 def test_decoder_malformed_bare_glt_does_not_complete_expectation() -> None:
@@ -345,6 +355,33 @@ def test_decoder_reassembles_numbered_glt_datagrams_in_source_order() -> None:
     assert root.attrib == {"Version": "future"}
     assert [child.attrib["Name"] for child in root] == ["First", "Second"]
     assert root[0].attrib["FutureAttr"] == "preserve-me"
+
+
+def test_decoder_reassembles_numbered_msi_datagrams_in_source_order() -> None:
+    completed: list[str] = []
+    decoder = UdpDatagramDecoder(completion_handler=completed.append)
+    decoder.expect_command("MSI")
+    first = (
+        b'MSI,<XML>,<MSI FutureRoot="keep-root">'
+        b'<MenuItem Name="First" FutureAttr="keep" />'
+        b'<Footer No="1" EOT="0" /></MSI>'
+    )
+    second = (
+        b'MSI,<XML>,<MSI FutureRoot="keep-root"><MenuItem Name="Second" />'
+        b'<Foot No="2" EOT="1" /></MSI>'
+    )
+
+    assert decoder.feed(first) == ()
+    assert completed == []
+    lines = decoder.feed(second)
+
+    assert completed == ["MSI"]
+    assert lines[0] == "MSI,<XML>,"
+    root = ET.fromstring(lines[1])
+    assert root.tag == "MSI"
+    assert root.attrib == {"FutureRoot": "keep-root"}
+    assert [child.attrib["Name"] for child in root] == ["First", "Second"]
+    assert root[0].attrib["FutureAttr"] == "keep"
 
 
 def test_radio_network_parses_bare_scanner_info() -> None:
@@ -436,6 +473,37 @@ def test_udp_transport_retries_glt_with_exact_original_wire_command() -> None:
     assert transport.statistics["xml_fragments_dropped"] == 1
 
 
+def test_udp_transport_retries_msi_with_exact_original_wire_command() -> None:
+    fake = FakeDatagramSocket()
+    transport = UdpTransport(
+        "192.0.2.25",
+        socket_factory=FakeDatagramSocketFactory(fake),
+        reconnect=False,
+        max_xml_retries=2,
+    )
+    diagnostics: list[TransportDiagnostic] = []
+    transport.set_diagnostic_handler(diagnostics.append)
+    transport.start(lambda _line: None)
+    try:
+        transport.write_command("MSI")
+        fake.feed(
+            b'MSI,<XML>,<MSI><MenuItem Name="One" />'
+            b'<Footer No="1" EOT="0" /></MSI>'
+        )
+        fake.feed(
+            b'MSI,<XML>,<MSI><MenuItem Name="Three" />'
+            b'<Footer No="3" EOT="1" /></MSI>'
+        )
+        wait_until(lambda: fake.sent == [b"MSI\r", b"MSI\r"])
+    finally:
+        transport.stop()
+
+    assert diagnostics[0].kind == "sequence_gap"
+    assert transport.statistics["commands_sent"] == 2
+    assert transport.statistics["retries_sent"] == 1
+    assert transport.statistics["xml_fragments_dropped"] == 1
+
+
 def test_radio_network_parses_bare_glt_favorites() -> None:
     fake = FakeDatagramSocket()
     radio = SDS200.network(
@@ -466,6 +534,61 @@ def test_radio_network_parses_bare_glt_favorites() -> None:
     ]
     assert favorites[0].attributes["FutureAttr"] == "preserve-me"
     assert fake.sent == [b"GLT,FL\r"]
+
+
+def test_radio_network_parses_bare_msi_and_preserves_state() -> None:
+    fake = FakeDatagramSocket()
+    radio = SDS200.network(
+        "scanner.example.test",
+        socket_factory=FakeDatagramSocketFactory(fake),
+    )
+    initial_state = radio.state.snapshot
+    xml = (
+        b'<MSI Name="Synthetic Menu" MenuType="TypeSelect" FutureRoot="keep">'
+        b'<MenuItem Name="Alpha" Index="item-a" Value="value-a" '
+        b'FutureItem="keep-item" /></MSI>'
+    )
+
+    with radio:
+        def respond() -> None:
+            wait_until(lambda: fake.sent == [b"MSI\r"])
+            fake.feed(xml)
+
+        thread = threading.Thread(target=respond)
+        thread.start()
+        response = radio.get_msi(timeout=1.0)
+        thread.join(timeout=1.0)
+
+    assert response.menu_projection.name == "Synthetic Menu"
+    assert response.menu_projection.menu_type == "TypeSelect"
+    assert response.root_attributes["FutureRoot"] == "keep"
+    assert response.records[0].attributes["FutureItem"] == "keep-item"
+    assert radio.state.snapshot == initial_state
+    assert fake.sent == [b"MSI\r"]
+
+
+def test_recorded_radio_network_parses_bare_msi(tmp_path: Path) -> None:
+    fake = FakeDatagramSocket()
+    radio = SDS200.network(
+        "scanner.example.test",
+        socket_factory=FakeDatagramSocketFactory(fake),
+        capture_path=tmp_path / "session.jsonl",
+    )
+    xml = b'<MSI MenuType="TypeError"><MenuErrorMsg Text="Synthetic" /></MSI>'
+
+    with radio:
+        def respond() -> None:
+            wait_until(lambda: fake.sent == [b"MSI\r"])
+            fake.feed(xml)
+
+        thread = threading.Thread(target=respond)
+        thread.start()
+        response = radio.get_msi(timeout=1.0)
+        thread.join(timeout=1.0)
+
+    assert response.menu_projection.menu_type == "TypeError"
+    assert response.menu_projection.error_messages[0].text == "Synthetic"
+    assert fake.sent == [b"MSI\r"]
 
 
 def test_udp_transport_statistics_count_completed_xml() -> None:
