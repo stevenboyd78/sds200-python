@@ -185,3 +185,43 @@ def test_pwf_gwf_fixture_documents_receive_only_scope() -> None:
     assert "contains no start/stop transmission" in normalized
     assert "does not establish ON/OFF token semantics" in normalized
     assert "GW2 binary framing" in normalized
+
+def test_synthetic_msi_fixture_contract() -> None:
+    capture = load_capture(FIXTURES / "synthetic-msi.jsonl")
+
+    assert capture.endpoint == "fixture://advanced-protocol/msi"
+    assert all(event.direction == "rx" for event in capture.events)
+    assert all(event.delay_ms == 0.0 for event in capture.events)
+    assert capture.events[0].data == "MSI,<XML>,"
+
+    xml = "\n".join(event.data or "" for event in capture.events[1:])
+    root = ElementTree.fromstring(xml)
+
+    assert root.tag == "MSI"
+    assert root.attrib == {"FutureRoot": "keep-root"}
+    assert [child.tag for child in root] == [
+        "SyntheticRecord",
+        "Container",
+        "SyntheticRecord",
+    ]
+    assert root[0].attrib == {
+        "SyntheticId": "first",
+        "FutureAttr": "keep-first",
+    }
+    assert root[1][0].tag == "FutureRecord"
+    assert root[1][0].attrib == {
+        "Value": "nested",
+        "FutureNested": "keep-nested",
+    }
+
+
+def test_msi_fixture_documents_receive_only_model_parser_scope() -> None:
+    provenance = (FIXTURES / "README.md").read_text(encoding="utf-8")
+    normalized = " ".join(provenance.split())
+
+    assert "synthetic-msi.jsonl" in normalized
+    assert "receive-only synthetic bounded-XML evidence" in normalized
+    assert "contains no MSI command transmission" in normalized
+    assert "does not register MSI in the default XML command map" in normalized
+    assert "does not establish menu field semantics" in normalized
+    assert "MNU, MSV, or MSB control behavior" in normalized

@@ -4,6 +4,7 @@ from sds200.exceptions import ProtocolError
 from sds200.xml_protocol import (
     AnalysisParser,
     GltParser,
+    MsiParser,
     ScannerInfoParser,
     XmlResponseAssembler,
 )
@@ -237,3 +238,72 @@ def test_analysis_parser_rejects_malformed_xml_without_payload_text() -> None:
 def test_analysis_parser_rejects_wrong_root() -> None:
     with pytest.raises(ProtocolError, match="^Expected AST root"):
         AnalysisParser().parse("AST", "<ScannerInfo />")
+
+MSI_XML = """<MSI FutureRoot="keep-root">
+<SyntheticRecord SyntheticId="first" FutureAttr="keep-first" />
+<Container><FutureRecord Value="nested" FutureNested="keep-nested" /></Container>
+<SyntheticRecord SyntheticId="second" />
+</MSI>"""
+
+
+def test_default_xml_assembler_does_not_register_msi() -> None:
+    assembler = XmlResponseAssembler()
+
+    assert assembler.recognizes_header("MSI,<XML>,") is False
+    assert assembler.feed("MSI,<XML>,") is None
+    assert assembler.collecting is False
+
+
+def test_custom_xml_assembler_assembles_msi_with_exact_root() -> None:
+    assembler = XmlResponseAssembler({"MSI": "MSI"})
+
+    assert assembler.recognizes_header("MSI,<XML>,") is True
+    assert assembler.feed("MSI,<XML>,") is None
+
+    result = None
+    for line in MSI_XML.splitlines():
+        result = assembler.feed(line)
+
+    assert result == ("MSI", MSI_XML)
+
+
+def test_msi_parser_preserves_all_descendants_in_source_order() -> None:
+    response = MsiParser().parse("MSI", MSI_XML)
+
+    assert response.command == "MSI"
+    assert dict(response.root_attributes) == {"FutureRoot": "keep-root"}
+    assert [record.tag for record in response.records] == [
+        "SyntheticRecord",
+        "Container",
+        "FutureRecord",
+        "SyntheticRecord",
+    ]
+    assert [
+        record.attributes["SyntheticId"]
+        for record in response.records_by_tag("SyntheticRecord")
+    ] == ["first", "second"]
+    assert response.records[0].attributes["FutureAttr"] == "keep-first"
+    assert response.records[2].attributes == {
+        "Value": "nested",
+        "FutureNested": "keep-nested",
+    }
+    assert response.raw_xml == MSI_XML
+
+    with pytest.raises(TypeError):
+        response.root_attributes["new"] = "value"  # type: ignore[index]
+    with pytest.raises(TypeError):
+        response.records[0].attributes["new"] = "value"  # type: ignore[index]
+
+
+def test_msi_parser_rejects_malformed_xml_without_payload_text() -> None:
+    payload = "<MSI><SyntheticSecret Value='do-not-echo'></MSI>"
+
+    with pytest.raises(ProtocolError, match="^Invalid MSI XML response$") as caught:
+        MsiParser().parse("MSI", payload)
+
+    assert "do-not-echo" not in str(caught.value)
+
+
+def test_msi_parser_rejects_wrong_root() -> None:
+    with pytest.raises(ProtocolError, match="^Expected MSI root"):
+        MsiParser().parse("MSI", "<ScannerInfo />")

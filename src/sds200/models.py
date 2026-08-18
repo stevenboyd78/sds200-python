@@ -461,6 +461,62 @@ class GltResponse:
 
 
 @dataclass(frozen=True, slots=True)
+class MsiRecord:
+    """One losslessly preserved descendant from an MSI XML document."""
+
+    tag: str
+    attributes: Mapping[str, str]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "attributes",
+            MappingProxyType(dict(self.attributes)),
+        )
+
+    @classmethod
+    def create(cls, tag: str, attributes: Mapping[str, str]) -> MsiRecord:
+        return cls(tag=tag, attributes=attributes)
+
+
+@dataclass(frozen=True, slots=True)
+class MsiResponse:
+    """Lossless bounded MSI XML without inferred menu-field semantics."""
+
+    command: str
+    root_attributes: Mapping[str, str]
+    records: tuple[MsiRecord, ...]
+    raw_xml: str
+    received_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "root_attributes",
+            MappingProxyType(dict(self.root_attributes)),
+        )
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        command: str,
+        root_attributes: Mapping[str, str],
+        records: tuple[MsiRecord, ...],
+        raw_xml: str,
+    ) -> MsiResponse:
+        return cls(
+            command=command,
+            root_attributes=root_attributes,
+            records=records,
+            raw_xml=raw_xml,
+        )
+
+    def records_by_tag(self, tag: str) -> tuple[MsiRecord, ...]:
+        return tuple(record for record in self.records if record.tag == tag)
+
+
+@dataclass(frozen=True, slots=True)
 class AnalysisRecord:
     tag: str
     attributes: Mapping[str, str]
