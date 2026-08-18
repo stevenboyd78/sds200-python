@@ -238,6 +238,67 @@ class GetMsi:
         return response
 
 
+IndexedMenuId = Literal[
+    "SCAN_SYSTEM",
+    "SCAN_DEPARTMENT",
+    "SCAN_SITE",
+    "SCAN_CHANNEL",
+    "SRCH_RANGE",
+    "FTO_CHANNEL",
+]
+INDEXED_MENU_IDS: tuple[IndexedMenuId, ...] = (
+    "SCAN_SYSTEM",
+    "SCAN_DEPARTMENT",
+    "SCAN_SITE",
+    "SCAN_CHANNEL",
+    "SRCH_RANGE",
+    "FTO_CHANNEL",
+)
+
+
+def _indexed_menu_id(value: str) -> IndexedMenuId:
+    for menu_id in INDEXED_MENU_IDS:
+        if value == menu_id:
+            return menu_id
+    choices = ", ".join(INDEXED_MENU_IDS)
+    raise ValueError(f"Indexed MNU menu ID must be one of: {choices}.")
+
+
+def _menu_index(value: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValueError("MNU index must be a non-empty string.")
+    if value != value.strip():
+        raise ValueError("MNU index cannot have leading or trailing whitespace.")
+    if any(delimiter in value for delimiter in (",", "\r", "\n")):
+        raise ValueError("MNU index cannot contain commas or line breaks.")
+    return value
+
+
+@dataclass(frozen=True, slots=True)
+class OpenIndexedMenu:
+    # Open one specification-backed indexed menu using an opaque index token.
+    menu_id: IndexedMenuId
+    index: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "menu_id", _indexed_menu_id(self.menu_id))
+        object.__setattr__(self, "index", _menu_index(self.index))
+
+    @property
+    def wire(self) -> str:
+        return f"MNU,{self.menu_id},{self.index}"
+
+    @property
+    def response_command(self) -> str:
+        return "MNU"
+
+    def parse_response(self, response: object) -> None:
+        if not isinstance(response, Packet) or response.command != "MNU":
+            raise ProtocolError("MNU returned an unexpected response.")
+        if response.fields != ("OK",):
+            raise ProtocolError("MNU acknowledgement must be exactly MNU,OK.")
+
+
 def _require_site_index(site_index: int) -> None:
     """Validate the host/API boundary, without claiming a protocol upper range."""
     if isinstance(site_index, bool) or not isinstance(site_index, int):

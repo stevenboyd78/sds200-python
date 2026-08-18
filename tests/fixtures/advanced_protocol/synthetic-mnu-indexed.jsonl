@@ -1,0 +1,13 @@
+{"endpoint":"fixture://advanced-protocol/mnu-indexed","schema":"sds200.capture","version":1}
+{"data":"MNU,SCAN_SYSTEM,000001","delay_ms":0.0,"direction":"tx"}
+{"data":"MNU,OK","delay_ms":0.0,"direction":"rx"}
+{"data":"MNU,SCAN_DEPARTMENT,000002","delay_ms":0.0,"direction":"tx"}
+{"data":"MNU,OK","delay_ms":0.0,"direction":"rx"}
+{"data":"MNU,SCAN_SITE,000003","delay_ms":0.0,"direction":"tx"}
+{"data":"MNU,OK","delay_ms":0.0,"direction":"rx"}
+{"data":"MNU,SCAN_CHANNEL,000004","delay_ms":0.0,"direction":"tx"}
+{"data":"MNU,OK","delay_ms":0.0,"direction":"rx"}
+{"data":"MNU,SRCH_RANGE,000005","delay_ms":0.0,"direction":"tx"}
+{"data":"MNU,OK","delay_ms":0.0,"direction":"rx"}
+{"data":"MNU,FTO_CHANNEL,000006","delay_ms":0.0,"direction":"tx"}
+{"data":"MNU,OK","delay_ms":0.0,"direction":"rx"}

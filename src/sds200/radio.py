@@ -31,8 +31,10 @@ from .commands import (
     GetStatus,
     GetVolume,
     HoldSelection,
+    IndexedMenuId,
     NavigationTarget,
     NextSelection,
+    OpenIndexedMenu,
     PauseResumeAnalysis,
     PressKey,
     PreviousSelection,
@@ -820,6 +822,15 @@ class SDSScanner:
 
     def get_msi(self, *, timeout: float = 3.0) -> MsiResponse:
         return self.execute(GetMsi(), timeout=timeout)
+
+    def open_indexed_menu(
+        self,
+        menu_id: IndexedMenuId,
+        index: str,
+        *,
+        timeout: float = 2.0,
+    ) -> None:
+        self.execute(OpenIndexedMenu(menu_id, index), timeout=timeout)
 
     def start_current_activity_analysis(
         self, site_index: int, *, timeout: float = 2.0

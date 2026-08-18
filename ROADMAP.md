@@ -11,26 +11,36 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 24.8 — MSI retrieval integration
+### Milestone 24.8 — indexed MNU menu-control foundation
 
 The first Milestone 24.8 slice established immutable, lossless `MsiRecord` and
 `MsiResponse` values plus exact-root `MsiParser` handling without transmitting
 scanner commands or registering MSI in the shared production XML command map.
 
-This second narrow slice adds exact `MSI\r` retrieval through a typed `GetMsi`
+The second narrow slice added exact `MSI\r` retrieval through a typed `GetMsi`
 command and `SDSScanner.get_msi()`. Radio-side XML assembly extends the existing
 command/root mapping locally so CR-line serial transport and deterministic replay
 can correlate and parse MSI without assigning menu-field semantics or mutating
 `RadioState`.
 
-The shared `XML_COMMAND_ROOTS` mapping and `UdpDatagramDecoder` behavior remain
-unchanged. The serialized MSI request/response path fails closed before
-transmission on direct or capture-wrapped `udp://` endpoints and on fallback
-transports. This slice therefore does not claim MSI UDP expectation, retry,
-fragment reassembly, bare-XML, or fallback support. `MNU`, `MSV`, and `MSB`
-controls, menu-state lifecycle semantics, model/firmware applicability, renderer
-exposure, and physical scanner validation remain deferred. Quick Search (`QSH`)
-also remains blocked pending evidence for its exact `FRQ` representation.
+This third narrow slice uses only behavior that is identical in the official
+SDS100/SDS200 Remote Command Specification V1.02 (2023-12-22) and SDS Series
+Remote Command Specification V2.00 (2025-07-07). Both show
+`MNU,[MENU_ID],[INDEX]\r` with exact `MNU,OK\r`, and both identify concrete
+index kinds for exactly `SCAN_SYSTEM`, `SCAN_DEPARTMENT`, `SCAN_SITE`,
+`SCAN_CHANNEL`, `SRCH_RANGE`, and `FTO_CHANNEL`. `OpenIndexedMenu` and
+`SDSScanner.open_indexed_menu()` preserve the caller-supplied non-empty index as
+an opaque string token and assign no range, numeric encoding, or menu-field
+semantics.
+
+Rows whose INDEX column is `-`, negative/error response shapes, menu lifecycle
+and state ownership, and `MSV`/`MSB` execution remain deferred. The shared
+`XML_COMMAND_ROOTS` mapping and `UdpDatagramDecoder` behavior remain unchanged,
+and this MNU slice makes no new physical transport, model, firmware, or renderer
+applicability claim. Future Milestone 24 slices must compare V1.02 and V2.00
+where commands overlap and preserve version provenance where they differ or a
+command exists only in a later specification. Quick Search (`QSH`) also remains
+blocked pending evidence for its exact `FRQ` representation.
 
 ## Deferred hardware validation
 

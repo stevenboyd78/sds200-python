@@ -261,6 +261,41 @@ def test_synthetic_msi_retrieval_fixture_contract() -> None:
     }
 
 
+def test_synthetic_mnu_indexed_fixture_contract() -> None:
+    capture = load_capture(FIXTURES / "synthetic-mnu-indexed.jsonl")
+
+    assert capture.endpoint == "fixture://advanced-protocol/mnu-indexed"
+    assert all(event.delay_ms == 0.0 for event in capture.events)
+    assert [event.direction for event in capture.events] == ["tx", "rx"] * 6
+
+    transactions = [
+        (capture.events[index].data, capture.events[index + 1].data)
+        for index in range(0, len(capture.events), 2)
+    ]
+    assert transactions == [
+        ("MNU,SCAN_SYSTEM,000001", "MNU,OK"),
+        ("MNU,SCAN_DEPARTMENT,000002", "MNU,OK"),
+        ("MNU,SCAN_SITE,000003", "MNU,OK"),
+        ("MNU,SCAN_CHANNEL,000004", "MNU,OK"),
+        ("MNU,SRCH_RANGE,000005", "MNU,OK"),
+        ("MNU,FTO_CHANNEL,000006", "MNU,OK"),
+    ]
+
+
+def test_mnu_indexed_fixture_documents_dual_spec_scope() -> None:
+    provenance = (FIXTURES / "README.md").read_text(encoding="utf-8")
+    normalized = " ".join(provenance.split())
+
+    assert "SDS100/SDS200 Remote Command Specification V1.02" in normalized
+    assert "Uniden SDS Series Remote Command Specification V2.00" in normalized
+    assert "synthetic-mnu-indexed.jsonl" in normalized
+    assert "V1.02 and V2.00 official command tables agree" in normalized
+    assert "deliberately fabricated opaque tokens" in normalized
+    assert "neither specification establishes those literal values" in normalized
+    assert "Unindexed MNU rows, negative/error responses" in normalized
+    assert "MSV/MSB execution" in normalized
+
+
 def test_msi_retrieval_fixture_documents_narrow_transport_scope() -> None:
     provenance = (FIXTURES / "README.md").read_text(encoding="utf-8")
     normalized = " ".join(provenance.split())

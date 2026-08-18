@@ -92,6 +92,26 @@ def test_serial_msi_retrieval_is_lossless_and_state_neutral() -> None:
     assert fake.writes == [b"MSI\r"]
 
 
+def test_serial_indexed_mnu_is_exact_and_state_neutral() -> None:
+    fake = FakeSerial()
+    radio = SDS200("/dev/fake", reconnect=False, serial_factory=lambda **kwargs: fake)
+    initial_state = radio.state.snapshot
+
+    with radio:
+        def respond() -> None:
+            while fake.writes != [b"MNU,SCAN_SYSTEM,000007\r"]:
+                time.sleep(0.005)
+            fake.feed(b"MNU,OK\r")
+
+        thread = threading.Thread(target=respond, daemon=True)
+        thread.start()
+        radio.open_indexed_menu("SCAN_SYSTEM", "000007", timeout=1.0)
+        thread.join(timeout=1.0)
+
+    assert radio.state.snapshot == initial_state
+    assert fake.writes == [b"MNU,SCAN_SYSTEM,000007\r"]
+
+
 def test_msi_retrieval_fails_closed_before_direct_udp_write() -> None:
     transport = FakeTransport("udp://scanner")
     radio = SDS200.from_transport(transport)
