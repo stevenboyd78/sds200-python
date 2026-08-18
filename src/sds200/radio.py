@@ -114,7 +114,6 @@ from .waterfall_subscriptions import (
     WaterfallSubscription,
 )
 from .xml_protocol import (
-    XML_COMMAND_ROOTS,
     AnalysisParser,
     GltParser,
     MsiParser,
@@ -194,6 +193,7 @@ class SDSScanner:
         fallback_transport = (
             self.transport if isinstance(self.transport, FallbackTransport) else None
         )
+        direct_udp_msi_supported = isinstance(self.transport, UdpTransport)
         if capture_path is not None:
             self.transport = RecordingTransport(
                 self.transport,
@@ -206,7 +206,7 @@ class SDSScanner:
         self.glt_parser = GltParser()
         self.analysis_parser = AnalysisParser()
         self.msi_parser = MsiParser()
-        self.xml_assembler = XmlResponseAssembler({**XML_COMMAND_ROOTS, "MSI": "MSI"})
+        self.xml_assembler = XmlResponseAssembler()
         self.events = EventBus()
         self._analysis_publisher = AnalysisPublisher()
         self._waterfall_publisher = WaterfallPublisher()
@@ -218,6 +218,7 @@ class SDSScanner:
         self._response_lock = threading.RLock()
         self._command_lock = threading.RLock()
         self._fallback_transport = fallback_transport
+        self._direct_udp_msi_supported = direct_udp_msi_supported
         if self._fallback_transport is not None:
             self._fallback_transport.set_recovery_guard(self._recovery_idle)
         self._closed = threading.Event()
@@ -1161,12 +1162,15 @@ class SDSScanner:
                 )
 
             if response_command == "MSI" and (
-                self.endpoint.startswith("udp://")
-                or self._fallback_transport is not None
+                self._fallback_transport is not None
+                or (
+                    self.endpoint.startswith("udp://")
+                    and not self._direct_udp_msi_supported
+                )
             ):
                 raise UnsupportedScannerFeatureError(
-                    "MSI retrieval is unavailable on UDP and fallback "
-                    "control transports."
+                    "MSI retrieval is unavailable on unverified UDP-like and "
+                    "fallback control transports."
                 )
 
             response_queue: queue.Queue[object] = queue.Queue(maxsize=1)

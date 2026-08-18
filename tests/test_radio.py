@@ -118,7 +118,7 @@ def test_msi_retrieval_fails_closed_before_direct_udp_write() -> None:
 
     with pytest.raises(
         UnsupportedScannerFeatureError,
-        match="MSI retrieval is unavailable on UDP and fallback control transports",
+        match="MSI retrieval is unavailable on unverified UDP-like and fallback control transports",
     ):
         radio.get_msi(timeout=1.0)
 
@@ -134,7 +134,7 @@ def test_msi_retrieval_fails_closed_through_recording_udp_wrapper(tmp_path) -> N
 
     with pytest.raises(
         UnsupportedScannerFeatureError,
-        match="MSI retrieval is unavailable on UDP and fallback control transports",
+        match="MSI retrieval is unavailable on unverified UDP-like and fallback control transports",
     ):
         radio.get_msi(timeout=1.0)
 
@@ -154,7 +154,7 @@ def test_msi_retrieval_fails_closed_before_fallback_write() -> None:
 
     with pytest.raises(
         UnsupportedScannerFeatureError,
-        match="MSI retrieval is unavailable on UDP and fallback control transports",
+        match="MSI retrieval is unavailable on unverified UDP-like and fallback control transports",
     ):
         radio.get_msi(timeout=1.0)
 

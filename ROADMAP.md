@@ -11,30 +11,35 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 24.8 — MSI documented menu projection foundation
+### Milestone 24.8 — MSI direct-UDP retrieval foundation
 
-The first three Milestone 24.8 slices established lossless bounded MSI XML
-modeling/parsing, exact serialized `MSI\r` retrieval for the existing
-CR-line/replay path, and the six indexed `MNU` forms whose menu/index roles are
-shared by the official SDS100/SDS200 Remote Command Specification V1.02
-(2023-12-22) and SDS Series Remote Command Specification V2.00 (2025-07-07).
+The first four Milestone 24.8 slices established lossless bounded MSI XML
+modeling/parsing, exact serialized `MSI\r` retrieval for CR-line/replay
+transports, the six evidence-backed indexed `MNU` forms, and a read-only typed
+projection for the documented MSI menu fields while preserving all lossless
+source evidence.
 
-This fourth narrow slice adds a read-only documented projection over the
-existing lossless `MsiResponse`. Both specifications define the same MSI root
-attributes (`Name`, `Index`, `MenuType`, `Value`, `Selected`) and the same
-`MenuItem`, `MenuInput`, `MenuLocation`, and `MenuErrorMsg` attribute names.
-Typed projection records expose those named fields while retaining their exact
-string values and complete attribute mappings. Missing, unknown, repeated, and
-future values continue to be preserved rather than rejected or coerced.
+This fifth narrow slice promotes exact one-shot `MSI\r` retrieval into the
+existing SDS200 UDP bounded-XML machinery. The shared production XML command
+map now includes `MSI -> MSI`; an exact bare `MSI` request establishes a
+one-shot MSI expectation; matching bare or explicitly prefixed MSI XML can be
+assembled; numbered `Footer`/`Foot` fragments use the existing bounded
+reassembly path; retryable sequence failures resend the exact original `MSI`
+wire; and successful completion clears one-shot MSI retry/expectation state.
 
-The original root attributes, all descendant `MsiRecord` values, source order,
-unknown elements/attributes, and raw XML remain authoritative and unchanged.
-This slice sends no new scanner command and adds no `MSV`/`MSB` execution,
-unindexed `MNU`, menu lifecycle/state ownership, renderer behavior, UDP/XML-map
-support, model/firmware applicability, or physical scanner claim. In particular,
-the serialized value of the documented `[RSV]` field in `MSV`/`MSB` remains
-unresolved and is not inferred from unrelated empty-parameter conventions.
-Quick Search (`QSH`) likewise remains blocked pending exact `FRQ` evidence.
+Direct `UdpTransport` and its capture wrapper are covered only with deterministic
+fake datagrams. This is software transport/framing evidence, not a physical
+scanner or firmware-support claim. Fallback transports remain blocked because
+their active candidate can change and no fallback-wide MSI transport contract
+has been established. Custom transports that merely advertise an `udp://`
+endpoint remain fail-closed unless they are the repository's direct
+`UdpTransport` path.
+
+This slice does not add `MSV`/`MSB` execution, unindexed `MNU`, menu
+lifecycle/state ownership, renderer behavior, model/firmware applicability, or
+physical validation. The serialized `[RSV]` field in `MSV`/`MSB` remains
+unresolved, and Quick Search (`QSH`) remains blocked pending exact `FRQ`
+evidence.
 
 ## Deferred hardware validation
 
@@ -420,14 +425,15 @@ Tentative evidence-led slicing is:
 Milestone 24.8 began with a receive-only `MSI` bounded-XML model/parser
 foundation preserving the exact reviewed `<MSI ...>` root, root attributes,
 ordered/repeated descendants, unknown attributes and elements, and raw XML. The
-second narrow slice adds exact `MSI` retrieval through typed command/radio APIs
-and radio-local bounded-XML assembly for CR-line serial and deterministic replay
-coverage. The shared production XML command map remains unchanged, and the
-serialized MSI request/response path rejects direct/capture-wrapped UDP and
-fallback transports before transmission. UDP expectation/retry/bare-XML and
-fallback MSI behavior therefore remain deferred. No menu-field semantics,
-`MNU`/`MSV`/`MSB` controls, menu lifecycle, or model/firmware/physical-scanner
-applicability is inferred.
+second slice added exact `MSI` retrieval through typed command/radio APIs for
+CR-line serial and deterministic replay. The third added only the six indexed
+`MNU` rows whose index roles are explicit in both reviewed SDS specifications,
+and the fourth added a read-only documented MSI menu projection without
+discarding lossless source evidence. The fifth slice promotes exact one-shot
+`MSI` retrieval to the shared SDS200 UDP bounded-XML expectation, fragment
+reassembly, and retry machinery with deterministic fake datagrams. Fallback
+MSI remains blocked, and no `MSV`/`MSB`, unindexed `MNU`, menu lifecycle,
+model/firmware applicability, or physical-scanner behavior is inferred.
 
 Milestone 24.1 selected `GLT` as the safest leading implementation candidate
 because it is bounded retrieval that complements the Favorites foundation and
