@@ -493,6 +493,18 @@ authentication and TLS design. The localhost `/healthz` probe checks only the
 web process. Do not use host networking or Home Assistant Ingress mode for this
 generic Compose service; Ingress remains a separate guarded security mode.
 
+On native Linux Docker Engine, an opt-in standalone Compose file supports
+one-shot USB serial scanner commands without privileged mode or networking:
+
+```bash
+export SDSCTL_USB_DEVICE=/dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00
+export SDSCTL_USB_GID="$(stat -Lc '%g' "$SDSCTL_USB_DEVICE")"
+docker compose -f compose.usb.yaml run --rm usb-scanner info
+```
+
+See the [generic container deployment guide](docs/container-deployment.md#native-linux-usb-scanner-cli)
+for device preflight, security boundaries, and additional one-shot commands.
+
 Serial-only profiles, replay captures, and non-SDS200 network-audio selections
 are rejected.
 

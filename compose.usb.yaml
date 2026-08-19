@@ -1,0 +1,15 @@
+services:
+  usb-scanner:
+    build:
+      context: .
+    entrypoint:
+      - sdsctl
+      - --port
+      - /dev/sdsctl-scanner
+    network_mode: none
+    healthcheck:
+      disable: true
+    devices:
+      - "${SDSCTL_USB_DEVICE:?Set SDSCTL_USB_DEVICE to the stable Linux /dev/serial/by-id/... scanner path when available}:/dev/sdsctl-scanner"
+    group_add:
+      - "${SDSCTL_USB_GID:?Set SDSCTL_USB_GID to the host scanner character-device group GID}"

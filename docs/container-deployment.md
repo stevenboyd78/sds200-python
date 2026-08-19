@@ -7,7 +7,8 @@ Docker Hub as `theboyd78/sdsctl`. Milestone 25.5 added an opt-in, one-shot
 daemon-client sidecar over the daemon's existing private Unix-domain services.
 Milestone 25.6 added the isolated web-dashboard container foundation. Milestone
 25.7 adds host-local browser reachability through Docker bridge networking and
-explicit host-loopback port publication.
+explicit host-loopback port publication. Milestone 25.8 adds a separate,
+one-shot USB scanner CLI workflow for native Linux Docker Engine.
 
 Native systemd deployment remains the preferred production option when direct
 host-device, local-audio, or other operating-system integration is important.
@@ -192,6 +193,71 @@ publication to `127.0.0.1` on the Docker host. Do not copy
 authentication and TLS design. Standalone arbitrary remote/LAN exposure remains
 unsupported and deferred.
 
+## Native Linux USB scanner CLI
+
+The standalone `compose.usb.yaml` is the supported Milestone 25.8
+Linux USB serial passthrough workflow. Select it explicitly and use it on its
+own; do not layer it on `compose.yaml`. The root file remains the network-SDS200
+daemon, daemon-client, web-dashboard, socket, and network-audio deployment. The
+USB service does not start or replace the daemon, exposes no Unix socket, and
+provides no SDS200 network audio path.
+
+This workflow requires native Linux Docker Engine with access to the host
+character device. A VM-backed Docker Desktop Linux context observed during
+validation could not see the host's `/dev/ttyACM0` even though the host shell
+could, so direct host USB passthrough through that context is not a supported
+25.8 path. Rootless Podman has different supplemental-group preservation
+semantics and is not part of this Docker Compose contract.
+
+Prefer the scanner's stable `/dev/serial/by-id/...` symlink as the Docker device
+source. Native Docker Engine accepts that symlink directly; retain it rather
+than replacing it with its `/dev/ttyACM*` target. A `/dev/ttyACM*` path is an
+explicit fallback, but it can change after reconnect or device re-enumeration.
+Set the supplemental GID from the resolved character device while retaining the
+stable path as the mapping source:
+
+```bash
+export SDSCTL_USB_DEVICE=/dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00
+export SDSCTL_USB_GID="$(stat -Lc '%g' "$SDSCTL_USB_DEVICE")"
+
+test -c "$(readlink -f "$SDSCTL_USB_DEVICE")"
+test -r "$SDSCTL_USB_DEVICE"
+test -w "$SDSCTL_USB_DEVICE"
+```
+
+The `stat -L` behavior is important because permissions and ownership belong to
+the resolved character device, not the symlink. The tests above verify that the
+source resolves to a character device and that the current host operator can
+read and write it. If host policy assigns the device to a group other than
+`dialout`, use the device's actual numeric GID; do not assume GID 20.
+
+Validate interpolation without creating a container, then run an explicit
+one-shot command:
+
+```bash
+docker compose -f compose.usb.yaml config
+docker compose -f compose.usb.yaml run --rm usb-scanner info
+docker compose -f compose.usb.yaml run --rm usb-scanner scanner-info
+docker compose -f compose.usb.yaml run --rm usb-scanner health
+docker compose -f compose.usb.yaml run --rm usb-scanner monitor
+```
+
+Both `SDSCTL_USB_DEVICE` and `SDSCTL_USB_GID` are required Compose interpolation
+variables. If either is unset or empty, `docker compose ... config` and `run`
+fail during model interpolation before container creation. Normal arguments
+after `usb-scanner` become top-level scanner CLI actions behind the fixed
+`sdsctl --port /dev/sdsctl-scanner` entrypoint.
+
+The service maps exactly the selected source to `/dev/sdsctl-scanner`, uses
+`network_mode: none`, disables the image's daemon healthcheck, and adds only the
+operator-supplied numeric device GID to the image's unprivileged UID/GID
+`10001:10001`. It has no restart policy, ports, capabilities, privileged mode,
+durable XDG or runtime volumes, daemon dependency, scanner network host, or
+broad device-directory mount. Do not map all of `/dev`, run privileged, change
+the host node to `0666`, or bake a hard-coded `dialout` GID into the image.
+The existing udev `uaccess` plus `dialout`/`0660` fallback remains host policy;
+the container receives only the selected device and its numeric group.
+
 ## Persistent paths
 
 The existing XDG path resolver produces these container paths:
@@ -296,7 +362,7 @@ docker compose down
 
 to stop and remove the service while preserving the named persistent volumes.
 
-## Milestone 25.7 boundary
+## Milestone 25.8 boundary
 
 The supported sidecar workflows remain negotiated daemon API status and snapshot,
 safe semantic scanner controls, and bounded consumption of the daemon's ordered
@@ -307,17 +373,19 @@ web listener still rejects wildcard, LAN, public, and non-local hostname
 listeners. Only the explicit generic-container mode owns the internal wildcard,
 and it neither uses nor repurposes Home Assistant Ingress.
 
-This container work still does **not** establish:
+The standalone USB service establishes only direct, model-neutral serial-safe
+CLI commands on native Linux Docker Engine. It is not a USB daemon and does not
+weaken the network-only generic daemon boundary. This container work still does
+**not** establish:
 
 - a daemon-backed TUI sidecar;
 - arbitrary remote/LAN standalone web exposure;
 - generic LAN/public web publication or authentication/TLS termination;
-- Linux USB serial passthrough or device-group permissions;
 - broadly privileged container operation;
 - Windows or macOS Docker behavior; or
 - physical scanner validation of the generic Compose deployment.
 
-Milestone 25.8 remains Linux USB serial passthrough; the other items remain
-separate Milestone 25 work. In particular, the existing standalone
+The remaining items stay deferred to separate Milestone 25 work. In particular,
+the existing standalone
 web security boundary continues to reject wildcard, LAN, public, and non-local
 hostname listeners outside the explicit Home Assistant Ingress mode.

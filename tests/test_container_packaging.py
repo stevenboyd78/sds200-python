@@ -6,6 +6,7 @@ _REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 _DOCKERFILE = _REPOSITORY_ROOT / "Dockerfile"
 _DOCKERIGNORE = _REPOSITORY_ROOT / ".dockerignore"
 _COMPOSE = _REPOSITORY_ROOT / "compose.yaml"
+_USB_COMPOSE = _REPOSITORY_ROOT / "compose.usb.yaml"
 _ENV_EXAMPLE = _REPOSITORY_ROOT / ".env.example"
 _GITIGNORE = _REPOSITORY_ROOT / ".gitignore"
 _README = _REPOSITORY_ROOT / "README.md"
@@ -209,6 +210,50 @@ def test_generic_compose_profiles_leave_default_daemon_only() -> None:
     assert "    profiles:\n      - web\n" in web
 
 
+def test_usb_compose_defines_standalone_one_shot_serial_cli() -> None:
+    compose = _USB_COMPOSE.read_text(encoding="utf-8")
+
+    for required in (
+        "services:\n  usb-scanner:\n    build:\n      context: .\n",
+        "    entrypoint:\n      - sdsctl\n      - --port\n      - /dev/sdsctl-scanner\n",
+        "    network_mode: none\n",
+        "    healthcheck:\n      disable: true\n",
+        '      - "${SDSCTL_USB_DEVICE:?Set SDSCTL_USB_DEVICE to the stable '
+        'Linux /dev/serial/by-id/... scanner path when available}'
+        ':/dev/sdsctl-scanner"\n',
+        '      - "${SDSCTL_USB_GID:?Set SDSCTL_USB_GID to the host scanner '
+        'character-device group GID}"\n',
+    ):
+        assert required in compose
+
+    assert compose.count("    devices:\n") == 1
+    assert compose.count(":/dev/sdsctl-scanner") == 1
+    assert compose.count("    group_add:\n") == 1
+    for forbidden in (
+        "image:",
+        "privileged:",
+        "cap_add:",
+        "ports:",
+        "expose:",
+        "restart:",
+        "volumes:",
+        "depends_on:",
+        "--host",
+        "SDS200_HOST",
+        "/dev:/dev",
+        "network_mode: host",
+    ):
+        assert forbidden not in compose
+
+
+def test_root_compose_does_not_gain_usb_interpolation_contract() -> None:
+    compose = _COMPOSE.read_text(encoding="utf-8")
+
+    assert "SDSCTL_USB_DEVICE" not in compose
+    assert "SDSCTL_USB_GID" not in compose
+    assert "usb-scanner" not in compose
+
+
 def test_generic_compose_example_configuration_is_non_secret_and_ignored_locally() -> None:
     env_example = _ENV_EXAMPLE.read_text(encoding="utf-8")
     gitignore = _GITIGNORE.read_text(encoding="utf-8")
@@ -257,6 +302,18 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
         "bridge networking",
         "Linux USB serial passthrough",
         "Windows or macOS Docker behavior",
+        "`compose.usb.yaml`",
+        "native Linux Docker Engine",
+        "SDSCTL_USB_DEVICE",
+        "SDSCTL_USB_GID",
+        "stat -Lc '%g'",
+        "network_mode: none",
+        "docker compose -f compose.usb.yaml config",
+        "docker compose -f compose.usb.yaml run --rm usb-scanner info",
+        "docker compose -f compose.usb.yaml run --rm usb-scanner scanner-info",
+        "docker compose -f compose.usb.yaml run --rm usb-scanner health",
+        "does not start or replace the daemon",
+        "no SDS200 network audio path",
     ):
         assert required in document
 
@@ -265,9 +322,9 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
         in readme
     )
     assert "docker compose run --rm daemon-client status --json" in readme
-    assert "### Milestone 25.7 — bridge networking and explicit web port exposure" in roadmap
-    assert "Milestone 25.6 is closed" in roadmap
-    assert "Milestone 25.8" in roadmap
+    assert "docker compose -f compose.usb.yaml run --rm usb-scanner info" in readme
+    assert "### Milestone 25.8 — Linux USB serial passthrough" in roadmap
+    assert "Milestone 25.7 is closed" in roadmap
 
 
 def test_generic_docker_hub_workflow_has_safe_trigger_and_publication_contract() -> None:

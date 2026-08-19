@@ -11,21 +11,20 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 25.7 — bridge networking and explicit web port exposure
+### Milestone 25.8 — Linux USB serial passthrough
 
-Milestone 25.6 is closed after adding the supported isolated web-dashboard
-container foundation over the daemon's private runtime socket volume, alongside
-the existing network-disabled `daemon-client` sidecar.
+Milestone 25.7 is closed after adding host-local browser reachability through
+ordinary Docker bridge networking and explicit host-loopback port publication.
 
-Milestone 25.7 adds host-local browser reachability through ordinary Docker
-bridge networking and explicit host-loopback port publication. The opt-in
-`web-dashboard` uses the dedicated `--container-exposure` mode to bind exactly
-`0.0.0.0:8000` inside its container, while Compose publishes exactly
-`127.0.0.1:${SDSCTL_WEB_PORT:-8000}:8000`. This internal wildcard is safe only
-with publication constrained to Docker-host loopback. Standalone `sdsctl web`
-remains loopback-only by default and through `--listen-address`; Home Assistant
-Ingress remains a separate guarded mode. Arbitrary remote or LAN exposure is
-unsupported and deferred.
+Milestone 25.8 adds a narrow, opt-in native Linux Docker Engine workflow for
+one-shot scanner CLI commands over exactly one operator-selected USB serial
+device. A standalone `compose.usb.yaml` maps a preferred stable
+`/dev/serial/by-id/...` source to a fixed private container path and grants the
+unprivileged UID/GID `10001` process only the resolved character device's
+operator-supplied supplemental numeric group. The service has no network,
+daemon, audio, durable-volume, privileged-container, broad `/dev`, or globally
+writable-device behavior. The repository-root `compose.yaml` remains the
+network-SDS200 daemon deployment and is unchanged by this USB workflow.
 
 The Python distribution and import package remain `sds200`, the CLI remains
 `sdsctl`, and the local development image tag remains `sds200-daemon`. Home
@@ -34,9 +33,11 @@ Assistant App/GHCR publication remains separate and keeps the
 `theboyd78/sdsctl`. Repository-root Compose remains source-built with `build: .`
 and does not select a published image.
 
-Milestone 25.8 remains responsible for Linux USB serial passthrough. Keep
-Windows and macOS Docker behavior and physical generic-container validation in
-later container slices.
+Direct passthrough is supported only with native Linux Docker Engine in this
+slice. Keep Windows and macOS Docker behavior, Podman-specific group semantics,
+and broader physical generic-container validation in later container slices.
+Native systemd remains preferred when direct host-device integration is
+important.
 
 ## Deferred hardware validation
 
