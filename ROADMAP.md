@@ -11,35 +11,34 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 25.1 — Generic network-container packaging foundation
+### Milestone 25.2 — Docker Compose deployment foundation
 
-Milestone 24.10 is closed after one evidence-led RF Power Plot slice: exact
-parameter validation and acknowledged `AST,RF_POWER_PLOT` start, with SDS100
-rejected at the operation boundary and SDS150 retained as specification-only.
-RF-power output/data framing remains unsupported because the reviewed evidence
-does not establish it.
+Milestone 25.1 is closed after adding the generic Linux network-daemon image:
+local multi-stage packaging with MQTT support, deterministic unprivileged
+UID/GID `10001`, explicit XDG roots, persistent volume declarations, direct
+SIGTERM handling, private Unix-domain daemon health, Linux host networking, and
+host-independent packaging coverage.
 
-The first Milestone 25 slice adds a generic container packaging foundation around
-the existing foreground SDS200 network daemon. A root multi-stage `Dockerfile`
-builds the local package with MQTT support, runs `sdsctl` as deterministic
-unprivileged UID/GID `10001`, uses explicit XDG configuration/state/cache/runtime
-roots, declares persistent configuration/state/cache volumes, forwards SIGTERM
-to the existing daemon signal controller, and checks daemon readiness through
-the private Unix-domain API with `sdsctl daemon-client status --json`.
+Milestone 25.2 adds a supported repository-root `compose.yaml` around that image.
+The first Compose slice builds local source with `build: .`, requires scanner
+host configuration through Compose interpolation into the existing `--host`
+option, retains Linux host networking and `unless-stopped` restart behavior, and
+persists configuration, state, and cache through named volumes while preserving
+the image's UID/GID, healthcheck, SIGTERM, and private Unix-domain API contracts.
 
-The initial documented execution model is Linux host networking so the existing
-SDS200 UDP control and RTSP/RTP paths retain host-reachable network semantics.
-The image exposes no TCP service and does not weaken the standalone web
-dashboard's loopback-only policy. Static host-independent packaging tests pin the
-image, build-context, lifecycle, path, security, documentation, and roadmap
-contract.
+The Compose service does not publish ports, add a web process, weaken the
+standalone dashboard's loopback-only listener policy, add privileged or USB
+device access, or invent bridge-network RTP behavior. Static integration tests
+pin the Compose build, networking, lifecycle, persistence, scanner-host,
+documentation, and security contracts; runtime acceptance separately validates
+Compose rendering plus named-volume ownership and writability.
 
-This slice does not add Docker Compose, multi-container daemon-client or web
-workflows, standalone remote web exposure, USB device passthrough, bridge-network
-or explicit port-mapping recipes, image publication automation, Windows/macOS
-container validation, or physical scanner validation. Those remain separate
-Milestone 25 slices where their platform and transport behavior can be validated
-independently.
+This slice does not add generic image publication, Docker Hub version tagging,
+registry automation, multi-container daemon-client or web workflows, bridge
+networking, Linux USB serial passthrough, Windows/macOS container validation, or
+physical scanner validation. Registry publication remains a likely subsequent
+Milestone 25 slice so Compose deployment is not coupled prematurely to an image
+distribution contract.
 
 ## Deferred hardware validation
 
