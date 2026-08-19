@@ -13,7 +13,7 @@ For normal installation:
 
 1. open **Settings > Apps > App store**;
 2. open the top-right three-dot menu and choose **Repositories**;
-3. add `https://github.com/stevenboyd78/sds200-python`;
+3. add `https://github.com/stevenboyd78/sdsctl`;
 4. select the **sds200** App from the repository;
 5. install it, then configure the scanner host.
 

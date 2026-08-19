@@ -44,7 +44,7 @@ test -r /dev/ttyACM0 && test -w /dev/ttyACM0 \
 ```
 
 Use the project's optional
-[udev rule](https://github.com/stevenboyd78/sds200-python/blob/main/docs/udev.md)
+[udev rule](https://github.com/stevenboyd78/sdsctl/blob/main/docs/udev.md)
 when the device exists but the active user lacks access. Do not solve the
 problem by making the serial device globally writable.
 
@@ -103,7 +103,7 @@ sdsctl --log-level INFO --host SCANNER_IP tui
 ```
 
 Read the canonical
-[operational logging guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/logging.md)
+[operational logging guide](https://github.com/stevenboyd78/sdsctl/blob/main/docs/logging.md)
 for expected recovery entries and configuration options.
 
 SDS200 control recovery is independent from an active RTSP/RTP audio session,
@@ -128,7 +128,7 @@ sdsctl --host SCANNER_IP audio \
 ```
 
 Review the canonical
-[network audio guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/audio.md)
+[network audio guide](https://github.com/stevenboyd78/sdsctl/blob/main/docs/audio.md)
 for transport behavior, reliability counters, Broadcastify, and Asterisk
 configuration.
 
@@ -189,7 +189,7 @@ required executable or profile under a home directory the service account
 cannot traverse.
 
 The canonical configuration is in the
-[network audio guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/audio.md).
+[network audio guide](https://github.com/stevenboyd78/sdsctl/blob/main/docs/audio.md).
 
 ## Daemon or web dashboard will not start
 
@@ -219,16 +219,16 @@ Assistant App uses a separate explicit Ingress mode and does not publish the
 dashboard port directly to the LAN.
 
 See the canonical
-[web dashboard guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/web-dashboard.md)
+[web dashboard guide](https://github.com/stevenboyd78/sdsctl/blob/main/docs/web-dashboard.md)
 and
-[daemon deployment guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/daemon-deployment.md)
+[daemon deployment guide](https://github.com/stevenboyd78/sdsctl/blob/main/docs/daemon-deployment.md)
 for exact socket paths, permissions, and service behavior.
 
 ## Home Assistant App problems
 
 ### Repository is not visible
 
-After adding `https://github.com/stevenboyd78/sds200-python` under
+After adding `https://github.com/stevenboyd78/sdsctl` under
 **Settings > Apps > App store > Repositories**, refresh the browser. If the
 repository still does not appear, inspect the Supervisor log under
 **Settings > System > Logs** for repository or App configuration errors.
@@ -337,6 +337,6 @@ Include:
 - whether another supported transport behaves differently.
 
 See the repository
-[support policy](https://github.com/stevenboyd78/sds200-python/blob/main/SUPPORT.md)
+[support policy](https://github.com/stevenboyd78/sdsctl/blob/main/SUPPORT.md)
 and
-[GitHub Issues](https://github.com/stevenboyd78/sds200-python/issues).
+[GitHub Issues](https://github.com/stevenboyd78/sdsctl/issues).

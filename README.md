@@ -1,10 +1,10 @@
-# sds200-python
+# sdsctl
 
 <p align="center">
-  <img src="docs/assets/sds200-python-logo.svg" alt="sds200-python logo" width="720">
+  <img src="docs/assets/sdsctl-logo.svg" alt="sdsctl logo" width="720">
 </p>
 
-[![CI](https://github.com/stevenboyd78/sds200-python/actions/workflows/ci.yml/badge.svg)](https://github.com/stevenboyd78/sds200-python/actions/workflows/ci.yml)
+[![CI](https://github.com/stevenboyd78/sdsctl/actions/workflows/ci.yml/badge.svg)](https://github.com/stevenboyd78/sdsctl/actions/workflows/ci.yml)
 ![Python 3.11–3.14](https://img.shields.io/badge/python-3.11--3.14-blue)
 ![Development status: alpha](https://img.shields.io/badge/status-alpha-orange)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
@@ -192,8 +192,8 @@ python -m pip install "sds200[tui,playback]"
 Install from source for development:
 
 ```bash
-git clone https://github.com/stevenboyd78/sds200-python.git
-cd sds200-python
+git clone https://github.com/stevenboyd78/sdsctl.git
+cd sdsctl
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -538,7 +538,7 @@ through authenticated Ingress, and recordings are stored in configurable Home
 Assistant media storage, defaulting to `/media/sdsctl/recordings`.
 
 For normal Home Assistant OS installation, add
-`https://github.com/stevenboyd78/sds200-python` as a third-party App repository
+`https://github.com/stevenboyd78/sdsctl` as a third-party App repository
 from **Settings > Apps > App store > Repositories**, then install **sds200** from
 that repository. Published releases use the versioned multi-architecture GHCR
 image referenced by the committed App manifest. The `/addons` Local App workflow
@@ -878,10 +878,11 @@ for scanner in discover_network_scanners(["192.168.0.0/24"]):
 
 ## Project naming
 
-The model-neutral executable is `sdsctl`. New application configuration,
-state, and cache paths use the `sdsctl` namespace. The distribution, Python import
-package, and repository remain named `sds200`, while legacy profile files remain
-under the existing `sds200` configuration root. Python applications should use
+The user-facing product, repository, and executable are named `sdsctl`. New
+application configuration, state, and cache paths use the `sdsctl` namespace.
+The Python distribution and import package remain named `sds200`, while legacy
+configuration remains compatible under the existing `sds200` configuration
+root. Python applications should use
 `SDSScanner`; the historical `SDS200` class name remains an alias.
 
 ## Security
@@ -898,7 +899,7 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting and
 
 ## Documentation
 
-- [GitHub Wiki](https://github.com/stevenboyd78/sds200-python/wiki)
+- [GitHub Wiki](https://github.com/stevenboyd78/sdsctl/wiki)
   — task-oriented installation, setup, and troubleshooting guides
 - [Project roadmap](ROADMAP.md)
 - [Supported scanner models](docs/supported-models.md)

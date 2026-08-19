@@ -77,10 +77,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/stevenboyd78/sds200-python"
-Repository = "https://github.com/stevenboyd78/sds200-python"
-Issues = "https://github.com/stevenboyd78/sds200-python/issues"
-Changelog = "https://github.com/stevenboyd78/sds200-python/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/stevenboyd78/sdsctl"
+Repository = "https://github.com/stevenboyd78/sdsctl"
+Issues = "https://github.com/stevenboyd78/sdsctl/issues"
+Changelog = "https://github.com/stevenboyd78/sdsctl/blob/main/CHANGELOG.md"
 
 [project.scripts]
 sdsctl = "sds200.cli:main"

@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for helping improve `sds200-python`.
+Thank you for helping improve `sdsctl`.
 
 The project is hardware-facing alpha software, so contributions should preserve
 a clear separation between transport behavior, protocol parsing, scanner state,
@@ -22,8 +22,8 @@ issue.
 ## Development setup
 
 ```bash
-git clone https://github.com/stevenboyd78/sds200-python.git
-cd sds200-python
+git clone https://github.com/stevenboyd78/sdsctl.git
+cd sdsctl
 
 python3 -m venv .venv
 source .venv/bin/activate

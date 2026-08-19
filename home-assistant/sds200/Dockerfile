@@ -23,11 +23,11 @@ LABEL \
     io.hass.arch="${BUILD_ARCH}" \
     io.hass.name="sds200" \
     io.hass.description="Uniden SDS200 scanner daemon and web dashboard for Home Assistant" \
-    io.hass.url="https://github.com/stevenboyd78/sds200-python" \
+    io.hass.url="https://github.com/stevenboyd78/sdsctl" \
     org.opencontainers.image.title="sds200 Home Assistant App" \
     org.opencontainers.image.description="Uniden SDS200 scanner daemon and web dashboard for Home Assistant" \
     org.opencontainers.image.licenses="MIT" \
-    org.opencontainers.image.source="https://github.com/stevenboyd78/sds200-python"
+    org.opencontainers.image.source="https://github.com/stevenboyd78/sdsctl"
 
 ENV \
     PYTHONDONTWRITEBYTECODE=1 \

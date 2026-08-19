@@ -1,25 +1,29 @@
 # Project visual assets
 
-This directory contains the project branding and reproducible Textual TUI
+This directory contains the sdsctl project branding and reproducible Textual TUI
 screenshots.
 
 ## Branding
 
-The branding set uses a generic neon green scanner display with no agency,
-location, talkgroup, frequency, or channel references.
+The sdsctl project branding set uses a generic neon green scanner display with
+no agency, location, talkgroup, frequency, or channel references.
 
-- `sds200-python-logo.svg` — primary horizontal vector logo
-- <img src="sds200-python-logo.svg">
-- `sds200-python-icon.svg` — square vector icon
-- <img src="sds200-python-icon.svg">
-- `sds200-python-logo-4k.png` — 4800×1200 transparent PNG
-- <img src="sds200-python-logo-4k.png">
-- `sds200-python-icon-2048.png` — 2048×2048 transparent PNG
-- <img src="sds200-python-icon-2048.png">
-- `sds200-python-wallpaper-1080p.png` — 1920×1080 wallpaper
-- <img src="sds200-python-wallpaper-1080p.png">
-- `sds200-python-wallpaper-4k.png` — 3840×2160 wallpaper
-- <img src="sds200-python-wallpaper-4k.png">
+- `sdsctl-logo.svg` — primary horizontal vector logo
+- <img src="sdsctl-logo.svg">
+- `sdsctl-icon.svg` — square vector icon
+- <img src="sdsctl-icon.svg">
+- `sdsctl-logo-4k.png` — 4800×1200 transparent PNG
+- <img src="sdsctl-logo-4k.png">
+- `sdsctl-icon-2048.png` — 2048×2048 transparent PNG
+- <img src="sdsctl-icon-2048.png">
+- `sdsctl-wallpaper-1080p.png` — 1920×1080 wallpaper
+- <img src="sdsctl-wallpaper-1080p.png">
+- `sdsctl-wallpaper-4k.png` — 3840×2160 wallpaper
+- <img src="sdsctl-wallpaper-4k.png">
+
+The SVG files are the vector sources. Render the transparent PNG logo and icon
+from those SVGs with Inkscape. Compose the wallpapers with ImageMagick by placing
+the horizontal logo over a dark radial-green background.
 
 ## Textual TUI screenshots
 

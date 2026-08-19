@@ -243,7 +243,7 @@ For a normal published installation:
 1. open **Settings > Apps** in Home Assistant;
 2. open **App store**;
 3. open the top-right three-dot menu and choose **Repositories**;
-4. add `https://github.com/stevenboyd78/sds200-python`;
+4. add `https://github.com/stevenboyd78/sdsctl`;
 5. open the new repository and select **sds200**;
 6. install the App;
 7. configure `scanner_host` and, if needed, `mqtt_topic_prefix` or

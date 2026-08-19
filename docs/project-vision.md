@@ -1,7 +1,7 @@
 # Project Vision
 
-This document preserves the broader direction of the `sds200-python` project and
-the `sdsctl` user-facing tool. It records architectural decisions, safety and
+This document preserves the broader direction of the `sdsctl` project and
+user-facing tool. It records architectural decisions, safety and
 security constraints, deferred capabilities, and product ideas that are not yet
 ready for a scheduled milestone.
 
@@ -40,9 +40,11 @@ namespace:
 - user cache: `~/.cache/sdsctl/`;
 - service naming: forms such as `sdsctl.service`.
 
-The existing distribution and Python import package remain named `sds200`, and
-the repository remains named `sds200-python`, until a separate compatibility and
-migration plan justifies changing them.
+The product, repository, and executable are named `sdsctl`; the canonical
+repository is `https://github.com/stevenboyd78/sdsctl`. The existing Python
+distribution and import package remain named `sds200`, and the source package
+remains `src/sds200`. Home Assistant and other compatibility identifiers retain
+their existing `sds200` names where Milestone 25.3 explicitly requires them.
 
 Legacy `sds200` configuration must not be silently abandoned. Milestone 19.1
 adds read-only detection of known legacy profile locations while preserving their

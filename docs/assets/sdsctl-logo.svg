@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-labelledby="title desc">
-  <title id="title">sds200-python neon logo</title>
-  <desc id="desc">A futuristic fluorescent green desktop scanner with generic monitoring status and the sds200-python wordmark.</desc>
+  <title id="title">sdsctl neon logo</title>
+  <desc id="desc">A futuristic fluorescent green desktop scanner with generic monitoring status and the sdsctl wordmark.</desc>
   <defs>
     <linearGradient id="body" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#182018"/>
@@ -93,7 +93,7 @@
 
   <g id="wordmark" transform="translate(486 0)">
     <line x1="0" y1="160" x2="686" y2="160" stroke="#7CFF00" stroke-width="2" filter="url(#softGlow)"/>
-    <text x="0" y="145" fill="url(#word)" filter="url(#softGlow)" font-family="Arial, Helvetica, sans-serif" font-size="76" font-weight="900" letter-spacing="1">SDS200-PYTHON</text>
+    <text x="0" y="145" fill="url(#word)" filter="url(#softGlow)" font-family="Arial, Helvetica, sans-serif" font-size="104" font-weight="900" letter-spacing="10">SDSCTL</text>
     <text x="12" y="201" fill="#B7FF3C" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="600" letter-spacing="8">CONTROL. MONITOR. AUTOMATE.</text>
     <text x="15" y="239" fill="#7CFF00" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="500" letter-spacing="6">PUBLIC SAFETY SCANNER • POWERED BY PYTHON</text>
     <circle cx="685" cy="160" r="5" fill="#B7FF3C" filter="url(#glow)"/>

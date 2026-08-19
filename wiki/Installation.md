@@ -2,7 +2,7 @@
 
 > [!IMPORTANT]
 > This page is a task-oriented guide. The
-> [repository README](https://github.com/stevenboyd78/sds200-python/blob/main/README.md)
+> [repository README](https://github.com/stevenboyd78/sdsctl/blob/main/README.md)
 > is the canonical installation reference.
 
 ## Requirements
@@ -73,8 +73,8 @@ source .venv/bin/activate
 ## Install from source
 
 ```bash
-git clone https://github.com/stevenboyd78/sds200-python.git
-cd sds200-python
+git clone https://github.com/stevenboyd78/sdsctl.git
+cd sdsctl
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -100,7 +100,7 @@ systemd-logind `uaccess`, retains a `dialout` fallback, and prevents
 ModemManager from probing matching scanners.
 
 Follow the canonical
-[Linux udev guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/udev.md)
+[Linux udev guide](https://github.com/stevenboyd78/sdsctl/blob/main/docs/udev.md)
 rather than making scanner devices globally writable.
 
 Inspect stable device paths with:
@@ -145,7 +145,7 @@ App into `/addons`.
 
 1. Open **Settings > Apps > App store**.
 2. Open the top-right three-dot menu and choose **Repositories**.
-3. Add `https://github.com/stevenboyd78/sds200-python`.
+3. Add `https://github.com/stevenboyd78/sdsctl`.
 4. Open the repository's **sds200** App.
 5. Install it.
 6. Set `scanner_host` to the SDS200 LAN hostname or IP address.
@@ -155,7 +155,7 @@ App into `/addons`.
 
 The App requires the Home Assistant MQTT service and uses UDP `50000` for
 scanner RTP audio. See the canonical
-[Home Assistant App guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/home-assistant-app.md)
+[Home Assistant App guide](https://github.com/stevenboyd78/sdsctl/blob/main/docs/home-assistant-app.md)
 before changing network or MQTT settings.
 
 The Local App workflow under `/addons` remains available for development but is
@@ -193,7 +193,7 @@ media/configuration locations. Back up important configuration and recordings
 before any upgrade.
 
 See the canonical
-[Home Assistant App guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/home-assistant-app.md)
+[Home Assistant App guide](https://github.com/stevenboyd78/sdsctl/blob/main/docs/home-assistant-app.md)
 for the Lovelace registration, entity, storage, networking, control, and security
 contracts.
 
@@ -228,7 +228,7 @@ recording migration. Back up important configuration and recordings before any
 upgrade.
 
 See the canonical
-[Home Assistant App guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/home-assistant-app.md)
+[Home Assistant App guide](https://github.com/stevenboyd78/sdsctl/blob/main/docs/home-assistant-app.md)
 for exact storage, migration, networking, and security behavior.
 
 ## Run the SDS200 daemon
@@ -260,9 +260,9 @@ and does not open scanner hardware directly.
 - Launch the terminal monitor with `sdsctl monitor`.
 - Launch the optional TUI with `sdsctl tui`.
 - Read the canonical
-  [TUI guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/tui.md).
+  [TUI guide](https://github.com/stevenboyd78/sdsctl/blob/main/docs/tui.md).
 - Read the canonical
-  [network audio guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/audio.md).
+  [network audio guide](https://github.com/stevenboyd78/sdsctl/blob/main/docs/audio.md).
 - Read the canonical
-  [web dashboard guide](https://github.com/stevenboyd78/sds200-python/blob/main/docs/web-dashboard.md).
+  [web dashboard guide](https://github.com/stevenboyd78/sdsctl/blob/main/docs/web-dashboard.md).
 - Open [Troubleshooting](Troubleshooting.md) when discovery or startup fails.
