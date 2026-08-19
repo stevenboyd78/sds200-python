@@ -11,35 +11,36 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 25.5 — daemon-client sidecar container foundation
+### Milestone 25.6 — web-dashboard container/security boundary
 
-Milestone 25.4 is closed after adding fail-closed generic Docker Hub image
-publication as `theboyd78/sdsctl`: non-publishing multi-platform validation for
-pull requests, `main` pushes, and manual dispatches, with authentication and
-publication limited to genuine `v<package-version>` tag pushes.
+Milestone 25.5 is closed after adding an opt-in, one-shot `daemon-client`
+Compose sidecar built from the same repository-root image. A dedicated named
+runtime volume shares only `/run/sdsctl` with the daemon, preserving private
+Unix-domain API and ordered-event access without giving the sidecar network,
+durable XDG mounts, ports, devices, capabilities, a restart policy, daemon
+ownership, or an inherited daemon healthcheck.
 
-Milestone 25.5 adds an opt-in, one-shot `daemon-client` Compose sidecar built
-from the same repository-root image. A dedicated named runtime volume shares
-only `/run/sdsctl` with the existing daemon, preserving its private Unix-domain
-API and ordered event interfaces under the existing UID/GID `10001` and
-`0700`/`0600` permissions. The daemon remains the sole socket producer and sole
-scanner, RTSP/RTP, and control owner; the sidecar has no network, durable XDG
-mounts, ports, devices, capabilities, restart policy, or inherited healthcheck,
-and does not implicitly start or own the daemon.
+Milestone 25.6 adds the supported isolated web-dashboard container foundation.
+The single generic image includes both MQTT and web extras, while an opt-in,
+long-running `web-dashboard` Compose service shares only the private runtime
+socket volume with the daemon. It uses ordinary standalone web mode, retains
+the loopback-only `127.0.0.1` listener inside a network-disabled container,
+publishes and exposes no ports, and has a daemon-independent local `/healthz`
+process check. The daemon remains the sole socket producer and sole scanner,
+RTSP/RTP, control, and audio owner.
 
 The Python distribution and import package remain `sds200`, the CLI remains
 `sdsctl`, and the local development image tag remains `sds200-daemon`. Home
 Assistant App/GHCR publication remains separate and keeps the
-`sds200-home-assistant` identity. Repository-root Compose remains source-built
-with `build: .` and does not select a published image.
+`sds200-home-assistant` identity. The generic Docker Hub identity remains
+`theboyd78/sdsctl`. Repository-root Compose remains source-built with `build: .`
+and does not select a published image.
 
-This slice supports daemon-client status, snapshot, safe semantic scanner
-controls, and bounded ordered-event commands. It does not establish sidecar
-PCMU playback or WAV output, daemon-backed TUI, web-dashboard, or finalized
-recording workflows. Keep those runtime requirements, bridge-network callback
-design, a separate web container, USB passthrough, Windows and macOS Docker
-behavior, remote standalone web exposure, and physical generic-container
-validation in later container slices.
+This slice intentionally provides no browser URL from the host or other
+containers. Milestone 25.7 remains responsible for the separate security
+boundary covering bridge networking, explicit wildcard container binding, and
+explicit host port publication. Keep USB passthrough, Windows and macOS Docker
+behavior, and physical generic-container validation in later container slices.
 
 ## Deferred hardware validation
 

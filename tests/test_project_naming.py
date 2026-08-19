@@ -109,22 +109,24 @@ def test_generic_docker_hub_identity_is_isolated_from_python_and_home_assistant(
         ".github/workflows/home-assistant-app-image.yml"
     )
     assert 'name = "sds200"' in _read("pyproject.toml")
-    assert '"sds200[mqtt]"' in _read("Dockerfile")
+    assert '"sds200[mqtt,web]"' in _read("Dockerfile")
 
 
-def test_roadmap_names_milestone_25_5_as_active_daemon_client_sidecar() -> None:
+def test_roadmap_names_milestone_25_6_as_active_web_dashboard_boundary() -> None:
     roadmap = _read("ROADMAP.md")
     active_milestone = roadmap.split("## Active milestone", 1)[1].split(
         "## Deferred hardware validation", 1
     )[0]
 
     assert (
-        "### Milestone 25.5 — daemon-client sidecar container foundation"
+        "### Milestone 25.6 — web-dashboard container/security boundary"
         in active_milestone
     )
-    assert "Milestone 25.4 is closed" in active_milestone
+    assert "Milestone 25.5 is closed" in active_milestone
     assert "theboyd78/sdsctl" in active_milestone
     assert "daemon-client" in active_milestone
+    assert "web-dashboard" in active_milestone
+    assert "Milestone 25.7" in active_milestone
 
 
 def test_branding_asset_paths_use_sdsctl_identity() -> None:

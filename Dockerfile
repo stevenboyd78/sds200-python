@@ -10,7 +10,7 @@ COPY src ./src
 RUN python -m pip wheel \
     --disable-pip-version-check \
     --wheel-dir /wheels \
-    ".[mqtt]"
+    ".[mqtt,web]"
 
 FROM python:3.14-slim
 
@@ -36,7 +36,7 @@ RUN python -m pip install \
         --no-cache-dir \
         --no-index \
         --find-links=/wheels \
-        "sds200[mqtt]" \
+        "sds200[mqtt,web]" \
     && rm -rf /wheels \
     && groupadd --gid 10001 sdsctl \
     && useradd \
@@ -49,8 +49,6 @@ RUN python -m pip install \
     && mkdir -p /config /state /cache /run/sdsctl \
     && chown -R 10001:10001 \
         /config /state /cache /run/sdsctl /home/sdsctl
-
-VOLUME ["/config", "/state", "/cache"]
 
 STOPSIGNAL SIGTERM
 

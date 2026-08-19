@@ -3,8 +3,11 @@
 Milestones 25.1 and 25.2 established the generic network-connected SDS200 daemon
 image and its supported source-built Docker Compose deployment. Milestone 25.4
 established release-tag publication of that standalone multi-platform image to
-Docker Hub as `theboyd78/sdsctl`. Milestone 25.5 adds an opt-in, one-shot
+Docker Hub as `theboyd78/sdsctl`. Milestone 25.5 added an opt-in, one-shot
 daemon-client sidecar over the daemon's existing private Unix-domain services.
+Milestone 25.6 adds an opt-in, long-running but network-isolated web-dashboard
+container foundation. It does not make the dashboard reachable from a host
+browser; that boundary remains deferred to Milestone 25.7.
 
 Native systemd deployment remains the preferred production option when direct
 host-device, local-audio, or other operating-system integration is important.
@@ -47,13 +50,14 @@ exact version tags are recommended for reproducibility and controlled upgrades.
 
 The image:
 
-- builds the local source into wheels and installs `sds200[mqtt]`;
+- builds the local source into wheels and installs `sds200[mqtt,web]`;
 - runs `sdsctl` as unprivileged UID/GID `10001`;
 - sets `XDG_CONFIG_HOME=/config`, `XDG_STATE_HOME=/state`,
   `XDG_CACHE_HOME=/cache`, and `XDG_RUNTIME_DIR=/run`;
 - keeps daemon API, event, PCMU, and recording-file sockets private under
   `/run/sdsctl/`;
-- declares `/config`, `/state`, and `/cache` as persistent volume roots;
+- leaves persistent mounts operator-controlled instead of declaring image-level
+  `VOLUME` paths, avoiding anonymous durable mounts in client services;
 - uses `SIGTERM` as the container stop signal; and
 - checks daemon health with the existing private API through
   `sdsctl daemon-client status --json`.
@@ -63,13 +67,14 @@ image without an explicit scanner command therefore does not acquire scanner
 ownership.
 
 No TCP port is exposed by this image. The standalone web dashboard remains
-loopback-only and is not made remotely reachable by Milestone 25.2.
+loopback-only and is not made remotely reachable by Milestone 25.6.
 
 ## Docker Compose contract
 
-The repository-root `compose.yaml` defines `daemon` and opt-in `daemon-client`
-services. Both use `build: { context: . }` to build the repository-root image,
-so a checked-out source tree is sufficient to build and use them. This remains
+The repository-root `compose.yaml` defines `daemon` plus opt-in `daemon-client`
+and `web-dashboard` services. All use `build: { context: . }` to build the
+repository-root image, so a checked-out source tree is sufficient to build and
+use them. This remains
 distinct from the published standalone `theboyd78/sdsctl` image: Compose does
 not contain `image:` and does not select a Docker Hub tag.
 
@@ -93,6 +98,17 @@ healthcheck, uses `network_mode: none`, and mounts only the runtime transport
 volume. It has no restart policy, dependency on the daemon service, durable XDG
 mounts, published or exposed ports, devices, added capabilities, or privileged
 mode. It therefore cannot independently reach the scanner or remote services.
+
+The `web-dashboard` service similarly uses the `web` profile, so ordinary
+`docker compose up --detach --build` still starts only the unprofiled daemon.
+It overrides the entrypoint with `sdsctl web`, deliberately uses ordinary
+standalone web mode rather than `--home-assistant-ingress`, and does not pass a
+`--listen-address`. The existing secure default therefore binds only
+`127.0.0.1:8000` inside its own `network_mode: none` container. The service has
+no `ports` or `expose` entries, devices, privileged mode, added capabilities,
+scanner host argument, durable XDG mounts, or `depends_on`. Its
+`restart: unless-stopped` policy is appropriate for a long-running dashboard
+process and does not give it ownership of the separately started daemon.
 
 Compose requires `SDS200_HOST` and inserts it into the existing global `--host`
 CLI option before the `daemon` subcommand. `SDS200_LOG_LEVEL` is optional and
@@ -148,6 +164,26 @@ controls are requested by the sidecar but executed by the daemon owner through
 its existing safe semantic control dispatcher; the sidecar never opens scanner
 hardware or creates another scanner control or RTSP/RTP session.
 
+To exercise the supported Milestone 25.6 web lifecycle, start the daemon first,
+then explicitly activate the web profile and service:
+
+```bash
+docker compose up --detach --build daemon
+docker compose --profile web up --detach --build web-dashboard
+docker compose ps web-dashboard
+docker compose logs web-dashboard
+```
+
+The web process consumes the daemon API, ordered-event, PCMU, and finalized
+recording-file Unix sockets from the shared runtime volume. The daemon remains
+the sole scanner, network control, RTSP/RTP, socket-production, and audio owner.
+There is intentionally no host browser URL in Milestone 25.6: a listener on
+`127.0.0.1` inside a network-disabled container with no published or exposed
+port is unreachable from the host and other containers. Do not use host
+networking or `--home-assistant-ingress` to bypass this boundary. Actual
+dashboard reachability, explicit wildcard binding inside the container, bridge
+networking, and explicit host port publication are Milestone 25.7 work.
+
 ## Persistent paths
 
 The existing XDG path resolver produces these container paths:
@@ -169,14 +205,15 @@ by the unprivileged service account. The named volumes persist across normal
 container replacement and `docker compose down`.
 
 The separate `runtime` named volume is transport state, not durable application
-data. It is mounted at `/run/sdsctl` by both services and nowhere else. The
+data. It is mounted at `/run/sdsctl` by the daemon, daemon-client, and
+web-dashboard services and nowhere else. The
 daemon remains the sole producer and owner of `daemon.sock`, `events.sock`,
-`pcmu.sock`, and `recordings.sock`. Because both containers run as UID/GID
-`10001`, the client can traverse the daemon-owned `0700` directory and connect
+`pcmu.sock`, and `recordings.sock`. Because all three containers run as UID/GID
+`10001`, the clients can traverse the daemon-owned `0700` directory and connect
 to its `0600` sockets without widening permissions. No TCP daemon API is
 introduced. A named volume can retain Unix-socket directory entries across
-container replacement; the daemon's existing startup logic remains
-authoritative for safe stale-socket cleanup.
+container replacement; the daemon's existing startup logic remains authoritative
+for safe stale-socket cleanup.
 
 Normal persistent configuration, state, recordings, and cache semantics are
 unchanged. `docker compose down --volumes` removes both the durable named
@@ -227,6 +264,12 @@ not a substitute for application-level scanner or audio diagnosis; the returned
 runtime snapshot remains the authoritative source for scanner connectivity and
 daemon state.
 
+The web-dashboard overrides that inherited check with a Python-standard-library
+request to `http://127.0.0.1:8000/healthz` inside its own container. This is a
+local web-process health check. The `/healthz` route intentionally does not
+contact the daemon, so a healthy result does not prove daemon, scanner, event,
+audio, or recording-file availability.
+
 ## Stop and restart behavior
 
 `docker compose stop` sends the image's declared `SIGTERM` to PID 1. Because the
@@ -245,21 +288,22 @@ docker compose down
 
 to stop and remove the service while preserving the named persistent volumes.
 
-## Milestone 25.5 boundary
+## Milestone 25.6 boundary
 
-The supported sidecar workflows are negotiated daemon API status and snapshot,
+The supported sidecar workflows remain negotiated daemon API status and snapshot,
 safe semantic scanner controls, and bounded consumption of the daemon's ordered
-event stream. All communication remains on private Unix-domain sockets in the
-shared runtime volume; no daemon IPC is exposed over TCP and the standalone web
-security boundary is unchanged.
+event stream. The supported web-dashboard foundation adds consumption of the
+daemon API, event, PCMU, and recording-file sockets without changing their
+private Unix-domain transport. No daemon IPC is exposed over TCP. The standalone
+web listener still rejects wildcard, LAN, public, and non-local hostname
+listeners outside explicitly guarded Home Assistant Ingress mode, which this
+generic service does not use or repurpose.
 
 This container work still does **not** establish:
 
-- sidecar PCMU playback or WAV output;
 - a daemon-backed TUI sidecar;
-- sidecar finalized-recording access;
-- a separate web-dashboard container;
-- remote or wildcard standalone web binding;
+- browser reachability from the host or other containers;
+- remote or wildcard generic standalone web binding;
 - bridge networking or explicit UDP/TCP port-mapping recipes;
 - Linux USB serial passthrough or device-group permissions;
 - broadly privileged container operation;
