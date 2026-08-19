@@ -101,34 +101,28 @@ def test_live_repository_owned_files_use_sdsctl_repository_url() -> None:
         assert LEGACY_REPOSITORY_URL not in contents, relative_path
 
 
-def test_no_generic_docker_hub_workflow_exists() -> None:
-    workflow_directory = REPOSITORY_ROOT / ".github" / "workflows"
-    workflows = tuple(workflow_directory.glob("*.yml")) + tuple(
-        workflow_directory.glob("*.yaml")
+def test_generic_docker_hub_identity_is_isolated_from_python_and_home_assistant() -> None:
+    workflow = _read(".github/workflows/docker-hub-image.yml")
+
+    assert 'IMAGE_NAME: "theboyd78/sdsctl"' in workflow
+    assert 'IMAGE_NAME: "sds200-home-assistant"' in _read(
+        ".github/workflows/home-assistant-app-image.yml"
     )
-
-    assert workflows
-    for workflow in workflows:
-        normalized_name = workflow.name.lower().replace("_", "-")
-        contents = workflow.read_text(encoding="utf-8").lower()
-        assert "docker-hub" not in normalized_name
-        assert "dockerhub" not in normalized_name
-        assert "docker.io" not in contents
-        assert "dockerhub_username" not in contents
-        assert "dockerhub_token" not in contents
+    assert 'name = "sds200"' in _read("pyproject.toml")
+    assert '"sds200[mqtt]"' in _read("Dockerfile")
 
 
-def test_roadmap_names_milestone_25_3_as_active_naming_migration() -> None:
+def test_roadmap_names_milestone_25_4_as_active_docker_hub_publication() -> None:
     roadmap = _read("ROADMAP.md")
     active_milestone = roadmap.split("## Active milestone", 1)[1].split(
         "## Deferred hardware validation", 1
     )[0]
 
     assert (
-        "### Milestone 25.3 — sdsctl repository and product naming migration"
+        "### Milestone 25.4 — generic Docker Hub image publication"
         in active_milestone
     )
-    assert "Milestone 25.2 is closed" in active_milestone
+    assert "Milestone 25.3 is closed" in active_milestone
 
 
 def test_branding_asset_paths_use_sdsctl_identity() -> None:

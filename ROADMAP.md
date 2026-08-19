@@ -11,38 +11,31 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 25.3 — sdsctl repository and product naming migration
+### Milestone 25.4 — generic Docker Hub image publication
 
-Milestone 25.2 is closed after adding the supported repository-root
-`compose.yaml` deployment foundation around the generic Linux network-daemon
-image, including deterministic host-independent coverage and runtime acceptance
-of rendering, named-volume ownership, and writability.
+Milestone 25.3 is closed after migrating the current project, product,
+repository, executable, live URLs, and branding identity to `sdsctl` while
+preserving the documented Python, Home Assistant, scanner, configuration, and
+internal compatibility boundaries.
 
-Milestone 25.3 migrates the current user-facing project, product, repository,
-and executable identity to `sdsctl`, with the future canonical repository at
-`https://github.com/stevenboyd78/sdsctl`. The milestone updates live
-repository-owned URLs, current branding prose, repository metadata, release and
-wiki instructions, source-published repository URLs, and deterministic naming
-contract coverage. It also renames the repository-owned branding set to
-`docs/assets/sdsctl-*` and updates the visible project wordmark to `SDSCTL`.
-Historical changelog prose and accurate completed-milestone wording remain
-unchanged.
+Milestone 25.4 adds dedicated generic image publication to Docker Hub as
+`theboyd78/sdsctl`. Pull requests, pushes to `main`, and manual dispatches run a
+non-publishing `linux/amd64` plus `linux/arm64` build. Only a genuine GitHub push
+of a `v*` tag exactly matching `v<package-version>` may authenticate and publish
+the multi-platform image, using exactly the package-version and `latest` tags.
+The workflow also requires `sds200.__version__` to equal the pyproject package
+version and fails closed when the configured Docker Hub username is not the
+canonical owner.
 
-The compatibility boundary is explicit: the Python distribution and import
-package remain `sds200`; the source package remains `src/sds200`; the project
-script remains `sdsctl = "sds200.cli:main"`; the Home Assistant App directory,
-slug, display name, and panel identity remain `sds200`/SDS200; the existing GHCR
-image remains `sds200-home-assistant`; `/local/sds200` and `sds200-card.js`
-remain supported; scanner model names remain SDS100, SDS150, and SDS200; legacy
-`sds200` configuration remains compatible; current RTSP and Broadcastify
-User-Agent strings and the local `sds200-daemon` image tag remain unchanged.
-Internal `sds200` thread, recording, protocol, MQTT, device, lock, and transport
-identifiers are not renamed in this milestone.
+The Python distribution and import package remain `sds200`, the CLI remains
+`sdsctl`, and the local development image tag remains `sds200-daemon`. Home
+Assistant App/GHCR publication remains separate and keeps the
+`sds200-home-assistant` identity. Repository-root Compose remains source-built
+with `build: .` and does not select a published image.
 
-Generic Docker Hub publication, registry automation, and any
-`theboyd78/sdsctl` image identity move to a later Milestone 25 slice; this
-milestone does not add generic image publication or create a generic Docker Hub
-workflow.
+Keep bridge-network callback design, separate client or web containers, USB
+passthrough, Windows and macOS Docker behavior, remote standalone web exposure,
+and physical generic-container validation in later container slices.
 
 ## Deferred hardware validation
 

@@ -1,0 +1,177 @@
+name: Docker Hub Image
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_NAME: "theboyd78/sdsctl"
+
+jobs:
+  metadata:
+    name: Prepare generic image build
+    runs-on: ubuntu-24.04
+    outputs:
+      package_version: ${{ steps.version.outputs.package_version }}
+      publish: ${{ steps.version.outputs.publish }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Validate package version and publication ref
+        id: version
+        shell: bash
+        run: |
+          package_version="$(
+            python - <<'PY'
+          import ast
+          import sys
+          import tomllib
+          from pathlib import Path
+
+          with Path("pyproject.toml").open("rb") as pyproject_file:
+              package_version = tomllib.load(pyproject_file)["project"]["version"]
+          if not isinstance(package_version, str):
+              sys.exit("pyproject project.version must be a string")
+
+          init_path = Path("src/sds200/__init__.py")
+          module = ast.parse(init_path.read_text(encoding="utf-8"), filename=init_path)
+          version_nodes = [
+              node
+              for node in module.body
+              if (
+                  isinstance(node, ast.Assign)
+                  and any(
+                      isinstance(target, ast.Name) and target.id == "__version__"
+                      for target in node.targets
+                  )
+              )
+              or (
+                  isinstance(node, (ast.AnnAssign, ast.AugAssign))
+                  and isinstance(node.target, ast.Name)
+                  and node.target.id == "__version__"
+              )
+          ]
+          if not version_nodes:
+              sys.exit("src/sds200/__init__.py is missing a top-level __version__ assignment")
+          if len(version_nodes) != 1:
+              sys.exit("src/sds200/__init__.py has duplicate top-level __version__ assignments")
+
+          version_node = version_nodes[0]
+          if not (
+              isinstance(version_node, ast.Assign)
+              and len(version_node.targets) == 1
+              and isinstance(version_node.targets[0], ast.Name)
+              and version_node.targets[0].id == "__version__"
+          ):
+              sys.exit("sds200.__version__ must use one simple top-level assignment")
+          if not (
+              isinstance(version_node.value, ast.Constant)
+              and isinstance(version_node.value.value, str)
+          ):
+              sys.exit("sds200.__version__ must be a string literal")
+          if version_node.value.value != package_version:
+              sys.exit("sds200.__version__ does not match the pyproject package version")
+
+          print(package_version)
+          PY
+          )"
+
+          publish=false
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]] && \
+            [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            if [[ "${GITHUB_REF_NAME}" != "v${package_version}" ]]; then
+              echo "Release tag does not match the pyproject package version" >&2
+              exit 1
+            fi
+            publish=true
+          fi
+
+          echo "package_version=${package_version}" >> "${GITHUB_OUTPUT}"
+          echo "publish=${publish}" >> "${GITHUB_OUTPUT}"
+
+  validate:
+    name: Validate generic multi-platform image
+    if: needs.metadata.outputs.publish != 'true'
+    needs: metadata
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up QEMU
+        # docker/setup-qemu-action v4.2.0
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8
+
+      - name: Set up Docker Buildx
+        # docker/setup-buildx-action v4.2.0
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
+
+      - name: Build generic image without publication
+        # docker/build-push-action v7.2.0
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: false
+
+  publish:
+    name: Publish generic multi-platform image
+    if: >-
+      needs.metadata.outputs.publish == 'true' &&
+      github.event_name == 'push' &&
+      startsWith(github.ref, 'refs/tags/v')
+    needs: metadata
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Validate Docker Hub account
+        shell: bash
+        env:
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+        run: |
+          if [[ "${DOCKERHUB_USERNAME}" != "theboyd78" ]]; then
+            echo "DOCKERHUB_USERNAME is not configured for the canonical image owner" >&2
+            exit 1
+          fi
+
+      - name: Set up QEMU
+        # docker/setup-qemu-action v4.2.0
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8
+
+      - name: Set up Docker Buildx
+        # docker/setup-buildx-action v4.2.0
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
+
+      - name: Log in to Docker Hub
+        # docker/login-action v4.6.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and publish generic image
+        # docker/build-push-action v7.2.0
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ needs.metadata.outputs.package_version }}
+            ${{ env.IMAGE_NAME }}:latest
