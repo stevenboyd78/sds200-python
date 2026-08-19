@@ -111,10 +111,23 @@ addresses. It rejects wildcard addresses, LAN addresses, public addresses, and
 hostnames other than literal `localhost`.
 
 The current web dashboard intentionally provides no authentication, TLS
-termination, trusted-proxy handling, or supported remote-exposure mode. Do not
-expose this service through a public listener or reverse proxy. Authentication
-and transport-security design must be completed before remote access becomes a
-supported workflow.
+termination, trusted-proxy handling, or supported arbitrary remote/LAN exposure.
+Do not expose this standalone service through a public listener or reverse
+proxy. Authentication and transport-security design must be completed before
+remote access becomes a supported workflow.
+
+Generic Compose deployment has one separate explicit container mode:
+`sdsctl web --container-exposure`. It binds exactly `0.0.0.0:8000` inside the
+container so Docker bridge publication can reach it, but Compose publishes it
+only on Docker-host loopback. The default browser URL is
+`http://127.0.0.1:8000/`; set `SDSCTL_WEB_PORT` to change only that host-loopback
+port, not the fixed container port 8000. LAN and public clients cannot reach the
+Compose publication by default. The internal wildcard is safe only because the
+publication is constrained to `127.0.0.1`; never copy `--container-exposure`
+into arbitrary public or LAN publication without a separate authentication and
+TLS design. Do not use host networking for the web container. Home Assistant
+Ingress remains a distinct mode with its Supervisor peer guard and is not
+enabled by generic container exposure.
 
 Uvicorn proxy-header trust and its identifying server header are disabled.
 Graceful shutdown is bounded to two seconds so an intentionally long-lived SSE

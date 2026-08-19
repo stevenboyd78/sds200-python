@@ -1,4 +1,4 @@
-"""Web server adapter with an explicit Home Assistant Ingress mode."""
+"""Web server adapter with explicit guarded wildcard-listener modes."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from typing import Any, Protocol, cast
 
 WEB_DASHBOARD_DEFAULT_HOST = "127.0.0.1"
 WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_HOST = "0.0.0.0"
+WEB_DASHBOARD_CONTAINER_EXPOSURE_HOST = "0.0.0.0"
 WEB_DASHBOARD_DEFAULT_PORT = 8000
 WEB_DASHBOARD_DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT = 2
 WEB_DASHBOARD_INSTALL_ERROR = (
@@ -90,13 +91,25 @@ def run_web_dashboard_server(
     port: int = WEB_DASHBOARD_DEFAULT_PORT,
     access_log: bool = True,
     home_assistant_ingress: bool = False,
+    container_exposure: bool = False,
     server_factory: WebDashboardServerFactory | None = None,
 ) -> int:
-    """Run one web server with an explicit Home Assistant Ingress mode."""
+    """Run one web server with explicit guarded wildcard-listener modes."""
 
     if type(home_assistant_ingress) is not bool:
         raise TypeError(
             "Home Assistant Ingress server setting must be boolean."
+        )
+
+    if type(container_exposure) is not bool:
+        raise TypeError(
+            "Generic container-exposure server setting must be boolean."
+        )
+
+    if home_assistant_ingress and container_exposure:
+        raise ValueError(
+            "Home Assistant Ingress and generic container exposure are "
+            "mutually exclusive."
         )
 
     if home_assistant_ingress:
@@ -106,6 +119,13 @@ def run_web_dashboard_server(
                 f"{WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_HOST}."
             )
         normalized_host = WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_HOST
+    elif container_exposure:
+        if host != WEB_DASHBOARD_CONTAINER_EXPOSURE_HOST:
+            raise ValueError(
+                "Generic container-exposure web server must listen on "
+                f"{WEB_DASHBOARD_CONTAINER_EXPOSURE_HOST}."
+            )
+        normalized_host = WEB_DASHBOARD_CONTAINER_EXPOSURE_HOST
     else:
         normalized_host = normalize_web_dashboard_host(host)
 
@@ -162,6 +182,7 @@ def _default_server_factory(
 
 __all__ = [
     "WEB_DASHBOARD_DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT",
+    "WEB_DASHBOARD_CONTAINER_EXPOSURE_HOST",
     "WEB_DASHBOARD_DEFAULT_HOST",
     "WEB_DASHBOARD_DEFAULT_PORT",
     "WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_HOST",

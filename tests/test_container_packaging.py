@@ -161,15 +161,15 @@ def test_generic_compose_preserves_daemon_contract_with_shared_runtime() -> None
         assert forbidden not in daemon
 
 
-def test_generic_compose_defines_isolated_long_running_web_dashboard() -> None:
+def test_generic_compose_defines_bridge_networked_long_running_web_dashboard() -> None:
     compose = _COMPOSE.read_text(encoding="utf-8")
     web = compose.split("\n  web-dashboard:\n", 1)[1].split("\nvolumes:\n", 1)[0]
 
     for required in (
         "    profiles:\n      - web\n",
         "    build:\n      context: .\n",
-        "    entrypoint:\n      - sdsctl\n      - web\n",
-        "    network_mode: none\n",
+        "    entrypoint:\n      - sdsctl\n      - web\n      - --container-exposure\n",
+        '    ports:\n      - "127.0.0.1:${SDSCTL_WEB_PORT:-8000}:8000"\n',
         "    restart: unless-stopped\n",
         "        - CMD\n        - python\n        - -c\n",
         "import urllib.request",
@@ -182,7 +182,6 @@ def test_generic_compose_defines_isolated_long_running_web_dashboard() -> None:
         "config:/config",
         "state:/state",
         "cache:/cache",
-        "ports:",
         "expose:",
         "privileged:",
         "devices:",
@@ -191,6 +190,8 @@ def test_generic_compose_defines_isolated_long_running_web_dashboard() -> None:
         "--home-assistant-ingress",
         "--listen-address",
         "--host",
+        "network_mode: none",
+        "network_mode: host",
     ):
         assert forbidden not in web
 
@@ -215,6 +216,7 @@ def test_generic_compose_example_configuration_is_non_secret_and_ignored_locally
     assert env_example == (
         "SDS200_HOST=192.0.2.10\n"
         "SDS200_LOG_LEVEL=INFO\n"
+        "SDSCTL_WEB_PORT=8000\n"
     )
     assert ".env\n" in gitignore
 
@@ -225,7 +227,7 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
     roadmap = _ROADMAP.read_text(encoding="utf-8")
 
     for required in (
-        "Milestone 25.6",
+        "Milestone 25.7",
         "theboyd78/sdsctl",
         "`build: { context: . }`",
         "`network_mode: host`",
@@ -236,6 +238,10 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
         "docker compose run --rm daemon-client events --count 10 --json",
         "docker compose --profile web up --detach --build web-dashboard",
         "http://127.0.0.1:8000/healthz",
+        "http://127.0.0.1:8000/",
+        "`SDSCTL_WEB_PORT`",
+        "`--container-exposure`",
+        "127.0.0.1:${SDSCTL_WEB_PORT:-8000}:8000",
         "`network_mode: none`",
         "runtime transport volume",
         "sole producer and owner",
@@ -259,9 +265,9 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
         in readme
     )
     assert "docker compose run --rm daemon-client status --json" in readme
-    assert "### Milestone 25.6 — web-dashboard container/security boundary" in roadmap
-    assert "Milestone 25.5 is closed" in roadmap
-    assert "Milestone 25.7" in roadmap
+    assert "### Milestone 25.7 — bridge networking and explicit web port exposure" in roadmap
+    assert "Milestone 25.6 is closed" in roadmap
+    assert "Milestone 25.8" in roadmap
 
 
 def test_generic_docker_hub_workflow_has_safe_trigger_and_publication_contract() -> None:

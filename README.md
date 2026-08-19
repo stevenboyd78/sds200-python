@@ -480,14 +480,18 @@ See the generic container deployment guide for the supported status, snapshot,
 scanner-control, ordered-event, and web-dashboard workflows and their security
 boundary. The web service mounts only `/run/sdsctl`, consumes the daemon's
 private API, event, PCMU, and recording-file sockets, and never owns the scanner,
-network control, RTSP/RTP session, or audio routing. It retains the ordinary
-standalone web default of `127.0.0.1:8000` inside its `network_mode: none`
-container. There are no `ports` or `expose` entries, so Milestone 25.6
-intentionally provides no browser URL from the host. Its localhost `/healthz`
-probe checks only the web process and intentionally does not prove daemon or
-scanner availability. Bridge networking, explicit container wildcard binding,
-and explicit host port publication are deferred to Milestone 25.7. Do not use
-host networking or Home Assistant Ingress mode for this generic Compose service.
+network control, RTSP/RTP session, or audio routing. Under the explicit
+`--container-exposure` mode it binds `0.0.0.0:8000` inside its ordinary Docker
+bridge network, while Compose publishes only
+`127.0.0.1:${SDSCTL_WEB_PORT:-8000}:8000`. Open
+`http://127.0.0.1:8000/` by default, or set `SDSCTL_WEB_PORT` to select a
+different Docker-host loopback port; the container listener remains fixed at
+8000. LAN and public clients cannot reach this host-loopback publication by
+default. The internal wildcard is safe only with that constraint: do not copy
+`--container-exposure` into arbitrary LAN/public publication without a separate
+authentication and TLS design. The localhost `/healthz` probe checks only the
+web process. Do not use host networking or Home Assistant Ingress mode for this
+generic Compose service; Ingress remains a separate guarded security mode.
 
 Serial-only profiles, replay captures, and non-SDS200 network-audio selections
 are rejected.

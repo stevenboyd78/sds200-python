@@ -5,9 +5,9 @@ image and its supported source-built Docker Compose deployment. Milestone 25.4
 established release-tag publication of that standalone multi-platform image to
 Docker Hub as `theboyd78/sdsctl`. Milestone 25.5 added an opt-in, one-shot
 daemon-client sidecar over the daemon's existing private Unix-domain services.
-Milestone 25.6 adds an opt-in, long-running but network-isolated web-dashboard
-container foundation. It does not make the dashboard reachable from a host
-browser; that boundary remains deferred to Milestone 25.7.
+Milestone 25.6 added the isolated web-dashboard container foundation. Milestone
+25.7 adds host-local browser reachability through Docker bridge networking and
+explicit host-loopback port publication.
 
 Native systemd deployment remains the preferred production option when direct
 host-device, local-audio, or other operating-system integration is important.
@@ -66,8 +66,9 @@ The image has `ENTRYPOINT ["sdsctl"]` and a safe `CMD ["--help"]`. Starting the
 image without an explicit scanner command therefore does not acquire scanner
 ownership.
 
-No TCP port is exposed by this image. The standalone web dashboard remains
-loopback-only and is not made remotely reachable by Milestone 25.6.
+No TCP port is exposed by the image metadata. The standalone web dashboard
+invoked by `sdsctl web` remains loopback-only; Compose publication is an
+explicit service-level contract.
 
 ## Docker Compose contract
 
@@ -88,8 +89,7 @@ The service preserves the Milestone 25.1 runtime contract:
   inherited unchanged;
 - `/run/sdsctl/` is backed by a dedicated transport volume shared only with the
   daemon-client sidecar; and
-- no ports, wildcard web binding, privileged mode, or scanner device mapping are
-  added.
+- no daemon ports, privileged mode, or scanner device mapping are added.
 
 The `daemon-client` service uses the `client` profile, so ordinary
 `docker compose up --detach --build` does not start it. It overrides the image
@@ -101,19 +101,22 @@ mode. It therefore cannot independently reach the scanner or remote services.
 
 The `web-dashboard` service similarly uses the `web` profile, so ordinary
 `docker compose up --detach --build` still starts only the unprofiled daemon.
-It overrides the entrypoint with `sdsctl web`, deliberately uses ordinary
-standalone web mode rather than `--home-assistant-ingress`, and does not pass a
-`--listen-address`. The existing secure default therefore binds only
-`127.0.0.1:8000` inside its own `network_mode: none` container. The service has
-no `ports` or `expose` entries, devices, privileged mode, added capabilities,
-scanner host argument, durable XDG mounts, or `depends_on`. Its
+It overrides the entrypoint with `sdsctl web --container-exposure`, uses ordinary
+Docker bridge networking, and binds exactly `0.0.0.0:8000` inside the container.
+Compose publishes exactly
+`127.0.0.1:${SDSCTL_WEB_PORT:-8000}:8000`, so LAN and public clients cannot
+reach it by default. The service has no `expose` entry, devices, privileged
+mode, added capabilities, scanner host argument, durable XDG mounts, or
+`depends_on`. Its
 `restart: unless-stopped` policy is appropriate for a long-running dashboard
 process and does not give it ownership of the separately started daemon.
 
 Compose requires `SDS200_HOST` and inserts it into the existing global `--host`
 CLI option before the `daemon` subcommand. `SDS200_LOG_LEVEL` is optional and
-defaults to `INFO`. These are Compose interpolation variables; this milestone
-does not add new `SDSCTL_*` application settings.
+defaults to `INFO`. `SDSCTL_WEB_PORT` optionally selects the Docker-host
+loopback publication port and defaults to 8000; it does not change the fixed
+container listener port 8000. These are Compose interpolation variables, not
+application configuration settings.
 
 Copy the non-secret example and replace the TEST-NET-1 scanner address with the
 address used on your trusted scanner network:
@@ -164,7 +167,7 @@ controls are requested by the sidecar but executed by the daemon owner through
 its existing safe semantic control dispatcher; the sidecar never opens scanner
 hardware or creates another scanner control or RTSP/RTP session.
 
-To exercise the supported Milestone 25.6 web lifecycle, start the daemon first,
+To exercise the supported Milestone 25.7 web lifecycle, start the daemon first,
 then explicitly activate the web profile and service:
 
 ```bash
@@ -174,15 +177,20 @@ docker compose ps web-dashboard
 docker compose logs web-dashboard
 ```
 
-The web process consumes the daemon API, ordered-event, PCMU, and finalized
+Open `http://127.0.0.1:8000/` by default. To select another host-loopback port,
+set `SDSCTL_WEB_PORT`, recreate the service, and open that port instead. The web
+process consumes the daemon API, ordered-event, PCMU, and finalized
 recording-file Unix sockets from the shared runtime volume. The daemon remains
 the sole scanner, network control, RTSP/RTP, socket-production, and audio owner.
-There is intentionally no host browser URL in Milestone 25.6: a listener on
-`127.0.0.1` inside a network-disabled container with no published or exposed
-port is unreachable from the host and other containers. Do not use host
-networking or `--home-assistant-ingress` to bypass this boundary. Actual
-dashboard reachability, explicit wildcard binding inside the container, bridge
-networking, and explicit host port publication are Milestone 25.7 work.
+Do not use host networking for the web service. Generic exposure does not enable
+Home Assistant Ingress or its middleware; Ingress remains a separate Supervisor
+peer-guarded mode.
+
+The internal `0.0.0.0` wildcard is safe only because Compose constrains
+publication to `127.0.0.1` on the Docker host. Do not copy
+`--container-exposure` into arbitrary LAN/public publication without a separate
+authentication and TLS design. Standalone arbitrary remote/LAN exposure remains
+unsupported and deferred.
 
 ## Persistent paths
 
@@ -288,7 +296,7 @@ docker compose down
 
 to stop and remove the service while preserving the named persistent volumes.
 
-## Milestone 25.6 boundary
+## Milestone 25.7 boundary
 
 The supported sidecar workflows remain negotiated daemon API status and snapshot,
 safe semantic scanner controls, and bounded consumption of the daemon's ordered
@@ -296,20 +304,20 @@ event stream. The supported web-dashboard foundation adds consumption of the
 daemon API, event, PCMU, and recording-file sockets without changing their
 private Unix-domain transport. No daemon IPC is exposed over TCP. The standalone
 web listener still rejects wildcard, LAN, public, and non-local hostname
-listeners outside explicitly guarded Home Assistant Ingress mode, which this
-generic service does not use or repurpose.
+listeners. Only the explicit generic-container mode owns the internal wildcard,
+and it neither uses nor repurposes Home Assistant Ingress.
 
 This container work still does **not** establish:
 
 - a daemon-backed TUI sidecar;
-- browser reachability from the host or other containers;
-- remote or wildcard generic standalone web binding;
-- bridge networking or explicit UDP/TCP port-mapping recipes;
+- arbitrary remote/LAN standalone web exposure;
+- generic LAN/public web publication or authentication/TLS termination;
 - Linux USB serial passthrough or device-group permissions;
 - broadly privileged container operation;
 - Windows or macOS Docker behavior; or
 - physical scanner validation of the generic Compose deployment.
 
-Those remain separate Milestone 25 work. In particular, the existing standalone
+Milestone 25.8 remains Linux USB serial passthrough; the other items remain
+separate Milestone 25 work. In particular, the existing standalone
 web security boundary continues to reject wildcard, LAN, public, and non-local
 hostname listeners outside the explicit Home Assistant Ingress mode.
