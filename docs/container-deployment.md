@@ -2,9 +2,9 @@
 
 Milestones 25.1 and 25.2 established the generic network-connected SDS200 daemon
 image and its supported source-built Docker Compose deployment. Milestone 25.4
-establishes release-tag publication of that standalone multi-platform image to
-Docker Hub as `theboyd78/sdsctl` without changing the Compose, scanner-ownership,
-daemon IPC, web-binding, or transport contracts.
+established release-tag publication of that standalone multi-platform image to
+Docker Hub as `theboyd78/sdsctl`. Milestone 25.5 adds an opt-in, one-shot
+daemon-client sidecar over the daemon's existing private Unix-domain services.
 
 Native systemd deployment remains the preferred production option when direct
 host-device, local-audio, or other operating-system integration is important.
@@ -67,11 +67,11 @@ loopback-only and is not made remotely reachable by Milestone 25.2.
 
 ## Docker Compose contract
 
-The repository-root `compose.yaml` defines one `daemon` service and deliberately
-uses `build: .`, so a checked-out source tree is sufficient to build and deploy
-the daemon. This remains distinct from the published standalone
-`theboyd78/sdsctl` image: Compose does not contain `image:` and does not select a
-Docker Hub tag.
+The repository-root `compose.yaml` defines `daemon` and opt-in `daemon-client`
+services. Both use `build: { context: . }` to build the repository-root image,
+so a checked-out source tree is sufficient to build and use them. This remains
+distinct from the published standalone `theboyd78/sdsctl` image: Compose does
+not contain `image:` and does not select a Docker Hub tag.
 
 The service preserves the Milestone 25.1 runtime contract:
 
@@ -81,9 +81,18 @@ The service preserves the Milestone 25.1 runtime contract:
 - `/config`, `/state`, and `/cache` are backed by Compose named volumes;
 - the image's `SIGTERM` stop signal and private Unix-domain healthcheck are
   inherited unchanged;
-- `/run/sdsctl/` stays ephemeral and private to the daemon container; and
+- `/run/sdsctl/` is backed by a dedicated transport volume shared only with the
+  daemon-client sidecar; and
 - no ports, wildcard web binding, privileged mode, or scanner device mapping are
   added.
+
+The `daemon-client` service uses the `client` profile, so ordinary
+`docker compose up --detach --build` does not start it. It overrides the image
+entrypoint with `sdsctl daemon-client`, disables the inherited daemon
+healthcheck, uses `network_mode: none`, and mounts only the runtime transport
+volume. It has no restart policy, dependency on the daemon service, durable XDG
+mounts, published or exposed ports, devices, added capabilities, or privileged
+mode. It therefore cannot independently reach the scanner or remote services.
 
 Compose requires `SDS200_HOST` and inserts it into the existing global `--host`
 CLI option before the `daemon` subcommand. `SDS200_LOG_LEVEL` is optional and
@@ -110,14 +119,34 @@ Validate the resolved non-secret Compose model before starting it:
 docker compose config
 ```
 
-Then build local source and start the daemon:
+Then build local source and start the daemon explicitly:
 
 ```bash
-docker compose up --detach --build
+docker compose up --detach --build daemon
 ```
 
 The required `SDS200_HOST` interpolation makes configuration fail before a
 container is created when the scanner address is unset or empty.
+
+After the daemon is running, invoke supported client commands on demand:
+
+```bash
+docker compose run --rm daemon-client status --json
+docker compose run --rm daemon-client snapshot --json
+docker compose run --rm daemon-client hold TGID 12345
+docker compose run --rm daemon-client next TGID 12345 --count 1
+docker compose run --rm daemon-client previous TGID 12345 --count 1
+docker compose run --rm daemon-client reconnect
+docker compose run --rm daemon-client events --count 10 --json
+```
+
+Compose activates the service targeted by `run` even though it is assigned to
+the `client` profile. The sidecar has no implicit `depends_on`: it neither starts
+nor owns the daemon. If the daemon is absent or its private service is not ready,
+the command fails through the existing daemon-client error contract. Scanner
+controls are requested by the sidecar but executed by the daemon owner through
+its existing safe semantic control dispatcher; the sidecar never opens scanner
+hardware or creates another scanner control or RTSP/RTP session.
 
 ## Persistent paths
 
@@ -133,19 +162,26 @@ The existing XDG path resolver produces these container paths:
 | Cache root | `/cache/sdsctl/` |
 | Private runtime sockets | `/run/sdsctl/` |
 
-The Compose service uses named volumes for the three persistent XDG roots. New
+The daemon service uses named volumes for the three persistent XDG roots. New
 volumes are initialized against image directories prepared for UID/GID `10001`;
 the Compose runtime acceptance check verifies those mounted roots remain writable
 by the unprivileged service account. The named volumes persist across normal
 container replacement and `docker compose down`.
 
-`docker compose down --volumes` removes the Compose-managed persistent volumes.
-Treat that command as destructive when configuration, recordings, or other state
-must be retained.
+The separate `runtime` named volume is transport state, not durable application
+data. It is mounted at `/run/sdsctl` by both services and nowhere else. The
+daemon remains the sole producer and owner of `daemon.sock`, `events.sock`,
+`pcmu.sock`, and `recordings.sock`. Because both containers run as UID/GID
+`10001`, the client can traverse the daemon-owned `0700` directory and connect
+to its `0600` sockets without widening permissions. No TCP daemon API is
+introduced. A named volume can retain Unix-socket directory entries across
+container replacement; the daemon's existing startup logic remains
+authoritative for safe stale-socket cleanup.
 
-`/run/sdsctl/` is intentionally ephemeral. Daemon clients in the same container
-can use the default socket resolution; multi-container socket sharing remains a
-separate later Milestone 25 boundary.
+Normal persistent configuration, state, recordings, and cache semantics are
+unchanged. `docker compose down --volumes` removes both the durable named
+volumes and the runtime transport volume. Treat that command as destructive
+when configuration, recordings, or other state must be retained.
 
 For deployments that intentionally use bind mounts instead of the supported
 Compose defaults, make the persistent roots writable by UID/GID `10001`. One
@@ -209,15 +245,20 @@ docker compose down
 
 to stop and remove the service while preserving the named persistent volumes.
 
-## Milestone 25.4 boundary
+## Milestone 25.5 boundary
 
-Generic Docker Hub publication is established only for genuine matching release
-tag pushes. Pull requests, pushes to `main`, and manually dispatched workflow
-runs validate both supported platforms without authenticating or publishing.
+The supported sidecar workflows are negotiated daemon API status and snapshot,
+safe semantic scanner controls, and bounded consumption of the daemon's ordered
+event stream. All communication remains on private Unix-domain sockets in the
+shared runtime volume; no daemon IPC is exposed over TCP and the standalone web
+security boundary is unchanged.
 
 This container work still does **not** establish:
 
-- separate daemon-client or web-dashboard containers;
+- sidecar PCMU playback or WAV output;
+- a daemon-backed TUI sidecar;
+- sidecar finalized-recording access;
+- a separate web-dashboard container;
 - remote or wildcard standalone web binding;
 - bridge networking or explicit UDP/TCP port-mapping recipes;
 - Linux USB serial passthrough or device-group permissions;

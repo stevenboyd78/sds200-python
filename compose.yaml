@@ -14,8 +14,24 @@ services:
       - config:/config
       - state:/state
       - cache:/cache
+      - runtime:/run/sdsctl
+
+  daemon-client:
+    profiles:
+      - client
+    build:
+      context: .
+    entrypoint:
+      - sdsctl
+      - daemon-client
+    network_mode: none
+    healthcheck:
+      disable: true
+    volumes:
+      - runtime:/run/sdsctl
 
 volumes:
   config:
   state:
   cache:
+  runtime:
