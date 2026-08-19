@@ -112,23 +112,30 @@ def test_generic_docker_hub_identity_is_isolated_from_python_and_home_assistant(
     assert '"sds200[mqtt,web]"' in _read("Dockerfile")
 
 
-def test_roadmap_names_milestone_25_8_as_active_usb_passthrough_boundary() -> None:
+def test_roadmap_names_milestone_25_9_as_physical_validation_boundary() -> None:
     roadmap = _read("ROADMAP.md")
     active_milestone = roadmap.split("## Active milestone", 1)[1].split(
         "## Deferred hardware validation", 1
     )[0]
+    normalized_active_milestone = " ".join(active_milestone.split())
 
     for required in (
-        "### Milestone 25.8 — Linux USB serial passthrough",
-        "Milestone 25.7 is closed",
+        "### Milestone 25.9 — Physical generic-container validation",
+        "Milestone 25.8 is closed",
+        "does not introduce a new runtime architecture",
+        "2026-08-19",
+        "firmware 1.26.01",
         "`compose.usb.yaml`",
         "`/dev/serial/by-id/...`",
         "UID/GID `10001`",
-        "network-SDS200 daemon deployment",
+        "network-SDS200 daemon",
         "native Linux Docker Engine",
         "theboyd78/sdsctl",
+        "Windows and macOS Docker behavior",
+        "Podman-specific semantics",
+        "Native systemd remains preferred",
     ):
-        assert required in active_milestone
+        assert required in normalized_active_milestone
 
 
 def test_branding_asset_paths_use_sdsctl_identity() -> None:

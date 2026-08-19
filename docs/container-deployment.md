@@ -8,7 +8,9 @@ daemon-client sidecar over the daemon's existing private Unix-domain services.
 Milestone 25.6 added the isolated web-dashboard container foundation. Milestone
 25.7 adds host-local browser reachability through Docker bridge networking and
 explicit host-loopback port publication. Milestone 25.8 adds a separate,
-one-shot USB scanner CLI workflow for native Linux Docker Engine.
+one-shot USB scanner CLI workflow for native Linux Docker Engine. Milestone 25.9
+records physical acceptance of those existing generic-container paths without
+introducing a new runtime architecture.
 
 Native systemd deployment remains the preferred production option when direct
 host-device, local-audio, or other operating-system integration is important.
@@ -152,7 +154,7 @@ After the daemon is running, invoke supported client commands on demand:
 
 ```bash
 docker compose run --rm daemon-client status --json
-docker compose run --rm daemon-client snapshot --json
+docker compose run --rm daemon-client snapshot
 docker compose run --rm daemon-client hold TGID 12345
 docker compose run --rm daemon-client next TGID 12345 --count 1
 docker compose run --rm daemon-client previous TGID 12345 --count 1
@@ -258,6 +260,61 @@ the host node to `0666`, or bake a hard-coded `dialout` GID into the image.
 The existing udev `uaccess` plus `dialout`/`0660` fallback remains host policy;
 the container receives only the selected device and its numeric group.
 
+## Milestone 25.9 physical validation
+
+Physical acceptance was completed on 2026-08-19 on host `BIGBOSS`, running
+Ubuntu 26.04 LTS (`linux x86_64`), native Docker Engine client/server 29.7.2,
+and Docker Compose v5.4.0. The scanner was a physical SDS200 running firmware
+Version 1.26.01.
+
+### Network daemon and client
+
+The root Compose daemon built and started against
+`udp://192.168.0.251:50536`, became healthy, connected to the SDS200, identified
+its model and firmware, and ran PSI at 500 ms. Daemon-owned RTSP/RTP audio ran
+from `rtsp://192.168.0.251/au:scanner.au`. One-shot daemon-client `status
+--json` and authoritative `snapshot` calls succeeded, and `events --count 1
+--json` returned the required initial `stream.snapshot`.
+
+The daemon remained the sole scanner, network, and audio owner. It ran as
+unprivileged UID/GID `10001:10001` with `network_mode: host`, no privileged
+mode, and no devices. The exact validation project and volumes were removed
+afterward.
+
+### USB one-shot CLI
+
+The standalone `compose.usb.yaml` was validated with no competing host or
+container daemon. It mapped only
+`/dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00`, resolved
+as `/dev/ttyACM0`, to `/dev/sdsctl-scanner` with `rwm`. The host device was
+`root:dialout`, mode `0660`, numeric GID 20. The container remained
+unprivileged UID/GID `10001:10001` and received supplemental GID 20 only for
+that selected device; it could read and write the character device.
+
+`usb-scanner info` identified SDS200 / Version 1.26.01, `scanner-info` succeeded
+against the scanner, and `health` reported healthy and connected. Two separate
+ephemeral `info` invocations produced identical application stdout. Every
+`run --rm` invocation released the device and left no validation container.
+Physical unplug/replug and USB re-enumeration were not tested. This evidence
+does not establish a USB daemon or a network-audio path through USB.
+
+### Web sidecar
+
+The daemon and web-dashboard became healthy. The web container ran as UID/GID
+`10001:10001` on ordinary Docker bridge networking, not host networking; it was
+not privileged, had no devices or added capabilities, and mounted only the
+runtime volume. Validation published exactly host
+`127.0.0.1:18080` to container port `8000`.
+
+`/healthz` succeeded, `/` returned HTTP 200 with the packaged HTML, and the
+dashboard retained its Content Security Policy, `no-referrer`, `nosniff`, and
+`X-Frame-Options: DENY` headers. `/api/v1/status` succeeded through the private
+daemon socket and returned live SDS200, PSI, and daemon-owned audio state;
+`/api/v1/snapshot` returned live SDS200 state. The exact validation project,
+volumes, and bridge network were removed afterward. Interactive browser playback,
+recording, scanner-control mutation, and browser UI interaction were not part of
+this acceptance.
+
 ## Persistent paths
 
 The existing XDG path resolver produces these container paths:
@@ -362,7 +419,7 @@ docker compose down
 
 to stop and remove the service while preserving the named persistent volumes.
 
-## Milestone 25.8 boundary
+## Milestone 25.9 boundary
 
 The supported sidecar workflows remain negotiated daemon API status and snapshot,
 safe semantic scanner controls, and bounded consumption of the daemon's ordered
@@ -383,9 +440,10 @@ weaken the network-only generic daemon boundary. This container work still does
 - generic LAN/public web publication or authentication/TLS termination;
 - broadly privileged container operation;
 - Windows or macOS Docker behavior; or
-- physical scanner validation of the generic Compose deployment.
+- Podman-specific runtime and supplemental-group semantics.
 
 The remaining items stay deferred to separate Milestone 25 work. In particular,
-the existing standalone
-web security boundary continues to reject wildcard, LAN, public, and non-local
-hostname listeners outside the explicit Home Assistant Ingress mode.
+the existing standalone web security boundary continues to reject wildcard,
+LAN, public, and non-local hostname listeners outside the explicit Home
+Assistant Ingress mode. Native systemd remains preferred when direct
+host-device, local-audio, or other operating-system integration matters.
