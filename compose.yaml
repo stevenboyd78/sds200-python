@@ -1,0 +1,21 @@
+services:
+  daemon:
+    build:
+      context: .
+    network_mode: host
+    restart: unless-stopped
+    command:
+      - --log-level
+      - "${SDS200_LOG_LEVEL:-INFO}"
+      - --host
+      - "${SDS200_HOST:?Set SDS200_HOST to the scanner IPv4 address}"
+      - daemon
+    volumes:
+      - config:/config
+      - state:/state
+      - cache:/cache
+
+volumes:
+  config:
+  state:
+  cache:

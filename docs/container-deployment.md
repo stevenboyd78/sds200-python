@@ -1,17 +1,19 @@
 # Generic container deployment
 
-Milestone 25.1 adds the first generic container packaging foundation for the
-existing foreground `sdsctl daemon`. This slice is intentionally narrower than
-the complete Milestone 25 container plan: it packages the network-connected
-SDS200 daemon on Linux without changing scanner ownership, daemon IPC, web
-binding, or transport behavior.
+Milestone 25.2 adds the supported Docker Compose deployment foundation for the
+generic network-connected SDS200 daemon introduced in Milestone 25.1. The
+container continues to use the existing foreground `sdsctl daemon`; Compose adds
+repeatable build, scanner-host, persistence, restart, and lifecycle configuration
+without changing scanner ownership, daemon IPC, web binding, or transport
+behavior.
 
 Native systemd deployment remains the preferred production option when direct
 host-device, local-audio, or other operating-system integration is important.
 
 ## Image contract
 
-Build the generic image from the repository root:
+Build the generic image directly from the repository root when Compose is not
+being used:
 
 ```bash
 docker build --tag sds200-daemon .
@@ -35,7 +37,61 @@ image without an explicit scanner command therefore does not acquire scanner
 ownership.
 
 No TCP port is exposed by this image. The standalone web dashboard remains
-loopback-only and is not made remotely reachable by Milestone 25.1.
+loopback-only and is not made remotely reachable by Milestone 25.2.
+
+## Docker Compose contract
+
+The repository-root `compose.yaml` defines one `daemon` service. The first
+supported Compose slice deliberately uses `build: .` so a checked-out source tree
+is sufficient to build and deploy the daemon. It does not depend on a Docker Hub
+or other registry publication workflow, and it does not select a published
+generic image tag.
+
+The service preserves the Milestone 25.1 runtime contract:
+
+- `network_mode: host` retains Linux host-network reachability for SDS200 UDP
+  control plus the existing RTSP/RTP audio path;
+- `restart: unless-stopped` supplies the documented container restart policy;
+- `/config`, `/state`, and `/cache` are backed by Compose named volumes;
+- the image's `SIGTERM` stop signal and private Unix-domain healthcheck are
+  inherited unchanged;
+- `/run/sdsctl/` stays ephemeral and private to the daemon container; and
+- no ports, wildcard web binding, privileged mode, or scanner device mapping are
+  added.
+
+Compose requires `SDS200_HOST` and inserts it into the existing global `--host`
+CLI option before the `daemon` subcommand. `SDS200_LOG_LEVEL` is optional and
+defaults to `INFO`. These are Compose interpolation variables; this milestone
+does not add new `SDSCTL_*` application settings.
+
+Copy the non-secret example and replace the TEST-NET-1 scanner address with the
+address used on your trusted scanner network:
+
+```bash
+cp .env.example .env
+$EDITOR .env
+```
+
+The repository ignores `.env`. Keep resolved credentials out of `.env`, the
+Compose file, command lines, logs, traces, and captures. If an existing daemon
+manifest references a credential environment variable, pass only that required
+variable to the container through an operator-owned Compose override rather than
+committing its value.
+
+Validate the resolved non-secret Compose model before starting it:
+
+```bash
+docker compose config
+```
+
+Then build local source and start the daemon:
+
+```bash
+docker compose up --detach --build
+```
+
+The required `SDS200_HOST` interpolation makes configuration fail before a
+container is created when the scanner address is unset or empty.
 
 ## Persistent paths
 
@@ -51,11 +107,22 @@ The existing XDG path resolver produces these container paths:
 | Cache root | `/cache/sdsctl/` |
 | Private runtime sockets | `/run/sdsctl/` |
 
-`/run/sdsctl/` is intentionally ephemeral. Daemon clients in the same container
-can use the default socket resolution; future multi-container socket-sharing
-belongs to a later Milestone 25 slice.
+The Compose service uses named volumes for the three persistent XDG roots. New
+volumes are initialized against image directories prepared for UID/GID `10001`;
+the Compose runtime acceptance check verifies those mounted roots remain writable
+by the unprivileged service account. The named volumes persist across normal
+container replacement and `docker compose down`.
 
-For bind mounts, make the persistent roots writable by UID/GID `10001`. One
+`docker compose down --volumes` removes the Compose-managed persistent volumes.
+Treat that command as destructive when configuration, recordings, or other state
+must be retained.
+
+`/run/sdsctl/` is intentionally ephemeral. Daemon clients in the same container
+can use the default socket resolution; multi-container socket sharing remains a
+separate later Milestone 25 boundary.
+
+For deployments that intentionally use bind mounts instead of the supported
+Compose defaults, make the persistent roots writable by UID/GID `10001`. One
 Linux example is:
 
 ```bash
@@ -65,54 +132,32 @@ sudo install -d -m 0750 -o 10001 -g 10001 \
   /srv/sds200/cache
 ```
 
-Do not put resolved credentials in the image, command line, logs, traces, or
-captures. Existing configuration may continue to reference secrets through
-environment variables.
+## Linux host networking
 
-## Initial Linux network-daemon workflow
+The foreground daemon owns SDS200 network control plus one RTSP/RTP audio
+session. Milestone 25.2 therefore retains Linux host networking so those existing
+host-reachable network semantics are preserved without inventing bridge-network
+callback behavior.
 
-The current foreground daemon owns SDS200 network control plus one RTSP/RTP
-audio session. Milestone 25.1 therefore documents Linux host networking as the
-initial container execution model so those existing host-reachable network
-semantics are preserved without inventing bridge-network callback behavior.
-Use `--network host` for this initial Linux workflow.
-
-Use a documentation/example scanner address appropriate for your deployment;
-the example below uses TEST-NET-1 rather than a real scanner address:
-
-```bash
-docker run --detach \
-  --name sds200-daemon \
-  --restart unless-stopped \
-  --network host \
-  --mount type=bind,src=/srv/sds200/config,dst=/config \
-  --mount type=bind,src=/srv/sds200/state,dst=/state \
-  --mount type=bind,src=/srv/sds200/cache,dst=/cache \
-  sds200-daemon \
-  --log-level INFO \
-  --host 192.0.2.10 \
-  daemon
-```
-
-Global options such as `--log-level` and `--host` precede `daemon`; daemon
-options follow it, exactly as in the native CLI.
-
-This image does not require `--privileged` and Milestone 25.1 does not recommend
-adding scanner devices to the container.
+Host networking intentionally gives the container the host network stack. The
+Compose service does not publish ports because port mapping is neither needed nor
+part of this deployment model. Do not add a standalone web-dashboard process to
+this service as a way to expose the dashboard remotely; its existing loopback-only
+security policy remains unchanged.
 
 ## Health and status
 
-The Dockerfile health check uses the daemon's private Unix-domain API. Inspect
-the container health state with:
+The Dockerfile healthcheck is inherited by Compose and uses the daemon's private
+Unix-domain API. Inspect health with:
 
 ```bash
-docker inspect --format '{{json .State.Health}}' sds200-daemon
+docker compose ps
 ```
 
-The same negotiated status can be queried manually inside the running container:
+The same negotiated status can be queried manually inside the running service:
 
 ```bash
-docker exec sds200-daemon sdsctl daemon-client status --json
+docker compose exec daemon sdsctl daemon-client status --json
 ```
 
 A successful status query proves that the local daemon API is responding. It is
@@ -122,31 +167,34 @@ daemon state.
 
 ## Stop and restart behavior
 
-`docker stop` sends the image's declared `SIGTERM` to PID 1. Because the image
-executes `sdsctl` directly, the existing `DaemonSignalController` receives that
-signal and the foreground daemon performs its established ordered cleanup.
+`docker compose stop` sends the image's declared `SIGTERM` to PID 1. Because the
+image executes `sdsctl` directly, the existing `DaemonSignalController` receives
+that signal and the foreground daemon performs its established ordered cleanup.
 
-Use a bounded container stop timeout that gives recordings and local service
-workers time to finalize. The image does not add another supervisor or signal
-translation layer.
+The service uses `restart: unless-stopped`. Restart policy does not change the
+daemon's own scanner reconnect, PSI recovery, destination reload, or MQTT retry
+semantics.
 
-The example uses Docker's `unless-stopped` restart policy. Restart policy does
-not change the daemon's own scanner reconnect, PSI recovery, destination reload,
-or MQTT retry semantics.
+Use:
 
-## Milestone 25.1 boundary
+```bash
+docker compose down
+```
+
+to stop and remove the service while preserving the named persistent volumes.
+
+## Milestone 25.2 boundary
 
 This foundation does **not** establish:
 
-- Docker Compose workflows;
+- generic image publication, Docker Hub version tagging, or registry automation;
 - separate daemon-client or web-dashboard containers;
 - remote or wildcard standalone web binding;
 - bridge networking or explicit UDP/TCP port-mapping recipes;
 - Linux USB serial passthrough or device-group permissions;
 - broadly privileged container operation;
-- published generic image tags or registry automation;
 - Windows or macOS Docker behavior; or
-- physical scanner validation of the generic image.
+- physical scanner validation of the generic Compose deployment.
 
 Those remain separate Milestone 25 work. In particular, the existing standalone
 web security boundary continues to reject wildcard, LAN, public, and non-local
