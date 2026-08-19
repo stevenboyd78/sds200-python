@@ -112,17 +112,19 @@ def test_generic_docker_hub_identity_is_isolated_from_python_and_home_assistant(
     assert '"sds200[mqtt]"' in _read("Dockerfile")
 
 
-def test_roadmap_names_milestone_25_4_as_active_docker_hub_publication() -> None:
+def test_roadmap_names_milestone_25_5_as_active_daemon_client_sidecar() -> None:
     roadmap = _read("ROADMAP.md")
     active_milestone = roadmap.split("## Active milestone", 1)[1].split(
         "## Deferred hardware validation", 1
     )[0]
 
     assert (
-        "### Milestone 25.4 — generic Docker Hub image publication"
+        "### Milestone 25.5 — daemon-client sidecar container foundation"
         in active_milestone
     )
-    assert "Milestone 25.3 is closed" in active_milestone
+    assert "Milestone 25.4 is closed" in active_milestone
+    assert "theboyd78/sdsctl" in active_milestone
+    assert "daemon-client" in active_milestone
 
 
 def test_branding_asset_paths_use_sdsctl_identity() -> None:

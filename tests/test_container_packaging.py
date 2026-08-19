@@ -83,6 +83,7 @@ def test_generic_compose_builds_local_source_and_requires_scanner_host() -> None
     assert "${SDS200_LOG_LEVEL:-INFO}" in compose
     assert "      - --host\n" in compose
     assert compose.index("      - --host\n") < compose.index("      - daemon\n")
+    assert compose.count("    build:\n      context: .\n") == 2
 
 
 def test_generic_compose_preserves_network_lifecycle_and_private_api_boundary() -> None:
@@ -90,10 +91,6 @@ def test_generic_compose_preserves_network_lifecycle_and_private_api_boundary() 
 
     assert "    network_mode: host\n" in compose
     assert "    restart: unless-stopped\n" in compose
-    assert "    ports:" not in compose
-    assert "    expose:" not in compose
-    assert "    privileged:" not in compose
-    assert "    healthcheck:" not in compose
     assert "web" not in compose
 
 
@@ -104,12 +101,60 @@ def test_generic_compose_persists_xdg_roots_with_named_volumes() -> None:
         "      - config:/config\n",
         "      - state:/state\n",
         "      - cache:/cache\n",
+        "      - runtime:/run/sdsctl\n",
         "\nvolumes:\n",
         "  config:\n",
         "  state:\n",
         "  cache:\n",
+        "  runtime:\n",
     ):
         assert required in compose
+
+    assert compose.count("      - runtime:/run/sdsctl\n") == 2
+
+
+def test_generic_compose_defines_isolated_on_demand_daemon_client() -> None:
+    compose = _COMPOSE.read_text(encoding="utf-8")
+    client = compose.split("\n  daemon-client:\n", 1)[1].split("\nvolumes:\n", 1)[0]
+
+    for required in (
+        "    profiles:\n      - client\n",
+        "    build:\n      context: .\n",
+        "    entrypoint:\n      - sdsctl\n      - daemon-client\n",
+        "    network_mode: none\n",
+        "    healthcheck:\n      disable: true\n",
+        "    volumes:\n      - runtime:/run/sdsctl\n",
+    ):
+        assert required in client
+
+    for forbidden in (
+        "config:/config",
+        "state:/state",
+        "cache:/cache",
+        "ports:",
+        "expose:",
+        "privileged:",
+        "devices:",
+        "cap_add:",
+        "restart:",
+        "depends_on:",
+    ):
+        assert forbidden not in client
+
+
+def test_generic_compose_preserves_daemon_contract_with_shared_runtime() -> None:
+    compose = _COMPOSE.read_text(encoding="utf-8")
+    daemon = compose.split("  daemon:\n", 1)[1].split("\n  daemon-client:\n", 1)[0]
+
+    assert "    network_mode: host\n" in daemon
+    assert "    restart: unless-stopped\n" in daemon
+    assert '${SDS200_HOST:?Set SDS200_HOST to the scanner IPv4 address}' in daemon
+    assert "      - config:/config\n" in daemon
+    assert "      - state:/state\n" in daemon
+    assert "      - cache:/cache\n" in daemon
+    assert "      - runtime:/run/sdsctl\n" in daemon
+    for forbidden in ("ports:", "expose:", "privileged:", "devices:", "cap_add:"):
+        assert forbidden not in daemon
 
 
 def test_generic_compose_example_configuration_is_non_secret_and_ignored_locally() -> None:
@@ -129,12 +174,20 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
     roadmap = _ROADMAP.read_text(encoding="utf-8")
 
     for required in (
-        "Milestone 25.4",
+        "Milestone 25.5",
         "theboyd78/sdsctl",
-        "`build: .`",
+        "`build: { context: . }`",
         "`network_mode: host`",
         "`SDS200_HOST`",
-        "docker compose up --detach --build",
+        "docker compose up --detach --build daemon",
+        "docker compose run --rm daemon-client status --json",
+        "docker compose run --rm daemon-client snapshot --json",
+        "docker compose run --rm daemon-client events --count 10 --json",
+        "`network_mode: none`",
+        "runtime transport volume",
+        "sole producer and owner",
+        "No TCP daemon API",
+        "stale-socket cleanup",
         "UID/GID `10001`",
         "`sdsctl daemon-client status --json`",
         "named volumes",
@@ -152,8 +205,10 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
         "[generic container deployment guide](docs/container-deployment.md)"
         in readme
     )
-    assert "### Milestone 25.4 — generic Docker Hub image publication" in roadmap
-    assert "Milestone 25.3 is closed" in roadmap
+    assert "docker compose run --rm daemon-client status --json" in readme
+    assert "### Milestone 25.5 — daemon-client sidecar container foundation" in roadmap
+    assert "Milestone 25.4 is closed" in roadmap
+    assert "PCMU playback or WAV output" in roadmap
 
 
 def test_generic_docker_hub_workflow_has_safe_trigger_and_publication_contract() -> None:

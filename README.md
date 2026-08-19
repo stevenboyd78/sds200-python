@@ -461,6 +461,19 @@ The generic release workflow publishes amd64 and arm64 images as
 tag for reproducible deployment. Repository-root Compose remains source-built
 with `build: .` and does not select the published image.
 
+Compose also provides an opt-in, network-disabled daemon-client sidecar over the
+daemon's private Unix sockets. Start the daemon first, then run clients on
+demand; for example:
+
+```bash
+docker compose up --detach --build daemon
+docker compose run --rm daemon-client status --json
+docker compose run --rm daemon-client events --count 10 --json
+```
+
+See the generic container deployment guide for the supported status, snapshot,
+scanner-control, and ordered-event workflows and their security boundary.
+
 Serial-only profiles, replay captures, and non-SDS200 network-audio selections
 are rejected.
 
