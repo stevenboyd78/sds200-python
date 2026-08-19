@@ -1,11 +1,10 @@
 # Generic container deployment
 
-Milestone 25.2 adds the supported Docker Compose deployment foundation for the
-generic network-connected SDS200 daemon introduced in Milestone 25.1. The
-container continues to use the existing foreground `sdsctl daemon`; Compose adds
-repeatable build, scanner-host, persistence, restart, and lifecycle configuration
-without changing scanner ownership, daemon IPC, web binding, or transport
-behavior.
+Milestones 25.1 and 25.2 established the generic network-connected SDS200 daemon
+image and its supported source-built Docker Compose deployment. Milestone 25.4
+establishes release-tag publication of that standalone multi-platform image to
+Docker Hub as `theboyd78/sdsctl` without changing the Compose, scanner-ownership,
+daemon IPC, web-binding, or transport contracts.
 
 Native systemd deployment remains the preferred production option when direct
 host-device, local-audio, or other operating-system integration is important.
@@ -18,6 +17,33 @@ being used:
 ```bash
 docker build --tag sds200-daemon .
 ```
+
+For future matching release tags, the workflow publishes standalone images for
+`linux/amd64` and `linux/arm64`. Pull an exact published release for a
+reproducible deployment:
+
+```bash
+docker pull theboyd78/sdsctl:VERSION
+```
+
+Run the exact release with the existing host-network and persistent-path
+contract, substituting the trusted scanner address and operator-managed volumes:
+
+```bash
+docker run --detach \
+  --name sdsctl \
+  --network host \
+  --restart unless-stopped \
+  --volume sdsctl-config:/config \
+  --volume sdsctl-state:/state \
+  --volume sdsctl-cache:/cache \
+  theboyd78/sdsctl:VERSION \
+  --host SCANNER_IP daemon
+```
+
+Replace `VERSION` with an actually published package version, without a leading
+`v`. The `latest` tag follows the newest successfully published release, but
+exact version tags are recommended for reproducibility and controlled upgrades.
 
 The image:
 
@@ -41,11 +67,11 @@ loopback-only and is not made remotely reachable by Milestone 25.2.
 
 ## Docker Compose contract
 
-The repository-root `compose.yaml` defines one `daemon` service. The first
-supported Compose slice deliberately uses `build: .` so a checked-out source tree
-is sufficient to build and deploy the daemon. It does not depend on a Docker Hub
-or other registry publication workflow, and it does not select a published
-generic image tag.
+The repository-root `compose.yaml` defines one `daemon` service and deliberately
+uses `build: .`, so a checked-out source tree is sufficient to build and deploy
+the daemon. This remains distinct from the published standalone
+`theboyd78/sdsctl` image: Compose does not contain `image:` and does not select a
+Docker Hub tag.
 
 The service preserves the Milestone 25.1 runtime contract:
 
@@ -183,11 +209,14 @@ docker compose down
 
 to stop and remove the service while preserving the named persistent volumes.
 
-## Milestone 25.2 boundary
+## Milestone 25.4 boundary
 
-This foundation does **not** establish:
+Generic Docker Hub publication is established only for genuine matching release
+tag pushes. Pull requests, pushes to `main`, and manually dispatched workflow
+runs validate both supported platforms without authenticating or publishing.
 
-- generic image publication, Docker Hub version tagging, or registry automation;
+This container work still does **not** establish:
+
 - separate daemon-client or web-dashboard containers;
 - remote or wildcard standalone web binding;
 - bridge networking or explicit UDP/TCP port-mapping recipes;

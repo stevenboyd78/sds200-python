@@ -456,6 +456,11 @@ See the
 [local daemon PCMU stream guide](docs/daemon-pcmu.md), and
 [operational logging](docs/logging.md).
 
+The generic release workflow publishes amd64 and arm64 images as
+`theboyd78/sdsctl:VERSION` for future matching release tags; use an exact release
+tag for reproducible deployment. Repository-root Compose remains source-built
+with `build: .` and does not select the published image.
+
 Serial-only profiles, replay captures, and non-SDS200 network-audio selections
 are rejected.
 

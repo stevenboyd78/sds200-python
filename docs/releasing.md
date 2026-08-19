@@ -186,6 +186,12 @@ The `pypi` GitHub environment and PyPI Trusted Publisher must match
 `.github/workflows/release.yml`. No long-lived PyPI token is stored in the
 repository.
 
+Configure the repository Actions variable `DOCKERHUB_USERNAME` as
+`theboyd78`. Configure the repository Actions secret named `DOCKERHUB_TOKEN`
+with the Docker Hub publication credential; never record or expose its value in
+repository files, commands, logs, or release evidence. Only the publishing job
+in `.github/workflows/docker-hub-image.yml` consumes that secret.
+
 For releases that contain the Home Assistant App,
 `.github/workflows/home-assistant-app-image.yml` must also be present on the
 tagged commit. The App version, package version, and `vVERSION` tag must match.
@@ -198,17 +204,39 @@ git tag -a vVERSION -m "sdsctl vVERSION"
 git push origin vVERSION
 ```
 
-The tag starts both release paths:
+The genuine matching release-tag push starts three publication paths:
 
 - the Python release workflow verifies the tag, runs the release checks, builds
   the distributions, and publishes them to PyPI through GitHub OIDC; and
 - the Home Assistant App image workflow verifies that the package and App
   versions match the tag, publishes amd64 and aarch64 GHCR images, and creates
-  the generic multi-architecture image manifest.
+  the generic multi-architecture image manifest; and
+- the generic Docker Hub workflow verifies the tag exactly matches the package
+  version, verifies `sds200.__version__`, and publishes the `linux/amd64` and
+  `linux/arm64` image as `theboyd78/sdsctl:VERSION` and
+  `theboyd78/sdsctl:latest`.
 
-Wait for both workflows to pass before creating the GitHub release.
+Wait for all three publication workflows to pass before creating the GitHub
+release. Do not create a synthetic release tag for workflow testing: pull
+requests, `main` pushes, and manual dispatches already exercise the generic
+multi-platform build without authentication or publication.
 
-## 6. Verify Home Assistant repository installation
+## 6. Verify published container images
+
+Before creating the GitHub release, perform read-only public verification of the
+generic Docker Hub image:
+
+```bash
+docker buildx imagetools inspect theboyd78/sdsctl:VERSION
+docker buildx imagetools inspect theboyd78/sdsctl:latest
+```
+
+Confirm both references resolve to the newly published release manifest and
+that the manifest includes `linux/amd64` and `linux/arm64`. Pull the exact
+version without repository-development credentials when host capacity permits.
+Do not log in, mutate tags, or publish during verification.
+
+## 7. Verify Home Assistant repository installation
 
 Before creating the GitHub release, validate the public Home Assistant
 distribution path on Home Assistant OS.
@@ -247,7 +275,7 @@ Do not assume data from a previously staged Local App belongs to the
 repository-managed App. Preserve any recordings or configuration needed from
 the development installation before replacing it.
 
-## 7. Create the GitHub release
+## 8. Create the GitHub release
 
 - Create a release from tag `vVERSION`.
 - Title it `sdsctl vVERSION`.
@@ -260,7 +288,7 @@ the development installation before replacing it.
 - Attach the wheel and source distribution from `dist/` if desired.
 - Confirm GitHub marks the newest normal release as **Latest**.
 
-## 8. Verify the published package
+## 9. Verify the published package
 
 Install the exact release in a clean environment after the Trusted Publishing workflow succeeds:
 
