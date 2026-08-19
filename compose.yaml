@@ -38,7 +38,9 @@ services:
     entrypoint:
       - sdsctl
       - web
-    network_mode: none
+      - --container-exposure
+    ports:
+      - "127.0.0.1:${SDSCTL_WEB_PORT:-8000}:8000"
     restart: unless-stopped
     healthcheck:
       test:

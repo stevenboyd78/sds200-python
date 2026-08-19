@@ -181,6 +181,7 @@ from .state import snapshot_from_scanner_info
 from .tui_audio import TuiAudioSession
 from .tui_logging import TuiLogBuffer, capture_package_logs
 from .web_server import (
+    WEB_DASHBOARD_CONTAINER_EXPOSURE_HOST,
     WEB_DASHBOARD_DEFAULT_HOST,
     WEB_DASHBOARD_DEFAULT_PORT,
     WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_HOST,
@@ -1266,6 +1267,15 @@ def build_parser(
             "Serve in Home Assistant App Ingress mode on "
             f"{WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_HOST}; requests are "
             "restricted to the Supervisor Ingress peer"
+        ),
+    )
+    web.add_argument(
+        "--container-exposure",
+        action="store_true",
+        help=(
+            "Bind the generic container listener to "
+            f"{WEB_DASHBOARD_CONTAINER_EXPOSURE_HOST}; Docker must constrain "
+            "host publication to loopback"
         ),
     )
     web.add_argument(
@@ -3604,6 +3614,19 @@ def _run_web(
             f"{WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_HOST}."
         )
 
+    if args.container_exposure and args.listen_address is not None:
+        raise ValueError(
+            "--listen-address cannot be used with --container-exposure; "
+            "generic container exposure binds "
+            f"{WEB_DASHBOARD_CONTAINER_EXPOSURE_HOST}."
+        )
+
+    if args.home_assistant_ingress and args.container_exposure:
+        raise ValueError(
+            "--container-exposure cannot be used with "
+            "--home-assistant-ingress."
+        )
+
     try:
         from .web_dashboard import create_web_dashboard_app
     except ModuleNotFoundError as error:
@@ -3709,7 +3732,11 @@ def _run_web(
     server_host = (
         WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_HOST
         if args.home_assistant_ingress
-        else (args.listen_address or WEB_DASHBOARD_DEFAULT_HOST)
+        else (
+            WEB_DASHBOARD_CONTAINER_EXPOSURE_HOST
+            if args.container_exposure
+            else (args.listen_address or WEB_DASHBOARD_DEFAULT_HOST)
+        )
     )
 
     return run_web_dashboard_server(
@@ -3718,6 +3745,7 @@ def _run_web(
         port=args.listen_port,
         access_log=args.access_log,
         home_assistant_ingress=args.home_assistant_ingress,
+        container_exposure=args.container_exposure,
     )
 
 

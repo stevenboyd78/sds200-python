@@ -11,23 +11,21 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 25.6 — web-dashboard container/security boundary
+### Milestone 25.7 — bridge networking and explicit web port exposure
 
-Milestone 25.5 is closed after adding an opt-in, one-shot `daemon-client`
-Compose sidecar built from the same repository-root image. A dedicated named
-runtime volume shares only `/run/sdsctl` with the daemon, preserving private
-Unix-domain API and ordered-event access without giving the sidecar network,
-durable XDG mounts, ports, devices, capabilities, a restart policy, daemon
-ownership, or an inherited daemon healthcheck.
+Milestone 25.6 is closed after adding the supported isolated web-dashboard
+container foundation over the daemon's private runtime socket volume, alongside
+the existing network-disabled `daemon-client` sidecar.
 
-Milestone 25.6 adds the supported isolated web-dashboard container foundation.
-The single generic image includes both MQTT and web extras, while an opt-in,
-long-running `web-dashboard` Compose service shares only the private runtime
-socket volume with the daemon. It uses ordinary standalone web mode, retains
-the loopback-only `127.0.0.1` listener inside a network-disabled container,
-publishes and exposes no ports, and has a daemon-independent local `/healthz`
-process check. The daemon remains the sole socket producer and sole scanner,
-RTSP/RTP, control, and audio owner.
+Milestone 25.7 adds host-local browser reachability through ordinary Docker
+bridge networking and explicit host-loopback port publication. The opt-in
+`web-dashboard` uses the dedicated `--container-exposure` mode to bind exactly
+`0.0.0.0:8000` inside its container, while Compose publishes exactly
+`127.0.0.1:${SDSCTL_WEB_PORT:-8000}:8000`. This internal wildcard is safe only
+with publication constrained to Docker-host loopback. Standalone `sdsctl web`
+remains loopback-only by default and through `--listen-address`; Home Assistant
+Ingress remains a separate guarded mode. Arbitrary remote or LAN exposure is
+unsupported and deferred.
 
 The Python distribution and import package remain `sds200`, the CLI remains
 `sdsctl`, and the local development image tag remains `sds200-daemon`. Home
@@ -36,11 +34,9 @@ Assistant App/GHCR publication remains separate and keeps the
 `theboyd78/sdsctl`. Repository-root Compose remains source-built with `build: .`
 and does not select a published image.
 
-This slice intentionally provides no browser URL from the host or other
-containers. Milestone 25.7 remains responsible for the separate security
-boundary covering bridge networking, explicit wildcard container binding, and
-explicit host port publication. Keep USB passthrough, Windows and macOS Docker
-behavior, and physical generic-container validation in later container slices.
+Milestone 25.8 remains responsible for Linux USB serial passthrough. Keep
+Windows and macOS Docker behavior and physical generic-container validation in
+later container slices.
 
 ## Deferred hardware validation
 

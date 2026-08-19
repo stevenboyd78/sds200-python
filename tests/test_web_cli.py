@@ -7,6 +7,7 @@ import pytest
 
 from sds200 import DaemonSocketLocation, cli, web_dashboard
 from sds200.web_server import (
+    WEB_DASHBOARD_CONTAINER_EXPOSURE_HOST,
     WEB_DASHBOARD_DEFAULT_PORT,
     WEB_DASHBOARD_HOME_ASSISTANT_INGRESS_HOST,
 )
@@ -100,6 +101,7 @@ def test_web_parser_uses_loopback_defaults() -> None:
 
     assert args.action == "web"
     assert args.home_assistant_ingress is False
+    assert args.container_exposure is False
     assert args.daemon_socket_path is None
     assert args.daemon_event_socket_path is None
     assert args.daemon_pcmu_socket_path is None
@@ -121,6 +123,14 @@ def test_web_parser_accepts_home_assistant_ingress() -> None:
     )
 
     assert args.home_assistant_ingress is True
+    assert args.listen_address is None
+
+
+def test_web_parser_accepts_container_exposure() -> None:
+    args = cli.build_parser().parse_args(["web", "--container-exposure"])
+
+    assert args.container_exposure is True
+    assert args.home_assistant_ingress is False
     assert args.listen_address is None
 
 
@@ -249,7 +259,9 @@ def test_web_cli_builds_daemon_clients_and_runs_server(
         port: int,
         access_log: bool,
         home_assistant_ingress: bool = False,
+        container_exposure: bool = False,
     ) -> int:
+        assert container_exposure is False
         server_calls.append(
             (
                 selected_app,
@@ -386,7 +398,9 @@ def test_web_cli_home_assistant_ingress_binds_wildcard_and_enables_guard(
         port: int,
         access_log: bool,
         home_assistant_ingress: bool = False,
+        container_exposure: bool = False,
     ) -> int:
+        assert container_exposure is False
         server_calls.append(
             (
                 selected_app,
@@ -460,6 +474,82 @@ def test_web_cli_home_assistant_ingress_rejects_listen_address(
         in capsys.readouterr().err
     )
 
+
+def test_web_cli_container_exposure_uses_wildcard_without_ingress(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    create_calls: list[bool] = []
+    server_calls: list[tuple[str, bool, bool]] = []
+
+    def fake_create_app(
+        *args: object,
+        home_assistant_ingress: bool = False,
+    ) -> object:
+        del args
+        create_calls.append(home_assistant_ingress)
+        return object()
+
+    def fake_run_server(
+        app: object,
+        *,
+        host: str,
+        port: int,
+        access_log: bool,
+        home_assistant_ingress: bool = False,
+        container_exposure: bool = False,
+    ) -> int:
+        del app, port, access_log
+        server_calls.append((host, home_assistant_ingress, container_exposure))
+        return 0
+
+    monkeypatch.setattr(
+        web_dashboard,
+        "create_web_dashboard_app",
+        fake_create_app,
+    )
+    monkeypatch.setattr(cli, "run_web_dashboard_server", fake_run_server)
+    result = cli.main(
+        [
+            "web",
+            "--container-exposure",
+            "--daemon-socket-path",
+            str(tmp_path / "daemon.sock"),
+            "--daemon-event-socket-path",
+            str(tmp_path / "events.sock"),
+            "--daemon-pcmu-socket-path",
+            str(tmp_path / "pcmu.sock"),
+            "--daemon-recording-file-socket-path",
+            str(tmp_path / "recordings.sock"),
+        ],
+        environ={},
+    )
+
+    assert result == 0
+    assert create_calls == [False]
+    assert server_calls == [(WEB_DASHBOARD_CONTAINER_EXPOSURE_HOST, False, True)]
+
+
+@pytest.mark.parametrize(
+    "arguments,message",
+    [
+        (
+            ["--container-exposure", "--listen-address", "127.0.0.1"],
+            "--listen-address cannot be used with --container-exposure",
+        ),
+        (
+            ["--container-exposure", "--home-assistant-ingress"],
+            "--container-exposure cannot be used with --home-assistant-ingress",
+        ),
+    ],
+)
+def test_web_cli_rejects_conflicting_container_exposure_options(
+    arguments: list[str],
+    message: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert cli.main(["web", *arguments], environ={}) == 2
+    assert message in capsys.readouterr().err
 
 def test_web_cli_rejects_scanner_connection_options(
     capsys: pytest.CaptureFixture[str],

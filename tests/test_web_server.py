@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from sds200.web_server import (
+    WEB_DASHBOARD_CONTAINER_EXPOSURE_HOST,
     WEB_DASHBOARD_DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT,
     WEB_DASHBOARD_DEFAULT_HOST,
     WEB_DASHBOARD_DEFAULT_PORT,
@@ -152,6 +153,57 @@ def test_run_web_dashboard_server_allows_home_assistant_ingress() -> None:
         )
     ]
     assert factory.server.run_calls == 1
+
+
+def test_run_web_dashboard_server_allows_generic_container_exposure() -> None:
+    app = object()
+    factory = FakeServerFactory()
+
+    assert run_web_dashboard_server(
+        app,
+        host=WEB_DASHBOARD_CONTAINER_EXPOSURE_HOST,
+        container_exposure=True,
+        server_factory=factory,
+    ) == 0
+
+    assert factory.calls == [
+        (
+            app,
+            WEB_DASHBOARD_CONTAINER_EXPOSURE_HOST,
+            WEB_DASHBOARD_DEFAULT_PORT,
+            True,
+        )
+    ]
+
+
+def test_run_web_dashboard_server_container_exposure_requires_wildcard() -> None:
+    with pytest.raises(
+        ValueError,
+        match="container-exposure web server must listen on 0.0.0.0",
+    ):
+        run_web_dashboard_server(
+            object(),
+            host=WEB_DASHBOARD_DEFAULT_HOST,
+            container_exposure=True,
+        )
+
+
+def test_run_web_dashboard_server_requires_boolean_container_setting() -> None:
+    with pytest.raises(TypeError, match="container-exposure.*boolean"):
+        run_web_dashboard_server(
+            object(),
+            container_exposure=1,  # type: ignore[arg-type]
+        )
+
+
+def test_run_web_dashboard_server_rejects_both_wildcard_modes() -> None:
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        run_web_dashboard_server(
+            object(),
+            host=WEB_DASHBOARD_CONTAINER_EXPOSURE_HOST,
+            home_assistant_ingress=True,
+            container_exposure=True,
+        )
 
 
 def test_run_web_dashboard_server_ingress_requires_wildcard_host() -> None:
