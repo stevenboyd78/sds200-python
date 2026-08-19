@@ -11,7 +11,7 @@ from .state import RadioStateSnapshot
 from .tui_controls import channel_navigation
 
 DAEMON_MQTT_HOME_ASSISTANT_SUPPORT_URL = (
-    "https://github.com/stevenboyd78/sds200-python"
+    "https://github.com/stevenboyd78/sdsctl"
 )
 
 

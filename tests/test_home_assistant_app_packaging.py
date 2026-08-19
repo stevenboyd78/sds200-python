@@ -58,10 +58,10 @@ def _integer_scalar(text: str, key: str) -> int:
 def test_home_assistant_repository_manifest_is_present() -> None:
     manifest = _REPOSITORY_MANIFEST.read_text(encoding="utf-8")
 
-    assert _quoted_scalar(manifest, "name") == "sds200"
+    assert _quoted_scalar(manifest, "name") == "sdsctl"
     assert (
         _quoted_scalar(manifest, "url")
-        == "https://github.com/stevenboyd78/sds200-python"
+        == "https://github.com/stevenboyd78/sdsctl"
     )
     assert "maintainer:" in manifest
 
@@ -236,7 +236,7 @@ def test_home_assistant_app_dockerfile_has_complete_app_image_labels() -> None:
     for required in (
         'io.hass.name="sds200"',
         'io.hass.description="Uniden SDS200 scanner daemon and web dashboard for Home Assistant"',
-        'io.hass.url="https://github.com/stevenboyd78/sds200-python"',
+        'io.hass.url="https://github.com/stevenboyd78/sdsctl"',
         'io.hass.type="app"',
         'org.opencontainers.image.licenses="MIT"',
     ):

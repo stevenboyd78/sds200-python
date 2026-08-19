@@ -18,7 +18,7 @@ LABEL \
     org.opencontainers.image.title="sds200" \
     org.opencontainers.image.description="Uniden SDS200 network scanner daemon" \
     org.opencontainers.image.licenses="MIT" \
-    org.opencontainers.image.source="https://github.com/stevenboyd78/sds200-python"
+    org.opencontainers.image.source="https://github.com/stevenboyd78/sdsctl"
 
 ENV \
     PYTHONDONTWRITEBYTECODE=1 \

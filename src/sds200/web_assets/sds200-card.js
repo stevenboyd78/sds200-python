@@ -632,6 +632,6 @@ if (
       "Read-only scanner status from the sds200 Home Assistant entities.",
     preview: true,
     documentationURL:
-      "https://github.com/stevenboyd78/sds200-python/blob/main/docs/home-assistant-app.md",
+      "https://github.com/stevenboyd78/sdsctl/blob/main/docs/home-assistant-app.md",
   });
 }

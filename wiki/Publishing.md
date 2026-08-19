@@ -30,12 +30,12 @@ tab when necessary.
 Clone the wiki repository into a temporary checkout:
 
 ```bash
-WIKI_CHECKOUT=/tmp/sds200-python-wiki
+WIKI_CHECKOUT=/tmp/sdsctl-wiki
 
 rm -rf "$WIKI_CHECKOUT"
 
 git clone \
-  git@github.com:stevenboyd78/sds200-python.wiki.git \
+  git@github.com:stevenboyd78/sdsctl.wiki.git \
   "$WIKI_CHECKOUT"
 ```
 

@@ -194,7 +194,7 @@ tagged commit. The App version, package version, and `vVERSION` tag must match.
 git switch main
 git pull --ff-only
 git status
-git tag -a vVERSION -m "sds200-python vVERSION"
+git tag -a vVERSION -m "sdsctl vVERSION"
 git push origin vVERSION
 ```
 
@@ -218,7 +218,7 @@ distribution path on Home Assistant OS.
 2. Confirm the image can be pulled without repository-development credentials.
 3. In Home Assistant, open **Settings > Apps > App store**, open the top-right
    three-dot menu, choose **Repositories**, and add
-   `https://github.com/stevenboyd78/sds200-python`.
+   `https://github.com/stevenboyd78/sdsctl`.
 4. Confirm the **sds200** App appears as repository-managed rather than Local and
    shows the release version and matching documentation.
 5. Install or upgrade the repository App, set `scanner_host`, and start it.
@@ -250,7 +250,7 @@ the development installation before replacing it.
 ## 7. Create the GitHub release
 
 - Create a release from tag `vVERSION`.
-- Title it `sds200-python vVERSION`.
+- Title it `sdsctl vVERSION`.
 - For a normal versioned release, leave **pre-release** and **draft** unchecked.
 - Mark a release as a pre-release only when the version is intentionally being
   published for prerelease testing.

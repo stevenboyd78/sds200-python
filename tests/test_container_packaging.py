@@ -148,8 +148,6 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
         "[generic container deployment guide](docs/container-deployment.md)"
         in readme
     )
-    assert (
-        "### Milestone 25.2 — Docker Compose deployment foundation"
-        in roadmap
-    )
+    assert "### Milestone 25.3 — sdsctl repository and product naming migration" in roadmap
+    assert "Milestone 25.2 is closed" in roadmap
     assert "does not add generic image publication" in roadmap
