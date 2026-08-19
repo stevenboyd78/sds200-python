@@ -11,37 +11,35 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 24.10 — RF Power Plot analysis foundation
+### Milestone 25.1 — Generic network-container packaging foundation
 
-Milestone 24.9 is closed after two evidence-led System Status slices: exact
-acknowledged `AST,SYSTEM_STATUS,[site_index]` start plus a read-only documented
-projection over existing lossless `ScannerInfo` SystemStatus records. It does
-not infer analysis lifecycle/cadence or automatic APR/PSI/GSI behavior.
+Milestone 24.10 is closed after one evidence-led RF Power Plot slice: exact
+parameter validation and acknowledged `AST,RF_POWER_PLOT` start, with SDS100
+rejected at the operation boundary and SDS150 retained as specification-only.
+RF-power output/data framing remains unsupported because the reviewed evidence
+does not establish it.
 
-The first Milestone 24.10 slice follows the separate RF Power Plot table shared
-by official SDS100/SDS200 Remote Command Specification V1.02 and SDS Series
-Remote Command Specification V2.00. Both show exact
-`AST,RF_POWER_PLOT,[Frequency],[Modulation],[Sampling Rate]\r` transmission
-followed by exact `AST,OK\r`. The documented raw Frequency integer range is
-`250000` through `13000000`; exact modulation tokens are `Auto`, `AM`, `NFM`,
-`FM`, `WFM`, and `FMB`; and exact sampling-rate tokens are `100`, `200`, `400`,
-and `800`.
+The first Milestone 25 slice adds a generic container packaging foundation around
+the existing foreground SDS200 network daemon. A root multi-stage `Dockerfile`
+builds the local package with MQTT support, runs `sdsctl` as deterministic
+unprivileged UID/GID `10001`, uses explicit XDG configuration/state/cache/runtime
+roots, declares persistent configuration/state/cache volumes, forwards SIGTERM
+to the existing daemon signal controller, and checks daemon readiness through
+the private Unix-domain API with `sdsctl daemon-client status --json`.
 
-Both reviewed tables visibly mark the RF Power Plot block `Removed in SDS100`.
-V2.00 covers SDS100, SDS150, and SDS200, so the radio API rejects a resolved
-SDS100 before sending RF Power Plot AST while allowing specification-backed
-SDS150/SDS200. SDS150 remains specification-only, and no physical validation is
-claimed. The raw Frequency integer is serialized exactly as documented without
-assigning a unit conversion, frequency-step alignment, or wider tuning semantic.
+The initial documented execution model is Linux host networking so the existing
+SDS200 UDP control and RTSP/RTP paths retain host-reachable network semantics.
+The image exposes no TCP service and does not weaken the standalone web
+dashboard's loopback-only policy. Static host-independent packaging tests pin the
+image, build-context, lifecycle, path, security, documentation, and roadmap
+contract.
 
-This slice models only parameter validation, exact acknowledged start, model
-applicability at the RF Power Plot API, public typed constants, deterministic
-synthetic replay evidence, and documentation. Existing
-`AnalysisMode.RF_POWER_PLOT` APR support remains independent. No RF-power output
-or data-frame model, automatic APR, analysis running/paused/stopped state,
-renderer behavior, reconnect restoration, new capability flag, negative/error
-AST reply classification, transport expansion, firmware guarantee, or hardware
-validation is inferred.
+This slice does not add Docker Compose, multi-container daemon-client or web
+workflows, standalone remote web exposure, USB device passthrough, bridge-network
+or explicit port-mapping recipes, image publication automation, Windows/macOS
+container validation, or physical scanner validation. Those remain separate
+Milestone 25 slices where their platform and transport behavior can be validated
+independently.
 
 ## Deferred hardware validation
 
