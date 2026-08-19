@@ -502,6 +502,11 @@ export SDSCTL_USB_GID="$(stat -Lc '%g' "$SDSCTL_USB_DEVICE")"
 docker compose -f compose.usb.yaml run --rm usb-scanner info
 ```
 
+The generic native-Linux network daemon/client, web-sidecar, and one-shot USB
+container paths were physically validated on 2026-08-19 with an SDS200 running
+firmware 1.26.01. That acceptance did not include interactive browser behavior
+or USB unplug/replug and re-enumeration testing.
+
 See the [generic container deployment guide](docs/container-deployment.md#native-linux-usb-scanner-cli)
 for device preflight, security boundaries, and additional one-shot commands.
 

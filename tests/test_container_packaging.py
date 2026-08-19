@@ -279,7 +279,7 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
         "`SDS200_HOST`",
         "docker compose up --detach --build daemon",
         "docker compose run --rm daemon-client status --json",
-        "docker compose run --rm daemon-client snapshot --json",
+        "docker compose run --rm daemon-client snapshot",
         "docker compose run --rm daemon-client events --count 10 --json",
         "docker compose --profile web up --detach --build web-dashboard",
         "http://127.0.0.1:8000/healthz",
@@ -314,6 +314,18 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
         "docker compose -f compose.usb.yaml run --rm usb-scanner health",
         "does not start or replace the daemon",
         "no SDS200 network audio path",
+        "Milestone 25.9 physical validation",
+        "Ubuntu 26.04 LTS",
+        "Docker Engine client/server 29.7.2",
+        "Docker Compose v5.4.0",
+        "Version 1.26.01",
+        "udp://192.168.0.251:50536",
+        "rtsp://192.168.0.251/au:scanner.au",
+        "supplemental GID 20 only",
+        "Physical unplug/replug and USB re-enumeration were not tested",
+        "127.0.0.1:18080",
+        "Interactive browser playback",
+        "Podman-specific runtime and supplemental-group semantics",
     ):
         assert required in document
 
@@ -323,8 +335,10 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
     )
     assert "docker compose run --rm daemon-client status --json" in readme
     assert "docker compose -f compose.usb.yaml run --rm usb-scanner info" in readme
-    assert "### Milestone 25.8 — Linux USB serial passthrough" in roadmap
-    assert "Milestone 25.7 is closed" in roadmap
+    assert "snapshot --json" not in document
+    assert "physical scanner validation of the generic Compose deployment" not in document
+    assert "### Milestone 25.9 — Physical generic-container validation" in roadmap
+    assert "Milestone 25.8 is closed" in roadmap
 
 
 def test_generic_docker_hub_workflow_has_safe_trigger_and_publication_contract() -> None:
