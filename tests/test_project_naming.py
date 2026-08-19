@@ -112,7 +112,7 @@ def test_generic_docker_hub_identity_is_isolated_from_python_and_home_assistant(
     assert '"sds200[mqtt,web]"' in _read("Dockerfile")
 
 
-def test_roadmap_names_milestone_25_9_as_physical_validation_boundary() -> None:
+def test_roadmap_names_milestone_25_10_as_docker_desktop_network_boundary() -> None:
     roadmap = _read("ROADMAP.md")
     active_milestone = roadmap.split("## Active milestone", 1)[1].split(
         "## Deferred hardware validation", 1
@@ -120,19 +120,23 @@ def test_roadmap_names_milestone_25_9_as_physical_validation_boundary() -> None:
     normalized_active_milestone = " ".join(active_milestone.split())
 
     for required in (
-        "### Milestone 25.9 — Physical generic-container validation",
-        "Milestone 25.8 is closed",
-        "does not introduce a new runtime architecture",
-        "2026-08-19",
+        "### Milestone 25.10 — Docker Desktop network portability foundation",
+        "Milestone 25.9 is closed",
+        "Docker Desktop 4.34",
+        "Enable host networking",
+        "TCP and UDP",
+        "layer 4",
+        "Enhanced Container Isolation",
+        "Docker Desktop for Linux 4.87.0",
+        "Engine 29.7.2",
+        "persistent settings-file state",
         "firmware 1.26.01",
+        "TCP 554 RTSP listener",
+        "native host",
+        "physical Windows or macOS Docker validation",
         "`compose.usb.yaml`",
-        "`/dev/serial/by-id/...`",
-        "UID/GID `10001`",
-        "network-SDS200 daemon",
-        "native Linux Docker Engine",
-        "theboyd78/sdsctl",
-        "Windows and macOS Docker behavior",
-        "Podman-specific semantics",
+        "USB/IP",
+        "Podman-specific",
         "Native systemd remains preferred",
     ):
         assert required in normalized_active_milestone

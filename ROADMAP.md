@@ -11,31 +11,43 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 25.9 — Physical generic-container validation
+### Milestone 25.10 — Docker Desktop network portability foundation
 
-Milestone 25.8 is closed after establishing the narrow native Linux USB serial
-passthrough contract for one-shot scanner CLI commands over exactly one
-operator-selected device.
+Milestone 25.9 is closed after physical native-Linux acceptance of the existing
+generic network daemon/client, host-loopback web sidecar, and standalone
+`compose.usb.yaml` one-shot USB workflow against an SDS200 running firmware
+1.26.01.
 
-Milestone 25.9 closes physical acceptance of the existing generic-container
-paths; it does not introduce a new runtime architecture. On 2026-08-19, native
-Linux Docker Engine validation against a physical SDS200 running firmware 1.26.01
-covered the network-SDS200 daemon and one-shot daemon client, the
-host-loopback web sidecar, and the standalone `compose.usb.yaml` one-shot USB
-workflow. The daemon remained the sole network scanner and audio owner; the web
-sidecar retained ordinary bridge networking and private-socket access; and USB
-mapped only the stable `/dev/serial/by-id/...` source while the unprivileged
-UID/GID `10001` process received only the selected device's supplemental group.
+Milestone 25.10 establishes the network-only Docker Desktop portability
+foundation without changing the generic runtime architecture. Repository-root
+Compose keeps the scanner-owning daemon on `network_mode: host`, the
+daemon-client isolated on `network_mode: none`, and the web dashboard on ordinary
+bridge networking with host-loopback publication. Docker Desktop 4.34 and later
+supports host networking for Linux containers only after the operator enables
+**Settings → Resources → Network → Enable host networking** and applies the
+restart. The feature supports TCP and UDP at layer 4, does not provide direct
+host-interface access, and is incompatible with Enhanced Container Isolation.
 
-The Python distribution and import package remain `sds200`, the CLI remains
-`sdsctl`, and the local development image tag remains `sds200-daemon`. Home
-Assistant App/GHCR publication remains separate and keeps the
-`sds200-home-assistant` identity. The generic Docker Hub identity remains
-`theboyd78/sdsctl`. Repository-root Compose remains source-built with `build: .`
-and does not select a published image.
+On 2026-08-19, a reversible Docker Desktop for Linux 4.87.0 / Engine 29.7.2
+host-network experiment demonstrated TCP and UDP exchange between a
+host-networked container and Docker-host loopback after a Desktop restart. The
+settings file no longer exposed an explicit `hostNetworkingEnabled` key after
+that restart, so this evidence establishes observed runtime behavior rather than
+persistent settings-file state. Scanner UDP control and PSI
+also operated through an exploratory bridge-network daemon path. End-to-end
+Docker Desktop SDS200 RTSP/RTP acceptance was not completed: during the
+investigation the physical scanner's TCP 554 RTSP listener became persistently
+unavailable even from the native host and remained unavailable after full
+power-and-Ethernet removal/reconnection. That external scanner condition blocks
+a trustworthy Desktop audio conclusion and does not justify changing the
+existing Compose architecture.
 
-Keep Windows and macOS Docker behavior and Podman-specific semantics deferred.
-Native systemd remains preferred when direct host-device, local-audio, or other
+Do not claim physical Windows or macOS Docker validation from this milestone.
+Direct Windows/macOS USB passthrough is not added; Docker Desktop USB/IP remains
+a separate workaround and is not folded into the native-Linux
+`compose.usb.yaml` contract. Keep Podman-specific networking and
+supplemental-group semantics deferred to a separate slice. Native systemd
+remains preferred when direct host-device, local-audio, or other
 operating-system integration is important.
 
 ## Deferred hardware validation

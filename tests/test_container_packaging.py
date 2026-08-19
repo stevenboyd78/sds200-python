@@ -301,7 +301,6 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
         "standalone web dashboard",
         "bridge networking",
         "Linux USB serial passthrough",
-        "Windows or macOS Docker behavior",
         "`compose.usb.yaml`",
         "native Linux Docker Engine",
         "SDSCTL_USB_DEVICE",
@@ -325,7 +324,18 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
         "Physical unplug/replug and USB re-enumeration were not tested",
         "127.0.0.1:18080",
         "Interactive browser playback",
-        "Podman-specific runtime and supplemental-group semantics",
+        "Docker Desktop 4.34",
+        "Enable host networking",
+        "Enhanced Container Isolation",
+        "Docker Desktop for Linux 4.87.0",
+        "`hostNetworkingEnabled` key",
+        "persistent",
+        "settings-file state",
+        "authentication and TLS termination remain",
+        "physical SDS200 validation on Docker Desktop",
+        "physical Windows and macOS Docker validation remains outstanding",
+        "USB/IP",
+        "Podman-specific networking, runtime, and supplemental-group semantics",
     ):
         assert required in document
 
@@ -337,8 +347,8 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
     assert "docker compose -f compose.usb.yaml run --rm usb-scanner info" in readme
     assert "snapshot --json" not in document
     assert "physical scanner validation of the generic Compose deployment" not in document
-    assert "### Milestone 25.9 — Physical generic-container validation" in roadmap
-    assert "Milestone 25.8 is closed" in roadmap
+    assert "### Milestone 25.10 — Docker Desktop network portability foundation" in roadmap
+    assert "Milestone 25.9 is closed" in roadmap
 
 
 def test_generic_docker_hub_workflow_has_safe_trigger_and_publication_contract() -> None:
