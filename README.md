@@ -448,6 +448,7 @@ Discovery, entity, identity, command, retention, secrets, and security contracts
 
 Decoded-PCM subscriptions and automatic daemon selection remain follow-on work.
 See the
+[generic container deployment guide](docs/container-deployment.md),
 [daemon deployment and upgrade guide](docs/daemon-deployment.md),
 [daemon runtime and process guide](docs/daemon-runtime.md),
 [local daemon API guide](docs/daemon-api.md),
