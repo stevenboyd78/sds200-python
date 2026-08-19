@@ -16,11 +16,12 @@ _DOCKER_HUB_WORKFLOW = (
 )
 
 
-def test_generic_container_dockerfile_builds_local_source_with_mqtt_support() -> None:
+def test_generic_container_dockerfile_builds_with_mqtt_and_web_support() -> None:
     dockerfile = _DOCKERFILE.read_text(encoding="utf-8")
 
     assert dockerfile.count("FROM python:3.14-slim") == 2
-    assert '"sds200[mqtt]"' in dockerfile
+    assert '".[mqtt,web]"' in dockerfile
+    assert '"sds200[mqtt,web]"' in dockerfile
     assert 'ENTRYPOINT ["sdsctl"]' in dockerfile
     assert 'CMD ["--help"]' in dockerfile
     assert "home_assistant_app_supervisor" not in dockerfile
@@ -40,9 +41,10 @@ def test_generic_container_runs_unprivileged_with_deterministic_xdg_roots() -> N
         "--uid 10001",
         "--gid 10001",
         "USER 10001:10001",
-        'VOLUME ["/config", "/state", "/cache"]',
     ):
         assert required in dockerfile
+
+    assert "VOLUME " not in dockerfile
 
 
 def test_generic_container_uses_existing_daemon_health_and_signal_contract() -> None:
@@ -83,7 +85,7 @@ def test_generic_compose_builds_local_source_and_requires_scanner_host() -> None
     assert "${SDS200_LOG_LEVEL:-INFO}" in compose
     assert "      - --host\n" in compose
     assert compose.index("      - --host\n") < compose.index("      - daemon\n")
-    assert compose.count("    build:\n      context: .\n") == 2
+    assert compose.count("    build:\n      context: .\n") == 3
 
 
 def test_generic_compose_preserves_network_lifecycle_and_private_api_boundary() -> None:
@@ -91,7 +93,7 @@ def test_generic_compose_preserves_network_lifecycle_and_private_api_boundary() 
 
     assert "    network_mode: host\n" in compose
     assert "    restart: unless-stopped\n" in compose
-    assert "web" not in compose
+    assert compose.count("    network_mode: host\n") == 1
 
 
 def test_generic_compose_persists_xdg_roots_with_named_volumes() -> None:
@@ -110,12 +112,14 @@ def test_generic_compose_persists_xdg_roots_with_named_volumes() -> None:
     ):
         assert required in compose
 
-    assert compose.count("      - runtime:/run/sdsctl\n") == 2
+    assert compose.count("      - runtime:/run/sdsctl\n") == 3
 
 
 def test_generic_compose_defines_isolated_on_demand_daemon_client() -> None:
     compose = _COMPOSE.read_text(encoding="utf-8")
-    client = compose.split("\n  daemon-client:\n", 1)[1].split("\nvolumes:\n", 1)[0]
+    client = compose.split("\n  daemon-client:\n", 1)[1].split(
+        "\n  web-dashboard:\n", 1
+    )[0]
 
     for required in (
         "    profiles:\n      - client\n",
@@ -157,6 +161,53 @@ def test_generic_compose_preserves_daemon_contract_with_shared_runtime() -> None
         assert forbidden not in daemon
 
 
+def test_generic_compose_defines_isolated_long_running_web_dashboard() -> None:
+    compose = _COMPOSE.read_text(encoding="utf-8")
+    web = compose.split("\n  web-dashboard:\n", 1)[1].split("\nvolumes:\n", 1)[0]
+
+    for required in (
+        "    profiles:\n      - web\n",
+        "    build:\n      context: .\n",
+        "    entrypoint:\n      - sdsctl\n      - web\n",
+        "    network_mode: none\n",
+        "    restart: unless-stopped\n",
+        "        - CMD\n        - python\n        - -c\n",
+        "import urllib.request",
+        "http://127.0.0.1:8000/healthz",
+        "    volumes:\n      - runtime:/run/sdsctl\n",
+    ):
+        assert required in web
+
+    for forbidden in (
+        "config:/config",
+        "state:/state",
+        "cache:/cache",
+        "ports:",
+        "expose:",
+        "privileged:",
+        "devices:",
+        "cap_add:",
+        "depends_on:",
+        "--home-assistant-ingress",
+        "--listen-address",
+        "--host",
+    ):
+        assert forbidden not in web
+
+
+def test_generic_compose_profiles_leave_default_daemon_only() -> None:
+    compose = _COMPOSE.read_text(encoding="utf-8")
+    daemon = compose.split("  daemon:\n", 1)[1].split("\n  daemon-client:\n", 1)[0]
+    client = compose.split("\n  daemon-client:\n", 1)[1].split(
+        "\n  web-dashboard:\n", 1
+    )[0]
+    web = compose.split("\n  web-dashboard:\n", 1)[1].split("\nvolumes:\n", 1)[0]
+
+    assert "profiles:" not in daemon
+    assert "    profiles:\n      - client\n" in client
+    assert "    profiles:\n      - web\n" in web
+
+
 def test_generic_compose_example_configuration_is_non_secret_and_ignored_locally() -> None:
     env_example = _ENV_EXAMPLE.read_text(encoding="utf-8")
     gitignore = _GITIGNORE.read_text(encoding="utf-8")
@@ -174,7 +225,7 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
     roadmap = _ROADMAP.read_text(encoding="utf-8")
 
     for required in (
-        "Milestone 25.5",
+        "Milestone 25.6",
         "theboyd78/sdsctl",
         "`build: { context: . }`",
         "`network_mode: host`",
@@ -183,6 +234,8 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
         "docker compose run --rm daemon-client status --json",
         "docker compose run --rm daemon-client snapshot --json",
         "docker compose run --rm daemon-client events --count 10 --json",
+        "docker compose --profile web up --detach --build web-dashboard",
+        "http://127.0.0.1:8000/healthz",
         "`network_mode: none`",
         "runtime transport volume",
         "sole producer and owner",
@@ -206,9 +259,9 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
         in readme
     )
     assert "docker compose run --rm daemon-client status --json" in readme
-    assert "### Milestone 25.5 — daemon-client sidecar container foundation" in roadmap
-    assert "Milestone 25.4 is closed" in roadmap
-    assert "PCMU playback or WAV output" in roadmap
+    assert "### Milestone 25.6 — web-dashboard container/security boundary" in roadmap
+    assert "Milestone 25.5 is closed" in roadmap
+    assert "Milestone 25.7" in roadmap
 
 
 def test_generic_docker_hub_workflow_has_safe_trigger_and_publication_contract() -> None:

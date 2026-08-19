@@ -461,18 +461,33 @@ The generic release workflow publishes amd64 and arm64 images as
 tag for reproducible deployment. Repository-root Compose remains source-built
 with `build: .` and does not select the published image.
 
-Compose also provides an opt-in, network-disabled daemon-client sidecar over the
-daemon's private Unix sockets. Start the daemon first, then run clients on
-demand; for example:
+The same generic image contains the existing MQTT support and the web extra.
+Compose provides both an opt-in, network-disabled daemon-client sidecar and an
+opt-in, long-running `web-dashboard` service over the daemon's private Unix
+sockets. Start the daemon first, then run clients on demand or explicitly start
+the web profile/service; for example:
 
 ```bash
 docker compose up --detach --build daemon
 docker compose run --rm daemon-client status --json
 docker compose run --rm daemon-client events --count 10 --json
+docker compose --profile web up --detach --build web-dashboard
+docker compose ps web-dashboard
+docker compose logs web-dashboard
 ```
 
 See the generic container deployment guide for the supported status, snapshot,
-scanner-control, and ordered-event workflows and their security boundary.
+scanner-control, ordered-event, and web-dashboard workflows and their security
+boundary. The web service mounts only `/run/sdsctl`, consumes the daemon's
+private API, event, PCMU, and recording-file sockets, and never owns the scanner,
+network control, RTSP/RTP session, or audio routing. It retains the ordinary
+standalone web default of `127.0.0.1:8000` inside its `network_mode: none`
+container. There are no `ports` or `expose` entries, so Milestone 25.6
+intentionally provides no browser URL from the host. Its localhost `/healthz`
+probe checks only the web process and intentionally does not prove daemon or
+scanner availability. Bridge networking, explicit container wildcard binding,
+and explicit host port publication are deferred to Milestone 25.7. Do not use
+host networking or Home Assistant Ingress mode for this generic Compose service.
 
 Serial-only profiles, replay captures, and non-SDS200 network-audio selections
 are rejected.
