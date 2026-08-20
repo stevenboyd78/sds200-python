@@ -112,7 +112,7 @@ def test_generic_docker_hub_identity_is_isolated_from_python_and_home_assistant(
     assert '"sds200[mqtt,web]"' in _read("Dockerfile")
 
 
-def test_roadmap_names_milestone_25_12_as_rootless_podman_usb_boundary() -> None:
+def test_roadmap_names_milestone_25_13_as_podman_compose_boundary() -> None:
     roadmap = _read("ROADMAP.md")
     active_milestone = roadmap.split("## Active milestone", 1)[1].split(
         "## Deferred hardware validation", 1
@@ -120,37 +120,35 @@ def test_roadmap_names_milestone_25_12_as_rootless_podman_usb_boundary() -> None
     normalized_active_milestone = " ".join(active_milestone.split())
 
     for required in (
-        "### Milestone 25.12 — Rootless Podman USB serial portability foundation",
-        "Milestone 25.11 is closed",
-        "native-Linux rootless Podman one-shot USB serial path",
-        "unchanged generic image",
-        "networking disabled",
+        "### Milestone 25.13 — Rootless Podman Compose provider portability foundation",
+        "Milestone 25.12 is closed",
+        "existing generic network `compose.yaml`",
+        "`podman compose`",
+        "external Compose provider",
+        "Docker Compose v5.4.0",
+        "Docker-compatible API socket prerequisite",
+        "`systemctl --user start podman.socket`",
+        "`/run/user/1000/podman/podman.sock`",
+        "`daemon-client --help`",
+        "Compose-labeled runtime volume",
+        "inactive state",
+        "Physical SDS200",
+        "UDP control on port 50536",
+        "500 ms PSI stream",
+        "RTSP audio initialization",
+        "TCP port 554",
+        "`Connection refused`",
+        "`restart: unless-stopped`",
+        "`status --json`",
+        "`snapshot`",
+        "`compose.usb.yaml` is parse-compatible",
+        "numeric `group_add`",
         "`--group-add keep-groups`",
-        "`compose.usb.yaml` remains the native-Linux Docker Engine Compose contract",
-        "/dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00",
-        "`/dev/ttyACM0`",
-        "`root:dialout`",
-        "mode `0660`",
-        "numeric GID 20",
-        "unprivileged `10001:10001` process",
-        "could not read or write the device",
-        "preserved the operator's supplementary-group access",
-        "crun runtime",
-        "without privileged mode",
-        "firmware 1.26.01",
-        "`--network none`",
-        "`scanner-info`",
-        "`health`",
-        "released the device",
-        "reacquire it cleanly",
-        "no validation containers remained",
-        "does not create a USB daemon",
-        "does not claim RTSP/RTP",
-        "Podman Compose providers",
-        "SELinux device-policy acceptance",
-        "Windows/macOS remote Podman USB",
-        "Docker Desktop USB/IP",
-        "unavailable to remote Podman commands",
+        "Podman Compose USB runtime",
+        "web-dashboard sidecar acceptance",
+        "physical daemon-client acceptance under Podman Compose",
+        "SELinux socket or device-policy acceptance",
+        "alternate Compose providers",
         "Native systemd remains preferred",
     ):
         assert required in normalized_active_milestone

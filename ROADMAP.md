@@ -11,50 +11,56 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 25.12 — Rootless Podman USB serial portability foundation
+### Milestone 25.13 — Rootless Podman Compose provider portability foundation
 
-Milestone 25.11 is closed after establishing the native-Linux rootless Podman
-network-daemon foundation with direct Dockerfile builds, host networking, and
-physical SDS200 UDP control/PSI acceptance while preserving the existing
-generic-container architecture.
+Milestone 25.12 is closed after establishing the separate native-Linux rootless
+Podman one-shot USB serial path with the unchanged generic image, one narrowly
+mapped scanner device, `--network none`, and `--group-add keep-groups`. Physical
+SDS200 acceptance proved `info`, `scanner-info`, `health`, clean device release,
+and later reacquisition without privileged mode or host permission changes.
 
-Milestone 25.12 establishes a separate native-Linux rootless Podman one-shot USB
-serial path below the Compose layer. It reuses the unchanged generic image,
-keeps networking disabled, maps only the selected scanner character device, and
-uses Podman's `--group-add keep-groups` mechanism when the rootless operator's
-device access comes from a supplementary host group. Repository
-`compose.usb.yaml` remains the native-Linux Docker Engine Compose contract and
-is not redefined as a Podman Compose contract.
+Milestone 25.13 establishes the next native-Linux rootless Podman boundary at the
+Compose-provider layer for the existing generic network `compose.yaml`. Podman's
+`podman compose` command remains a wrapper around an external Compose provider;
+this slice documents and validates that provider model and the rootless
+Docker-compatible API socket prerequisite without creating a second Compose
+architecture or changing the existing Docker-oriented service definitions.
 
-On 2026-08-20, the existing stable SDS200 path
-`/dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00` resolved to
-`/dev/ttyACM0`, a `root:dialout` character device with mode `0660` and host
-numeric GID 20. The rootless operator belonged to that supplementary host group.
-With the selected device mapped into the unchanged image but without
-`--group-add keep-groups`, the image's unprivileged `10001:10001` process could
-not read or write the device. Adding `--group-add keep-groups` preserved the
-operator's supplementary-group access through the crun runtime and made the
-same narrowly mapped device readable and writable without privileged mode,
-broad `/dev` access, or a host permission change.
+On 2026-08-20, Ubuntu 26.04 LTS with rootless Podman 5.7.0, Netavark, cgroup v2,
+and crun 1.21 selected the installed Docker Compose v5.4.0 CLI plugin as the
+external provider. Both repository Compose files resolved successfully through
+`podman compose ... config`. Runtime operations initially failed while the
+rootless Podman API socket was inactive. A transient
+`systemctl --user start podman.socket` made
+`/run/user/1000/podman/podman.sock` responsive, after which the unchanged
+network Compose model built successfully and a scanner-independent
+`daemon-client --help` invocation completed through the provider. The provider
+created the expected Compose-labeled runtime volume, and project cleanup removed
+the validation resources. Stopping `podman.socket` restored the original
+inactive state; a remaining filesystem socket inode was not listening.
 
-Physical SDS200 firmware 1.26.01 acceptance then succeeded through four separate
-ephemeral rootless Podman invocations with `--network none`: `info`,
-`scanner-info`, `health`, and a repeated `info`. The commands identified the
-scanner and firmware, returned live scanner state, reported healthy serial
-connectivity, and demonstrated that each `--rm` container released the device so
-a later invocation could reacquire it cleanly. The host device remained
-`root:dialout` mode `0660`, and no validation containers remained afterward.
+Physical SDS200 testing with scanner address `192.168.0.251` then showed that the
+Compose-managed host-network daemon repeatedly opened UDP control on port 50536
+and started the 500 ms PSI stream. Startup could not progress to a stable daemon
+socket because RTSP audio initialization against TCP port 554 failed and the
+existing `restart: unless-stopped` policy correctly restarted the daemon.
+A separate native-host probe, with the Podman API inactive and no container
+involved, independently received `Connection refused` from the same scanner TCP
+port 554 in about 5 ms. The RTSP failure is therefore recorded as an external
+scanner-side condition, not attributed to Podman Compose. Full physical
+Podman Compose daemon-client `status --json` and `snapshot` acceptance
+remains unproven while that scanner endpoint is unavailable.
 
-This slice does not create a USB daemon and does not claim RTSP/RTP or other
-network-audio behavior through USB. Podman Compose providers, daemon-client/web
-sidecars under Podman, USB unplug/replug or re-enumeration behavior, SELinux
-device-policy acceptance, Windows/macOS remote Podman USB, Docker Desktop
-USB/IP, and physical Windows/macOS Docker validation remain separate work.
-Podman's current documentation states that rootless devices are bind-mounted
-from the host and that `keep-groups` is required when access comes only through a
-supplementary group; `keep-groups` currently requires crun and is unavailable to
-remote Podman commands. Native systemd remains preferred when broader direct
-host-device or operating-system integration is important.
+`compose.usb.yaml` is parse-compatible through the observed external provider,
+but that is not a rootless Podman USB runtime claim. Its numeric `group_add`
+contract remains the native-Linux Docker Engine Compose path. Rootless Podman USB
+continues to use the direct Milestone 25.12 `--group-add keep-groups` contract.
+Podman Compose USB runtime, web-dashboard sidecar acceptance, full RTSP/RTP
+acceptance, physical daemon-client acceptance under Podman Compose, SELinux
+socket or device-policy acceptance, remote Podman on Windows/macOS, and
+alternate Compose providers remain separate work. Native systemd remains
+preferred when broader direct host-device, local-audio, or operating-system
+integration is important.
 
 ## Deferred hardware validation
 
