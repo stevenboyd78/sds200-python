@@ -489,15 +489,105 @@ physical rootless-Podman UDP control/PSI acceptance but does **not** establish
 or reject Podman RTSP/RTP audio. Do not attribute that independently reproduced
 scanner-side RTSP failure to Podman.
 
-This Milestone 25.11 contract intentionally stops below the Compose and
-host-device layers. `podman compose` delegates to an external Compose provider,
-as documented by Podman's current
+The Milestone 25.11 network contract intentionally stops below the Compose
+layer. `podman compose` delegates to an external Compose provider, as documented
+by Podman's current
 [Compose documentation](https://docs.podman.io/en/latest/markdown/podman-compose.1.html),
 so repository-root `compose.yaml` is not claimed as a supported Podman Compose
-deployment here. `compose.usb.yaml` remains the native-Linux Docker Engine USB
-contract; rootless Podman supplemental-group/device semantics remain deferred.
-Windows/macOS Podman behavior and Docker Desktop USB/IP also remain separate
-work; physical Windows and macOS Docker validation remains outstanding.
+deployment. `compose.usb.yaml` also remains the native-Linux Docker Engine USB
+Compose contract. Milestone 25.12 adds a separate direct rootless Podman USB path
+below rather than redefining that file as a Podman Compose contract.
+Windows/macOS Podman behavior and Docker Desktop USB/IP remain separate work;
+physical Windows and macOS Docker validation remains outstanding.
+
+## Rootless Podman USB scanner CLI
+
+Milestone 25.12 adds a separate native-Linux rootless Podman one-shot USB serial
+path for the existing generic image. It stays below the Compose layer:
+`compose.usb.yaml` remains the native-Linux Docker Engine USB Compose contract,
+and `podman compose` is not required or claimed here.
+
+Build the same image using the Docker image format already required by the
+rootless Podman network path:
+
+```bash
+podman build --format docker --tag sdsctl:local .
+```
+
+Select the stable scanner device when available and verify that the current
+rootless operator can already read and write the host device:
+
+```bash
+export SDSCTL_USB_DEVICE=/dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00
+
+test -c "$(readlink -f "$SDSCTL_USB_DEVICE")"
+test -r "$SDSCTL_USB_DEVICE"
+test -w "$SDSCTL_USB_DEVICE"
+```
+
+Run one-shot scanner commands with no container networking, only the selected
+device, the image healthcheck disabled, and the rootless operator's
+supplementary-group access preserved:
+
+```bash
+podman run --rm \
+  --network none \
+  --health-cmd none \
+  --device "$SDSCTL_USB_DEVICE:/dev/sdsctl-scanner:rwm" \
+  --group-add keep-groups \
+  sdsctl:local \
+  --port /dev/sdsctl-scanner \
+  info
+```
+
+The same bounded pattern supports other standalone scanner CLI actions such as
+`scanner-info` and `health`. It does not start or replace the daemon, publish
+ports, create a scanner network path, or provide SDS200 network audio.
+
+Podman's current
+[create documentation](https://docs.podman.io/en/latest/markdown/podman-create.1.html)
+documents the rootless device and supplementary-group behavior used here. In
+rootless mode Podman bind-mounts the selected host device rather than creating a
+new device node. If the rootless operator has access only through a
+supplementary host group, `--group-add keep-groups` passes that access through
+to the container process. Podman currently documents `keep-groups` as available
+only with the crun OCI runtime and unavailable to remote commands, including
+macOS and Windows remote clients except WSL2. The numeric group shown inside the
+user namespace need not equal the host device's numeric GID; the contract is
+preserved access, not preserved numeric identity.
+
+Do not work around host permission failures by running privileged, mapping all
+of `/dev`, changing the scanner device to `0666`, or baking a host `dialout` GID
+into the image. The rootless operator must already have legitimate host access
+to the selected device. Podman's rootless device documentation also describes
+additional SELinux policy considerations; the 25.12 Ubuntu validation host did
+not have SELinux enabled, so SELinux device-policy acceptance is not claimed by
+this milestone.
+
+Physical acceptance on 2026-08-20 used Ubuntu 26.04 LTS, rootless Podman 5.7.0,
+the crun runtime already established in Milestone 25.11, and an SDS200 running
+firmware Version 1.26.01. The stable by-id path resolved to `/dev/ttyACM0`,
+owned by `root:dialout` with mode `0660` and host numeric GID 20; the rootless
+operator belonged to that supplementary group.
+
+A permission-only experiment first mapped the selected device into the
+unprivileged `10001:10001` image process. Without `--group-add keep-groups`,
+the process could neither read nor write the device. With `keep-groups`, the
+same process could read and write it without privileged mode, a broad device
+mount, or any host permission change.
+
+Four separate `--rm` containers then ran `info`, `scanner-info`, `health`, and
+a repeated `info` with `--network none`. They identified SDS200 / Version
+1.26.01, returned live scanner state, reported healthy connected serial
+transport, and demonstrated clean device release and reacquisition between
+ephemeral invocations. The host device remained `root:dialout` mode `0660`, and
+no validation containers remained. USB unplug/replug and re-enumeration were not
+tested.
+
+This establishes physical rootless Podman USB serial acceptance for the
+one-shot scanner CLI only. It does not establish a USB daemon, RTSP/RTP or other
+network audio through USB, Podman Compose, daemon-client/web Podman sidecars,
+SELinux device-policy acceptance, or Windows/macOS remote Podman USB behavior.
 
 ## Health and status
 
@@ -543,40 +633,51 @@ docker compose down
 
 to stop and remove the service while preserving the named persistent volumes.
 
-## Milestone 25.11 boundary
+## Milestone 25.12 boundary
 
 The supported Docker sidecar workflows remain negotiated daemon API status and
 snapshot, safe semantic scanner controls, and bounded consumption of the
 daemon's ordered event stream. The supported Docker web-dashboard foundation
 still consumes the daemon API, event, PCMU, and recording-file sockets without
-changing their private Unix-domain transport. Milestone 25.11 does not claim
+changing their private Unix-domain transport. Milestone 25.12 does not claim
 those sidecars under Podman.
 
-The standalone USB service remains only the native-Linux Docker Engine
-model-neutral serial-safe CLI path. It is not a USB daemon, and Milestone 25.11
-does not claim rootless Podman device or supplemental-group compatibility.
+Repository-root `compose.yaml` and `compose.usb.yaml` remain Docker Compose
+contracts. Milestone 25.12 does not turn either file into a Podman Compose
+contract and does not add or modify a Compose service.
 
-Milestone 25.11 adds only the native-Linux rootless Podman network-daemon
-foundation:
+Milestone 25.11's native-Linux rootless Podman network-daemon foundation remains
+unchanged:
 
 - rootless Podman 5.7.0 with Netavark and crun exercised host-network TCP/UDP
   reachability on Ubuntu 26.04 LTS;
-- the existing Dockerfile builds under rootless Podman, but the supported build
-  command uses `--format docker` because Podman's default OCI format discarded
-  the Dockerfile healthcheck during validation;
-- the Docker-format Podman image preserves the private healthcheck, unprivileged
-  UID/GID `10001:10001`, `sdsctl` entrypoint, `--help` command, and `SIGTERM`;
+- the supported build command uses `--format docker` so the existing Dockerfile
+  healthcheck is preserved;
 - physical SDS200 validation established host-network UDP control, identity,
-  scanner-info, daemon identity probing, and PSI under rootless Podman; and
+  scanner-info, daemon identity probing, and PSI; and
 - Podman RTSP/RTP acceptance remains unproven because the scanner's TCP 554 RTSP
-  listener was independently unavailable from the native host before the Podman
-  daemon attempt.
+  listener was independently unavailable from the native host before that
+  Podman daemon attempt.
 
-Repository-root Compose and `compose.usb.yaml` remain Docker contracts. Podman
-Compose providers, daemon-client/web sidecars under Podman, Podman
-USB/supplemental-group semantics, Windows/macOS Podman, Docker Desktop USB/IP,
-physical Windows/macOS Docker validation, daemon-backed TUI sidecars,
-arbitrary remote/LAN standalone web exposure, generic LAN/public web
-publication, and authentication/TLS termination all remain outside this slice.
-Native systemd remains preferred when direct host-device, local-audio, or other
-operating-system integration matters.
+Milestone 25.12 adds only the native-Linux rootless Podman one-shot USB serial
+foundation:
+
+- only the selected scanner character device is mapped to
+  `/dev/sdsctl-scanner`, with container networking disabled;
+- the rootless operator must already have host read/write access to that device;
+- `--group-add keep-groups` preserves supplementary-group device access through
+  the validated crun runtime without privileged mode or broad `/dev` access;
+- physical SDS200 firmware 1.26.01 validation established `info`,
+  `scanner-info`, `health`, and repeated device reacquisition through separate
+  ephemeral containers; and
+- the host device remained `root:dialout` mode `0660`, with no validation
+  containers left behind.
+
+Podman Compose providers, daemon-client/web sidecars under Podman, USB
+unplug/replug or re-enumeration behavior, SELinux device-policy acceptance,
+Windows/macOS remote Podman USB, Docker Desktop USB/IP, physical Windows/macOS
+Docker validation, daemon-backed TUI sidecars, arbitrary remote/LAN standalone
+web exposure, generic LAN/public web publication, and authentication/TLS
+termination remain outside this slice. Native systemd remains preferred when
+broader direct host-device, local-audio, or operating-system integration
+matters.
