@@ -676,14 +676,12 @@ Podman Compose RTSP/RTP defect. Physical
 Podman Compose daemon-client `status --json` and `snapshot` acceptance
 remains deferred until the scanner's RTSP endpoint is available again.
 
-The standalone `compose.usb.yaml` also resolved successfully through
-`podman compose ... config`, but that result is **parse-compatible only**. Its
-numeric `group_add` entry is the supported native-Linux Docker Engine USB
-Compose contract. It does not preserve the supplementary host-group access that
-Milestone 25.12 physically proved was required for this rootless Podman host.
-For rootless Podman USB, continue to use the direct one-shot
-`--group-add keep-groups` workflow documented above; do not infer Podman Compose
-USB runtime support from successful model parsing.
+Milestone 25.13 established only parse compatibility for the standalone
+`compose.usb.yaml`. At that point its numeric `group_add` entry remained the
+native-Linux Docker Engine USB Compose contract, while the rootless Podman host
+still required supplementary host-group preservation. Milestone 25.15 closes
+that runtime gap using the OCI annotation documented below while retaining the
+numeric Docker-oriented group contract.
 
 Milestone 25.13 did not claim alternate external Compose providers,
 web-dashboard sidecar acceptance under Podman, physical daemon-client
@@ -742,10 +740,63 @@ Compose. Live status, snapshot, scanner-control mutation, event streaming,
 audio, recording, and recording-file paths remain dependent on a ready daemon
 and are deferred while the physical scanner's native RTSP TCP port 554 remains
 unavailable. Physical daemon-client acceptance under Podman Compose, full
-RTSP/RTP acceptance, Podman Compose USB runtime, SELinux socket or device-policy
-acceptance, remote Podman on Windows/macOS, and alternate Compose providers
-also remain separate work. Native systemd remains preferred where broader
-direct host-device, local-audio, or operating-system integration is important.
+RTSP/RTP acceptance, SELinux socket or device-policy acceptance, remote Podman
+on Windows/macOS, and alternate Compose providers remain separate work. Native
+systemd remains preferred where broader direct host-device, local-audio, or
+operating-system integration is important.
+
+### Rootless Podman Compose USB runtime
+
+Milestone 25.15 closes the native-Linux one-shot USB runtime boundary for the
+existing `compose.usb.yaml` through the same external Docker Compose provider
+used by Milestones 25.13 and 25.14. Provider-backed runtime operations require
+the rootless Podman Docker-compatible API socket to be active.
+
+The Compose file intentionally keeps both parts of the cross-runtime contract.
+`SDSCTL_USB_GID` remains the ordinary numeric `group_add` value used by the
+native-Linux Docker Engine path, while the service now also carries
+`run.oci.keep_original_groups: "1"` as an OCI container annotation. Rootless
+Podman with crun consumes that annotation to preserve the invoking operator's
+supplementary host groups without requiring privileged mode or changing scanner
+device permissions.
+
+Set the stable device path and derive its current host group rather than baking a
+distribution-specific `dialout` number into the repository:
+
+    export SDSCTL_USB_DEVICE=/dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00
+    export SDSCTL_USB_GID="$(stat -Lc '%g' "$(readlink -f "$SDSCTL_USB_DEVICE")")"
+
+Then resolve and run the same Compose model:
+
+    podman compose -f compose.usb.yaml config
+    podman compose -f compose.usb.yaml run --rm usb-scanner info
+    podman compose -f compose.usb.yaml run --rm usb-scanner scanner-info
+    podman compose -f compose.usb.yaml run --rm usb-scanner health
+
+Do not replace the annotation with `group_add: keep-groups` when using the
+Docker Compose external provider. Physical investigation showed that the
+Docker-compatible API treated that value as an ordinary container group name
+rather than Podman's special `--group-add keep-groups` CLI behavior. Numeric
+`group_add` alone also parsed successfully but could not open the physical
+scanner from the rootless `10001:10001` process.
+
+Physical acceptance on 2026-08-20 used Ubuntu 26.04 LTS, rootless Podman 5.7.0,
+Netavark, cgroup v2, crun 1.21, Docker Compose v5.4.0, and an SDS200 running
+firmware Version 1.26.01. The stable by-id path resolved to `/dev/ttyACM0`;
+the device remained `root:dialout` mode `0660` with host GID 20, and the
+operator already had legitimate host access through that supplementary group.
+
+Separate ephemeral Compose containers successfully ran `info`, `scanner-info`,
+`health`, and a repeated `info`. The repeated command demonstrated clean device
+release and reacquisition, all `--rm` containers disappeared after each command,
+and cleanup left no project containers or images. The service remained
+unprivileged, retained `network_mode: none`, mapped only the selected scanner
+device, and did not modify host ownership or mode.
+
+This remains a one-shot scanner CLI boundary. It does not establish a USB daemon,
+daemon-client or web sidecars over USB, RTSP/RTP or other network audio through
+USB, unplug/replug or USB re-enumeration behavior, SELinux device-policy
+acceptance, remote Podman USB on Windows/macOS, or alternate Compose providers.
 
 ## Health and status
 

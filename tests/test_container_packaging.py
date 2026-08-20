@@ -218,6 +218,7 @@ def test_usb_compose_defines_standalone_one_shot_serial_cli() -> None:
         "    entrypoint:\n      - sdsctl\n      - --port\n      - /dev/sdsctl-scanner\n",
         "    network_mode: none\n",
         "    healthcheck:\n      disable: true\n",
+        '    annotations:\n      run.oci.keep_original_groups: "1"\n',
         '      - "${SDSCTL_USB_DEVICE:?Set SDSCTL_USB_DEVICE to the stable '
         'Linux /dev/serial/by-id/... scanner path when available}'
         ':/dev/sdsctl-scanner"\n',
@@ -228,6 +229,8 @@ def test_usb_compose_defines_standalone_one_shot_serial_cli() -> None:
 
     assert compose.count("    devices:\n") == 1
     assert compose.count(":/dev/sdsctl-scanner") == 1
+    assert compose.count("    annotations:\n") == 1
+    assert compose.count('run.oci.keep_original_groups: "1"') == 1
     assert compose.count("    group_add:\n") == 1
     for forbidden in (
         "image:",
@@ -360,9 +363,12 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
         "native TCP port 554",
         "Connection refused",
         "restart loop",
-        "parse-compatible only",
         "numeric `group_add`",
         "Rootless Podman Compose web-dashboard sidecar",
+        "Rootless Podman Compose USB runtime",
+        '`run.oci.keep_original_groups: "1"`',
+        "ordinary container group name",
+        "one-shot scanner CLI boundary",
         "`CMD-SHELL`",
         "`podman healthcheck run`",
         "HTTP 503",
@@ -379,11 +385,11 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
     assert "snapshot --json" not in document
     assert "physical scanner validation of the generic Compose deployment" not in document
     assert (
-        "### Milestone 25.14 — Rootless Podman Compose web-dashboard sidecar "
-        "portability foundation"
+        "### Milestone 25.15 — Rootless Podman Compose USB runtime portability "
+        "foundation"
         in roadmap
     )
-    assert "Milestone 25.13 is closed" in roadmap
+    assert "Milestone 25.14 is closed" in roadmap
 
 
 def test_generic_docker_hub_workflow_has_safe_trigger_and_publication_contract() -> None:

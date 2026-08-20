@@ -112,7 +112,7 @@ def test_generic_docker_hub_identity_is_isolated_from_python_and_home_assistant(
     assert '"sds200[mqtt,web]"' in _read("Dockerfile")
 
 
-def test_roadmap_names_milestone_25_14_as_podman_web_sidecar_boundary() -> None:
+def test_roadmap_names_milestone_25_15_as_podman_compose_usb_runtime_boundary() -> None:
     roadmap = _read("ROADMAP.md")
     active_milestone = roadmap.split("## Active milestone", 1)[1].split(
         "## Deferred hardware validation", 1
@@ -120,38 +120,33 @@ def test_roadmap_names_milestone_25_14_as_podman_web_sidecar_boundary() -> None:
     normalized_active_milestone = " ".join(active_milestone.split())
 
     for required in (
-        "### Milestone 25.14 — Rootless Podman Compose web-dashboard sidecar "
-        "portability foundation",
-        "Milestone 25.13 is closed",
+        "### Milestone 25.15 — Rootless Podman Compose USB runtime portability "
+        "foundation",
+        "Milestone 25.14 is closed",
         "Docker Compose v5.4.0",
-        "rootless Podman 5.7.0",
-        "`web-dashboard`",
-        "`podman compose --profile web`",
-        "TEST-NET `SDS200_HOST`",
+        "rootless Podman",
+        "Podman 5.7.0",
+        "crun 1.21",
+        "`compose.usb.yaml`",
+        "`SDSCTL_USB_DEVICE`",
+        "`SDSCTL_USB_GID`",
+        "`network_mode: none`",
         "UID/GID `10001:10001`",
-        "ordinary bridge networking",
-        "not privileged",
-        "no devices or added capabilities",
-        "`/run/sdsctl` runtime volume",
-        "`127.0.0.1:18081`",
-        "`/healthz`",
-        "HTTP 200",
-        "Content Security Policy",
-        "`no-referrer`",
-        "`nosniff`",
-        "`X-Frame-Options: DENY`",
-        "`/api/v1/status`",
-        "HTTP 503",
-        "`CMD`",
-        "`python -c`",
-        "`SyntaxError`",
-        "`CMD-SHELL`",
-        "`healthy`",
-        "`podman healthcheck run`",
-        "native RTSP TCP port 554",
-        "Physical daemon-client acceptance",
-        "Podman Compose USB runtime",
-        "SELinux socket or device-policy acceptance",
+        "`root:dialout`",
+        "mode `0660`",
+        "host GID 20",
+        "numeric `group_add` alone",
+        "`keep-groups`",
+        '`run.oci.keep_original_groups: "1"`',
+        "`info`",
+        "`scanner-info`",
+        "`health`",
+        "clean release and reacquisition",
+        "no privilege escalation or host permission change",
+        "one-shot rootless Podman Compose USB serial operation",
+        "native TCP port 554",
+        "SELinux device-policy acceptance",
+        "remote Podman USB on Windows/macOS",
         "alternate Compose providers",
         "Native systemd remains preferred",
     ):
