@@ -433,14 +433,23 @@ class DaemonRuntime:
             if self._last_psi_at != last_psi_at:
                 return
 
+        recovery_kind = (
+            "reconnect"
+            if self.scanner.supports_bounded_reconnect
+            else "psi-refresh"
+        )
         logger.warning(
             "daemon PSI stream stale scanner=%s age_seconds=%.1f "
-            "attempting_reconnect=true",
+            "attempting_recovery=%s",
             self.scanner.endpoint,
             age,
+            recovery_kind,
         )
         try:
-            self.reconnect(timeout=2.0)
+            if self.scanner.supports_bounded_reconnect:
+                self.reconnect(timeout=2.0)
+            else:
+                self._refresh_psi()
         except DaemonControlBusyError:
             return
         except Exception as error:
@@ -603,6 +612,25 @@ class DaemonRuntime:
                 timeout=remaining,
             ),
         )
+
+    def _refresh_psi(self) -> None:
+        """Restart only the active PSI push without reopening scanner control."""
+
+        with self._control_lock:
+            if not self.scanner.connected:
+                raise DaemonControlUnavailableError(
+                    "Daemon PSI refresh requires a connected scanner."
+                )
+            if not self.scanner.psi_active:
+                raise DaemonControlUnavailableError(
+                    "Daemon PSI refresh requires an active PSI stream."
+                )
+
+            self.scanner.stop_scanner_info_push()
+            self.scanner.start_scanner_info_push(
+                self.psi_interval_ms,
+                timeout=self.psi_timeout,
+            )
 
     def reconnect(
         self,

@@ -19,8 +19,11 @@ USB, sidecar, and cross-platform Podman behavior separate.
 Milestone 25.12 adds the separate direct native-Linux rootless Podman one-shot
 USB path below Compose. Milestone 25.13 adds the external Compose-provider and
 rootless API-socket foundation for using the existing network `compose.yaml`
-with native-Linux rootless Podman while preserving the separate Docker-specific
-USB Compose contract.
+with native-Linux rootless Podman. Milestone 25.14 validates the isolated web
+sidecar through that provider, Milestone 25.15 extends `compose.usb.yaml` with the
+rootless Podman/crun supplementary-group contract for one-shot USB commands, and
+Milestone 25.16 extends that USB Compose model to a persistent serial daemon plus
+private daemon-client and web sidecars.
 
 Native systemd deployment remains the preferred production option when direct
 host-device, local-audio, or other operating-system integration is important.
@@ -797,6 +800,171 @@ This remains a one-shot scanner CLI boundary. It does not establish a USB daemon
 daemon-client or web sidecars over USB, RTSP/RTP or other network audio through
 USB, unplug/replug or USB re-enumeration behavior, SELinux device-policy
 acceptance, remote Podman USB on Windows/macOS, or alternate Compose providers.
+
+
+### Rootless Podman Compose USB daemon and sidecars
+
+Milestone 25.16 extends the validated one-shot rootless Podman Compose USB
+runtime into a steady-state serial daemon and private sidecars. Use the same
+stable scanner device and host character-device numeric group established in
+Milestone 25.15:
+
+    export SDSCTL_USB_DEVICE=/dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00
+    export SDSCTL_USB_GID="$(stat -Lc '%g' "$(readlink -f "$SDSCTL_USB_DEVICE")")"
+
+Validate the complete USB model before starting it:
+
+    docker compose -f compose.usb.yaml config
+
+or, with the validated native-Linux rootless Podman external-provider path:
+
+    podman compose -f compose.usb.yaml config
+
+`compose.usb.yaml` now contains two scanner-owning services. `usb-scanner`
+preserves the one-shot Milestone 25.15 CLI contract. `daemon` is the persistent
+serial owner. Both map only the selected host device to
+`/dev/sdsctl-scanner`, retain numeric `group_add` using `SDSCTL_USB_GID`, and
+retain the OCI annotation `run.oci.keep_original_groups: "1"` required by the
+validated rootless Podman/crun path. Neither service is privileged, neither adds
+Linux capabilities, neither maps broad `/dev`, and neither requires
+`SDS200_HOST`.
+
+Start the persistent USB daemon:
+
+    docker compose -f compose.usb.yaml up --detach --build daemon
+
+For the rootless Podman external-provider workflow, ensure the user Podman API
+socket is available as documented above and use:
+
+    podman compose -f compose.usb.yaml up --detach --build daemon
+
+The serial daemon deliberately has no network audio source. USB serial provides
+scanner command/response and PSI ownership but does not provide the SDS200
+RTSP/RTP stream. The daemon therefore keeps scanner connection, identity,
+runtime snapshot, scanner state, ordered events, and semantic scanner controls
+available while it does not construct PCMU publication, daemon recording,
+recording-file service, or configured audio destinations. `audio.health` remains
+part of the stable daemon API snapshot contract and reports the disabled audio
+transport as not running. Recording operations are not advertised by daemon
+capability negotiation.
+
+Serial transport also does not implement the bounded scanner reconnect used by
+the network daemon. A serial daemon therefore does not advertise
+`scanner.reconnect` in either its operation or control-operation capability list.
+The `daemon-client reconnect` parser remains available for compatible daemon
+types, but negotiated preflight rejects that command before dispatch against a
+serial daemon. The daemon independently rejects an un-negotiated raw reconnect
+request as `unsupported_operation`, so bypassing client preflight still cannot
+invoke serial scanner reconnect.
+
+The daemon persists `/config`, `/state`, and `/cache` and is the sole producer
+of the private daemon and event sockets under the `runtime` transport volume.
+The opt-in `daemon-client` has no scanner device, no persistent-data volumes, and
+`network_mode: none`. Exercise it without opening a second scanner connection:
+
+    docker compose -f compose.usb.yaml run --rm daemon-client status --json
+    docker compose -f compose.usb.yaml run --rm daemon-client snapshot
+    docker compose -f compose.usb.yaml run --rm daemon-client hold TGID 12345
+    docker compose -f compose.usb.yaml run --rm daemon-client next TGID 12345 --count 1
+    docker compose -f compose.usb.yaml run --rm daemon-client previous TGID 12345 --count 1
+    docker compose -f compose.usb.yaml run --rm daemon-client events --count 10 --json
+
+The same supported commands may be run with `podman compose` through the
+validated external Docker Compose provider. The sidecar communicates only
+through the shared private Unix-domain runtime volume. Do not treat
+`daemon-client reconnect` as a USB serial command: its capability preflight
+correctly reports that the daemon does not advertise `scanner.reconnect`.
+
+The USB `web-dashboard` service likewise has no device access. It consumes the
+daemon API and event sockets from the runtime volume, stays on ordinary bridge
+networking, and publishes only the dashboard listener to host loopback:
+
+    docker compose -f compose.usb.yaml --profile web up --detach --build web-dashboard
+    docker compose -f compose.usb.yaml ps
+    curl --fail http://127.0.0.1:${SDSCTL_WEB_PORT:-8000}/healthz
+    curl --fail http://127.0.0.1:${SDSCTL_WEB_PORT:-8000}/api/v1/status
+
+Use the corresponding `podman compose` form for the rootless Podman provider
+workflow. Browser/API status, snapshot, scanner controls, and ordered events can
+operate through the USB-backed daemon. `/api/v1/audio`, recording start/stop,
+and new recording-file production remain unavailable in serial daemon mode
+because no PCMU source exists. Existing finalized recording inventory is not
+synthesized or treated as live USB audio.
+
+Physical acceptance on 2026-08-20 used Ubuntu 26.04 LTS, rootless Podman 5.7.0,
+Netavark, cgroup v2, crun 1.21, Docker Compose v5.4.0 as the external provider,
+and an SDS200 running firmware Version 1.26.01. The stable scanner path resolved
+to `/dev/ttyACM0`, owned by `root:dialout` with mode `0660` and host GID 20.
+The persistent USB daemon ran unprivileged with `network_mode: none`, mapped only
+that scanner device, became healthy, identified the scanner, started 500 ms PSI,
+and advertised the disabled non-running audio transport without advertising
+recording or reconnect operations.
+
+The physical serial PSI stream exhibited the scanner's approximately
+three-minute push lifetime during the extended run. When PSI became stale, the
+daemon used the serial-specific `psi-refresh` recovery path: it stopped and
+restarted PSI with the configured interval rather than attempting bounded scanner
+reconnect. Recovery completed repeatedly while the scanner remained connected,
+and live SDS200 state continued afterward.
+
+A separate `daemon-client` container with UID/GID `10001:10001`,
+`network_mode: none`, no devices, and only the runtime volume returned complete
+daemon status and snapshot data. A detached event probe received the initial
+`stream.snapshot` plus live ordered `radio.state` and `scanner.psi` events. The
+event CLI now installs scoped SIGINT/SIGTERM handling that closes the blocking
+event socket; after rebuilding that fix, `podman stop --time 3` completed in
+309 ms and the client exited 0 rather than requiring SIGKILL.
+
+The serial reconnect boundary was accepted at both layers. Normal
+`daemon-client reconnect` capability preflight exited 2 before control dispatch,
+and a deliberately raw `scanner.reconnect` API request was rejected by the
+daemon as `unsupported_operation`. The persistent daemon stayed healthy and PSI
+remained active. Successful control dispatch was also proven without disturbing
+the scanner: isolated daemon-client and web requests both set the already-On
+channel hold state to true. Both returned authoritative `scanner.hold_state`
+results, while system, department, site, channel, talkgroup identity, indexes,
+and all four existing hold states remained unchanged.
+
+The USB web sidecar ran unprivileged with bridge networking, no devices, and only
+the runtime volume. It became healthy, retained loopback-only publication and
+the existing browser security headers, returned live daemon status and snapshot
+data, and successfully exercised the same idempotent hold-state control.
+`/api/v1/audio` returned HTTP 503 as expected because the serial daemon does not
+produce a PCMU socket.
+
+Two foreground attachment forms were unreliable with this exact external
+provider/runtime combination during acceptance. `podman compose run --rm
+daemon-client ...` could print complete successful application output and then
+remain attached during cleanup, and direct `podman start --attach` could remain
+attached even after inspection showed that the application had already exited
+0. Detached container start, bounded state polling, and `podman logs` reliably
+demonstrated application completion. Treat this as an observed provider/runtime
+attachment-lifecycle caveat rather than daemon-client or daemon API failure.
+
+A normal steady-state shutdown is:
+
+    docker compose -f compose.usb.yaml down
+
+or the corresponding `podman compose` command. Physical lifecycle acceptance
+stopped the web sidecar cleanly, stopped the daemon on SIGTERM in 377 ms with
+exit status 0, and immediately opened the stable scanner device from the host.
+The same daemon container then restarted healthy with a new runtime start time,
+reconnected to SDS200 / Version 1.26.01, restarted PSI, and was again visible
+through the restarted healthy web sidecar. Final `podman compose ... down`
+removed the daemon, web container, and bridge network while preserving the
+config, state, cache, and runtime named volumes. The scanner was again
+immediately host-openable, the loopback validation port was released, and the
+temporarily started rootless Podman API socket was restored to its original
+inactive state.
+
+Milestone 25.16 is intentionally steady-state integration. USB unplug/replug,
+`/dev/ttyACM*` re-enumeration, by-id recovery after loss, SELinux device/socket
+policy, and other Linux security-policy differences remain Milestone 25.17.
+Alternate Compose providers, remote Podman, Windows/macOS remote USB
+limitations, and the cross-runtime compatibility matrix remain Milestone 25.18.
+Full RTSP/RTP and network-audio acceptance remains deferred while the physical
+scanner's native TCP port 554 independently refuses connections.
+
 
 ## Health and status
 

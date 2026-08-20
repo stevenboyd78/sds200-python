@@ -210,12 +210,16 @@ def test_generic_compose_profiles_leave_default_daemon_only() -> None:
     assert "    profiles:\n      - web\n" in web
 
 
-def test_usb_compose_defines_standalone_one_shot_serial_cli() -> None:
+def test_usb_compose_preserves_standalone_one_shot_serial_cli() -> None:
     compose = _USB_COMPOSE.read_text(encoding="utf-8")
+    scanner = compose.split("\n  usb-scanner:\n", 1)[1].split(
+        "\n  daemon-client:\n", 1
+    )[0]
 
     for required in (
-        "services:\n  usb-scanner:\n    build:\n      context: .\n",
-        "    entrypoint:\n      - sdsctl\n      - --port\n      - /dev/sdsctl-scanner\n",
+        "    build:\n      context: .\n",
+        "    entrypoint:\n      - sdsctl\n      - --port\n"
+        "      - /dev/sdsctl-scanner\n",
         "    network_mode: none\n",
         "    healthcheck:\n      disable: true\n",
         '    annotations:\n      run.oci.keep_original_groups: "1"\n',
@@ -225,13 +229,8 @@ def test_usb_compose_defines_standalone_one_shot_serial_cli() -> None:
         '      - "${SDSCTL_USB_GID:?Set SDSCTL_USB_GID to the host scanner '
         'character-device group GID}"\n',
     ):
-        assert required in compose
+        assert required in scanner
 
-    assert compose.count("    devices:\n") == 1
-    assert compose.count(":/dev/sdsctl-scanner") == 1
-    assert compose.count("    annotations:\n") == 1
-    assert compose.count('run.oci.keep_original_groups: "1"') == 1
-    assert compose.count("    group_add:\n") == 1
     for forbidden in (
         "image:",
         "privileged:",
@@ -246,7 +245,139 @@ def test_usb_compose_defines_standalone_one_shot_serial_cli() -> None:
         "/dev:/dev",
         "network_mode: host",
     ):
-        assert forbidden not in compose
+        assert forbidden not in scanner
+
+
+def test_usb_compose_defines_persistent_serial_daemon() -> None:
+    compose = _USB_COMPOSE.read_text(encoding="utf-8")
+    daemon = compose.split("  daemon:\n", 1)[1].split(
+        "\n  usb-scanner:\n", 1
+    )[0]
+
+    for required in (
+        "    build:\n      context: .\n",
+        "    entrypoint:\n      - sdsctl\n      - --port\n"
+        "      - /dev/sdsctl-scanner\n",
+        "    command:\n      - --log-level\n"
+        '      - "${SDS200_LOG_LEVEL:-INFO}"\n'
+        "      - daemon\n",
+        "    network_mode: none\n",
+        "    restart: unless-stopped\n",
+        '    annotations:\n      run.oci.keep_original_groups: "1"\n',
+        '      - "${SDSCTL_USB_DEVICE:?Set SDSCTL_USB_DEVICE to the stable '
+        'Linux /dev/serial/by-id/... scanner path when available}'
+        ':/dev/sdsctl-scanner"\n',
+        '      - "${SDSCTL_USB_GID:?Set SDSCTL_USB_GID to the host scanner '
+        'character-device group GID}"\n',
+        "      - config:/config\n",
+        "      - state:/state\n",
+        "      - cache:/cache\n",
+        "      - runtime:/run/sdsctl\n",
+    ):
+        assert required in daemon
+
+    for forbidden in (
+        "image:",
+        "privileged:",
+        "cap_add:",
+        "ports:",
+        "expose:",
+        "depends_on:",
+        "--host",
+        "SDS200_HOST",
+        "/dev:/dev",
+        "network_mode: host",
+    ):
+        assert forbidden not in daemon
+
+
+def test_usb_compose_defines_private_runtime_sidecars() -> None:
+    compose = _USB_COMPOSE.read_text(encoding="utf-8")
+    client = compose.split("\n  daemon-client:\n", 1)[1].split(
+        "\n  web-dashboard:\n", 1
+    )[0]
+    web = compose.split("\n  web-dashboard:\n", 1)[1].split(
+        "\nvolumes:\n", 1
+    )[0]
+
+    for required in (
+        "    profiles:\n      - client\n",
+        "    entrypoint:\n      - sdsctl\n      - daemon-client\n",
+        "    network_mode: none\n",
+        "    healthcheck:\n      disable: true\n",
+        "    volumes:\n      - runtime:/run/sdsctl\n",
+    ):
+        assert required in client
+
+    for forbidden in (
+        "config:/config",
+        "state:/state",
+        "cache:/cache",
+        "ports:",
+        "expose:",
+        "privileged:",
+        "devices:",
+        "group_add:",
+        "annotations:",
+        "cap_add:",
+        "restart:",
+        "depends_on:",
+    ):
+        assert forbidden not in client
+
+    for required in (
+        "    profiles:\n      - web\n",
+        "    entrypoint:\n      - sdsctl\n      - web\n"
+        "      - --container-exposure\n",
+        '    ports:\n'
+        '      - "127.0.0.1:${SDSCTL_WEB_PORT:-8000}:8000"\n',
+        "    restart: unless-stopped\n",
+        "        - CMD-SHELL\n",
+        "http://127.0.0.1:8000/healthz",
+        "    volumes:\n      - runtime:/run/sdsctl\n",
+    ):
+        assert required in web
+
+    for forbidden in (
+        "config:/config",
+        "state:/state",
+        "cache:/cache",
+        "privileged:",
+        "devices:",
+        "group_add:",
+        "annotations:",
+        "cap_add:",
+        "depends_on:",
+        "--host",
+        "SDS200_HOST",
+        "network_mode: host",
+    ):
+        assert forbidden not in web
+
+
+def test_usb_compose_keeps_device_access_on_scanner_owners_only() -> None:
+    compose = _USB_COMPOSE.read_text(encoding="utf-8")
+
+    assert compose.count("    devices:\n") == 2
+    assert compose.count(":/dev/sdsctl-scanner") == 2
+    assert compose.count("    annotations:\n") == 2
+    assert compose.count('run.oci.keep_original_groups: "1"') == 2
+    assert compose.count("    group_add:\n") == 2
+    assert compose.count("      - runtime:/run/sdsctl\n") == 3
+
+    for required in (
+        "\nvolumes:\n",
+        "  config:\n",
+        "  state:\n",
+        "  cache:\n",
+        "  runtime:\n",
+    ):
+        assert required in compose
+
+    assert "--host" not in compose
+    assert "SDS200_HOST" not in compose
+    assert "network_mode: host" not in compose
+
 
 
 def test_root_compose_does_not_gain_usb_interpolation_contract() -> None:
@@ -271,6 +402,7 @@ def test_generic_compose_example_configuration_is_non_secret_and_ignored_locally
 
 def test_generic_container_documentation_preserves_compose_security_boundary() -> None:
     document = _CONTAINER_DOC.read_text(encoding="utf-8")
+    normalized_document = " ".join(document.split())
     readme = _README.read_text(encoding="utf-8")
     roadmap = _ROADMAP.read_text(encoding="utf-8")
 
@@ -373,8 +505,20 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
         "`podman healthcheck run`",
         "HTTP 503",
         "daemon-unavailable",
+        "Rootless Podman Compose USB daemon and sidecars",
+        "persistent serial owner",
+        "neither requires `SDS200_HOST`",
+        "no network audio source",
+        "Recording operations are not advertised",
+        "docker compose -f compose.usb.yaml up --detach --build daemon",
+        "podman compose -f compose.usb.yaml up --detach --build daemon",
+        "docker compose -f compose.usb.yaml run --rm daemon-client status --json",
+        "docker compose -f compose.usb.yaml run --rm daemon-client snapshot",
+        "docker compose -f compose.usb.yaml --profile web up --detach --build web-dashboard",
+        "Milestone 25.17",
+        "Milestone 25.18",
     ):
-        assert required in document
+        assert required in document or required in normalized_document
 
     assert (
         "[generic container deployment guide](docs/container-deployment.md)"
@@ -385,11 +529,11 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
     assert "snapshot --json" not in document
     assert "physical scanner validation of the generic Compose deployment" not in document
     assert (
-        "### Milestone 25.15 — Rootless Podman Compose USB runtime portability "
-        "foundation"
+        "### Milestone 25.16 — Rootless Podman Compose USB daemon and sidecar "
+        "integration foundation"
         in roadmap
     )
-    assert "Milestone 25.14 is closed" in roadmap
+    assert "Milestone 25.15 is closed" in roadmap
 
 
 def test_generic_docker_hub_workflow_has_safe_trigger_and_publication_contract() -> None:

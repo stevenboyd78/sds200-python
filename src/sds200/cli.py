@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import signal
 import sys
 import threading
 from collections.abc import Callable, Mapping
@@ -11,11 +12,12 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from time import sleep
-from typing import BinaryIO, Protocol, cast
+from types import FrameType
+from typing import Any, BinaryIO, Protocol, cast
 
 from . import __version__
 from .asterisk_moh import AsteriskMohSignalController, PcmStreamSink
-from .audio import AudioStream
+from .audio import AudioStream, AudioTransport, DisabledAudioTransport
 from .audio_recording import PcmuWavRecorder, decode_mulaw
 from .audio_sinks import (
     AudioFanoutSession,
@@ -191,6 +193,90 @@ from .web_server import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class _DaemonEventSignalController:
+    """Close a blocking daemon event client on process stop signals."""
+
+    def __init__(self, client: DaemonEventClient) -> None:
+        self._client = client
+        self._previous: dict[int, object] = {}
+        self._active = False
+        self._last_signal: int | None = None
+
+    @property
+    def last_signal(self) -> int | None:
+        return self._last_signal
+
+    def __enter__(self) -> _DaemonEventSignalController:
+        if self._active:
+            raise RuntimeError(
+                "Daemon event signal controller is already active."
+            )
+
+        self._last_signal = None
+        installed: list[int] = []
+        try:
+            for signum in _daemon_event_stop_signals():
+                self._previous[signum] = signal.getsignal(signum)
+                signal.signal(signum, self._handle)
+                installed.append(signum)
+        except BaseException:
+            for signum in reversed(installed):
+                signal.signal(
+                    signum,
+                    cast(Any, self._previous[signum]),
+                )
+            self._previous.clear()
+            raise
+
+        self._active = True
+        return self
+
+    def __exit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception: BaseException | None,
+        traceback: object,
+    ) -> None:
+        del exception_type, traceback
+
+        restoration_failures: list[BaseException] = []
+        for signum, previous in self._previous.items():
+            try:
+                signal.signal(signum, cast(Any, previous))
+            except BaseException as restoration_error:
+                restoration_failures.append(restoration_error)
+
+        self._previous.clear()
+        self._active = False
+
+        if not restoration_failures:
+            return
+        if exception is not None:
+            logger.error(
+                "daemon event signal restoration failed "
+                "process_error=%s restoration_error=%s",
+                exception.__class__.__name__,
+                restoration_failures[0].__class__.__name__,
+            )
+            return
+        raise restoration_failures[0]
+
+    def _handle(self, signum: int, frame: FrameType | None) -> None:
+        del frame
+        self._last_signal = signum
+        self._client.close()
+        raise KeyboardInterrupt
+
+
+def _daemon_event_stop_signals() -> tuple[int, ...]:
+    signals: list[int] = []
+    for name in ("SIGINT", "SIGTERM"):
+        value = getattr(signal, name, None)
+        if isinstance(value, int) and value not in signals:
+            signals.append(int(value))
+    return tuple(signals)
 
 
 class _CompletableAction(Protocol):
@@ -2516,7 +2602,7 @@ def _daemon_host(
     args: argparse.Namespace,
     *,
     profile_store: ProfileStore | None = None,
-) -> str:
+) -> str | None:
     if args.replay is not None:
         raise ValueError("daemon does not support replay captures")
 
@@ -2525,19 +2611,25 @@ def _daemon_host(
             raise ValueError("--model cannot override a saved profile")
         store = profile_store or ProfileStore(args.config)
         profile = store.get(args.profile)
+        if profile.kind == "serial":
+            return None
         if profile.kind not in {"network", "fallback"} or profile.host is None:
             raise ValueError(
-                "daemon requires a network-capable SDS200 connection profile"
+                "daemon requires a serial or network-capable scanner profile"
             )
         return profile.host
 
-    if args.host is None:
-        raise ValueError(
-            "daemon requires --host or a network-capable SDS200 --profile"
-        )
-    if args.model not in {None, "SDS200"}:
-        raise ValueError("Daemon network audio is only available on the SDS200")
-    return cast(str, args.host)
+    if args.host is not None:
+        if args.model not in {None, "SDS200"}:
+            raise ValueError(
+                "Daemon network audio is only available on the SDS200"
+            )
+        return cast(str, args.host)
+    if args.port is not None:
+        return None
+    raise ValueError(
+        "daemon requires --host, --port, or a saved scanner --profile"
+    )
 
 
 def _run_daemon(
@@ -2608,15 +2700,20 @@ def _run_daemon(
     )
 
     router = PcmSinkRouter(name="daemon-pcm")
-    transport = NetworkAudioTransport(
-        host,
-        rtsp_port=args.rtsp_port,
-        local_host=args.rtp_bind_address,
-        local_port=args.rtp_bind_port,
-        rtsp_timeout=args.rtsp_timeout,
-        keepalive_interval=args.keepalive_interval,
-    )
-    audio = AudioFanoutSession(AudioStream(transport), (router,))
+    network_transport: NetworkAudioTransport | None = None
+    if host is None:
+        audio_transport: AudioTransport = DisabledAudioTransport()
+    else:
+        network_transport = NetworkAudioTransport(
+            host,
+            rtsp_port=args.rtsp_port,
+            local_host=args.rtp_bind_address,
+            local_port=args.rtp_bind_port,
+            rtsp_timeout=args.rtsp_timeout,
+            keepalive_interval=args.keepalive_interval,
+        )
+        audio_transport = network_transport
+    audio = AudioFanoutSession(AudioStream(audio_transport), (router,))
     runtime = DaemonRuntime(
         scanner,
         audio,
@@ -2627,22 +2724,26 @@ def _run_daemon(
         psi_recover_after=args.psi_recover_after,
         psi_recovery_cooldown=args.psi_recovery_cooldown,
     )
-    recording_manager = DaemonRecordingManager(
-        runtime,
-        recording_directory,
-    )
-    recording_file_server = DaemonRecordingFileServer(
-        DaemonSocketListener(recording_file_socket_location),
-        recording_manager,
-        max_clients=args.recording_file_max_clients,
-        max_identifier_bytes=args.recording_file_max_identifier_bytes,
-        client_timeout=args.recording_file_client_timeout,
-        shutdown_timeout=args.recording_file_shutdown_timeout,
-    )
+    recording_manager: DaemonRecordingManager | None = None
+    recording_file_server: DaemonRecordingFileServer | None = None
+    if host is not None:
+        recording_manager = DaemonRecordingManager(
+            runtime,
+            recording_directory,
+        )
+        recording_file_server = DaemonRecordingFileServer(
+            DaemonSocketListener(recording_file_socket_location),
+            recording_manager,
+            max_clients=args.recording_file_max_clients,
+            max_identifier_bytes=args.recording_file_max_identifier_bytes,
+            client_timeout=args.recording_file_client_timeout,
+            shutdown_timeout=args.recording_file_shutdown_timeout,
+        )
 
     daemon_api = DaemonReadOnlyApi(
         runtime,
         recording_manager=recording_manager,
+        reconnect_available=host is not None,
     )
     listener = DaemonSocketListener(socket_location)
     api_server = DaemonApiServer(
@@ -2672,8 +2773,10 @@ def _run_daemon(
     )
 
     pcmu_stream: PcmuStream | None = None
+    pcmu_server: DaemonPcmuServer | None = None
     mqtt_worker: DaemonMqttWorker | None = None
     destination_coordinator: DaemonDestinationCoordinator | None = None
+    destination_reloader: DaemonDestinationReloader | None = None
     try:
         if mqtt_configuration is not None:
             assert mqtt_broker_factory is not None
@@ -2685,37 +2788,43 @@ def _run_daemon(
                 environ=environ,
             )
 
-        pcmu_stream = PcmuStream(
-            transport,
-            queue_capacity=args.pcmu_queue_capacity,
-            max_subscribers=args.pcmu_max_clients,
-            max_payload_bytes=args.pcmu_max_payload_bytes,
-        )
-        pcmu_server = DaemonPcmuServer(
-            DaemonSocketListener(pcmu_socket_location),
-            pcmu_stream,
-            max_clients=args.pcmu_max_clients,
-            max_endpoint_bytes=args.pcmu_max_endpoint_bytes,
-            max_frame_bytes=args.pcmu_max_frame_bytes,
-            send_timeout=args.pcmu_send_timeout,
-            shutdown_timeout=args.pcmu_shutdown_timeout,
-        )
+        if host is not None:
+            assert network_transport is not None
+            pcmu_stream = PcmuStream(
+                network_transport,
+                queue_capacity=args.pcmu_queue_capacity,
+                max_subscribers=args.pcmu_max_clients,
+                max_payload_bytes=args.pcmu_max_payload_bytes,
+            )
+            pcmu_server = DaemonPcmuServer(
+                DaemonSocketListener(pcmu_socket_location),
+                pcmu_stream,
+                max_clients=args.pcmu_max_clients,
+                max_endpoint_bytes=args.pcmu_max_endpoint_bytes,
+                max_frame_bytes=args.pcmu_max_frame_bytes,
+                send_timeout=args.pcmu_send_timeout,
+                shutdown_timeout=args.pcmu_shutdown_timeout,
+            )
 
-        destination_factory = DaemonDestinationFactory(
-            remote_profile_store=RemoteAudioProfileStore(
-                resolved_paths.legacy_remote_audio_profiles_file
-            ),
-            environ=environ,
-        )
-        destination_coordinator = DaemonDestinationCoordinator(
-            runtime,
-            factory=destination_factory,
-            initial_configuration=destination_configuration,
-        )
-        destination_reloader = DaemonDestinationReloader(
-            destination_coordinator,
-            destination_manifest_path,
-        )
+            destination_factory = DaemonDestinationFactory(
+                remote_profile_store=RemoteAudioProfileStore(
+                    resolved_paths.legacy_remote_audio_profiles_file
+                ),
+                environ=environ,
+            )
+            destination_coordinator = DaemonDestinationCoordinator(
+                runtime,
+                factory=destination_factory,
+                initial_configuration=destination_configuration,
+            )
+            destination_reloader = DaemonDestinationReloader(
+                destination_coordinator,
+                destination_manifest_path,
+            )
+        elif destination_configuration.destinations:
+            raise ValueError(
+                "Daemon audio destinations require a network audio source."
+            )
     except BaseException as construction_error:
         cleanup_errors: list[BaseException] = []
 
@@ -2776,7 +2885,7 @@ def _run_daemon(
         )
     result = process.run()
     logger.info(
-        "foreground daemon stopped host=%s socket=%s event_socket=%s "
+        "foreground daemon stopped audio_host=%s socket=%s event_socket=%s "
         "pcmu_socket=%s recording_file_socket=%s signal=%s",
         host,
         socket_location.path,
@@ -3134,11 +3243,14 @@ def _run_daemon_client(
             environ=environ,
             configuration_paths=configuration_paths,
         )
-        with DaemonEventClient(
-            event_location,
-            timeout=args.timeout,
-            max_event_bytes=args.max_event_bytes,
-        ) as event_client:
+        with (
+            DaemonEventClient(
+                event_location,
+                timeout=args.timeout,
+                max_event_bytes=args.max_event_bytes,
+            ) as event_client,
+            _DaemonEventSignalController(event_client),
+        ):
             try:
                 for event in event_client.watch(
                     kinds=args.kind,

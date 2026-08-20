@@ -412,9 +412,23 @@ class DaemonReadOnlyApi:
         runtime: _RuntimeLike,
         *,
         recording_manager: _RecordingManagerLike | None = None,
+        reconnect_available: bool = True,
     ) -> None:
+        if type(reconnect_available) is not bool:
+            raise TypeError("Daemon reconnect availability must be a boolean.")
         self.runtime = runtime
         self.recording_manager = recording_manager
+        self.reconnect_available = reconnect_available
+
+    def _control_operations(self) -> tuple[DaemonApiOperation, ...]:
+        return tuple(
+            operation
+            for operation in DAEMON_API_CONTROL_OPERATIONS
+            if (
+                self.reconnect_available
+                or operation is not DaemonApiOperation.SCANNER_RECONNECT
+            )
+        )
 
     @property
     def maximum_request_seconds(self) -> float:
@@ -480,7 +494,18 @@ class DaemonReadOnlyApi:
                 f"interface: {request.operation!r}.",
             )
 
-        if operation in DAEMON_API_CONTROL_OPERATIONS:
+        control_operations = self._control_operations()
+        if (
+            operation in DAEMON_API_CONTROL_OPERATIONS
+            and operation not in control_operations
+        ):
+            return DaemonApiResponse.failure(
+                request.request_id,
+                DaemonApiErrorCode.UNSUPPORTED_OPERATION,
+                "The daemon does not advertise this scanner control operation.",
+            )
+
+        if operation in control_operations:
             try:
                 _validate_control_params(operation, request.params)
             except _ControlParameterError as error:
@@ -692,12 +717,19 @@ class DaemonReadOnlyApi:
 
     def _capabilities(self) -> dict[str, object]:
         recording_available = self.recording_manager is not None
+        control_operations = self._control_operations()
         operations = [
             operation
             for operation in DaemonApiOperation
             if (
-                recording_available
-                or operation not in DAEMON_API_RECORDING_OPERATIONS
+                (
+                    recording_available
+                    or operation not in DAEMON_API_RECORDING_OPERATIONS
+                )
+                and (
+                    operation not in DAEMON_API_CONTROL_OPERATIONS
+                    or operation in control_operations
+                )
             )
         ]
         return {
@@ -712,7 +744,7 @@ class DaemonReadOnlyApi:
             ],
             "control_operations": [
                 operation.value
-                for operation in DAEMON_API_CONTROL_OPERATIONS
+                for operation in control_operations
             ],
             "max_control_timeout": DAEMON_API_MAX_CONTROL_TIMEOUT,
             "max_hold_state_timeout": DAEMON_API_MAX_HOLD_STATE_TIMEOUT,

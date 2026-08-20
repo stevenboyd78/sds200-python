@@ -1,4 +1,29 @@
 services:
+  daemon:
+    build:
+      context: .
+    entrypoint:
+      - sdsctl
+      - --port
+      - /dev/sdsctl-scanner
+    command:
+      - --log-level
+      - "${SDS200_LOG_LEVEL:-INFO}"
+      - daemon
+    network_mode: none
+    restart: unless-stopped
+    annotations:
+      run.oci.keep_original_groups: "1"
+    devices:
+      - "${SDSCTL_USB_DEVICE:?Set SDSCTL_USB_DEVICE to the stable Linux /dev/serial/by-id/... scanner path when available}:/dev/sdsctl-scanner"
+    group_add:
+      - "${SDSCTL_USB_GID:?Set SDSCTL_USB_GID to the host scanner character-device group GID}"
+    volumes:
+      - config:/config
+      - state:/state
+      - cache:/cache
+      - runtime:/run/sdsctl
+
   usb-scanner:
     build:
       context: .
@@ -15,3 +40,47 @@ services:
       - "${SDSCTL_USB_DEVICE:?Set SDSCTL_USB_DEVICE to the stable Linux /dev/serial/by-id/... scanner path when available}:/dev/sdsctl-scanner"
     group_add:
       - "${SDSCTL_USB_GID:?Set SDSCTL_USB_GID to the host scanner character-device group GID}"
+
+  daemon-client:
+    profiles:
+      - client
+    build:
+      context: .
+    entrypoint:
+      - sdsctl
+      - daemon-client
+    network_mode: none
+    healthcheck:
+      disable: true
+    volumes:
+      - runtime:/run/sdsctl
+
+  web-dashboard:
+    profiles:
+      - web
+    build:
+      context: .
+    entrypoint:
+      - sdsctl
+      - web
+      - --container-exposure
+    ports:
+      - "127.0.0.1:${SDSCTL_WEB_PORT:-8000}:8000"
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5)"
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    volumes:
+      - runtime:/run/sdsctl
+
+volumes:
+  config:
+  state:
+  cache:
+  runtime:

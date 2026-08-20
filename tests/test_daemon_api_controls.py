@@ -377,6 +377,39 @@ def test_next_and_previous_dispatch_count_and_timeout(
     assert runtime.calls == [expected]
 
 
+
+def test_capabilities_can_omit_unavailable_reconnect_control() -> None:
+    runtime = FakeControlRuntime()
+    api = DaemonReadOnlyApi(runtime, reconnect_available=False)
+
+    hello = api.handle_payload(
+        request_payload(DaemonApiOperation.HELLO.value)
+    )
+    reconnect = api.handle_payload(
+        request_payload(
+            DaemonApiOperation.SCANNER_RECONNECT.value,
+            request_id="control-2",
+        )
+    )
+
+    assert hello.error is None
+    assert hello.result is not None
+    operations = hello.result["operations"]
+    control_operations = hello.result["control_operations"]
+    assert isinstance(operations, list)
+    assert isinstance(control_operations, list)
+    assert DaemonApiOperation.SCANNER_RECONNECT.value not in operations
+    assert (
+        DaemonApiOperation.SCANNER_RECONNECT.value
+        not in control_operations
+    )
+    assert reconnect.result is None
+    assert reconnect.error is not None
+    assert reconnect.error.code is DaemonApiErrorCode.UNSUPPORTED_OPERATION
+    assert runtime.calls == []
+
+
+
 def test_reconnect_accepts_only_a_bounded_timeout() -> None:
     runtime = FakeControlRuntime()
     api = DaemonReadOnlyApi(runtime)

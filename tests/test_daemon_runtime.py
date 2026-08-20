@@ -40,9 +40,11 @@ class FakeScanner:
         order: list[str],
         *,
         fail_at: Literal["connect", "model", "firmware", "psi"] | None = None,
+        supports_bounded_reconnect: bool = True,
     ) -> None:
         self.order = order
         self.fail_at = fail_at
+        self._supports_bounded_reconnect = supports_bounded_reconnect
         self._connected = False
         self._psi_active = False
         self._psi_callbacks: list[Callable[[object], None]] = []
@@ -63,7 +65,7 @@ class FakeScanner:
 
     @property
     def supports_bounded_reconnect(self) -> bool:
-        return True
+        return self._supports_bounded_reconnect
 
     def on_psi(
         self,
@@ -276,6 +278,46 @@ def test_runtime_recovers_sustained_silent_psi_with_cooldown() -> None:
     assert order.count("scanner.reconnect") == 2
 
     runtime.stop()
+
+
+
+def test_runtime_refreshes_stale_psi_without_bounded_reconnect() -> None:
+    now = [100.0]
+    order: list[str] = []
+    scanner = FakeScanner(
+        order,
+        supports_bounded_reconnect=False,
+    )
+    transport = TrackingAudioTransport(order)
+    router = TrackingRouter(order)
+    audio = AudioFanoutSession(AudioStream(transport), (router,))
+    runtime = DaemonRuntime(
+        scanner,
+        audio,
+        router,
+        psi_recover_after=5.0,
+        psi_recovery_cooldown=60.0,
+        clock=lambda: now[0],
+    )
+
+    runtime.start()
+    assert order.count("psi.start") == 1
+
+    now[0] = 105.1
+    runtime.poll()
+
+    assert "scanner.reconnect" not in order
+    assert order.count("psi.stop") == 1
+    assert order.count("psi.start") == 2
+
+    now[0] = 106.0
+    runtime.poll()
+
+    assert order.count("psi.stop") == 1
+    assert order.count("psi.start") == 2
+
+    runtime.stop()
+
 
 
 def test_runtime_can_disable_automatic_psi_recovery() -> None:
