@@ -172,8 +172,8 @@ def test_generic_compose_defines_bridge_networked_long_running_web_dashboard() -
         "    entrypoint:\n      - sdsctl\n      - web\n      - --container-exposure\n",
         '    ports:\n      - "127.0.0.1:${SDSCTL_WEB_PORT:-8000}:8000"\n',
         "    restart: unless-stopped\n",
-        "        - CMD\n        - python\n        - -c\n",
-        "import urllib.request",
+        "        - CMD-SHELL\n",
+        'python -c "import urllib.request;',
         "http://127.0.0.1:8000/healthz",
         "    volumes:\n      - runtime:/run/sdsctl\n",
     ):
@@ -362,6 +362,11 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
         "restart loop",
         "parse-compatible only",
         "numeric `group_add`",
+        "Rootless Podman Compose web-dashboard sidecar",
+        "`CMD-SHELL`",
+        "`podman healthcheck run`",
+        "HTTP 503",
+        "daemon-unavailable",
     ):
         assert required in document
 
@@ -374,10 +379,11 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
     assert "snapshot --json" not in document
     assert "physical scanner validation of the generic Compose deployment" not in document
     assert (
-        "### Milestone 25.13 — Rootless Podman Compose provider portability foundation"
+        "### Milestone 25.14 — Rootless Podman Compose web-dashboard sidecar "
+        "portability foundation"
         in roadmap
     )
-    assert "Milestone 25.12 is closed" in roadmap
+    assert "Milestone 25.13 is closed" in roadmap
 
 
 def test_generic_docker_hub_workflow_has_safe_trigger_and_publication_contract() -> None:

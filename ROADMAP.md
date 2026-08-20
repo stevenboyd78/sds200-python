@@ -11,56 +11,52 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 25.13 — Rootless Podman Compose provider portability foundation
+### Milestone 25.14 — Rootless Podman Compose web-dashboard sidecar portability foundation
 
-Milestone 25.12 is closed after establishing the separate native-Linux rootless
-Podman one-shot USB serial path with the unchanged generic image, one narrowly
-mapped scanner device, `--network none`, and `--group-add keep-groups`. Physical
-SDS200 acceptance proved `info`, `scanner-info`, `health`, clean device release,
-and later reacquisition without privileged mode or host permission changes.
+Milestone 25.13 is closed after establishing the native-Linux rootless Podman
+Compose-provider foundation for the existing generic network `compose.yaml`.
+The observed Docker Compose v5.4.0 external provider worked through Podman's
+rootless Docker-compatible API socket, scanner-independent daemon-client
+execution succeeded, and physical SDS200 testing proved provider-backed host
+networking, UDP control on port 50536, and the 500 ms PSI stream. Full
+daemon-client and RTSP/RTP acceptance remain deferred because the scanner's
+native TCP port 554 independently refused connections from the host.
 
-Milestone 25.13 establishes the next native-Linux rootless Podman boundary at the
-Compose-provider layer for the existing generic network `compose.yaml`. Podman's
-`podman compose` command remains a wrapper around an external Compose provider;
-this slice documents and validates that provider model and the rootless
-Docker-compatible API socket prerequisite without creating a second Compose
-architecture or changing the existing Docker-oriented service definitions.
+Milestone 25.14 establishes the separate rootless-Podman web-dashboard sidecar
+boundary without starting or owning the scanner daemon. On 2026-08-20, Ubuntu
+26.04 LTS with rootless Podman 5.7.0, Netavark, cgroup v2, crun 1.21, and Docker
+Compose v5.4.0 launched only the existing `web-dashboard` service through
+`podman compose --profile web`. A TEST-NET `SDS200_HOST` value was used only to
+satisfy Compose interpolation; no scanner or daemon container was required for
+the sidecar-local acceptance.
 
-On 2026-08-20, Ubuntu 26.04 LTS with rootless Podman 5.7.0, Netavark, cgroup v2,
-and crun 1.21 selected the installed Docker Compose v5.4.0 CLI plugin as the
-external provider. Both repository Compose files resolved successfully through
-`podman compose ... config`. Runtime operations initially failed while the
-rootless Podman API socket was inactive. A transient
-`systemctl --user start podman.socket` made
-`/run/user/1000/podman/podman.sock` responsive, after which the unchanged
-network Compose model built successfully and a scanner-independent
-`daemon-client --help` invocation completed through the provider. The provider
-created the expected Compose-labeled runtime volume, and project cleanup removed
-the validation resources. Stopping `podman.socket` restored the original
-inactive state; a remaining filesystem socket inode was not listening.
+The provider preserved the intended security and isolation contract. The web
+container ran as UID/GID `10001:10001`, used ordinary bridge networking, was not
+privileged, had no devices or added capabilities, mounted only the shared
+`/run/sdsctl` runtime volume, and published container TCP 8000 only to host
+loopback at `127.0.0.1:18081`. `/healthz` and `/` returned HTTP 200. The root
+response preserved the Content Security Policy, `no-referrer`, `nosniff`, and
+`X-Frame-Options: DENY` headers. With no daemon container present,
+`/api/v1/status` returned the expected HTTP 503 daemon-unavailable boundary.
 
-Physical SDS200 testing with scanner address `192.168.0.251` then showed that the
-Compose-managed host-network daemon repeatedly opened UDP control on port 50536
-and started the 500 ms PSI stream. Startup could not progress to a stable daemon
-socket because RTSP audio initialization against TCP port 554 failed and the
-existing `restart: unless-stopped` policy correctly restarted the daemon.
-A separate native-host probe, with the Podman API inactive and no container
-involved, independently received `Connection refused` from the same scanner TCP
-port 554 in about 5 ms. The RTSP failure is therefore recorded as an external
-scanner-side condition, not attributed to Podman Compose. Full physical
-Podman Compose daemon-client `status --json` and `snapshot` acceptance
-remains unproven while that scanner endpoint is unavailable.
+Physical acceptance also exposed a Compose-healthcheck portability defect. The
+existing exec-form `CMD` test containing `python -c` was split by the
+Podman-compatible runtime so Python received only `import` as its command and
+failed with `SyntaxError`, even while `/healthz` returned HTTP 200. A temporary
+override using `CMD-SHELL` preserved the complete Python expression, reached
+`healthy` on the normal scheduled probe, and passed `podman healthcheck run`.
+Milestone 25.14 therefore changes only the web-dashboard Compose healthcheck
+encoding to the portable `CMD-SHELL` form while preserving the same local
+`/healthz` request and all other service boundaries.
 
-`compose.usb.yaml` is parse-compatible through the observed external provider,
-but that is not a rootless Podman USB runtime claim. Its numeric `group_add`
-contract remains the native-Linux Docker Engine Compose path. Rootless Podman USB
-continues to use the direct Milestone 25.12 `--group-add keep-groups` contract.
-Podman Compose USB runtime, web-dashboard sidecar acceptance, full RTSP/RTP
-acceptance, physical daemon-client acceptance under Podman Compose, SELinux
-socket or device-policy acceptance, remote Podman on Windows/macOS, and
-alternate Compose providers remain separate work. Native systemd remains
-preferred when broader direct host-device, local-audio, or operating-system
-integration is important.
+This slice does not claim live daemon-backed web status, snapshot, scanner
+control, event streaming, audio, recording, or recording-file behavior under
+Podman Compose while the scanner daemon cannot remain ready because native RTSP
+TCP port 554 is unavailable. Physical daemon-client acceptance, full RTSP/RTP
+acceptance, Podman Compose USB runtime, SELinux socket or device-policy
+acceptance, remote Podman on Windows/macOS, and alternate Compose providers
+remain separate work. Native systemd remains preferred when broader direct
+host-device, local-audio, or operating-system integration is important.
 
 ## Deferred hardware validation
 
