@@ -10,7 +10,9 @@ Milestone 25.6 added the isolated web-dashboard container foundation. Milestone
 explicit host-loopback port publication. Milestone 25.8 adds a separate,
 one-shot USB scanner CLI workflow for native Linux Docker Engine. Milestone 25.9
 records physical acceptance of those existing generic-container paths without
-introducing a new runtime architecture.
+introducing a new runtime architecture. Milestone 25.10 documents the
+network-only Docker Desktop host-network prerequisite and its validation
+boundary without changing repository-root Compose.
 
 Native systemd deployment remains the preferred production option when direct
 host-device, local-audio, or other operating-system integration is important.
@@ -84,8 +86,9 @@ not contain `image:` and does not select a Docker Hub tag.
 
 The service preserves the Milestone 25.1 runtime contract:
 
-- `network_mode: host` retains Linux host-network reachability for SDS200 UDP
-  control plus the existing RTSP/RTP audio path;
+- `network_mode: host` retains the scanner-owning daemon's existing SDS200 UDP
+  control plus RTSP/RTP audio semantics on native Linux and on supported Docker
+  Desktop host networking;
 - `restart: unless-stopped` supplies the documented container restart policy;
 - `/config`, `/state`, and `/cache` are backed by Compose named volumes;
 - the image's `SIGTERM` stop signal and private Unix-domain healthcheck are
@@ -362,18 +365,71 @@ sudo install -d -m 0750 -o 10001 -g 10001 \
   /srv/sds200/cache
 ```
 
-## Linux host networking
+## Host networking and Docker Desktop
 
 The foreground daemon owns SDS200 network control plus one RTSP/RTP audio
-session. Milestone 25.2 therefore retains Linux host networking so those existing
-host-reachable network semantics are preserved without inventing bridge-network
-callback behavior.
+session. Repository-root Compose therefore continues to use
+`network_mode: host` rather than introducing a second scanner-owner architecture
+or changing the private daemon IPC boundary.
 
-Host networking intentionally gives the container the host network stack. The
-Compose service does not publish ports because port mapping is neither needed nor
-part of this deployment model. Do not add a standalone web-dashboard process to
-this service as a way to expose the dashboard remotely; its existing loopback-only
-security policy remains unchanged.
+On native Linux Docker Engine, this is the existing host-network driver contract
+physically accepted in Milestone 25.9. Docker Desktop 4.34 and later also
+supports host networking for **Linux containers**, but it is an opt-in Desktop
+feature. Before starting the generic daemon on Docker Desktop, enable:
+
+**Settings → Resources → Network → Enable host networking → Apply and restart**
+
+Docker documents host networking on Desktop as a layer-4 TCP/UDP feature. It
+does not give a container direct access to host network interfaces or allow a
+process to bind arbitrary host interface addresses, and it is incompatible with
+Enhanced Container Isolation. The `sdsctl` daemon does not depend on direct
+interface inspection: it uses normal IPv4 UDP control plus TCP RTSP and UDP RTP.
+The daemon still publishes no Docker ports and remains unprivileged with no
+device mapping.
+
+See Docker's current
+[host networking documentation](https://docs.docker.com/engine/network/drivers/host/)
+for the Desktop prerequisite and limitations. Docker Desktop settings and
+feature availability can change independently of `sdsctl`; validate the current
+Docker documentation and Desktop UI rather than editing Desktop settings files
+directly.
+
+A reversible 2026-08-19 Docker Desktop for Linux 4.87.0 / Engine 29.7.2
+experiment demonstrated that a host-networked Linux container could exchange
+both TCP and UDP with Docker-host loopback after a Desktop restart. The settings
+file no longer exposed an explicit `hostNetworkingEnabled` key after that
+restart, so this records observed runtime behavior rather than persistent
+settings-file state. Docker's documented UI prerequisite remains authoritative.
+This is not a claim of end-to-end physical SDS200 validation on Docker Desktop.
+
+During the same investigation, scanner UDP control and PSI worked from an
+exploratory bridge-network daemon path, but the physical scanner's RTSP listener
+on TCP 554 became persistently unavailable. The listener also refused native-host
+connections and remained unavailable after a cold power cycle with Ethernet
+removed and reconnected. Because the scanner-side RTSP service was unavailable
+outside Docker as well, the investigation could not establish or reject a
+bridge-NAT RTP callback design. No bridge-network daemon override, fixed RTP
+publication, or other new generic Compose contract is adopted in Milestone
+25.10.
+
+Physical Windows and macOS Docker-host validation remains outstanding. This
+milestone establishes the documented Docker Desktop prerequisite and preserves
+the architecture needed for later physical validation; it does not claim that a
+Windows or macOS host has completed SDS200 control/audio acceptance.
+
+Docker Desktop USB access is a separate concern. Docker documents a USB/IP
+workflow for Desktop, but that workflow is not equivalent to native Linux
+`--device` passthrough and is not adopted by `compose.usb.yaml`. The supported
+generic USB contract remains the native-Linux one-shot workflow documented
+above. See Docker's
+[USB/IP documentation](https://docs.docker.com/desktop/features/usbip/) only as
+a separate operator workaround, not as part of the `sdsctl` USB contract.
+
+The web-dashboard container remains on ordinary bridge networking with explicit
+host-loopback publication. Do not move it onto host networking to expose the
+dashboard remotely; its existing standalone exposure and security boundary is
+unchanged. Generic LAN/public authentication and TLS termination remain
+unsupported and deferred.
 
 ## Health and status
 
@@ -419,7 +475,7 @@ docker compose down
 
 to stop and remove the service while preserving the named persistent volumes.
 
-## Milestone 25.9 boundary
+## Milestone 25.10 boundary
 
 The supported sidecar workflows remain negotiated daemon API status and snapshot,
 safe semantic scanner controls, and bounded consumption of the daemon's ordered
@@ -432,18 +488,25 @@ and it neither uses nor repurposes Home Assistant Ingress.
 
 The standalone USB service establishes only direct, model-neutral serial-safe
 CLI commands on native Linux Docker Engine. It is not a USB daemon and does not
-weaken the network-only generic daemon boundary. This container work still does
-**not** establish:
+weaken the network-only generic daemon boundary.
 
-- a daemon-backed TUI sidecar;
-- arbitrary remote/LAN standalone web exposure;
-- generic LAN/public web publication or authentication/TLS termination;
-- broadly privileged container operation;
-- Windows or macOS Docker behavior; or
-- Podman-specific runtime and supplemental-group semantics.
+Milestone 25.10 adds only the Docker Desktop network portability foundation:
 
-The remaining items stay deferred to separate Milestone 25 work. In particular,
-the existing standalone web security boundary continues to reject wildcard,
-LAN, public, and non-local hostname listeners outside the explicit Home
-Assistant Ingress mode. Native systemd remains preferred when direct
-host-device, local-audio, or other operating-system integration matters.
+- repository-root Compose remains unchanged with one host-networked
+  scanner-owning daemon;
+- Docker Desktop 4.34+ requires the operator to enable host networking before
+  using that daemon path;
+- the Desktop host-network prerequisite was exercised with TCP and UDP on Docker
+  Desktop for Linux, but physical SDS200 RTSP/RTP acceptance was blocked by a
+  scanner-side RTSP listener failure also reproduced on the native host;
+- physical Windows and macOS Docker validation remains outstanding;
+- direct Windows/macOS USB passthrough is not established, and Docker Desktop
+  USB/IP is not part of `compose.usb.yaml`; and
+- Podman-specific networking, runtime, and supplemental-group semantics remain
+  deferred.
+
+This container work still does **not** establish a daemon-backed TUI sidecar,
+arbitrary remote/LAN standalone web exposure, generic LAN/public web
+publication, or authentication/TLS termination. Native systemd remains preferred
+when direct host-device, local-audio, or other operating-system integration
+matters.
