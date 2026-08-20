@@ -11,44 +11,44 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 25.10 — Docker Desktop network portability foundation
+### Milestone 25.11 — Rootless Podman network portability foundation
 
-Milestone 25.9 is closed after physical native-Linux acceptance of the existing
-generic network daemon/client, host-loopback web sidecar, and standalone
-`compose.usb.yaml` one-shot USB workflow against an SDS200 running firmware
-1.26.01.
+Milestone 25.10 is closed after establishing the Docker Desktop network
+portability prerequisite and validation boundary without changing the existing
+generic-container architecture.
 
-Milestone 25.10 establishes the network-only Docker Desktop portability
-foundation without changing the generic runtime architecture. Repository-root
-Compose keeps the scanner-owning daemon on `network_mode: host`, the
-daemon-client isolated on `network_mode: none`, and the web dashboard on ordinary
-bridge networking with host-loopback publication. Docker Desktop 4.34 and later
-supports host networking for Linux containers only after the operator enables
-**Settings → Resources → Network → Enable host networking** and applies the
-restart. The feature supports TCP and UDP at layer 4, does not provide direct
-host-interface access, and is incompatible with Enhanced Container Isolation.
+Milestone 25.11 establishes the narrow native-Linux rootless Podman network
+portability foundation for the existing generic image and scanner-owning daemon.
+The supported Podman path is intentionally below the Compose layer: use the
+repository Dockerfile directly, build it with `podman build --format docker` so
+the existing image `HEALTHCHECK` is preserved, and run the daemon with
+`--network host`. Repository-root `compose.yaml`, `compose.usb.yaml`, the
+daemon-client sidecar, and the web-dashboard sidecar remain Docker Compose
+contracts and are not redefined as Podman Compose contracts in this slice.
 
-On 2026-08-19, a reversible Docker Desktop for Linux 4.87.0 / Engine 29.7.2
-host-network experiment demonstrated TCP and UDP exchange between a
-host-networked container and Docker-host loopback after a Desktop restart. The
-settings file no longer exposed an explicit `hostNetworkingEnabled` key after
-that restart, so this evidence establishes observed runtime behavior rather than
-persistent settings-file state. Scanner UDP control and PSI
-also operated through an exploratory bridge-network daemon path. End-to-end
-Docker Desktop SDS200 RTSP/RTP acceptance was not completed: during the
-investigation the physical scanner's TCP 554 RTSP listener became persistently
-unavailable even from the native host and remained unavailable after full
-power-and-Ethernet removal/reconnection. That external scanner condition blocks
-a trustworthy Desktop audio conclusion and does not justify changing the
-existing Compose architecture.
+On 2026-08-20, rootless Podman 5.7.0 on Ubuntu 26.04 LTS with Netavark, cgroup
+v2/systemd, and crun 1.21 demonstrated host-network TCP and UDP exchange with
+the native host. The unchanged generic Dockerfile built successfully under
+rootless Podman. Podman's default OCI image format discarded the Dockerfile
+healthcheck, while `--format docker` preserved the existing healthcheck, UID/GID
+`10001:10001`, entrypoint, command, and `SIGTERM` stop signal.
 
-Do not claim physical Windows or macOS Docker validation from this milestone.
-Direct Windows/macOS USB passthrough is not added; Docker Desktop USB/IP remains
-a separate workaround and is not folded into the native-Linux
-`compose.usb.yaml` contract. Keep Podman-specific networking and
-supplemental-group semantics deferred to a separate slice. Native systemd
-remains preferred when direct host-device, local-audio, or other
-operating-system integration is important.
+Physical SDS200 validation with firmware 1.26.01 established rootless Podman
+host-network UDP control, model/firmware queries, scanner-info state, daemon
+identity probing, and live PSI startup. End-to-end RTSP/RTP audio acceptance
+remains unproven because the scanner's TCP 554 RTSP listener was already refusing
+connections from the native host before the Podman daemon test and the Podman
+daemon then failed only when it reached audio startup. Do not attribute that
+scanner-side RTSP failure to Podman.
+
+Keep Podman Compose providers, daemon-client and web sidecars under Podman,
+Podman USB serial/supplemental-group semantics, Windows/macOS Podman behavior,
+Docker Desktop USB/IP, and physical Windows/macOS Docker validation deferred to
+separate evidence-backed slices. Podman host networking shares the host network
+namespace and therefore weakens network-namespace isolation; do not treat it as
+ordinary rootless network isolation. Native systemd remains preferred when
+direct host-device, local-audio, or other operating-system integration is
+important.
 
 ## Deferred hardware validation
 

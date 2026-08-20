@@ -12,7 +12,9 @@ one-shot USB scanner CLI workflow for native Linux Docker Engine. Milestone 25.9
 records physical acceptance of those existing generic-container paths without
 introducing a new runtime architecture. Milestone 25.10 documents the
 network-only Docker Desktop host-network prerequisite and its validation
-boundary without changing repository-root Compose.
+boundary without changing repository-root Compose. Milestone 25.11 adds the
+narrow native-Linux rootless Podman network-daemon path while leaving Compose,
+USB, sidecar, and cross-platform Podman behavior separate.
 
 Native systemd deployment remains the preferred production option when direct
 host-device, local-audio, or other operating-system integration is important.
@@ -431,6 +433,72 @@ dashboard remotely; its existing standalone exposure and security boundary is
 unchanged. Generic LAN/public authentication and TLS termination remain
 unsupported and deferred.
 
+## Rootless Podman network daemon
+
+Milestone 25.11 adds a separate native-Linux rootless Podman path for the
+existing generic image and scanner-owning daemon. It does not turn
+repository-root Compose into a Podman Compose contract and does not add a second
+scanner-owner architecture.
+
+Build the same repository Dockerfile explicitly in Docker image format:
+
+```bash
+podman build --format docker --tag sdsctl:local .
+```
+
+The explicit format matters. Rootless Podman 5.7.0 defaulted to OCI image format
+during validation and warned that the Dockerfile `HEALTHCHECK` was unsupported;
+the resulting image had no healthcheck metadata. Rebuilding with
+`--format docker` preserved the existing private daemon-client healthcheck plus
+the image's unprivileged `10001:10001` user, `sdsctl` entrypoint, `--help`
+default command, and `SIGTERM` stop signal.
+
+Run the scanner-owning daemon directly with host networking:
+
+```bash
+podman run --rm \
+  --network host \
+  sdsctl:local \
+  --host SCANNER_IP daemon
+```
+
+Podman host networking uses the host network namespace. That is necessary here
+to preserve the daemon's existing scanner-facing UDP control and RTSP/RTP
+semantics, but it also weakens network-namespace isolation. In particular,
+localhost-bound host services are reachable from the container. Do not describe
+this as ordinary rootless network isolation, and do not use host networking for
+the existing web sidecar as a way to expose the dashboard. See Podman's current
+[run networking documentation](https://docs.podman.io/en/latest/markdown/podman-run.1.html)
+for the host-network namespace and security semantics, and its
+[build documentation](https://docs.podman.io/en/latest/markdown/podman-build.1.html)
+for image-format options.
+
+The validated 2026-08-20 host used Ubuntu 26.04 LTS, rootless Podman 5.7.0,
+Netavark, cgroup v2 with the systemd manager, and crun 1.21. A disposable
+host-network container exchanged both TCP and UDP with native-host loopback. The
+unchanged generic Dockerfile then built successfully with `--format docker`, and
+ephemeral SDS200 commands over `--network host` identified an SDS200 running
+firmware 1.26.01 and returned live scanner state.
+
+A bounded daemon startup under the same rootless Podman runtime opened
+`udp://192.168.0.251:50536`, identified SDS200 / Version 1.26.01, enabled PSI at
+500 ms, and received live PSI state before audio startup failed. The scanner's
+TCP 554 RTSP listener had already refused connections from the native host before
+that Podman daemon test. This establishes
+physical rootless-Podman UDP control/PSI acceptance but does **not** establish
+or reject Podman RTSP/RTP audio. Do not attribute that independently reproduced
+scanner-side RTSP failure to Podman.
+
+This Milestone 25.11 contract intentionally stops below the Compose and
+host-device layers. `podman compose` delegates to an external Compose provider,
+as documented by Podman's current
+[Compose documentation](https://docs.podman.io/en/latest/markdown/podman-compose.1.html),
+so repository-root `compose.yaml` is not claimed as a supported Podman Compose
+deployment here. `compose.usb.yaml` remains the native-Linux Docker Engine USB
+contract; rootless Podman supplemental-group/device semantics remain deferred.
+Windows/macOS Podman behavior and Docker Desktop USB/IP also remain separate
+work; physical Windows and macOS Docker validation remains outstanding.
+
 ## Health and status
 
 The Dockerfile healthcheck is inherited by Compose and uses the daemon's private
@@ -475,38 +543,40 @@ docker compose down
 
 to stop and remove the service while preserving the named persistent volumes.
 
-## Milestone 25.10 boundary
+## Milestone 25.11 boundary
 
-The supported sidecar workflows remain negotiated daemon API status and snapshot,
-safe semantic scanner controls, and bounded consumption of the daemon's ordered
-event stream. The supported web-dashboard foundation adds consumption of the
-daemon API, event, PCMU, and recording-file sockets without changing their
-private Unix-domain transport. No daemon IPC is exposed over TCP. The standalone
-web listener still rejects wildcard, LAN, public, and non-local hostname
-listeners. Only the explicit generic-container mode owns the internal wildcard,
-and it neither uses nor repurposes Home Assistant Ingress.
+The supported Docker sidecar workflows remain negotiated daemon API status and
+snapshot, safe semantic scanner controls, and bounded consumption of the
+daemon's ordered event stream. The supported Docker web-dashboard foundation
+still consumes the daemon API, event, PCMU, and recording-file sockets without
+changing their private Unix-domain transport. Milestone 25.11 does not claim
+those sidecars under Podman.
 
-The standalone USB service establishes only direct, model-neutral serial-safe
-CLI commands on native Linux Docker Engine. It is not a USB daemon and does not
-weaken the network-only generic daemon boundary.
+The standalone USB service remains only the native-Linux Docker Engine
+model-neutral serial-safe CLI path. It is not a USB daemon, and Milestone 25.11
+does not claim rootless Podman device or supplemental-group compatibility.
 
-Milestone 25.10 adds only the Docker Desktop network portability foundation:
+Milestone 25.11 adds only the native-Linux rootless Podman network-daemon
+foundation:
 
-- repository-root Compose remains unchanged with one host-networked
-  scanner-owning daemon;
-- Docker Desktop 4.34+ requires the operator to enable host networking before
-  using that daemon path;
-- the Desktop host-network prerequisite was exercised with TCP and UDP on Docker
-  Desktop for Linux, but physical SDS200 RTSP/RTP acceptance was blocked by a
-  scanner-side RTSP listener failure also reproduced on the native host;
-- physical Windows and macOS Docker validation remains outstanding;
-- direct Windows/macOS USB passthrough is not established, and Docker Desktop
-  USB/IP is not part of `compose.usb.yaml`; and
-- Podman-specific networking, runtime, and supplemental-group semantics remain
-  deferred.
+- rootless Podman 5.7.0 with Netavark and crun exercised host-network TCP/UDP
+  reachability on Ubuntu 26.04 LTS;
+- the existing Dockerfile builds under rootless Podman, but the supported build
+  command uses `--format docker` because Podman's default OCI format discarded
+  the Dockerfile healthcheck during validation;
+- the Docker-format Podman image preserves the private healthcheck, unprivileged
+  UID/GID `10001:10001`, `sdsctl` entrypoint, `--help` command, and `SIGTERM`;
+- physical SDS200 validation established host-network UDP control, identity,
+  scanner-info, daemon identity probing, and PSI under rootless Podman; and
+- Podman RTSP/RTP acceptance remains unproven because the scanner's TCP 554 RTSP
+  listener was independently unavailable from the native host before the Podman
+  daemon attempt.
 
-This container work still does **not** establish a daemon-backed TUI sidecar,
+Repository-root Compose and `compose.usb.yaml` remain Docker contracts. Podman
+Compose providers, daemon-client/web sidecars under Podman, Podman
+USB/supplemental-group semantics, Windows/macOS Podman, Docker Desktop USB/IP,
+physical Windows/macOS Docker validation, daemon-backed TUI sidecars,
 arbitrary remote/LAN standalone web exposure, generic LAN/public web
-publication, or authentication/TLS termination. Native systemd remains preferred
-when direct host-device, local-audio, or other operating-system integration
-matters.
+publication, and authentication/TLS termination all remain outside this slice.
+Native systemd remains preferred when direct host-device, local-audio, or other
+operating-system integration matters.

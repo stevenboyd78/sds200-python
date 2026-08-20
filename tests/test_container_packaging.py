@@ -335,7 +335,17 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
         "physical SDS200 validation on Docker Desktop",
         "physical Windows and macOS Docker validation remains outstanding",
         "USB/IP",
-        "Podman-specific networking, runtime, and supplemental-group semantics",
+        "Rootless Podman network daemon",
+        "podman build --format docker --tag sdsctl:local .",
+        "Podman 5.7.0",
+        "Netavark",
+        "cgroup v2",
+        "crun 1.21",
+        "defaulted to OCI image format",
+        "localhost-bound host services",
+        "physical rootless-Podman UDP control/PSI acceptance",
+        "`podman compose` delegates to an external Compose provider",
+        "rootless Podman supplemental-group/device semantics remain deferred",
     ):
         assert required in document
 
@@ -347,8 +357,8 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
     assert "docker compose -f compose.usb.yaml run --rm usb-scanner info" in readme
     assert "snapshot --json" not in document
     assert "physical scanner validation of the generic Compose deployment" not in document
-    assert "### Milestone 25.10 — Docker Desktop network portability foundation" in roadmap
-    assert "Milestone 25.9 is closed" in roadmap
+    assert "### Milestone 25.11 — Rootless Podman network portability foundation" in roadmap
+    assert "Milestone 25.10 is closed" in roadmap
 
 
 def test_generic_docker_hub_workflow_has_safe_trigger_and_publication_contract() -> None:
