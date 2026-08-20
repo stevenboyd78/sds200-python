@@ -685,13 +685,67 @@ For rootless Podman USB, continue to use the direct one-shot
 `--group-add keep-groups` workflow documented above; do not infer Podman Compose
 USB runtime support from successful model parsing.
 
-Milestone 25.13 does not claim alternate external Compose providers,
+Milestone 25.13 did not claim alternate external Compose providers,
 web-dashboard sidecar acceptance under Podman, physical daemon-client
 acceptance under Podman Compose, Podman Compose USB runtime, SELinux socket
 or device-policy acceptance, remote Podman on Windows or macOS, or
 successful RTSP/RTP audio while the scanner's native TCP port 554 is
-unavailable. Native systemd remains preferred where broader direct
-host-device, local-audio, or operating-system integration is important.
+unavailable.
+
+### Rootless Podman Compose web-dashboard sidecar
+
+Milestone 25.14 closes the scanner-independent native-Linux rootless Podman
+Compose boundary for the existing `web-dashboard` profile. The 2026-08-20
+acceptance host remained Ubuntu 26.04 LTS with rootless Podman 5.7.0, Netavark,
+cgroup v2, crun 1.21, and Docker Compose v5.4.0 as the external provider. As in
+Milestone 25.13, provider-backed runtime operations required the rootless Podman
+Docker-compatible API socket to be active.
+
+A non-secret TEST-NET scanner value can satisfy the repository-wide Compose
+interpolation while starting only the web sidecar:
+
+```bash
+SDS200_HOST=192.0.2.10 SDSCTL_WEB_PORT=18081 \
+  podman compose -f compose.yaml --profile web up --detach --build web-dashboard
+```
+
+This command does not implicitly start the daemon. Physical acceptance confirmed
+that no daemon container existed in the validation project. The web container
+ran as UID/GID `10001:10001`, used ordinary bridge networking, remained
+unprivileged, had no added capabilities or mapped devices, mounted only
+`/run/sdsctl`, and published container TCP 8000 only to
+`127.0.0.1:18081` on the host.
+
+The scanner-independent web surface behaved as designed. `/healthz` and `/`
+returned HTTP 200, and the packaged root response retained the Content Security
+Policy, `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, and
+`X-Frame-Options: DENY` headers. With no daemon service present,
+`/api/v1/status` returned HTTP 503 with the existing daemon-unavailable error
+contract. This verifies the sidecar-local listener, static application,
+loopback publication, and daemon-absence boundary without claiming scanner
+connectivity.
+
+The acceptance run also found a portability issue in the original web
+healthcheck encoding. The Compose file used exec-form `CMD` with `python -c`
+followed by a Python expression. Through the observed Podman-compatible API
+runtime, that expression was split into separate healthcheck arguments and
+Python received only `import`, producing `SyntaxError` even though `/healthz`
+itself returned HTTP 200. The repository therefore uses `CMD-SHELL` for this
+web-only healthcheck so the complete Python expression remains one command.
+A temporary proof of that exact encoding transitioned the Podman container to
+`healthy` on its normal scheduled probe and made `podman healthcheck run`
+succeed. The healthcheck still contacts only
+`http://127.0.0.1:8000/healthz` inside the web container.
+
+This acceptance does not establish the daemon-backed web APIs under Podman
+Compose. Live status, snapshot, scanner-control mutation, event streaming,
+audio, recording, and recording-file paths remain dependent on a ready daemon
+and are deferred while the physical scanner's native RTSP TCP port 554 remains
+unavailable. Physical daemon-client acceptance under Podman Compose, full
+RTSP/RTP acceptance, Podman Compose USB runtime, SELinux socket or device-policy
+acceptance, remote Podman on Windows/macOS, and alternate Compose providers
+also remain separate work. Native systemd remains preferred where broader
+direct host-device, local-audio, or operating-system integration is important.
 
 ## Health and status
 
@@ -714,10 +768,12 @@ runtime snapshot remains the authoritative source for scanner connectivity and
 daemon state.
 
 The web-dashboard overrides that inherited check with a Python-standard-library
-request to `http://127.0.0.1:8000/healthz` inside its own container. This is a
-local web-process health check. The `/healthz` route intentionally does not
-contact the daemon, so a healthy result does not prove daemon, scanner, event,
-audio, or recording-file availability.
+request to `http://127.0.0.1:8000/healthz` inside its own container. The
+Compose test uses `CMD-SHELL` so the complete `python -c` expression is
+preserved across Docker Compose and the rootless Podman Docker-compatible API
+runtime. This is a local web-process health check. The `/healthz` route
+intentionally does not contact the daemon, so a healthy result does not prove
+daemon, scanner, event, audio, or recording-file availability.
 
 ## Stop and restart behavior
 

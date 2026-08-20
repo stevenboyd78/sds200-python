@@ -112,7 +112,7 @@ def test_generic_docker_hub_identity_is_isolated_from_python_and_home_assistant(
     assert '"sds200[mqtt,web]"' in _read("Dockerfile")
 
 
-def test_roadmap_names_milestone_25_13_as_podman_compose_boundary() -> None:
+def test_roadmap_names_milestone_25_14_as_podman_web_sidecar_boundary() -> None:
     roadmap = _read("ROADMAP.md")
     active_milestone = roadmap.split("## Active milestone", 1)[1].split(
         "## Deferred hardware validation", 1
@@ -120,39 +120,42 @@ def test_roadmap_names_milestone_25_13_as_podman_compose_boundary() -> None:
     normalized_active_milestone = " ".join(active_milestone.split())
 
     for required in (
-        "### Milestone 25.13 — Rootless Podman Compose provider portability foundation",
-        "Milestone 25.12 is closed",
-        "existing generic network `compose.yaml`",
-        "`podman compose`",
-        "external Compose provider",
+        "### Milestone 25.14 — Rootless Podman Compose web-dashboard sidecar "
+        "portability foundation",
+        "Milestone 25.13 is closed",
         "Docker Compose v5.4.0",
-        "Docker-compatible API socket prerequisite",
-        "`systemctl --user start podman.socket`",
-        "`/run/user/1000/podman/podman.sock`",
-        "`daemon-client --help`",
-        "Compose-labeled runtime volume",
-        "inactive state",
-        "Physical SDS200",
-        "UDP control on port 50536",
-        "500 ms PSI stream",
-        "RTSP audio initialization",
-        "TCP port 554",
-        "`Connection refused`",
-        "`restart: unless-stopped`",
-        "`status --json`",
-        "`snapshot`",
-        "`compose.usb.yaml` is parse-compatible",
-        "numeric `group_add`",
-        "`--group-add keep-groups`",
+        "rootless Podman 5.7.0",
+        "`web-dashboard`",
+        "`podman compose --profile web`",
+        "TEST-NET `SDS200_HOST`",
+        "UID/GID `10001:10001`",
+        "ordinary bridge networking",
+        "not privileged",
+        "no devices or added capabilities",
+        "`/run/sdsctl` runtime volume",
+        "`127.0.0.1:18081`",
+        "`/healthz`",
+        "HTTP 200",
+        "Content Security Policy",
+        "`no-referrer`",
+        "`nosniff`",
+        "`X-Frame-Options: DENY`",
+        "`/api/v1/status`",
+        "HTTP 503",
+        "`CMD`",
+        "`python -c`",
+        "`SyntaxError`",
+        "`CMD-SHELL`",
+        "`healthy`",
+        "`podman healthcheck run`",
+        "native RTSP TCP port 554",
+        "Physical daemon-client acceptance",
         "Podman Compose USB runtime",
-        "web-dashboard sidecar acceptance",
-        "physical daemon-client acceptance under Podman Compose",
         "SELinux socket or device-policy acceptance",
         "alternate Compose providers",
         "Native systemd remains preferred",
     ):
         assert required in normalized_active_milestone
-
 
 def test_branding_asset_paths_use_sdsctl_identity() -> None:
     for asset_name in BRANDING_ASSET_NAMES:
