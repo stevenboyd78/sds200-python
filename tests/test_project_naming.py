@@ -112,7 +112,7 @@ def test_generic_docker_hub_identity_is_isolated_from_python_and_home_assistant(
     assert '"sds200[mqtt,web]"' in _read("Dockerfile")
 
 
-def test_roadmap_names_milestone_25_10_as_docker_desktop_network_boundary() -> None:
+def test_roadmap_names_milestone_25_11_as_rootless_podman_network_boundary() -> None:
     roadmap = _read("ROADMAP.md")
     active_milestone = roadmap.split("## Active milestone", 1)[1].split(
         "## Deferred hardware validation", 1
@@ -120,23 +120,31 @@ def test_roadmap_names_milestone_25_10_as_docker_desktop_network_boundary() -> N
     normalized_active_milestone = " ".join(active_milestone.split())
 
     for required in (
-        "### Milestone 25.10 — Docker Desktop network portability foundation",
-        "Milestone 25.9 is closed",
-        "Docker Desktop 4.34",
-        "Enable host networking",
-        "TCP and UDP",
-        "layer 4",
-        "Enhanced Container Isolation",
-        "Docker Desktop for Linux 4.87.0",
-        "Engine 29.7.2",
-        "persistent settings-file state",
+        "### Milestone 25.11 — Rootless Podman network portability foundation",
+        "Milestone 25.10 is closed",
+        "native-Linux rootless Podman",
+        "`podman build --format docker`",
+        "existing image `HEALTHCHECK`",
+        "`--network host`",
+        "Podman 5.7.0",
+        "Ubuntu 26.04 LTS",
+        "Netavark",
+        "cgroup v2/systemd",
+        "crun 1.21",
+        "default OCI image format discarded",
+        "UID/GID `10001:10001`",
+        "`SIGTERM`",
         "firmware 1.26.01",
+        "live PSI startup",
         "TCP 554 RTSP listener",
         "native host",
-        "physical Windows or macOS Docker validation",
-        "`compose.usb.yaml`",
-        "USB/IP",
-        "Podman-specific",
+        "Do not attribute that scanner-side RTSP failure to Podman",
+        "Podman Compose providers",
+        "Podman USB serial/supplemental-group semantics",
+        "Windows/macOS Podman behavior",
+        "Docker Desktop USB/IP",
+        "physical Windows/macOS Docker validation",
+        "shares the host network namespace",
         "Native systemd remains preferred",
     ):
         assert required in normalized_active_milestone
