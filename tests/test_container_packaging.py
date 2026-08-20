@@ -351,6 +351,17 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
         "rootless Podman USB serial acceptance",
         "one-shot scanner CLI only",
         "SELinux device-policy acceptance",
+        "Rootless Podman Compose provider",
+        "systemctl --user start podman.socket",
+        "/run/user/$UID/podman/podman.sock",
+        "Docker Compose v5.4.0",
+        "podman compose -f compose.yaml config",
+        "podman compose -f compose.yaml run --rm daemon-client --help",
+        "native TCP port 554",
+        "Connection refused",
+        "restart loop",
+        "parse-compatible only",
+        "numeric `group_add`",
     ):
         assert required in document
 
@@ -362,8 +373,11 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
     assert "docker compose -f compose.usb.yaml run --rm usb-scanner info" in readme
     assert "snapshot --json" not in document
     assert "physical scanner validation of the generic Compose deployment" not in document
-    assert "### Milestone 25.12 — Rootless Podman USB serial portability foundation" in roadmap
-    assert "Milestone 25.11 is closed" in roadmap
+    assert (
+        "### Milestone 25.13 — Rootless Podman Compose provider portability foundation"
+        in roadmap
+    )
+    assert "Milestone 25.12 is closed" in roadmap
 
 
 def test_generic_docker_hub_workflow_has_safe_trigger_and_publication_contract() -> None:
