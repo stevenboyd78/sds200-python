@@ -11,44 +11,50 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 25.11 — Rootless Podman network portability foundation
+### Milestone 25.12 — Rootless Podman USB serial portability foundation
 
-Milestone 25.10 is closed after establishing the Docker Desktop network
-portability prerequisite and validation boundary without changing the existing
+Milestone 25.11 is closed after establishing the native-Linux rootless Podman
+network-daemon foundation with direct Dockerfile builds, host networking, and
+physical SDS200 UDP control/PSI acceptance while preserving the existing
 generic-container architecture.
 
-Milestone 25.11 establishes the narrow native-Linux rootless Podman network
-portability foundation for the existing generic image and scanner-owning daemon.
-The supported Podman path is intentionally below the Compose layer: use the
-repository Dockerfile directly, build it with `podman build --format docker` so
-the existing image `HEALTHCHECK` is preserved, and run the daemon with
-`--network host`. Repository-root `compose.yaml`, `compose.usb.yaml`, the
-daemon-client sidecar, and the web-dashboard sidecar remain Docker Compose
-contracts and are not redefined as Podman Compose contracts in this slice.
+Milestone 25.12 establishes a separate native-Linux rootless Podman one-shot USB
+serial path below the Compose layer. It reuses the unchanged generic image,
+keeps networking disabled, maps only the selected scanner character device, and
+uses Podman's `--group-add keep-groups` mechanism when the rootless operator's
+device access comes from a supplementary host group. Repository
+`compose.usb.yaml` remains the native-Linux Docker Engine Compose contract and
+is not redefined as a Podman Compose contract.
 
-On 2026-08-20, rootless Podman 5.7.0 on Ubuntu 26.04 LTS with Netavark, cgroup
-v2/systemd, and crun 1.21 demonstrated host-network TCP and UDP exchange with
-the native host. The unchanged generic Dockerfile built successfully under
-rootless Podman. Podman's default OCI image format discarded the Dockerfile
-healthcheck, while `--format docker` preserved the existing healthcheck, UID/GID
-`10001:10001`, entrypoint, command, and `SIGTERM` stop signal.
+On 2026-08-20, the existing stable SDS200 path
+`/dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00` resolved to
+`/dev/ttyACM0`, a `root:dialout` character device with mode `0660` and host
+numeric GID 20. The rootless operator belonged to that supplementary host group.
+With the selected device mapped into the unchanged image but without
+`--group-add keep-groups`, the image's unprivileged `10001:10001` process could
+not read or write the device. Adding `--group-add keep-groups` preserved the
+operator's supplementary-group access through the crun runtime and made the
+same narrowly mapped device readable and writable without privileged mode,
+broad `/dev` access, or a host permission change.
 
-Physical SDS200 validation with firmware 1.26.01 established rootless Podman
-host-network UDP control, model/firmware queries, scanner-info state, daemon
-identity probing, and live PSI startup. End-to-end RTSP/RTP audio acceptance
-remains unproven because the scanner's TCP 554 RTSP listener was already refusing
-connections from the native host before the Podman daemon test and the Podman
-daemon then failed only when it reached audio startup. Do not attribute that
-scanner-side RTSP failure to Podman.
+Physical SDS200 firmware 1.26.01 acceptance then succeeded through four separate
+ephemeral rootless Podman invocations with `--network none`: `info`,
+`scanner-info`, `health`, and a repeated `info`. The commands identified the
+scanner and firmware, returned live scanner state, reported healthy serial
+connectivity, and demonstrated that each `--rm` container released the device so
+a later invocation could reacquire it cleanly. The host device remained
+`root:dialout` mode `0660`, and no validation containers remained afterward.
 
-Keep Podman Compose providers, daemon-client and web sidecars under Podman,
-Podman USB serial/supplemental-group semantics, Windows/macOS Podman behavior,
-Docker Desktop USB/IP, and physical Windows/macOS Docker validation deferred to
-separate evidence-backed slices. Podman host networking shares the host network
-namespace and therefore weakens network-namespace isolation; do not treat it as
-ordinary rootless network isolation. Native systemd remains preferred when
-direct host-device, local-audio, or other operating-system integration is
-important.
+This slice does not create a USB daemon and does not claim RTSP/RTP or other
+network-audio behavior through USB. Podman Compose providers, daemon-client/web
+sidecars under Podman, USB unplug/replug or re-enumeration behavior, SELinux
+device-policy acceptance, Windows/macOS remote Podman USB, Docker Desktop
+USB/IP, and physical Windows/macOS Docker validation remain separate work.
+Podman's current documentation states that rootless devices are bind-mounted
+from the host and that `keep-groups` is required when access comes only through a
+supplementary group; `keep-groups` currently requires crun and is unavailable to
+remote Podman commands. Native systemd remains preferred when broader direct
+host-device or operating-system integration is important.
 
 ## Deferred hardware validation
 
