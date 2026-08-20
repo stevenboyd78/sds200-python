@@ -5,6 +5,7 @@ import tomllib
 from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+ROADMAP = REPOSITORY_ROOT / "ROADMAP.md"
 CURRENT_REPOSITORY_URL = "https://github.com/stevenboyd78/sdsctl"
 LEGACY_REPOSITORY_URL = "https://github.com/stevenboyd78/sds200-python"
 LIVE_REPOSITORY_OWNED_FILES = (
@@ -112,45 +113,38 @@ def test_generic_docker_hub_identity_is_isolated_from_python_and_home_assistant(
     assert '"sds200[mqtt,web]"' in _read("Dockerfile")
 
 
-def test_roadmap_names_milestone_25_15_as_podman_compose_usb_runtime_boundary() -> None:
-    roadmap = _read("ROADMAP.md")
-    active_milestone = roadmap.split("## Active milestone", 1)[1].split(
+def test_roadmap_names_milestone_25_16_as_usb_daemon_sidecar_boundary() -> None:
+    roadmap = ROADMAP.read_text(encoding="utf-8")
+    active_milestone = roadmap.split(
+        "## Active milestone", 1
+    )[1].split(
         "## Deferred hardware validation", 1
     )[0]
     normalized_active_milestone = " ".join(active_milestone.split())
 
     for required in (
-        "### Milestone 25.15 — Rootless Podman Compose USB runtime portability "
-        "foundation",
-        "Milestone 25.14 is closed",
-        "Docker Compose v5.4.0",
-        "rootless Podman",
-        "Podman 5.7.0",
-        "crun 1.21",
+        "### Milestone 25.16 — Rootless Podman Compose USB daemon and sidecar "
+        "integration foundation",
+        "Milestone 25.15 is closed",
         "`compose.usb.yaml`",
-        "`SDSCTL_USB_DEVICE`",
         "`SDSCTL_USB_GID`",
-        "`network_mode: none`",
-        "UID/GID `10001:10001`",
-        "`root:dialout`",
-        "mode `0660`",
-        "host GID 20",
-        "numeric `group_add` alone",
-        "`keep-groups`",
         '`run.oci.keep_original_groups: "1"`',
-        "`info`",
-        "`scanner-info`",
-        "`health`",
-        "clean release and reacquisition",
-        "no privilege escalation or host permission change",
-        "one-shot rootless Podman Compose USB serial operation",
-        "native TCP port 554",
-        "SELinux device-policy acceptance",
-        "remote Podman USB on Windows/macOS",
-        "alternate Compose providers",
-        "Native systemd remains preferred",
+        "`--port`",
+        "saved serial scanner profiles",
+        "no network audio source",
+        "PCMU publication",
+        "daemon-owned recording",
+        "recording-file service",
+        "`network_mode: none`",
+        "`daemon-client`",
+        "`web-dashboard`",
+        "Milestone 25.17",
+        "Milestone 25.18",
+        "TCP port 554",
     ):
-        assert required in normalized_active_milestone
+        assert required in active_milestone or required in normalized_active_milestone
+
+
 
 def test_branding_asset_paths_use_sdsctl_identity() -> None:
     for asset_name in BRANDING_ASSET_NAMES:

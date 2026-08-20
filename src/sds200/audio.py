@@ -38,6 +38,31 @@ class AudioTransport(Protocol):
     def stop(self) -> None: ...
 
 
+class DisabledAudioTransport:
+    """Represent an intentionally unavailable scanner audio source."""
+
+    def __init__(self, endpoint: str = "disabled://daemon-audio") -> None:
+        if not isinstance(endpoint, str) or not endpoint:
+            raise ValueError(
+                "Disabled audio transport endpoint must not be empty."
+            )
+        self._endpoint = endpoint
+
+    @property
+    def endpoint(self) -> str:
+        return self._endpoint
+
+    @property
+    def running(self) -> bool:
+        return False
+
+    def start(self, handler: AudioChunkHandler) -> None:
+        del handler
+
+    def stop(self) -> None:
+        pass
+
+
 class AudioStream:
     """Transport-independent audio event stream.
 

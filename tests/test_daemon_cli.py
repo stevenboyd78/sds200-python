@@ -247,7 +247,7 @@ def test_daemon_host_resolves_network_capable_profile(
     )
 
 
-def test_daemon_host_rejects_serial_only_profile() -> None:
+def test_daemon_host_accepts_serial_only_profile_without_audio() -> None:
     args = cli.build_parser().parse_args(["--profile", "scanner", "daemon"])
     store = StubProfileStore(
         ConnectionProfile.serial(
@@ -257,15 +257,13 @@ def test_daemon_host_rejects_serial_only_profile() -> None:
         )
     )
 
-    with pytest.raises(ValueError, match="network-capable"):
-        cli._daemon_host(args, profile_store=store)
+    assert cli._daemon_host(args, profile_store=store) is None
 
 
 @pytest.mark.parametrize(
     ("arguments", "message"),
     [
-        (["daemon"], "requires --host"),
-        (["--port", "/dev/ttyACM0", "daemon"], "requires --host"),
+        (["daemon"], "requires --host, --port"),
         (["--replay", "capture.jsonl", "daemon"], "does not support replay"),
         (
             ["--host", "192.0.2.25", "--model", "SDS100", "daemon"],
@@ -501,6 +499,101 @@ def test_daemon_cli_constructs_one_runtime_and_process(
     assert len(transports[0].packet_handlers) == 1
     assert capsys.readouterr().out == ""
 
+
+
+def test_daemon_cli_constructs_serial_runtime_without_audio_services(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scanner = object()
+    processes: list[tuple[object, dict[str, object]]] = []
+
+    def reject_network_audio(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise AssertionError("serial daemon must not construct network audio")
+
+    class FakeProcess:
+        def __init__(
+            self,
+            runtime: object,
+            **kwargs: object,
+        ) -> None:
+            processes.append((runtime, kwargs))
+
+        def run(self) -> DaemonProcessResult:
+            return DaemonProcessResult(last_signal=int(signal.SIGTERM))
+
+    monkeypatch.setattr(
+        cli,
+        "selected_radio",
+        lambda args, **kwargs: scanner,
+    )
+    monkeypatch.setattr(cli, "NetworkAudioTransport", reject_network_audio)
+    monkeypatch.setattr(cli, "DaemonEventStream", FakeDaemonEventStream)
+    monkeypatch.setattr(cli, "DaemonProcess", FakeProcess)
+
+    paths = resolve_configuration_paths(
+        environ={},
+        home=tmp_path / "home",
+        system_config_dir=tmp_path / "etc" / "sdsctl",
+    )
+
+    assert (
+        cli.main(
+            [
+                "--port",
+                "/dev/ttyACM0",
+                "--model",
+                "SDS200",
+                "daemon",
+            ],
+            configuration_paths=paths,
+            environ={},
+        )
+        == 0
+    )
+
+    assert len(processes) == 1
+    runtime, services = processes[0]
+    assert isinstance(runtime, cli.DaemonRuntime)
+    assert isinstance(
+        runtime.audio.stream.transport,
+        cli.DisabledAudioTransport,
+    )
+    assert runtime.audio.snapshot().endpoint == "disabled://daemon-audio"
+    assert not runtime.audio.snapshot().running
+    assert services["recording_manager"] is None
+    assert services["recording_file_server"] is None
+    assert services["pcmu_server"] is None
+    assert services["destination_coordinator"] is None
+    assert services["destination_reloader"] is None
+
+    api_server = services["api_server"]
+    assert isinstance(api_server, cli.DaemonApiServer)
+    assert isinstance(api_server.api, cli.DaemonReadOnlyApi)
+    hello = api_server.api.handle_payload(
+        {
+            "protocol": "sdsctl.daemon",
+            "version": 1,
+            "request_id": "serial-daemon",
+            "operation": "hello",
+            "params": {},
+        }
+    )
+    assert hello.result is not None
+    operations = hello.result["operations"]
+    assert isinstance(operations, list)
+    assert "runtime.snapshot" in operations
+    assert "scanner.state" in operations
+    assert "audio.health" in operations
+    assert "scanner.reconnect" not in operations
+    control_operations = hello.result["control_operations"]
+    assert isinstance(control_operations, list)
+    assert "scanner.reconnect" not in control_operations
+    assert "recording.start" not in operations
+    assert "recording.stop" not in operations
+    assert "recording.status" not in operations
+    assert "recordings.list" not in operations
 
 def test_daemon_cli_loads_explicit_destination_manifest(
     tmp_path: Path,
@@ -864,8 +957,22 @@ def test_daemon_cli_reports_profile_validation_error(
 
     monkeypatch.setattr(cli, "ProfileStore", Store)
 
-    assert cli.main(["--profile", "scanner", "daemon"]) == 2
-    assert "network-capable" in capsys.readouterr().err
+    assert (
+        cli.main(
+            [
+                "--profile",
+                "scanner",
+                "--model",
+                "SDS200",
+                "daemon",
+            ]
+        )
+        == 2
+    )
+    assert (
+        "--model cannot override a saved profile"
+        in capsys.readouterr().err
+    )
 
 
 def test_daemon_cli_reports_process_os_error(
@@ -1261,3 +1368,52 @@ def test_daemon_cli_closes_pcmu_stream_after_server_validation_failure(
     assert len(event_streams) == 1
     assert event_streams[0].close_calls == 1
     assert "must be at least" in capsys.readouterr().err
+
+
+
+def test_daemon_event_signal_controller_closes_client_and_restores_handlers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    installed: dict[int, object] = {}
+    restored: list[tuple[int, object]] = []
+    original = object()
+
+    monkeypatch.setattr(cli.signal, "getsignal", lambda signum: original)
+
+    def install(signum: int, handler: object) -> object:
+        if signum in installed:
+            restored.append((signum, handler))
+        else:
+            installed[signum] = handler
+        return original
+
+    monkeypatch.setattr(cli.signal, "signal", install)
+
+    class FakeEventClient:
+        def __init__(self) -> None:
+            self.close_calls = 0
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    client = FakeEventClient()
+    controller = cli._DaemonEventSignalController(client)  # type: ignore[arg-type]
+
+    with controller:
+        assert set(installed) == {
+            int(cli.signal.SIGINT),
+            int(cli.signal.SIGTERM),
+        }
+
+        term = int(cli.signal.SIGTERM)
+        handler = installed[term]
+        assert callable(handler)
+
+        with pytest.raises(KeyboardInterrupt):
+            handler(term, None)
+
+        assert controller.last_signal == term
+        assert client.close_calls == 1
+
+    assert len(restored) == len(installed)
+    assert all(handler is original for _, handler in restored)
