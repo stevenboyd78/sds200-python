@@ -456,10 +456,12 @@ See the
 [local daemon PCMU stream guide](docs/daemon-pcmu.md), and
 [operational logging](docs/logging.md).
 
-The generic release workflow publishes amd64 and arm64 images as
-`theboyd78/sdsctl:VERSION` for future matching release tags; use an exact release
-tag for reproducible deployment. Repository-root Compose remains source-built
-with `build: .` and does not select the published image.
+The generic release workflow publishes amd64 and arm64 images for genuine
+matching release tags. v0.21.0 is the first release using that publication path,
+with `theboyd78/sdsctl:0.21.0` as the immutable release image and
+`theboyd78/sdsctl:latest` tracking the newest successfully published release.
+Prefer an exact version tag for reproducible deployment. Repository-root Compose
+remains source-built with `build: .` and does not select the published image.
 
 The same generic image contains the existing MQTT support and the web extra.
 Compose provides both an opt-in, network-disabled daemon-client sidecar and an

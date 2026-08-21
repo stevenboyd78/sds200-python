@@ -39,8 +39,10 @@ being used:
 docker build --tag sds200-daemon .
 ```
 
-For future matching release tags, the workflow publishes standalone images for
-`linux/amd64` and `linux/arm64`. Pull an exact published release for a
+Starting with v0.21.0, a genuine matching release tag publishes standalone
+images for `linux/amd64` and `linux/arm64`. The first immutable generic release
+image is `theboyd78/sdsctl:0.21.0`; `theboyd78/sdsctl:latest` follows the newest
+successfully published release. Pull an exact published version for a
 reproducible deployment:
 
 ```bash

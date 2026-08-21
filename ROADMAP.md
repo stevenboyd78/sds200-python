@@ -11,67 +11,43 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 25.18 — Alternate and remote container-runtime portability foundation
+### Milestone 25.19 — v0.21.0 release and generic container publication closure
 
-Milestone 25.17 is closed after validating native-Linux rootless Podman USB
-device loss, re-enumeration, restart-time device rebinding, confirmed PSI
-readiness, and the Linux security-policy boundary. Milestone 25.18 closes the
-remaining alternate-provider and remote-runtime portability boundary without
-adding another Compose model, another scanner owner, privileged containers, or
-client-side USB forwarding.
+Milestone 25.18 is closed after completing the alternate-provider and remote
+container-runtime portability boundary. Milestones 21 through 25.18 now form the
+feature-frozen v0.21.0 release candidate: Favorites Workspace and verified
+storage writes, assisted RadioReference synchronization, advanced protocol and
+analysis foundations, the `sdsctl` repository/product naming migration, and the
+generic Docker/Compose/Podman deployment work.
 
-Provider acceptance on 2026-08-21 used Ubuntu 26.04 LTS, rootless Podman 5.7.0,
-Netavark, cgroup v2, and crun 1.21. Podman's default external provider was Docker
-Compose v5.4.0 at the invoking user's Docker CLI-plugin path. A distinct system
-Docker Compose v5.5.0 executable was then selected explicitly through
-`PODMAN_COMPOSE_PROVIDER`.
+Milestone 25.19 is release closure rather than another runtime feature slice.
+Synchronize the Python package, import version, and Home Assistant App at
+0.21.0; freeze the accumulated changelogs; audit current documentation and
+reviewed wiki source; and run the complete static, test, documentation,
+distribution, container, and release-contract validation before any release tag
+exists.
 
-With deterministic parse-only values, Docker Compose v5.4.0 and v5.5.0 produced
-byte-for-byte identical normalized models for both repository-root
-`compose.yaml` and `compose.usb.yaml`. The alternate v5.5.0 provider also built
-the generic image through the rootless Podman API and launched the isolated
-`daemon-client --help` service successfully. Cleanup removed every temporary
-Compose resource and restored the Podman API socket and service to their
-original inactive state. The separately implemented `podman-compose` provider
-was not installed on the acceptance host and is therefore not claimed.
+The generic Docker Hub publication path remains tag-gated. Pull requests,
+`main` pushes, and manual workflow dispatches may build and validate the generic
+multi-platform image, but only one genuine matching `v0.21.0` tag may enable
+publication as `theboyd78/sdsctl:0.21.0` and `theboyd78/sdsctl:latest`.
+`DOCKERHUB_TOKEN` remains confined to the publishing job, and no synthetic
+`v*` tag is permitted for testing.
 
-Remote-client acceptance used a temporary named Podman connection to the same
-rootless Linux API socket so the client/server boundary could be exercised
-without introducing an unverified second host. `podman --remote` returned the
-remote Linux runtime facts and launched a scanner-independent container.
-Docker Compose v5.5.0 selected through `PODMAN_COMPOSE_PROVIDER` also completed
-remote Compose config, image build, and ephemeral `daemon-client --help`
-execution through that connection, followed by exact resource and connection
-cleanup.
+The same genuine release tag must match the Python package and Home Assistant
+App versions. It is expected to start the trusted PyPI publication workflow,
+the Home Assistant amd64/aarch64 plus multi-architecture image workflow, and the
+generic Docker Hub amd64/arm64 image workflow. Public artifacts must be verified
+after those workflows succeed and before the normal GitHub v0.21.0 release is
+created.
 
-That remote acceptance proves scanner-independent API and Compose orchestration;
-it is not physical acceptance of a separate remote host, a remote scanner
-network path, or remote RTSP/RTP. Host paths, devices, volumes, and container
-permissions belong to the Linux Podman service side rather than being forwarded
-arbitrarily from the client.
-
-The native-Linux rootless USB permission model is explicitly not portable to
-remote client-side USB. The acceptance command using
-`podman --remote ... --group-add keep-groups` was rejected with status 125 and
-the diagnostic `the '--group-add keep-groups' option is not supported in remote
-mode`. A scanner attached only to a remote client therefore cannot use
-`compose.usb.yaml` to reproduce the validated local supplementary-group/device
-contract. A USB device intentionally provisioned on a remote Linux Podman
-service host is a server-side deployment and must satisfy that host's own
-device, permission, security-policy, and lifecycle requirements.
-
-Podman on macOS and Windows uses a Linux virtual machine. Those platforms have
-not received physical SDS200 acceptance, and the documented WSL2 exception to
-some Podman remote restrictions is also unvalidated here. Docker Desktop
-likewise does not provide direct USB passthrough; its USB/IP workflow remains a
-separate operator-managed mechanism and is not adopted by `compose.usb.yaml`.
-Physical Windows and macOS Docker/Podman scanner acceptance therefore remains a
-non-claim rather than a release blocker.
-
-The compatibility matrix in `docs/container-deployment.md` records these tested,
-conditional, unsupported, and unvalidated boundaries. Full RTSP/RTP validation
-remains hardware-triggered while the physical scanner's native TCP port 554
-continues to refuse connections independently of the container runtime.
+Release closure does not broaden the physical-support claims established by the
+preceding milestones. Native-Linux Docker and rootless Podman network/USB
+acceptance remains bounded by the recorded hardware evidence; remote
+client-side USB remains unsupported by the validated Podman contract;
+Windows/macOS/WSL2 cases remain conditional or unvalidated where documented;
+and full Podman RTSP/RTP acceptance remains blocked while the physical SDS200's
+native TCP port 554 refuses connections independently of the container runtime.
 
 ## Deferred hardware validation
 

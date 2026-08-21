@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.21.0
+
+- Track the sdsctl v0.21.0 release while preserving the compatibility-sensitive
+  Home Assistant App name, slug, image identity, and Python distribution name
+  as `sds200`.
+- Repository and documentation links use the canonical
+  `stevenboyd78/sdsctl` project identity. The existing Home Assistant MQTT
+  Discovery, scanner-control, Ingress, audio, and recording ownership model
+  remains unchanged by release preparation.
+
 ## 0.20.2
 
 - Home Assistant MQTT Discovery now includes seven bounded scanner-control

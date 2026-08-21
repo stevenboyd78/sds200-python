@@ -541,12 +541,12 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
     assert "snapshot --json" not in document
     assert "physical scanner validation of the generic Compose deployment" not in document
     assert (
-        "### Milestone 25.18 — Alternate and remote container-runtime "
-        "portability foundation"
+        "### Milestone 25.19 — v0.21.0 release and generic container "
+        "publication closure"
         in roadmap
     )
-    assert "Milestone 25.17 is closed" in roadmap
-    assert "remote client-side USB" in roadmap
+    assert "Milestone 25.18 is closed" in roadmap
+    assert "theboyd78/sdsctl:0.21.0" in roadmap
 
 
 def test_generic_docker_hub_workflow_has_safe_trigger_and_publication_contract() -> None:
