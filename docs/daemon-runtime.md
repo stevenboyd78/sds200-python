@@ -247,9 +247,7 @@ successfully parsed PSI frame, including frames whose radio-state fields did not
 change. This makes the watchdog a semantic PSI-liveness check rather than a
 generic UDP receive timer.
 
-Automatic recovery is enabled by default. The daemon waits 10 seconds after the
-most recent PSI observation before attempting recovery and applies a 60-second
-cooldown after a completed recovery attempt. The command-line policy is:
+Automatic recovery is enabled by default. The command-line policy is:
 
 ```text
 --psi-auto-recover / --no-psi-auto-recover
@@ -257,17 +255,38 @@ cooldown after a completed recovery attempt. The command-line policy is:
 --psi-recovery-cooldown SECONDS
 ```
 
-A stale stream is recovered with the existing bounded `reconnect(timeout=2.0)`
-path, so directly owned SDS200 UDP control transports reopen and restore their
-configured PSI interval. Automatic recovery shares the same nonblocking mutation
-lock used by API, TUI-daemon-client, and browser scanner controls. If another
-mutation owns that slot, `poll()` simply defers recovery and does not consume the
-cooldown; the next process-loop poll may retry once the control completes.
+PSI activity means a confirmed parsed PSI scanner-information frame, not merely
+a configured interval or an in-flight start transaction. The scanner retains the
+configured interval separately as restart intent while `psi_active` stays false
+until a real PSI `ScannerInfo` frame is observed.
 
-Recovery failures are isolated from the daemon process, logged by exception type,
-and rate-limited by the same cooldown. The RTSP/RTP audio transport is independent
-from scanner control/PSI, so a control-transport reconnect does not intentionally
-stop daemon-owned audio.
+Network-daemon startup remains strict. For a directly selected serial daemon,
+default PSI auto-recovery also permits startup to remain running in a degraded
+state when the initial PSI start fails with `CommandTimeoutError` or
+`CommandRejectedError`. Other exceptions still fail startup normally, and
+`--no-psi-auto-recover` keeps serial startup strict.
+
+While PSI has never started successfully, inactive serial recovery retries after
+`--psi-recover-after`, 10 seconds by default. Once a PSI frame has previously
+been confirmed, later inactive recovery uses the longer recovery cooldown,
+60 seconds by default.
+
+Recovery is transport-aware. A stale active stream on the directly owned SDS200
+UDP transport uses the existing bounded `reconnect(timeout=2.0)` path, reopening
+control and restoring its configured PSI interval. Serial transport does not
+advertise that bounded reconnect operation; its runtime instead stops and
+restarts PSI under the existing control lock without reopening the serial
+transport. An inactive serial stream is started directly under that same lock.
+
+Automatic recovery shares the nonblocking mutation lock used by API,
+TUI-daemon-client, and browser scanner controls. If another mutation owns that
+slot, `poll()` defers recovery and does not consume the cooldown.
+
+Expected serial readiness failures are isolated from the daemon process and
+logged by exception type. Unexpected exceptions remain fatal where they were
+already fatal. The RTSP/RTP audio transport is independent from scanner
+control/PSI, so a network control-transport reconnect does not intentionally stop
+daemon-owned audio.
 
 ## Daemon-owned scanner controls
 
@@ -354,7 +373,7 @@ containing:
 
 - runtime lifecycle state;
 - scanner endpoint and connection state;
-- configured PSI interval and current PSI state;
+- configured PSI interval and confirmed current PSI activity;
 - the latest immutable `RadioStateSnapshot`;
 - audio packet, sample, endpoint, and sink statistics;
 - the complete `PcmSinkRouterSnapshot`;

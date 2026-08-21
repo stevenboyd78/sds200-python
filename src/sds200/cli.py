@@ -1143,12 +1143,16 @@ def build_parser(
     )
     daemon_status = daemon_client_commands.add_parser(
         "status",
-        help="Show negotiated protocol and current daemon health",
+        help="Show negotiated protocol and current daemon status",
     )
     daemon_status.add_argument(
         "--json",
         action="store_true",
         help="Print the negotiated status as JSON",
+    )
+    daemon_client_commands.add_parser(
+        "health",
+        help="Check daemon scanner readiness for container health probes",
     )
     daemon_client_commands.add_parser(
         "snapshot",
@@ -2721,6 +2725,9 @@ def _run_daemon(
         psi_interval_ms=args.interval,
         psi_timeout=args.psi_timeout,
         psi_auto_recover=args.psi_auto_recover,
+        allow_degraded_psi_startup=(
+            host is None and args.psi_auto_recover
+        ),
         psi_recover_after=args.psi_recover_after,
         psi_recovery_cooldown=args.psi_recovery_cooldown,
     )
@@ -3216,6 +3223,25 @@ def _print_daemon_client_status(
     print(f"Last error:         {snapshot.get('last_error') or '-'}")
 
 
+def _daemon_client_ready(snapshot: Mapping[str, object]) -> bool:
+    return (
+        snapshot.get("state") == "running"
+        and snapshot.get("scanner_connected") is True
+        and snapshot.get("psi_active") is True
+    )
+
+
+def _print_daemon_client_health(snapshot: Mapping[str, object]) -> None:
+    ready = _daemon_client_ready(snapshot)
+    print(f"Daemon health:       {'healthy' if ready else 'unhealthy'}")
+    print(f"Runtime:             {snapshot.get('state', '-')}")
+    print(
+        "Scanner connected:   "
+        f"{_daemon_client_flag(snapshot.get('scanner_connected'))}"
+    )
+    print(f"PSI active:          {_daemon_client_flag(snapshot.get('psi_active'))}")
+
+
 def _run_daemon_client(
     args: argparse.Namespace,
     *,
@@ -3281,7 +3307,7 @@ def _run_daemon_client(
     ) as client:
         hello = client.hello()
 
-        if action in {"status", "snapshot"}:
+        if action in {"status", "health", "snapshot"}:
             _require_daemon_client_operation(
                 hello,
                 DaemonApiOperation.RUNTIME_SNAPSHOT,
@@ -3341,6 +3367,11 @@ def _run_daemon_client(
         assert snapshot is not None
         print(json.dumps(snapshot, indent=2, sort_keys=True))
         return 0
+
+    if action == "health":
+        assert snapshot is not None
+        _print_daemon_client_health(snapshot)
+        return 0 if _daemon_client_ready(snapshot) else 1
 
     if control_result is not None:
         if args.json:

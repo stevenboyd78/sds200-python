@@ -8,6 +8,22 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Added
 
+- Add persistent serial-daemon degraded PSI startup and readiness recovery for
+  expected scanner-not-ready timeouts and explicit command rejections, including
+  the SDS200 post-USB-attach serial/mass-storage selection window. Before the
+  first confirmed PSI frame, serial auto-recovery retries on the configured
+  `psi_recover_after` cadence without reopening scanner control or restarting
+  the daemon; unexpected startup failures remain fatal.
+- Add `sdsctl daemon-client health` readiness reporting and use it for the
+  generic image healthcheck. Readiness requires a running daemon, connected
+  scanner, and confirmed active PSI stream, while `daemon-client status` remains
+  a diagnostic query that can succeed for a reachable degraded runtime.
+- Distinguish configured PSI restart intent from confirmed PSI stream activity.
+  `SDSScanner.psi_active` now becomes true only after a parsed PSI
+  `ScannerInfo` frame and clears across disconnect, failed start, reconnect,
+  stop, and close boundaries instead of becoming true merely because a PSI
+  start is in flight.
+
 - Add pure renderer-neutral Favorites record editing over exact storage
   snapshots with immutable source-provenance targets, stale and ambiguous target
   rejection, evidence-backed Name Tag replacement, conservative HPD leaf

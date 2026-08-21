@@ -591,9 +591,10 @@ def test_psi_command_accepts_acknowledgement() -> None:
     assert StartScannerInfoPush().parse_response(packet) is None
 
 
-def test_psi_command_rejects_negative_acknowledgement() -> None:
-    packet = Packet(command="PSI", fields=("NG",), raw="PSI,NG")
-    with pytest.raises(ProtocolError, match="rejected PSI"):
+@pytest.mark.parametrize("status", ["NG", "ERR", "ERROR"])
+def test_psi_command_rejects_negative_acknowledgement(status: str) -> None:
+    packet = Packet(command="PSI", fields=(status,), raw=f"PSI,{status}")
+    with pytest.raises(CommandRejectedError, match="rejected PSI"):
         StartScannerInfoPush().parse_response(packet)
 
 

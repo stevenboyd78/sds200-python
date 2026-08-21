@@ -645,7 +645,9 @@ class StartScannerInfoPush:
         if isinstance(response, Packet) and response.command == "PSI":
             status = response.fields[0].strip().upper() if response.fields else ""
             if status in {"NG", "ERR", "ERROR"}:
-                raise ProtocolError(f"Scanner rejected PSI command: {response.raw}")
+                raise CommandRejectedError(
+                    f"Scanner rejected PSI command: {response.raw}"
+                )
             return None
         raise ProtocolError(
             f"PSI returned an unexpected response: {type(response).__name__}"
