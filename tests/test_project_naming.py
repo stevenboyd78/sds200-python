@@ -113,7 +113,7 @@ def test_generic_docker_hub_identity_is_isolated_from_python_and_home_assistant(
     assert '"sds200[mqtt,web]"' in _read("Dockerfile")
 
 
-def test_roadmap_names_milestone_25_18_as_remote_runtime_boundary() -> None:
+def test_roadmap_names_milestone_25_19_as_release_closure() -> None:
     roadmap = ROADMAP.read_text(encoding="utf-8")
     active_milestone = roadmap.split(
         "## Active milestone", 1
@@ -123,21 +123,19 @@ def test_roadmap_names_milestone_25_18_as_remote_runtime_boundary() -> None:
     normalized_active_milestone = " ".join(active_milestone.split())
 
     for required in (
-        "### Milestone 25.18 — Alternate and remote container-runtime "
-        "portability foundation",
-        "Milestone 25.17 is closed",
-        "Docker Compose v5.4.0",
-        "Docker Compose v5.5.0",
-        "`PODMAN_COMPOSE_PROVIDER`",
-        "byte-for-byte identical",
-        "`podman --remote`",
-        "`podman --remote ... --group-add keep-groups`",
-        "not supported in remote mode",
-        "client-side USB",
-        "`podman-compose`",
-        "Linux virtual machine",
-        "WSL2",
-        "USB/IP",
+        "### Milestone 25.19 — v0.21.0 release and generic container "
+        "publication closure",
+        "Milestone 25.18 is closed",
+        "feature-frozen v0.21.0 release candidate",
+        "0.21.0",
+        "`v0.21.0`",
+        "`theboyd78/sdsctl:0.21.0`",
+        "`theboyd78/sdsctl:latest`",
+        "`DOCKERHUB_TOKEN`",
+        "trusted PyPI publication workflow",
+        "Home Assistant",
+        "remote client-side USB",
+        "Windows/macOS/WSL2",
         "TCP port 554",
     ):
         assert required in active_milestone or required in normalized_active_milestone
@@ -180,3 +178,27 @@ def test_icon_uses_sdsctl_identity() -> None:
 
     assert "sdsctl neon icon" in icon
     assert "sds200-python neon icon" not in icon
+
+
+def test_v021_release_documentation_names_first_generic_image() -> None:
+    readme = _read("README.md")
+    deployment = _read("docs/container-deployment.md")
+    installation = _read("wiki/Installation.md")
+
+    for document in (readme, deployment):
+        assert "v0.21.0" in document
+        assert "theboyd78/sdsctl:0.21.0" in document
+        assert "theboyd78/sdsctl:latest" in document
+        assert "future matching release tags" not in document
+
+    assert "## Upgrade to v0.21.0" in installation
+    assert 'python -m pip install --upgrade "sds200==0.21.0"' in installation
+    assert "docker pull theboyd78/sdsctl:0.21.0" in installation
+    assert (
+        "Repository-root `compose.yaml` and `compose.usb.yaml` remain source-built"
+        in installation
+    )
+    assert (
+        "compatibility-sensitive `sds200` name, slug, and GHCR image identity"
+        in installation
+    )

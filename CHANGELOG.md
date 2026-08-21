@@ -6,7 +6,49 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-08-21
+
 ### Added
+
+- Add the complete renderer-neutral Favorites Workspace and verified-storage
+  foundation across Milestones 21 and 22: lossless SDS100/SDS200 Favorites
+  parsing and hierarchy projection, navigation/search/diagnostics/comparison,
+  exact import/export, immutable write planning and record editing, verified
+  copied-tree and USB mass-storage write execution, and bounded read-only FTP
+  storage. Unknown source material remains preserved, and write paths retain
+  stale-target, backup, staging, verification, rollback, and device-safety
+  boundaries.
+
+- Add the Milestone 23 external Favorites synchronization foundation with
+  documented RadioReference SOAP/WSDL contracts, bounded offline request and
+  response handling, source-neutral observations, durable external provenance,
+  assisted refresh/accept/detach workflows, exact reviewed conventional and
+  talkgroup mappings, explicit structural import templates, provider-removal
+  decisions, and the production documented stdlib HTTPS SOAP exchange.
+  Synchronization remains user-initiated and assisted rather than automatic,
+  scheduled, polling, or background behavior.
+
+- Add the Milestone 24 advanced protocol and analysis foundations: evidence-led
+  `GLT,FL`, `FQK`, richer ordered/repeated `ScannerInfo`, `URC`, bounded
+  `AST`/`APR` analysis sessions, `PWF`/`GWF`/`GW2` waterfall handling,
+  receive-only/menu projection work around `MNU` and `MSI`, and system-status
+  plus RF-power analysis foundations. Unsupported or insufficiently evidenced
+  protocol forms remain deferred instead of inferred.
+
+- Rename the user-facing repository and product identity from `sds200-python`
+  to `sdsctl` while preserving compatibility-sensitive identities: PyPI
+  distribution `sds200`, Python import package and source path `sds200` /
+  `src/sds200`, the `sdsctl = "sds200.cli:main"` entry point, Home Assistant
+  `sds200` compatibility identifiers, and SDS100/SDS150/SDS200 model names.
+
+- Add the Milestone 25 generic container deployment foundation: an unprivileged
+  multi-platform daemon image, source-built Docker Compose daemon/client/web
+  topology, host-loopback web publication, native-Linux USB passthrough,
+  physical Docker acceptance, Docker Desktop network-boundary documentation,
+  rootless Podman network and USB paths, alternate Docker Compose provider
+  acceptance, persistent USB daemon/sidecar integration, device lifecycle and
+  degraded-PSI readiness recovery, and explicit Linux security-policy and remote
+  runtime boundaries.
 
 - Add the Milestone 25.18 cross-runtime container compatibility matrix,
   including scanner-independent rootless Podman acceptance through alternate
@@ -1021,7 +1063,8 @@ First planned GitHub prerelease.
 - Added serial discovery, transport, packet framing, core responses, CLI tools,
   examples, tests, and CI.
 
-[Unreleased]: https://github.com/stevenboyd78/sdsctl/compare/v0.20.2...HEAD
+[Unreleased]: https://github.com/stevenboyd78/sdsctl/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/stevenboyd78/sdsctl/compare/v0.20.2...v0.21.0
 [0.20.2]: https://github.com/stevenboyd78/sdsctl/compare/v0.20.1...v0.20.2
 [0.20.1]: https://github.com/stevenboyd78/sdsctl/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/stevenboyd78/sdsctl/compare/v0.19.0...v0.20.0

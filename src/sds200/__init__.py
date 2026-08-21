@@ -1753,4 +1753,4 @@ __all__ = [
     "preflight_favorites_usb_write",
 ]
 
-__version__ = "0.20.2"
+__version__ = "0.21.0"
