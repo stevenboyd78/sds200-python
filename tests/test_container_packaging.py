@@ -518,6 +518,17 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
         "docker compose -f compose.usb.yaml --profile web up --detach --build web-dashboard",
         "Milestone 25.17",
         "Milestone 25.18",
+        "cross-runtime compatibility matrix",
+        "Docker Compose v5.5.0",
+        "`PODMAN_COMPOSE_PROVIDER`",
+        "byte-for-byte identical",
+        "`podman --remote`",
+        "`--group-add keep-groups`",
+        "not supported in remote mode",
+        "client-side USB",
+        "`podman-compose`",
+        "Linux virtual machine",
+        "WSL2",
     ):
         assert required in document or required in normalized_document
 
@@ -530,12 +541,12 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
     assert "snapshot --json" not in document
     assert "physical scanner validation of the generic Compose deployment" not in document
     assert (
-        "### Milestone 25.17 — Device lifecycle and Linux security policy "
-        "foundation"
+        "### Milestone 25.18 — Alternate and remote container-runtime "
+        "portability foundation"
         in roadmap
     )
-    assert "Milestone 25.16 is closed" in roadmap
-    assert "Milestone 25.18 remains" in roadmap
+    assert "Milestone 25.17 is closed" in roadmap
+    assert "remote client-side USB" in roadmap
 
 
 def test_generic_docker_hub_workflow_has_safe_trigger_and_publication_contract() -> None:

@@ -511,6 +511,15 @@ rebinding, confirmed PSI readiness, and the scanner's post-attach
 serial/mass-storage selection window. The validated USB path remains
 unprivileged and maps only the selected scanner device.
 
+Milestone 25.18 also establishes the container compatibility matrix. Rootless
+Podman scanner-independent Compose config/build/run is accepted with Docker
+Compose v5.4.0 and the tested alternate v5.5.0 provider, including through a
+temporary Podman remote connection. Remote client-side USB is not supported:
+Podman rejects `--group-add keep-groups` in remote mode, and this project does
+not forward a client-attached scanner into a remote Podman service. Physical
+Windows/macOS scanner acceptance and Docker Desktop USB/IP remain separate
+non-claims.
+
 See the [generic container deployment guide](docs/container-deployment.md)
 for device preflight, lifecycle recovery, readiness semantics, Linux security
 boundaries, and additional one-shot and persistent-daemon commands.

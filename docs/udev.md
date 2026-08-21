@@ -60,6 +60,25 @@ supplementary host groups.
 Do not use privileged mode, map all of `/dev`, or change the scanner device to
 mode `0666` as a permission workaround.
 
+### Remote Podman USB boundary
+
+The local rootless Podman permission contract is intentionally not a client-side
+USB forwarding mechanism. Milestone 25.18 verified that ordinary
+scanner-independent `podman --remote` execution works, but a remote request with
+`--group-add keep-groups` is rejected because that option is not supported in
+remote mode.
+
+A device attached only to the remote client therefore cannot use the validated
+native-Linux supplementary-group contract. For a remote Podman deployment, the
+scanner character device must exist on the Linux Podman service side and that
+service host must independently satisfy device permissions, security policy, and
+lifecycle requirements.
+
+Podman on macOS and Windows uses a Linux virtual machine. Physical SDS200 USB
+acceptance on those platforms, including WSL2-specific behavior, is not claimed.
+Do not work around that boundary with privileged mode, a broad `/dev` mapping,
+or mode `0666`.
+
 ### SELinux and AppArmor
 
 The 2026-08-21 physical rootless Podman acceptance host did not have SELinux

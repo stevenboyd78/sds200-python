@@ -1088,9 +1088,104 @@ validation user did not have permission to use the Docker daemon socket; the
 not presented as new Docker Engine lifecycle acceptance.
 
 Remote Podman cannot provide the same local supplementary-group/device semantics
-for an arbitrary client-side USB device. Alternate providers, remote Podman,
-Windows/macOS remote-client behavior, and unsupported remote USB cases remain
-the Milestone 25.18 portability boundary.
+for an arbitrary client-side USB device. Milestone 25.18 closes that portability
+boundary below without weakening the local device-permission model or
+retroactively expanding the physical claims above.
+
+
+### Alternate and remote container-runtime compatibility
+
+Milestone 25.18 records a cross-runtime compatibility matrix rather than adding
+another scanner-owner architecture or another Compose file.
+
+Provider and remote-client acceptance on 2026-08-21 used Ubuntu 26.04 LTS,
+rootless Podman 5.7.0, Netavark, cgroup v2, and crun 1.21. The default Podman
+Compose provider was Docker Compose v5.4.0 from the invoking user's Docker
+CLI-plugin directory. The host also provided Docker Compose v5.5.0 at
+`/usr/libexec/docker/cli-plugins/docker-compose`.
+
+Podman allows its external provider to be selected explicitly with
+`PODMAN_COMPOSE_PROVIDER`. Forced selection of v5.4.0 and v5.5.0 produced
+byte-for-byte identical normalized `compose.yaml` and `compose.usb.yaml` models
+when supplied deterministic parse-only scanner values. Both retained the
+scanner-owner host-network contract, private runtime volume, loopback web
+publication, selected USB-device mapping, numeric `group_add`, and
+`run.oci.keep_original_groups: "1"` annotation.
+
+The v5.5.0 provider was also exercised through the rootless Podman API. It built
+the real generic image and launched the scanner-independent
+`daemon-client --help` service. The isolated test project left no containers,
+volumes, or networks behind, and the rootless Podman API socket and service were
+restored to their original inactive state.
+
+The separately implemented `podman-compose` provider was not installed on the
+acceptance host. No compatibility claim is made for that provider. Do not infer
+that parse or runtime acceptance of Docker Compose v5.4.0 and v5.5.0 establishes
+compatibility with every provider Podman may discover.
+
+A temporary named Podman remote connection to the same rootless Linux API socket
+then exercised the client/server boundary. `podman --remote` reported the Linux
+service runtime and launched a scanner-independent `linux/x86_64` container.
+With Docker Compose v5.5.0 selected through `PODMAN_COMPOSE_PROVIDER`,
+`podman --remote --connection ... compose` completed config, image build, and
+ephemeral `daemon-client --help` execution. Cleanup removed the Compose
+resources and temporary connection and restored the original API state.
+
+This proves scanner-independent remote Podman API and external-provider
+orchestration. It does **not** establish a separate physical remote host,
+end-to-end SDS200 network control across a remote topology, RTSP/RTP, or access
+to hardware attached only to the client machine. Remote container resources,
+host paths, and devices are properties of the Linux Podman service side.
+
+The rootless USB permission model has an explicit remote boundary. During the
+same acceptance, this remote request:
+
+    podman --remote --connection CONNECTION run --rm \
+      --group-add keep-groups IMAGE true
+
+failed with status 125 and:
+
+    Error: the '--group-add keep-groups' option is not supported in remote mode
+
+That is expected. The validated native-Linux rootless USB path relies on
+supplementary-group access held by the local Podman caller and preserved by
+crun. A scanner attached only to a remote client cannot use that contract, so
+client-side USB forwarding through `compose.usb.yaml` is unsupported. If a USB
+scanner is physically attached to the remote Linux Podman service host, it is a
+server-side USB deployment: the device path, host permissions, mandatory access
+control, and lifecycle behavior must all be established on that service host.
+
+Podman on macOS and Windows runs Linux containers in a Linux virtual machine.
+Those platforms were not available for physical SDS200 acceptance in this
+milestone. Podman's documented WSL2 exception to some remote restrictions is
+also unvalidated and does not imply supported client-side USB.
+
+Docker Desktop remains separate. Docker documents that Desktop does not support
+direct USB device passthrough and provides USB/IP as a separate workaround.
+`sdsctl` does not automate or adopt that privileged USB/IP setup, and
+`compose.usb.yaml` remains the native-Linux device-passthrough contract.
+
+The resulting compatibility matrix is:
+
+| Runtime path | 25.18 status | Boundary |
+| --- | --- | --- |
+| Native Linux Docker Engine, network Compose | Supported / physically accepted | Existing SDS200 network control and PSI acceptance; RTSP/RTP remains blocked by scanner TCP 554 |
+| Native Linux Docker Engine, `compose.usb.yaml` | Supported native-Linux contract | Selected device only; numeric host-device GID; no privileged mode |
+| Native Linux rootless Podman, direct network/USB | Supported with bounded physical acceptance | Direct USB CLI and network UDP control/PSI were physically accepted; crun `keep-groups` is required where supplementary-group access is needed; Podman RTSP/RTP remains unproven |
+| Rootless Podman Compose with Docker Compose v5.4.0 | Supported with bounded physical acceptance | USB daemon, sidecars, and lifecycle were physically accepted; network UDP control/PSI was accepted, while RTSP-dependent full network-daemon readiness remains unproven |
+| Rootless Podman Compose with Docker Compose v5.5.0 | Scanner-independent accepted | Config, build, and ephemeral daemon-client runtime accepted; no new physical scanner claim |
+| `podman-compose` external provider | Unvalidated | Provider was not installed; no support claim |
+| Remote Podman API / Compose | Scanner-independent accepted | Service-side resources only; no separate remote-host scanner acceptance |
+| Remote Podman client-side USB | Unsupported | Remote mode rejects `--group-add keep-groups`; client USB is not forwarded by this contract |
+| Podman on macOS / Windows | Unvalidated for physical SDS200 | Containers run in a Linux VM; client-side USB contract is not claimed |
+| Podman WSL2 | Unvalidated | Documented exceptions are not treated as acceptance |
+| Docker Desktop network daemon | Conditional / not physically SDS200-accepted on Windows or macOS | Host networking must be enabled where supported |
+| Docker Desktop USB | Unsupported by `compose.usb.yaml` | Direct USB passthrough is unavailable; USB/IP is a separate operator workaround |
+
+Native systemd remains preferred when direct host-device access, local audio, or
+other operating-system integration is important. None of these matrix entries
+changes the existing single scanner-owner, private daemon IPC, loopback web
+publication, authentication/TLS, or RTSP/RTP boundaries.
 
 
 ## Health and status
