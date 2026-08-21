@@ -394,6 +394,7 @@ def test_daemon_cli_constructs_one_runtime_and_process(
 
     process = processes[0]
     runtime = process.runtime
+    assert not runtime.allow_degraded_psi_startup
     destination_coordinator = process.destination_coordinator
     assert isinstance(
         destination_coordinator,
@@ -501,6 +502,61 @@ def test_daemon_cli_constructs_one_runtime_and_process(
 
 
 
+@pytest.mark.parametrize(
+    ("snapshot", "expected"),
+    [
+        (
+            {
+                "state": "running",
+                "scanner_connected": True,
+                "psi_active": True,
+            },
+            True,
+        ),
+        (
+            {
+                "state": "running",
+                "scanner_connected": True,
+                "psi_active": False,
+            },
+            False,
+        ),
+        (
+            {
+                "state": "running",
+                "scanner_connected": False,
+                "psi_active": False,
+            },
+            False,
+        ),
+        (
+            {
+                "state": "starting",
+                "scanner_connected": True,
+                "psi_active": True,
+            },
+            False,
+        ),
+    ],
+)
+def test_daemon_client_health_requires_full_scanner_readiness(
+    snapshot: dict[str, object],
+    expected: bool,
+) -> None:
+    assert cli._daemon_client_ready(snapshot) is expected
+
+
+def test_daemon_client_health_parser_is_distinct_from_status() -> None:
+    health = cli.build_parser().parse_args(["daemon-client", "health"])
+    status = cli.build_parser().parse_args(
+        ["daemon-client", "status", "--json"]
+    )
+
+    assert health.daemon_client_action == "health"
+    assert status.daemon_client_action == "status"
+    assert status.json is True
+
+
 def test_daemon_cli_constructs_serial_runtime_without_audio_services(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -556,6 +612,7 @@ def test_daemon_cli_constructs_serial_runtime_without_audio_services(
     assert len(processes) == 1
     runtime, services = processes[0]
     assert isinstance(runtime, cli.DaemonRuntime)
+    assert runtime.allow_degraded_psi_startup
     assert isinstance(
         runtime.audio.stream.transport,
         cli.DisabledAudioTransport,

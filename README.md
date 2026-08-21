@@ -502,13 +502,18 @@ export SDSCTL_USB_GID="$(stat -Lc '%g' "$SDSCTL_USB_DEVICE")"
 docker compose -f compose.usb.yaml run --rm usb-scanner info
 ```
 
-The generic native-Linux network daemon/client, web-sidecar, and one-shot USB
-container paths were physically validated on 2026-08-19 with an SDS200 running
-firmware 1.26.01. That acceptance did not include interactive browser behavior
-or USB unplug/replug and re-enumeration testing.
+The generic native-Linux container paths now include physical SDS200
+firmware 1.26.01 acceptance for network daemon/client operation, the loopback web
+sidecar, one-shot USB commands, and the persistent rootless Podman Compose USB
+daemon. Device-lifecycle testing on 2026-08-21 covered unplug/replug,
+`/dev/ttyACM*` re-enumeration, stale device mappings, ordinary Podman restart
+rebinding, confirmed PSI readiness, and the scanner's post-attach
+serial/mass-storage selection window. The validated USB path remains
+unprivileged and maps only the selected scanner device.
 
-See the [generic container deployment guide](docs/container-deployment.md#native-linux-usb-scanner-cli)
-for device preflight, security boundaries, and additional one-shot commands.
+See the [generic container deployment guide](docs/container-deployment.md)
+for device preflight, lifecycle recovery, readiness semantics, Linux security
+boundaries, and additional one-shot and persistent-daemon commands.
 
 Serial-only profiles, replay captures, and non-SDS200 network-audio selections
 are rejected.

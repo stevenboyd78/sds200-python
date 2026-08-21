@@ -72,13 +72,17 @@ def test_psi_ack_is_followed_by_first_xml_update() -> None:
         )
         thread.start()
         wait_for_write(transport, "PSI,500")
+        assert radio.psi_interval_ms == 500
+        assert not radio.psi_active
 
         transport.feed_line("PSI,OK")
+        assert not radio.psi_active
         feed_psi(transport)
         thread.join(timeout=1.0)
 
         assert not thread.is_alive()
         assert len(result) == 1
+        assert radio.psi_active
         assert radio.state.snapshot.channel == "Patch 65132"
 
 
@@ -96,6 +100,12 @@ def test_active_psi_is_restarted_after_transport_reconnect() -> None:
         thread.join(timeout=1.0)
 
         transport.set_connected(False)
-        transport.set_connected(True)
+        assert not radio.psi_active
+        assert radio.psi_interval_ms == 500
 
+        transport.set_connected(True)
+        assert not radio.psi_active
         assert transport.writes.count("PSI,500") == 2
+
+        feed_psi(transport)
+        assert radio.psi_active

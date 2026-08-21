@@ -11,69 +11,78 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 25.16 — Rootless Podman Compose USB daemon and sidecar integration foundation
+### Milestone 25.17 — Device lifecycle and Linux security policy foundation
 
-Milestone 25.15 is closed after establishing the native-Linux rootless Podman
-Compose USB runtime boundary for the existing one-shot `usb-scanner` service.
-Docker Compose v5.4.0 through Podman's Docker-compatible API preserved the
-numeric `SDSCTL_USB_GID` contract and the
-`run.oci.keep_original_groups: "1"` crun annotation, allowing the unprivileged
-UID/GID `10001:10001` container to open the physical SDS200 through one stable
-`/dev/serial/by-id/...` path without privileged mode, added capabilities, broad
-`/dev` access, or host permission changes.
+Milestone 25.16 is closed after establishing the steady-state native-Linux
+rootless Podman Compose USB daemon and private-sidecar boundary. Milestone 25.17
+hardens that deployment for physical device loss, re-enumeration, scanner
+readiness transitions, daemon readiness reporting, and Linux host-security
+policy without adding privileged mode, broad `/dev` access, or a second scanner
+owner.
 
-Milestone 25.16 extends that proven USB ownership model into a persistent serial
-daemon plus private local sidecars. The daemon now accepts `--port` and saved
-serial scanner profiles. Serial daemon ownership intentionally has no network
-audio source: scanner connection, model/firmware probes, PSI, runtime snapshots,
-scanner state, ordered events, and semantic scanner controls remain available,
-while PCMU publication, daemon-owned recording, finalized recording-file service,
-and configured audio destinations are not constructed. The runtime keeps its
-stable snapshot shape and reports the disabled audio source as not running rather
-than synthesizing audio or empty recordings.
+Physical acceptance on 2026-08-21 used Ubuntu 26.04 LTS, rootless Podman 5.7.0,
+Netavark, cgroup v2, crun 1.21, Docker Compose v5.4.0 as the external provider,
+and an SDS200 running firmware Version 1.26.01. The stable
+`/dev/serial/by-id/...` source resolved to `/dev/ttyACM0`, owned by
+`root:dialout` with mode `0660` and host GID 20.
 
-`compose.usb.yaml` now preserves the existing one-shot `usb-scanner` service and
-adds a long-running `daemon` using the same selected device, numeric group, and
-OCI supplementary-group annotation. The USB daemon uses `network_mode: none`,
-persists `/config`, `/state`, and `/cache`, produces private daemon/event sockets
-through the shared `/run/sdsctl` runtime volume, and does not require
-`SDS200_HOST`. Opt-in `daemon-client` and `web-dashboard` services consume that
-runtime volume without device access. The web service retains bridge networking
-and loopback-only publication, while the daemon-client remains network-isolated.
+Unplugging removed the by-id path immediately while the persistent daemon
+process remained running. Its snapshot changed to scanner disconnected and PSI
+inactive, readiness became unhealthy, and neither PID nor Podman restart count
+changed.
 
-Physical acceptance on 2026-08-20 proved the steady-state USB-backed daemon
-and private sidecar contract on an SDS200 running firmware Version 1.26.01.
-Separate isolated `daemon-client` and loopback-published web services consumed the
-shared runtime sockets without scanner-device access; status, snapshot, ordered
-events, and idempotent scanner hold-state controls succeeded while preserving the
-exact scanner selection and existing hold state. Serial capability negotiation
-omits bounded `scanner.reconnect`; normal client preflight rejects it before
-dispatch, and a deliberately raw request is independently rejected by the daemon
-as `unsupported_operation`.
+Replugging created a fresh host device inode even though `/dev/ttyACM0` and its
+major/minor numbers were reused. The running container retained its stale mapped
+inode, confirming that the stable by-id path selects the device at container
+creation or restart but does not live-rebind an existing device mapping after
+kernel re-enumeration. On the validated Podman host, an ordinary
+`podman restart` preserved the container ID and named volumes while refreshing
+the mapping to the new host inode.
 
-Extended physical runtime also proved serial-specific stale-PSI recovery by
-stopping and restarting PSI instead of invoking unsupported bounded reconnect.
-The event-watching client now closes its blocking event socket on scoped SIGINT
-or SIGTERM; a physical container stop completed in 309 ms with exit status 0.
-The persistent daemon stopped on SIGTERM in 377 ms with exit status 0, released
-the stable `/dev/serial/by-id/...` device for immediate host reacquisition, then
-restarted healthy together with the web sidecar. Final Compose teardown removed
-the services and bridge network, preserved the named data volumes, released the
-loopback web port and scanner device, and restored the rootless Podman API socket
-to its original inactive state. Audio, recording start/stop, and PCMU browser
-playback remain explicitly unavailable because SDS200 USB serial does not provide
-the network RTSP/RTP audio source.
+The SDS200 can expose its CDC ACM device before the command protocol is ready.
+After USB attachment it presents the serial-versus-mass-storage selection for
+about 20 seconds before defaulting to serial mode. During that interval identity
+or PSI commands may time out or be explicitly rejected. Serial-daemon startup
+with default PSI auto-recovery now tolerates only expected
+`CommandTimeoutError` and `CommandRejectedError` readiness failures, remains
+running in a degraded state, and retries inactive PSI on the existing
+10-second `psi_recover_after` cadence until the first confirmed PSI frame.
+Unexpected failures remain fatal. Network-daemon startup and serial startup with
+`--no-psi-auto-recover` remain strict.
 
-Milestone 25.17 remains the deliberate device-lifecycle and Linux
-security-policy hardening boundary: USB unplug/replug, `/dev/ttyACM*`
-re-enumeration, stable by-id recovery, restart after device loss, SELinux
-device/socket policy, and distro-specific rootless permission differences.
-Milestone 25.18 remains the alternate/remote container-runtime portability
-boundary for other Compose providers, remote Podman, Windows/macOS remote-client
-limitations, explicit unsupported USB pass-through cases, and compatibility
-matrix closure. Full RTSP/RTP validation remains hardware-triggered while the
-physical scanner's native TCP port 554 continues to refuse connections and is
-not a standalone blocking milestone.
+PSI readiness now distinguishes configured restart intent from confirmed stream
+activity. `psi_active` becomes true only after a parsed PSI `ScannerInfo` frame,
+not merely while a start transaction is in flight. `sdsctl daemon-client status`
+remains a diagnostic API query and may succeed for a reachable degraded daemon.
+The new `sdsctl daemon-client health` readiness command succeeds only when the
+runtime is running, the scanner is connected, and PSI is confirmed active. The
+generic image healthcheck uses that readiness command. The web service keeps its
+separate `/healthz` web-process liveness check, and serial readiness does not
+require network audio.
+
+The Linux permission contract remains least-privilege. `SDSCTL_USB_GID` is
+derived from the resolved host character device rather than hard-coded, while
+the rootless Podman/crun path retains
+`run.oci.keep_original_groups: "1"` to preserve legitimate supplementary-group
+access through the external Compose provider. The project does not recommend
+privileged containers, mapping all of `/dev`, or changing the scanner device to
+mode `0666`.
+
+SELinux was not enabled on the physical acceptance host, so SELinux
+device-policy acceptance is not claimed. Podman's documented
+`container_use_devices` SELinux boolean remains an explicit host-administrator
+policy choice and is never changed by `sdsctl`. AppArmor was effectively
+inactive on the validation host, so no AppArmor acceptance claim is made. The
+local Docker client was present, but the operator could not access the Docker
+daemon socket, so this milestone adds no new physical Docker-runtime lifecycle
+claim.
+
+Milestone 25.18 remains the alternate and remote container-runtime portability
+boundary: other Compose providers, remote Podman, Windows/macOS remote-client
+limitations, explicit unsupported remote USB cases, and compatibility-matrix
+closure. Full RTSP/RTP validation remains hardware-triggered while the physical
+scanner's native TCP port 554 continues to refuse connections and is not a
+standalone blocking milestone.
 
 ## Deferred hardware validation
 

@@ -19,6 +19,7 @@ from sds200.daemon_runtime import (
     DaemonRuntimeState,
     DaemonRuntimeTransition,
 )
+from sds200.exceptions import CommandRejectedError, CommandTimeoutError
 from sds200.state import RadioStateSnapshot
 
 from .fakes import FakeAudioTransport
@@ -41,10 +42,14 @@ class FakeScanner:
         *,
         fail_at: Literal["connect", "model", "firmware", "psi"] | None = None,
         supports_bounded_reconnect: bool = True,
+        psi_start_failures: int = 0,
+        psi_start_failure: Literal["timeout", "rejected"] = "timeout",
     ) -> None:
         self.order = order
         self.fail_at = fail_at
         self._supports_bounded_reconnect = supports_bounded_reconnect
+        self.psi_start_failures = psi_start_failures
+        self.psi_start_failure = psi_start_failure
         self._connected = False
         self._psi_active = False
         self._psi_callbacks: list[Callable[[object], None]] = []
@@ -114,6 +119,11 @@ class FakeScanner:
         self.order.append("psi.start")
         if self.fail_at == "psi":
             raise RuntimeError("secret PSI startup detail")
+        if self.psi_start_failures > 0:
+            self.psi_start_failures -= 1
+            if self.psi_start_failure == "rejected":
+                raise CommandRejectedError("secret PSI startup rejection")
+            raise CommandTimeoutError("secret PSI startup timeout")
         self._psi_active = True
         self._emit_psi()
         return object()
@@ -241,6 +251,115 @@ def make_runtime(
     audio = AudioFanoutSession(AudioStream(transport), (router,))
     runtime = DaemonRuntime(scanner, audio, router)
     return runtime, scanner, transport, router, order
+
+
+def test_runtime_psi_timeout_remains_strict_by_default() -> None:
+    order: list[str] = []
+    scanner = FakeScanner(order, psi_start_failures=1)
+    transport = TrackingAudioTransport(order)
+    router = TrackingRouter(order)
+    audio = AudioFanoutSession(AudioStream(transport), (router,))
+    runtime = DaemonRuntime(scanner, audio, router)
+
+    with pytest.raises(CommandTimeoutError, match="secret"):
+        runtime.start()
+
+    snapshot = runtime.snapshot()
+    assert snapshot.state is DaemonRuntimeState.FAILED
+    assert not snapshot.scanner_connected
+    assert not snapshot.psi_active
+    assert scanner.close_calls == 1
+
+    runtime.stop()
+
+
+@pytest.mark.parametrize("failure", ["timeout", "rejected"])
+def test_runtime_allows_degraded_psi_startup_and_recovers(
+    failure: Literal["timeout", "rejected"],
+) -> None:
+    now = [100.0]
+    order: list[str] = []
+    scanner = FakeScanner(
+        order,
+        supports_bounded_reconnect=False,
+        psi_start_failures=2,
+        psi_start_failure=failure,
+    )
+    transport = TrackingAudioTransport(order)
+    router = TrackingRouter(order)
+    audio = AudioFanoutSession(AudioStream(transport), (router,))
+    runtime = DaemonRuntime(
+        scanner,
+        audio,
+        router,
+        allow_degraded_psi_startup=True,
+        psi_recover_after=10.0,
+        psi_recovery_cooldown=60.0,
+        clock=lambda: now[0],
+    )
+
+    runtime.start()
+
+    degraded = runtime.snapshot()
+    assert degraded.state is DaemonRuntimeState.RUNNING
+    assert degraded.scanner_connected
+    assert not degraded.psi_active
+    assert degraded.audio.running
+    assert degraded.router.running
+    assert order.count("psi.start") == 1
+
+    now[0] = 109.9
+    runtime.poll()
+    assert order.count("psi.start") == 1
+
+    now[0] = 110.1
+    runtime.poll()
+    assert order.count("psi.start") == 2
+    assert not runtime.snapshot().psi_active
+
+    now[0] = 119.9
+    runtime.poll()
+    assert order.count("psi.start") == 2
+
+    now[0] = 120.2
+    runtime.poll()
+    assert order.count("psi.start") == 3
+
+    recovered = runtime.snapshot()
+    assert recovered.state is DaemonRuntimeState.RUNNING
+    assert recovered.scanner_connected
+    assert recovered.psi_active
+    assert recovered.audio.running
+    assert recovered.router.running
+    assert "scanner.reconnect" not in order
+    assert "psi.stop" not in order
+
+    runtime.stop()
+
+
+def test_runtime_degraded_psi_startup_does_not_hide_programming_error() -> None:
+    order: list[str] = []
+    scanner = FakeScanner(order, fail_at="psi")
+    transport = TrackingAudioTransport(order)
+    router = TrackingRouter(order)
+    audio = AudioFanoutSession(AudioStream(transport), (router,))
+    runtime = DaemonRuntime(
+        scanner,
+        audio,
+        router,
+        allow_degraded_psi_startup=True,
+    )
+
+    with pytest.raises(RuntimeError, match="secret PSI startup detail"):
+        runtime.start()
+
+    snapshot = runtime.snapshot()
+    assert snapshot.state is DaemonRuntimeState.FAILED
+    assert not snapshot.scanner_connected
+    assert not snapshot.psi_active
+    assert scanner.close_calls == 1
+
+    runtime.stop()
 
 
 def test_runtime_recovers_sustained_silent_psi_with_cooldown() -> None:

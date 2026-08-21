@@ -52,9 +52,10 @@ def test_generic_container_uses_existing_daemon_health_and_signal_contract() -> 
     dockerfile = _DOCKERFILE.read_text(encoding="utf-8")
 
     assert "STOPSIGNAL SIGTERM" in dockerfile
+    assert 'CMD ["sdsctl", "daemon-client", "health"]' in dockerfile
     assert (
         'CMD ["sdsctl", "daemon-client", "status", "--json"]'
-        in dockerfile
+        not in dockerfile
     )
     assert "HEALTHCHECK --interval=30s" in dockerfile
 
@@ -529,11 +530,12 @@ def test_generic_container_documentation_preserves_compose_security_boundary() -
     assert "snapshot --json" not in document
     assert "physical scanner validation of the generic Compose deployment" not in document
     assert (
-        "### Milestone 25.16 — Rootless Podman Compose USB daemon and sidecar "
-        "integration foundation"
+        "### Milestone 25.17 — Device lifecycle and Linux security policy "
+        "foundation"
         in roadmap
     )
-    assert "Milestone 25.15 is closed" in roadmap
+    assert "Milestone 25.16 is closed" in roadmap
+    assert "Milestone 25.18 remains" in roadmap
 
 
 def test_generic_docker_hub_workflow_has_safe_trigger_and_publication_contract() -> None:

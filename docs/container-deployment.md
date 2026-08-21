@@ -23,7 +23,9 @@ with native-Linux rootless Podman. Milestone 25.14 validates the isolated web
 sidecar through that provider, Milestone 25.15 extends `compose.usb.yaml` with the
 rootless Podman/crun supplementary-group contract for one-shot USB commands, and
 Milestone 25.16 extends that USB Compose model to a persistent serial daemon plus
-private daemon-client and web sidecars.
+private daemon-client and web sidecars. Milestone 25.17 hardens that persistent
+USB path for unplug/replug, device re-enumeration, confirmed PSI readiness,
+ordinary Podman restart rebinding, and Linux security-policy diagnostics.
 
 Native systemd deployment remains the preferred production option when direct
 host-device, local-audio, or other operating-system integration is important.
@@ -957,34 +959,172 @@ immediately host-openable, the loopback validation port was released, and the
 temporarily started rootless Podman API socket was restored to its original
 inactive state.
 
-Milestone 25.16 is intentionally steady-state integration. USB unplug/replug,
-`/dev/ttyACM*` re-enumeration, by-id recovery after loss, SELinux device/socket
-policy, and other Linux security-policy differences remain Milestone 25.17.
-Alternate Compose providers, remote Podman, Windows/macOS remote USB
-limitations, and the cross-runtime compatibility matrix remain Milestone 25.18.
-Full RTSP/RTP and network-audio acceptance remains deferred while the physical
-scanner's native TCP port 554 independently refuses connections.
+Milestone 25.16 is intentionally steady-state integration. Milestone 25.17
+closes the tested native-Linux rootless Podman device-lifecycle and
+security-policy boundary below. Alternate Compose providers, remote Podman,
+Windows/macOS remote USB limitations, and the cross-runtime compatibility matrix
+remain Milestone 25.18. Full RTSP/RTP and network-audio acceptance remains
+deferred while the physical scanner's native TCP port 554 independently refuses
+connections.
+
+
+### Rootless Podman Compose USB device lifecycle and Linux security policy
+
+Physical lifecycle acceptance on 2026-08-21 used Ubuntu 26.04 LTS, rootless
+Podman 5.7.0, Netavark, cgroup v2, crun 1.21, Docker Compose v5.4.0 as the
+external provider, and an SDS200 running firmware Version 1.26.01. The scanner's
+stable by-id source resolved to `/dev/ttyACM0`, `root:dialout`, mode `0660`,
+host GID 20.
+
+A stable `/dev/serial/by-id/...` path is the preferred **selection** source, but
+it is not a live hotplug-rebinding mechanism. During physical unplug the by-id
+path disappeared immediately and the persistent daemon observed
+`scanner_connected=false` and `psi_active=false` while remaining in the running
+lifecycle state. `daemon-client health` returned unhealthy, the container
+healthcheck failed as intended, and the daemon PID and Podman restart count did
+not change.
+
+On replug, the kernel reused `/dev/ttyACM0` and the same character-device
+major/minor numbers but created a new inode. The already-running container still
+referenced the stale pre-unplug inode. The by-id symlink is resolved when the
+container device mapping is created or refreshed; it does not dynamically
+replace an already-mapped character device after host re-enumeration.
+
+On the validated host, an ordinary restart refreshed that mapping while
+preserving the container ID and named volumes:
+
+```bash
+podman restart --time 3 CONTAINER
+```
+
+A force recreation is also a valid stronger rebind when required by another
+runtime or host. Do not assume every container runtime implements the same
+restart-time device refresh; verify the mapped device after re-enumeration.
+
+The SDS200 itself has an additional readiness transition. After USB attachment
+it presents a serial-versus-mass-storage selection for about 20 seconds before
+defaulting to serial mode. A CDC ACM node and stable by-id path can therefore
+exist before the scanner command protocol is ready. During this interval `MDL`
+or PSI may time out or return an explicit rejection such as `ERR`.
+
+The serial daemon's default PSI auto-recovery handles only those expected
+readiness failures. Initial PSI startup may defer on `CommandTimeoutError` or
+`CommandRejectedError` while the runtime remains running, scanner-connected, and
+PSI-inactive. Until PSI has succeeded at least once, the daemon retries the
+inactive PSI start using `--psi-recover-after`, 10 seconds by default. After an
+established stream, the existing recovery cooldown governs later recovery.
+Arbitrary programming or protocol exceptions are not hidden. Network daemon
+startup stays strict, and serial startup with `--no-psi-auto-recover` also stays
+strict.
+
+PSI activity is a confirmed liveness signal rather than configuration state.
+The configured interval remains restart intent, but `psi_active` becomes true
+only after the radio parses an actual PSI `ScannerInfo` frame. An acknowledgement
+or in-flight start transaction alone does not make the daemon ready. Disconnect,
+failed start, reconnect, stop, and close clear confirmed activity until a later
+PSI frame proves the stream again.
+
+A clean physical acceptance began from a scanner power cycle and healthy host
+`info` result. The rebuilt USB daemon started at
+`running|scanner_connected=true|psi_active=true`; unplug transitioned it to
+`running|false|false` without a process restart. Replug produced a fresh host
+inode, ordinary Podman restart rebound that inode while preserving the container
+ID, and the first usable post-restart snapshot was already
+`running|true|true`. Ten consecutive readiness samples remained healthy, the
+explicit Podman healthcheck succeeded, and the Podman restart count remained
+zero. A model identity probe during the scanner transition was explicitly
+rejected once but remained nonfatal; confirmed PSI then started successfully.
+
+If the scanner retains a valid CDC ACM node but remains protocol-silent after
+the expected mode-selection interval, first establish whether the scanner itself
+is responding before changing the container. During validation, a physical
+scanner power cycle recovered one such scanner-side silent state. This project
+does not prescribe USB reset ioctls, arbitrary DTR/RTS toggles, input drains,
+parser workarounds, privileged mode, or broad `/dev` access as recovery
+mechanisms.
+
+#### Linux device permissions and mandatory access control
+
+The host operator must already have legitimate read/write access to the selected
+scanner character device. On the validated Ubuntu host that access came through
+the `dialout` supplementary group. Derive the actual device GID instead of
+assuming either the group name or numeric value:
+
+```bash
+export SDSCTL_USB_DEVICE=/dev/serial/by-id/usb-UNIDEN_AMERICA_CORP._SDS200_Serial_Port-if00
+export SDSCTL_USB_GID="$(stat -Lc '%g' "$(readlink -f "$SDSCTL_USB_DEVICE")")"
+```
+
+`compose.usb.yaml` keeps the numeric `group_add` value for native Docker
+compatibility and the OCI annotation
+`run.oci.keep_original_groups: "1"` for the validated rootless Podman/crun
+external-provider path. The external Docker Compose provider did not accept
+`group_add: keep-groups` as Podman's special CLI behavior, so do not substitute
+that value into the Compose model. Direct `podman run` may use
+`--group-add keep-groups` where supported by crun.
+
+Do not solve host permission failures by running privileged, mapping all of
+`/dev`, changing the scanner device to mode `0666`, or baking a distribution's
+`dialout` GID into the image.
+
+SELinux was not enabled on the physical acceptance host, so this milestone does
+not claim physical SELinux device-policy acceptance. Podman documents the
+`container_use_devices` SELinux boolean for host-device access; on SELinux hosts
+an administrator may explicitly choose:
+
+```bash
+sudo setsebool -P container_use_devices=true
+```
+
+`sdsctl` and its Compose files never change that host policy automatically. A
+host that cannot accept the broader device-access boolean needs an
+administrator-designed local SELinux policy instead of a container-side
+privilege bypass.
+
+AppArmor was effectively inactive on the validation host, so no physical
+AppArmor acceptance claim is made. The Docker client was installed, but the
+validation user did not have permission to use the Docker daemon socket; the
+2026-08-21 lifecycle evidence is specifically rootless Podman evidence and is
+not presented as new Docker Engine lifecycle acceptance.
+
+Remote Podman cannot provide the same local supplementary-group/device semantics
+for an arbitrary client-side USB device. Alternate providers, remote Podman,
+Windows/macOS remote-client behavior, and unsupported remote USB cases remain
+the Milestone 25.18 portability boundary.
 
 
 ## Health and status
 
-The Dockerfile healthcheck is inherited by Compose and uses the daemon's private
-Unix-domain API. Inspect health with:
+The Dockerfile healthcheck is inherited by the scanner-owning daemon services
+and uses the private Unix-domain API readiness command. Inspect container health
+with:
 
 ```bash
 docker compose ps
 ```
 
-The same negotiated status can be queried manually inside the running service:
+Query readiness directly with:
+
+```bash
+docker compose exec daemon sdsctl daemon-client health
+```
+
+`daemon-client health` returns success only when the daemon runtime is
+`running`, the scanner is connected, and PSI activity has been confirmed by a
+parsed scanner-information frame. Audio is intentionally not part of this
+readiness predicate, so the serial daemon can be healthy with its
+`disabled://daemon-audio` transport.
+
+Diagnostic status remains separate:
 
 ```bash
 docker compose exec daemon sdsctl daemon-client status --json
 ```
 
-A successful status query proves that the local daemon API is responding. It is
-not a substitute for application-level scanner or audio diagnosis; the returned
-runtime snapshot remains the authoritative source for scanner connectivity and
-daemon state.
+A successful `status` query proves that the local daemon API is responding and
+can therefore succeed while scanner readiness is degraded. Use its runtime
+snapshot to diagnose scanner connection and PSI state; use `health` when a
+container orchestrator or operator needs the readiness decision.
 
 The web-dashboard overrides that inherited check with a Python-standard-library
 request to `http://127.0.0.1:8000/healthz` inside its own container. The

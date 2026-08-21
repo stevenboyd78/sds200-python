@@ -228,6 +228,7 @@ class SDSScanner:
         self._closed = threading.Event()
         self._closed.set()
         self._psi_interval_ms: int | None = None
+        self._psi_active = False
         self._psi_renewal_supported = (
             self.endpoint.startswith("udp://") or self._fallback_transport is not None
         )
@@ -516,7 +517,7 @@ class SDSScanner:
 
     @property
     def psi_active(self) -> bool:
-        return self._psi_interval_ms is not None
+        return self._psi_active
 
     @property
     def psi_interval_ms(self) -> int | None:
@@ -556,6 +557,7 @@ class SDSScanner:
                 interval_ms,
             )
             self._stop_psi_renewal()
+            self._psi_active = False
             self._psi_interval_ms = None
             self.transport.stop()
             self._closed.set()
@@ -582,6 +584,7 @@ class SDSScanner:
                     )
             except Exception:
                 self._psi_interval_ms = interval_ms
+                self._psi_active = False
                 raise
             logger.info(
                 "scanner reconnect completed endpoint=%s psi_interval_ms=%s",
@@ -594,9 +597,10 @@ class SDSScanner:
     def close(self) -> None:
         self._analysis_publisher.close()
         self._waterfall_publisher.close()
-        if self.psi_active:
+        if self._psi_interval_ms is not None:
             with suppress(SDS200Error, OSError, ValueError):
                 self.stop_scanner_info_push()
+        self._psi_active = False
         self._psi_interval_ms = None
         self.transport.stop()
         self._closed.set()
@@ -1145,6 +1149,11 @@ class SDSScanner:
             )
 
         try:
+            if self.psi_active:
+                raise RuntimeError(
+                    "PSI scanner information push is already active."
+                )
+
             logger.info(
                 "PSI stream starting endpoint=%s interval_ms=%d",
                 self.endpoint,
@@ -1164,6 +1173,7 @@ class SDSScanner:
 
             unsubscribe = self.events.subscribe("psi", capture_first_update)
             command = StartScannerInfoPush(interval_ms)
+            self._psi_active = False
             self._psi_interval_ms = interval_ms
             try:
                 initial = self.execute(
@@ -1171,6 +1181,7 @@ class SDSScanner:
                     timeout=max(0.0, deadline - monotonic()),
                 )
                 if initial is not None:
+                    self._psi_active = True
                     self._start_psi_renewal()
                     logger.info("PSI stream started endpoint=%s", self.endpoint)
                     return initial
@@ -1182,6 +1193,7 @@ class SDSScanner:
                     first = first_updates.get(
                         timeout=max(0.0, deadline - monotonic()),
                     )
+                    self._psi_active = True
                     self._start_psi_renewal()
                     logger.info("PSI stream started endpoint=%s", self.endpoint)
                     return first
@@ -1191,6 +1203,7 @@ class SDSScanner:
                     ) from exc
             except Exception:
                 self._stop_psi_renewal()
+                self._psi_active = False
                 self._psi_interval_ms = None
                 if self.connected:
                     with suppress(SDS200Error, OSError, ValueError):
@@ -1204,9 +1217,11 @@ class SDSScanner:
     def stop_scanner_info_push(self) -> None:
         with self._command_lock:
             self._stop_psi_renewal()
-            if not self.psi_active:
+            if self._psi_interval_ms is None:
+                self._psi_active = False
                 return
             logger.info("PSI stream stopping endpoint=%s", self.endpoint)
+            self._psi_active = False
             self._psi_interval_ms = None
             if self.connected:
                 self.send("PSI,0")
@@ -1318,6 +1333,8 @@ class SDSScanner:
                 return
 
             info = xml_response
+            if command == "PSI" and self._psi_interval_ms is not None:
+                self._psi_active = True
             with self._health_lock:
                 self._last_state_at = info.received_at
             change = self.state.update(info)
@@ -1389,6 +1406,7 @@ class SDSScanner:
             diagnostic.kind == "preferred_recovery_succeeded"
             and self._psi_interval_ms is not None
         ):
+            self._psi_active = False
             try:
                 self.send(f"PSI,{self._psi_interval_ms}")
             except SDS200Error:
@@ -1407,6 +1425,8 @@ class SDSScanner:
 
     def _connection_changed(self, connected: bool) -> None:
         observed_at = datetime.now(UTC)
+        if not connected:
+            self._psi_active = False
         with self._health_lock:
             if self._last_connection_state != connected:
                 self._connection_events += 1
@@ -1425,6 +1445,7 @@ class SDSScanner:
         )
         if not connected or self._psi_interval_ms is None:
             return
+        self._psi_active = False
         try:
             self.send(f"PSI,{self._psi_interval_ms}")
         except SDS200Error:

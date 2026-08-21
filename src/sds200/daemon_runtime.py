@@ -20,6 +20,7 @@ from .audio_sinks import (
 )
 from .events import EventBus
 from .exceptions import (
+    CommandRejectedError,
     CommandTimeoutError,
     DaemonControlBusyError,
     DaemonControlUnavailableError,
@@ -321,6 +322,7 @@ class DaemonRuntime:
         psi_interval_ms: int = 500,
         psi_timeout: float = 3.0,
         psi_auto_recover: bool = True,
+        allow_degraded_psi_startup: bool = False,
         psi_recover_after: float = 10.0,
         psi_recovery_cooldown: float = 60.0,
         clock: Callable[[], float] = monotonic,
@@ -332,6 +334,10 @@ class DaemonRuntime:
             raise ValueError("PSI timeout must be greater than zero.")
         if type(psi_auto_recover) is not bool:
             raise TypeError("PSI auto recovery must be a boolean.")
+        if type(allow_degraded_psi_startup) is not bool:
+            raise TypeError(
+                "Degraded PSI startup policy must be a boolean."
+            )
         if psi_recover_after <= 0:
             raise ValueError(
                 "PSI recovery threshold must be greater than zero."
@@ -352,6 +358,7 @@ class DaemonRuntime:
         self.psi_interval_ms = psi_interval_ms
         self.psi_timeout = psi_timeout
         self.psi_auto_recover = psi_auto_recover
+        self.allow_degraded_psi_startup = allow_degraded_psi_startup
         self.psi_recover_after = float(psi_recover_after)
         self.psi_recovery_cooldown = float(psi_recovery_cooldown)
         self._clock = clock
@@ -405,11 +412,57 @@ class DaemonRuntime:
             if (
                 self._state is not DaemonRuntimeState.RUNNING
                 or not self.scanner.connected
-                or not self.scanner.psi_active
             ):
                 return
+            psi_active = self.scanner.psi_active
             last_psi_at = self._last_psi_at
             last_recovery_at = self._last_psi_recovery_at
+
+        if not psi_active:
+            if not self.allow_degraded_psi_startup:
+                return
+            retry_delay = (
+                self.psi_recover_after
+                if last_psi_at is None
+                else self.psi_recovery_cooldown
+            )
+            if (
+                last_recovery_at is not None
+                and observed_at - last_recovery_at < retry_delay
+            ):
+                return
+            if self._control_lock.locked():
+                return
+
+            logger.warning(
+                "daemon PSI stream inactive scanner=%s "
+                "attempting_recovery=psi-start",
+                self.scanner.endpoint,
+            )
+            try:
+                self._start_inactive_psi()
+            except (
+                CommandRejectedError,
+                CommandTimeoutError,
+                DaemonControlUnavailableError,
+            ) as error:
+                completed_at = self._clock()
+                with self._state_lock:
+                    self._last_psi_recovery_at = completed_at
+                logger.warning(
+                    "daemon PSI recovery failed scanner=%s error=%s",
+                    self.scanner.endpoint,
+                    error.__class__.__name__,
+                )
+            else:
+                completed_at = self._clock()
+                with self._state_lock:
+                    self._last_psi_recovery_at = completed_at
+                logger.info(
+                    "daemon PSI recovery completed scanner=%s",
+                    self.scanner.endpoint,
+                )
+            return
 
         if last_psi_at is None:
             return
@@ -613,6 +666,22 @@ class DaemonRuntime:
             ),
         )
 
+    def _start_inactive_psi(self) -> None:
+        """Start an inactive PSI push without reopening scanner control."""
+
+        with self._control_lock:
+            if not self.scanner.connected:
+                raise DaemonControlUnavailableError(
+                    "Daemon PSI start requires a connected scanner."
+                )
+            if self.scanner.psi_active:
+                return
+
+            self.scanner.start_scanner_info_push(
+                self.psi_interval_ms,
+                timeout=self.psi_timeout,
+            )
+
     def _refresh_psi(self) -> None:
         """Restart only the active PSI push without reopening scanner control."""
 
@@ -679,12 +748,27 @@ class DaemonRuntime:
                 )
 
                 psi_attempted = True
-                self.scanner.start_scanner_info_push(
-                    self.psi_interval_ms,
-                    timeout=self.psi_timeout,
-                )
-                with self._state_lock:
-                    self._last_psi_at = self._clock()
+                try:
+                    self.scanner.start_scanner_info_push(
+                        self.psi_interval_ms,
+                        timeout=self.psi_timeout,
+                    )
+                except (
+                    CommandRejectedError,
+                    CommandTimeoutError,
+                ) as error:
+                    if not self.allow_degraded_psi_startup:
+                        raise
+                    with self._state_lock:
+                        self._last_psi_recovery_at = self._clock()
+                    logger.warning(
+                        "daemon PSI startup deferred scanner=%s error=%s",
+                        self.scanner.endpoint,
+                        error.__class__.__name__,
+                    )
+                else:
+                    with self._state_lock:
+                        self._last_psi_at = self._clock()
 
                 audio_attempted = True
                 self.audio.start()

@@ -860,6 +860,7 @@ def test_preferred_recovery_restarts_active_psi_stream() -> None:
 
     with radio:
         radio._psi_interval_ms = 500
+        radio._psi_active = True
         radio._transport_diagnostic(
             TransportDiagnostic(
                 kind="preferred_recovery_succeeded",
@@ -1193,6 +1194,7 @@ def test_manual_reconnect_preserves_active_psi_interval() -> None:
 
     radio.connect()
     radio._psi_interval_ms = 500
+    radio._psi_active = True
 
     def respond() -> None:
         while transport.writes != ["PSI,500"]:
@@ -1225,6 +1227,7 @@ def test_failed_reconnect_preserves_active_psi_interval(
 
     radio.connect()
     radio._psi_interval_ms = 500
+    radio._psi_active = True
     start_scanner_info_push = radio.start_scanner_info_push
 
     def start_with_short_timeout(
@@ -1241,6 +1244,7 @@ def test_failed_reconnect_preserves_active_psi_interval(
         radio.reconnect()
 
     assert radio.psi_interval_ms == 500
+    assert not radio.psi_active
     assert transport.writes == ["PSI,500", "PSI,0"]
     monkeypatch.setattr(radio, "start_scanner_info_push", start_scanner_info_push)
 
@@ -1309,6 +1313,7 @@ def test_reconnect_deadline_includes_active_psi_renewal() -> None:
     )
     radio.connect()
     radio._psi_interval_ms = 500
+    radio._psi_active = True
     radio._psi_renewal_interval = 0.001
     radio._psi_renewal_defer = 0.001
     radio._psi_renewal_timeout = 0.2
@@ -1442,6 +1447,7 @@ def test_psi_renewal_defers_while_response_command_is_pending() -> None:
     radio = SDS200.from_transport(transport, expected_model="SDS200")
     radio.connect()
     radio._psi_interval_ms = 500
+    radio._psi_active = True
     radio._psi_renewal_timeout = 0.5
     xml = (
         '<?xml version="1.0" encoding="utf-8"?>\n'
@@ -1502,6 +1508,7 @@ def test_psi_renewal_discards_frame_seen_before_ack(
     radio = SDS200.from_transport(transport, expected_model="SDS200")
     radio.connect()
     radio._psi_interval_ms = 500
+    radio._psi_active = True
     radio._psi_renewal_timeout = 0.5
     xml = (
         '<?xml version="1.0" encoding="utf-8"?>\n'
@@ -1575,6 +1582,7 @@ def test_psi_renewal_keeps_transaction_lock_until_frame_after_ack() -> None:
     radio = SDS200.from_transport(transport, expected_model="SDS200")
     radio.connect()
     radio._psi_interval_ms = 500
+    radio._psi_active = True
     radio._psi_renewal_timeout = 0.5
     xml = (
         '<?xml version="1.0" encoding="utf-8"?>\n'
@@ -1707,6 +1715,81 @@ def test_psi_start_keeps_transaction_lock_until_frame_after_ack() -> None:
     radio.close()
 
 
+def test_waiting_second_psi_start_rechecks_active_state_after_lock() -> None:
+    transport = FakeTransport("udp://scanner")
+    radio = SDS200.from_transport(transport, expected_model="SDS200")
+    radio.connect()
+    xml = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<ScannerInfo Mode="Trunk Scan" V_Screen="trunk_scan">\n'
+        '<Property VOL="10" SQL="2" Sig="0" />\n'
+        "</ScannerInfo>"
+    )
+    first_results: list[ScannerInfo] = []
+    first_errors: list[BaseException] = []
+    second_results: list[ScannerInfo] = []
+    second_errors: list[BaseException] = []
+
+    def first_start() -> None:
+        try:
+            first_results.append(
+                radio.start_scanner_info_push(timeout=1.0)
+            )
+        except BaseException as error:
+            first_errors.append(error)
+
+    def second_start() -> None:
+        try:
+            second_results.append(
+                radio.start_scanner_info_push(timeout=1.0)
+            )
+        except BaseException as error:
+            second_errors.append(error)
+
+    first = threading.Thread(target=first_start, daemon=True)
+    first.start()
+
+    deadline = time.monotonic() + 1.0
+    while transport.writes != ["PSI,500"] and time.monotonic() < deadline:
+        time.sleep(0.001)
+
+    assert transport.writes == ["PSI,500"]
+    assert radio.psi_interval_ms == 500
+    assert not radio.psi_active
+
+    second = threading.Thread(target=second_start, daemon=True)
+    second.start()
+    time.sleep(0.02)
+
+    assert second.is_alive()
+    assert transport.writes == ["PSI,500"]
+
+    transport.feed_line("PSI,OK")
+    transport.feed_line("PSI,<XML>,")
+    for line in xml.splitlines():
+        transport.feed_line(line)
+
+    first.join(timeout=1.0)
+    second.join(timeout=1.0)
+
+    assert not first.is_alive()
+    assert not second.is_alive()
+    assert len(first_results) == 1
+    assert not first_errors
+    assert not second_results
+    assert len(second_errors) == 1
+    assert isinstance(second_errors[0], RuntimeError)
+    assert str(second_errors[0]) == (
+        "PSI scanner information push is already active."
+    )
+    assert transport.writes == ["PSI,500"]
+    assert radio.psi_interval_ms == 500
+    assert radio.psi_active
+
+    radio.stop_scanner_info_push()
+    radio.close()
+
+
 def test_stop_waits_for_inflight_psi_start_before_stopping_renewal() -> None:
     transport = FakeTransport("udp://scanner")
     radio = SDS200.from_transport(transport, expected_model="SDS200")
@@ -1741,7 +1824,8 @@ def test_stop_waits_for_inflight_psi_start_before_stopping_renewal() -> None:
         time.sleep(0.001)
 
     assert transport.writes == ["PSI,500"]
-    assert radio.psi_active
+    assert radio.psi_interval_ms == 500
+    assert not radio.psi_active
 
     stopper = threading.Thread(target=stop_push, daemon=True)
     stopper.start()
@@ -1775,6 +1859,7 @@ def test_close_stops_psi_renewal_after_transport_disconnect() -> None:
     radio = SDS200.from_transport(transport, expected_model="SDS200")
     radio.connect()
     radio._psi_interval_ms = 500
+    radio._psi_active = True
     radio._psi_renewal_interval = 10.0
     radio._start_psi_renewal()
 
@@ -1784,7 +1869,8 @@ def test_close_stops_psi_renewal_after_transport_disconnect() -> None:
 
     transport.set_connected(False)
     assert not radio.connected
-    assert radio.psi_active
+    assert radio.psi_interval_ms == 500
+    assert not radio.psi_active
 
     radio.close()
 

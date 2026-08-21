@@ -53,7 +53,7 @@ RUN python -m pip install \
 STOPSIGNAL SIGTERM
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD ["sdsctl", "daemon-client", "status", "--json"]
+    CMD ["sdsctl", "daemon-client", "health"]
 
 USER 10001:10001
 
