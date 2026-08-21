@@ -113,7 +113,7 @@ def test_generic_docker_hub_identity_is_isolated_from_python_and_home_assistant(
     assert '"sds200[mqtt,web]"' in _read("Dockerfile")
 
 
-def test_roadmap_names_milestone_25_17_as_device_lifecycle_boundary() -> None:
+def test_roadmap_names_milestone_25_18_as_remote_runtime_boundary() -> None:
     roadmap = ROADMAP.read_text(encoding="utf-8")
     active_milestone = roadmap.split(
         "## Active milestone", 1
@@ -123,29 +123,24 @@ def test_roadmap_names_milestone_25_17_as_device_lifecycle_boundary() -> None:
     normalized_active_milestone = " ".join(active_milestone.split())
 
     for required in (
-        "### Milestone 25.17 — Device lifecycle and Linux security policy "
-        "foundation",
-        "Milestone 25.16 is closed",
-        "physical device loss",
-        "re-enumeration",
-        "`/dev/serial/by-id/...`",
-        "`/dev/ttyACM0`",
-        "`podman restart`",
-        "CommandTimeoutError",
-        "CommandRejectedError",
-        "`psi_recover_after`",
-        "`psi_active`",
-        "`sdsctl daemon-client health`",
-        "`sdsctl daemon-client status`",
-        "`SDSCTL_USB_GID`",
-        '`run.oci.keep_original_groups: "1"`',
-        "`container_use_devices`",
-        "AppArmor",
-        "Milestone 25.18",
+        "### Milestone 25.18 — Alternate and remote container-runtime "
+        "portability foundation",
+        "Milestone 25.17 is closed",
+        "Docker Compose v5.4.0",
+        "Docker Compose v5.5.0",
+        "`PODMAN_COMPOSE_PROVIDER`",
+        "byte-for-byte identical",
+        "`podman --remote`",
+        "`podman --remote ... --group-add keep-groups`",
+        "not supported in remote mode",
+        "client-side USB",
+        "`podman-compose`",
+        "Linux virtual machine",
+        "WSL2",
+        "USB/IP",
         "TCP port 554",
     ):
         assert required in active_milestone or required in normalized_active_milestone
-
 
 
 def test_branding_asset_paths_use_sdsctl_identity() -> None:

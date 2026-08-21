@@ -11,78 +11,67 @@ and ideas that are not ready for scheduling are recorded in
 
 ## Active milestone
 
-### Milestone 25.17 — Device lifecycle and Linux security policy foundation
+### Milestone 25.18 — Alternate and remote container-runtime portability foundation
 
-Milestone 25.16 is closed after establishing the steady-state native-Linux
-rootless Podman Compose USB daemon and private-sidecar boundary. Milestone 25.17
-hardens that deployment for physical device loss, re-enumeration, scanner
-readiness transitions, daemon readiness reporting, and Linux host-security
-policy without adding privileged mode, broad `/dev` access, or a second scanner
-owner.
+Milestone 25.17 is closed after validating native-Linux rootless Podman USB
+device loss, re-enumeration, restart-time device rebinding, confirmed PSI
+readiness, and the Linux security-policy boundary. Milestone 25.18 closes the
+remaining alternate-provider and remote-runtime portability boundary without
+adding another Compose model, another scanner owner, privileged containers, or
+client-side USB forwarding.
 
-Physical acceptance on 2026-08-21 used Ubuntu 26.04 LTS, rootless Podman 5.7.0,
-Netavark, cgroup v2, crun 1.21, Docker Compose v5.4.0 as the external provider,
-and an SDS200 running firmware Version 1.26.01. The stable
-`/dev/serial/by-id/...` source resolved to `/dev/ttyACM0`, owned by
-`root:dialout` with mode `0660` and host GID 20.
+Provider acceptance on 2026-08-21 used Ubuntu 26.04 LTS, rootless Podman 5.7.0,
+Netavark, cgroup v2, and crun 1.21. Podman's default external provider was Docker
+Compose v5.4.0 at the invoking user's Docker CLI-plugin path. A distinct system
+Docker Compose v5.5.0 executable was then selected explicitly through
+`PODMAN_COMPOSE_PROVIDER`.
 
-Unplugging removed the by-id path immediately while the persistent daemon
-process remained running. Its snapshot changed to scanner disconnected and PSI
-inactive, readiness became unhealthy, and neither PID nor Podman restart count
-changed.
+With deterministic parse-only values, Docker Compose v5.4.0 and v5.5.0 produced
+byte-for-byte identical normalized models for both repository-root
+`compose.yaml` and `compose.usb.yaml`. The alternate v5.5.0 provider also built
+the generic image through the rootless Podman API and launched the isolated
+`daemon-client --help` service successfully. Cleanup removed every temporary
+Compose resource and restored the Podman API socket and service to their
+original inactive state. The separately implemented `podman-compose` provider
+was not installed on the acceptance host and is therefore not claimed.
 
-Replugging created a fresh host device inode even though `/dev/ttyACM0` and its
-major/minor numbers were reused. The running container retained its stale mapped
-inode, confirming that the stable by-id path selects the device at container
-creation or restart but does not live-rebind an existing device mapping after
-kernel re-enumeration. On the validated Podman host, an ordinary
-`podman restart` preserved the container ID and named volumes while refreshing
-the mapping to the new host inode.
+Remote-client acceptance used a temporary named Podman connection to the same
+rootless Linux API socket so the client/server boundary could be exercised
+without introducing an unverified second host. `podman --remote` returned the
+remote Linux runtime facts and launched a scanner-independent container.
+Docker Compose v5.5.0 selected through `PODMAN_COMPOSE_PROVIDER` also completed
+remote Compose config, image build, and ephemeral `daemon-client --help`
+execution through that connection, followed by exact resource and connection
+cleanup.
 
-The SDS200 can expose its CDC ACM device before the command protocol is ready.
-After USB attachment it presents the serial-versus-mass-storage selection for
-about 20 seconds before defaulting to serial mode. During that interval identity
-or PSI commands may time out or be explicitly rejected. Serial-daemon startup
-with default PSI auto-recovery now tolerates only expected
-`CommandTimeoutError` and `CommandRejectedError` readiness failures, remains
-running in a degraded state, and retries inactive PSI on the existing
-10-second `psi_recover_after` cadence until the first confirmed PSI frame.
-Unexpected failures remain fatal. Network-daemon startup and serial startup with
-`--no-psi-auto-recover` remain strict.
+That remote acceptance proves scanner-independent API and Compose orchestration;
+it is not physical acceptance of a separate remote host, a remote scanner
+network path, or remote RTSP/RTP. Host paths, devices, volumes, and container
+permissions belong to the Linux Podman service side rather than being forwarded
+arbitrarily from the client.
 
-PSI readiness now distinguishes configured restart intent from confirmed stream
-activity. `psi_active` becomes true only after a parsed PSI `ScannerInfo` frame,
-not merely while a start transaction is in flight. `sdsctl daemon-client status`
-remains a diagnostic API query and may succeed for a reachable degraded daemon.
-The new `sdsctl daemon-client health` readiness command succeeds only when the
-runtime is running, the scanner is connected, and PSI is confirmed active. The
-generic image healthcheck uses that readiness command. The web service keeps its
-separate `/healthz` web-process liveness check, and serial readiness does not
-require network audio.
+The native-Linux rootless USB permission model is explicitly not portable to
+remote client-side USB. The acceptance command using
+`podman --remote ... --group-add keep-groups` was rejected with status 125 and
+the diagnostic `the '--group-add keep-groups' option is not supported in remote
+mode`. A scanner attached only to a remote client therefore cannot use
+`compose.usb.yaml` to reproduce the validated local supplementary-group/device
+contract. A USB device intentionally provisioned on a remote Linux Podman
+service host is a server-side deployment and must satisfy that host's own
+device, permission, security-policy, and lifecycle requirements.
 
-The Linux permission contract remains least-privilege. `SDSCTL_USB_GID` is
-derived from the resolved host character device rather than hard-coded, while
-the rootless Podman/crun path retains
-`run.oci.keep_original_groups: "1"` to preserve legitimate supplementary-group
-access through the external Compose provider. The project does not recommend
-privileged containers, mapping all of `/dev`, or changing the scanner device to
-mode `0666`.
+Podman on macOS and Windows uses a Linux virtual machine. Those platforms have
+not received physical SDS200 acceptance, and the documented WSL2 exception to
+some Podman remote restrictions is also unvalidated here. Docker Desktop
+likewise does not provide direct USB passthrough; its USB/IP workflow remains a
+separate operator-managed mechanism and is not adopted by `compose.usb.yaml`.
+Physical Windows and macOS Docker/Podman scanner acceptance therefore remains a
+non-claim rather than a release blocker.
 
-SELinux was not enabled on the physical acceptance host, so SELinux
-device-policy acceptance is not claimed. Podman's documented
-`container_use_devices` SELinux boolean remains an explicit host-administrator
-policy choice and is never changed by `sdsctl`. AppArmor was effectively
-inactive on the validation host, so no AppArmor acceptance claim is made. The
-local Docker client was present, but the operator could not access the Docker
-daemon socket, so this milestone adds no new physical Docker-runtime lifecycle
-claim.
-
-Milestone 25.18 remains the alternate and remote container-runtime portability
-boundary: other Compose providers, remote Podman, Windows/macOS remote-client
-limitations, explicit unsupported remote USB cases, and compatibility-matrix
-closure. Full RTSP/RTP validation remains hardware-triggered while the physical
-scanner's native TCP port 554 continues to refuse connections and is not a
-standalone blocking milestone.
+The compatibility matrix in `docs/container-deployment.md` records these tested,
+conditional, unsupported, and unvalidated boundaries. Full RTSP/RTP validation
+remains hardware-triggered while the physical scanner's native TCP port 554
+continues to refuse connections independently of the container runtime.
 
 ## Deferred hardware validation
 

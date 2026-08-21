@@ -8,6 +8,14 @@ to follow [Semantic Versioning](https://semver.org/) as the public API matures.
 
 ### Added
 
+- Add the Milestone 25.18 cross-runtime container compatibility matrix,
+  including scanner-independent rootless Podman acceptance through alternate
+  Docker Compose v5.5.0 and remote API/Compose paths, plus an explicit
+  unsupported boundary for remote client-side USB because Podman rejects
+  `--group-add keep-groups` in remote mode. Physical Windows/macOS scanner
+  acceptance, `podman-compose`, Docker Desktop USB/IP, and RTSP/RTP remain
+  explicit non-claims where they were not validated.
+
 - Add persistent serial-daemon degraded PSI startup and readiness recovery for
   expected scanner-not-ready timeouts and explicit command rejections, including
   the SDS200 post-USB-attach serial/mass-storage selection window. Before the
